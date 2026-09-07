@@ -25,7 +25,8 @@ pub fn reflect(
         @compileError("zigo declarations require `.root`; paths in `.functions` resolve against it");
     }
     comptime validateSelectors(declaration);
-    try checkDeclaredPaths(allocator, declaration);
+    var declared = try checkDeclaredPaths(allocator, declaration);
+    defer declared.deinit();
 
     var functions: std.ArrayList(semantic.SemanticFn) = .empty;
     var types: std.ArrayList(semantic.TypeDecl) = .empty;
@@ -108,22 +109,27 @@ pub fn reflect(
                 @compileError("zigo `.go` adapters are supported only on `.repr = .value` and `.repr = .enumeration` type entries");
         }
     }
+    // Listed entries are reflected the same way whether or not discovery is
+    // on: each resolves its own path, once, linearly in the list. Discovery
+    // then only adds what the list did not claim, so the two passes never
+    // need to compare an entry against a declaration at comptime.
+    if (@hasField(@TypeOf(declaration), "functions")) {
+        inline for (declaration.functions) |entry| {
+            try appendSelectedEntry(allocator, &functions, &types, &pairings, declaration, prefix, entry, null, null);
+        }
+    }
     if (comptime discoveryEnabled(declaration)) {
-        // Discovery walks every registered container plus the root; entries in
-        // `functions` attach metadata to what it finds.
+        // Discovery walks every registered container plus the root, skipping
+        // the paths the list already bound and the ones `.exclude` names.
         if (@hasField(@TypeOf(declaration), "types")) {
             inline for (declaration.types) |entry| {
                 // A callback type is a signature and an enum is a name, not
                 // containers to walk.
                 if (comptime entry.repr != .callback and entry.repr != .enumeration)
-                    try discoverContainer(allocator, &functions, &types, &pairings, declaration, prefix, entry.type, comptime typeEntryName(entry), comptime typeEntryName(entry));
+                    try discoverContainer(allocator, &functions, &types, &pairings, declaration, prefix, declared, entry.type, comptime typeEntryName(entry), comptime typeEntryName(entry));
             }
         }
-        try discoverContainer(allocator, &functions, &types, &pairings, declaration, prefix, declaration.root, null, "root");
-    } else {
-        inline for (declaration.functions) |entry| {
-            try appendSelectedEntry(allocator, &functions, &types, &pairings, declaration, prefix, entry, null, null);
-        }
+        try discoverContainer(allocator, &functions, &types, &pairings, declaration, prefix, declared, declaration.root, null, "root");
     }
 
     var constructors: std.ArrayList(semantic.Constructor) = .empty;
@@ -1256,6 +1262,7 @@ fn discoverContainer(
     pairings: *std.ArrayList(Pairing),
     comptime declaration: anytype,
     prefix: []const u8,
+    declared: DeclaredPaths,
     comptime Container: type,
     comptime owner: ?[]const u8,
     /// How a binding spells this container in `.functions` and `.exclude`:
@@ -1267,14 +1274,10 @@ fn discoverContainer(
         const value = @field(Container, candidate.name);
         if (@typeInfo(@TypeOf(value)) != .@"fn") continue;
         const path = path_prefix ++ "." ++ candidate.name;
-        if (comptime excludedPaths(declaration).has(path)) continue;
-        // One lookup finds the entry (or the group) that names this path.
-        // A path listed twice was already rejected by `checkDeclaredPaths`,
-        // so the single entry the index returns is the only one there is.
-        const entry_position = comptime boundFunctionPaths(declaration).get(path);
-        if (comptime entry_position) |position| {
-            _ = try appendDiscoveredEntry(allocator, functions, types, pairings, declaration, prefix, path, candidate.name, value, owner, declaration.functions[position], null, null);
-        } else {
+        // A listed path was reflected through its entry before discovery
+        // ran; an excluded one is left out. Either way this is one hash
+        // lookup at runtime, not a comptime scan of the binding.
+        if (!declared.claims(path)) {
             try appendFunction(allocator, functions, types, pairings, declaration, prefix, candidate.name, value, .{}, owner, null, null);
         }
     }
@@ -1289,86 +1292,12 @@ fn discoverContainer(
             pairings,
             declaration,
             prefix,
+            declared,
             value,
             comptime if (owner) |parent| parent ++ "." ++ candidate.name else candidate.name,
             path_prefix ++ "." ++ candidate.name,
         );
     }
-}
-
-/// Every function path a binding lists, nested groups included, mapped to
-/// the position of the top-level `.functions` entry that carries it. Zig
-/// memoises comptime calls, so the index is built once per binding; a lookup
-/// is then a length-bucketed search rather than a walk over every entry,
-/// which is what keeps discovery and coverage of a broad root from costing
-/// `declarations × entries` comptime branches. A group maps each nested path
-/// to the group itself, so the receiver and prefix it declares still apply.
-pub fn boundFunctionPaths(comptime declaration: anytype) std.StaticStringMap(usize) {
-    comptime {
-        if (!@hasField(@TypeOf(declaration), "functions")) return .{};
-        var count: usize = 0;
-        for (declaration.functions) |entry| count += functionEntryPathCount(entry);
-        var kvs: [count]struct { []const u8, usize } = undefined;
-        var next: usize = 0;
-        for (declaration.functions, 0..) |entry, position| appendFunctionEntryPaths(entry, position, &kvs, &next);
-        return std.StaticStringMap(usize).initComptime(kvs);
-    }
-}
-
-fn functionEntryPathCount(comptime entry: anytype) usize {
-    if (isStringEntry(@TypeOf(entry))) return 1;
-    if (@hasField(@TypeOf(entry), "functions")) {
-        var count: usize = 0;
-        for (entry.functions) |nested| count += functionEntryPathCount(nested);
-        return count;
-    }
-    return 1;
-}
-
-fn appendFunctionEntryPaths(comptime entry: anytype, comptime position: usize, kvs: anytype, next: *usize) void {
-    if (isStringEntry(@TypeOf(entry))) {
-        kvs[next.*] = .{ entry, position };
-        next.* += 1;
-        return;
-    }
-    if (@hasField(@TypeOf(entry), "functions")) {
-        for (entry.functions) |nested| appendFunctionEntryPaths(nested, position, kvs, next);
-        return;
-    }
-    kvs[next.*] = .{ entry.path, position };
-    next.* += 1;
-}
-
-fn appendDiscoveredEntry(
-    allocator: std.mem.Allocator,
-    functions: *std.ArrayList(semantic.SemanticFn),
-    types: *std.ArrayList(semantic.TypeDecl),
-    pairings: *std.ArrayList(Pairing),
-    comptime declaration: anytype,
-    prefix: []const u8,
-    comptime path: []const u8,
-    comptime source_name: []const u8,
-    comptime function_value: anytype,
-    comptime owner: ?[]const u8,
-    comptime entry: anytype,
-    comptime inherited_receiver: ?[]const u8,
-    comptime inherited_prefix: ?[]const u8,
-) !bool {
-    if (comptime isStringEntry(@TypeOf(entry))) {
-        if (!std.mem.eql(u8, entry, path)) return false;
-        try appendFunction(allocator, functions, types, pairings, declaration, prefix, source_name, function_value, .{}, owner, inherited_receiver, inherited_prefix);
-        return true;
-    }
-    if (@hasField(@TypeOf(entry), "functions")) {
-        var matched = false;
-        inline for (entry.functions) |nested| {
-            matched = try appendDiscoveredEntry(allocator, functions, types, pairings, declaration, prefix, path, source_name, function_value, owner, nested, entry.receiver, entry.strip_prefix) or matched;
-        }
-        return matched;
-    }
-    if (!std.mem.eql(u8, entry.path, path)) return false;
-    try appendFunction(allocator, functions, types, pairings, declaration, prefix, source_name, function_value, entry, owner, comptime if (@hasField(@TypeOf(entry), "receiver")) entry.receiver else inherited_receiver, inherited_prefix);
-    return true;
 }
 
 /// A declaration is a namespace of its container only when it was written
@@ -1612,7 +1541,7 @@ fn validateFunctionPath(comptime declaration: anytype, comptime path: []const u8
 /// Every function path the declaration lists, groups flattened, in order.
 /// Built once, linearly, so the cross-entry checks can run at runtime over a
 /// hash set instead of comparing every entry against every other at comptime.
-fn declaredFunctionPaths(comptime declaration: anytype) []const []const u8 {
+pub fn declaredFunctionPaths(comptime declaration: anytype) []const []const u8 {
     comptime {
         if (!@hasField(@TypeOf(declaration), "functions")) return &.{};
         var count: usize = 0;
@@ -1640,27 +1569,50 @@ fn declaredFunctionPaths(comptime declaration: anytype) []const []const u8 {
     }
 }
 
+/// The paths a binding names, as runtime sets: everything `.functions`
+/// lists (groups flattened) and everything `.exclude` names. Built once per
+/// reflection so discovery can ask "is this path spoken for?" with a hash
+/// lookup instead of a comptime scan.
+const DeclaredPaths = struct {
+    listed: std.StringHashMap(void),
+    excluded: std.StringHashMap(void),
+
+    fn deinit(self: *DeclaredPaths) void {
+        self.listed.deinit();
+        self.excluded.deinit();
+    }
+
+    /// Whether discovery should pass over `path`: it is either bound by an
+    /// explicit entry (and already reflected through it) or excluded.
+    fn claims(self: DeclaredPaths, path: []const u8) bool {
+        return self.listed.contains(path) or self.excluded.contains(path);
+    }
+};
+
 /// The checks that relate one entry to another: a path listed twice, an
 /// exclusion listed twice, and a path both listed and excluded. Each entry is
 /// visited once against a hash set, so a binding of a thousand functions costs
 /// what a thousand lookups cost -- at runtime, where the comptime branch quota
-/// does not apply.
-fn checkDeclaredPaths(allocator: std.mem.Allocator, comptime declaration: anytype) error{ DuplicatePath, OutOfMemory }!void {
-    var listed = std.StringHashMap(void).init(allocator);
-    defer listed.deinit();
+/// does not apply. The sets are returned because discovery needs exactly
+/// them next.
+fn checkDeclaredPaths(allocator: std.mem.Allocator, comptime declaration: anytype) error{ DuplicatePath, OutOfMemory }!DeclaredPaths {
+    var paths: DeclaredPaths = .{
+        .listed = std.StringHashMap(void).init(allocator),
+        .excluded = std.StringHashMap(void).init(allocator),
+    };
+    errdefer paths.deinit();
     for (comptime declaredFunctionPaths(declaration)) |path| {
-        const slot = try listed.getOrPut(path);
+        const slot = try paths.listed.getOrPut(path);
         if (slot.found_existing) return selectorIssue(allocator, "duplicate zigo function path: `{s}`", .{path});
     }
     if (@hasField(@TypeOf(declaration), "exclude")) {
-        var excluded = std.StringHashMap(void).init(allocator);
-        defer excluded.deinit();
         inline for (declaration.exclude) |path| {
-            const slot = try excluded.getOrPut(path);
+            const slot = try paths.excluded.getOrPut(path);
             if (slot.found_existing) return selectorIssue(allocator, "duplicate zigo exclusion path: `{s}`", .{path});
-            if (listed.contains(path)) return selectorIssue(allocator, "zigo path cannot be both listed and excluded: `{s}`", .{path});
+            if (paths.listed.contains(path)) return selectorIssue(allocator, "zigo path cannot be both listed and excluded: `{s}`", .{path});
         }
     }
+    return paths;
 }
 
 fn selectorIssue(allocator: std.mem.Allocator, comptime detail: []const u8, args: anytype) error{ DuplicatePath, OutOfMemory } {
@@ -1806,19 +1758,6 @@ fn containerHasPath(comptime Container: type, comptime rest: []const u8) bool {
         const head = rest[0..dot];
         if (!@hasDecl(Container, head) or @TypeOf(@field(Container, head)) != type) return false;
         return containerHasPath(@field(Container, head), rest[dot + 1 ..]);
-    }
-}
-
-/// Every path a binding lists in `.exclude`, as one comptime index built
-/// once per binding (comptime calls are memoised). Discovery and coverage
-/// ask about every public function they find, so a scan of `.exclude` for
-/// each would cost `declarations × exclusions` comptime branches.
-pub fn excludedPaths(comptime declaration: anytype) std.StaticStringMap(void) {
-    comptime {
-        if (!@hasField(@TypeOf(declaration), "exclude")) return .{};
-        var keys: [declaration.exclude.len]struct { []const u8 } = undefined;
-        for (declaration.exclude, 0..) |path, index| keys[index] = .{path};
-        return std.StaticStringMap(void).initComptime(keys);
     }
 }
 
@@ -3255,17 +3194,19 @@ test "public discovery combines methods root functions exclusions and entries" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const document = try reflect(arena.allocator(), declaration, "auto", "zg");
+    // Listed entries are reflected first, in list order; discovery then
+    // appends what the list did not claim, in declaration order.
     try std.testing.expectEqual(@as(usize, 4), document.functions.len);
-    try std.testing.expectEqualStrings("create", document.functions[0].name);
-    try std.testing.expectEqualStrings("Handle", document.functions[0].namespace.?);
-    try std.testing.expectEqual(.caller, document.functions[0].ownership);
-    try std.testing.expectEqualStrings("put", document.functions[1].name);
-    try std.testing.expectEqualStrings("value", document.functions[1].params[0].name);
-    try std.testing.expectEqual(.sidecar, document.functions[1].params[0].name_source);
-    try std.testing.expectEqualStrings("deinit", document.functions[2].name);
-    try std.testing.expectEqualStrings("health", document.functions[3].name);
-    try std.testing.expect(document.functions[3].receiver == null);
-    try std.testing.expect(document.functions[3].namespace == null);
+    try std.testing.expectEqualStrings("put", document.functions[0].name);
+    try std.testing.expectEqualStrings("value", document.functions[0].params[0].name);
+    try std.testing.expectEqual(.sidecar, document.functions[0].params[0].name_source);
+    try std.testing.expectEqualStrings("health", document.functions[1].name);
+    try std.testing.expect(document.functions[1].receiver == null);
+    try std.testing.expect(document.functions[1].namespace == null);
+    try std.testing.expectEqualStrings("create", document.functions[2].name);
+    try std.testing.expectEqualStrings("Handle", document.functions[2].namespace.?);
+    try std.testing.expectEqual(.caller, document.functions[2].ownership);
+    try std.testing.expectEqualStrings("deinit", document.functions[3].name);
     try std.testing.expectEqual(@as(usize, 1), document.constructors.len);
 }
 
@@ -3288,40 +3229,6 @@ test "discovery selectors use stable owner-qualified paths" {
     try std.testing.expect(comptime declarationPathExists(declaration, "root.update"));
     try std.testing.expect(!comptime declarationPathExists(declaration, "Missing.update"));
     try std.testing.expect(!comptime declarationPathExists(declaration, "root.privateHelper"));
-}
-
-test "excluded paths are indexed once" {
-    const declaration = .{ .root = struct {}, .discover = .public, .exclude = .{ "root.skip", "Handle.drop" } };
-    const excluded = comptime excludedPaths(declaration);
-    try std.testing.expect(excluded.has("root.skip"));
-    try std.testing.expect(excluded.has("Handle.drop"));
-    try std.testing.expect(!excluded.has("root.keep"));
-    try std.testing.expect(!comptime excludedPaths(.{ .root = struct {} }).has("root.skip"));
-}
-
-test "bound function paths are indexed once, nested groups and plain strings included" {
-    const declaration = .{
-        .root = struct {},
-        .functions = .{
-            .{ .path = "root.plain" },
-            "root.bare",
-            .{ .receiver = "Handle", .strip_prefix = "handle_", .functions = .{
-                .{ .path = "root.handle_open" },
-                .{ .path = "root.handle_close" },
-            } },
-        },
-    };
-    const paths = comptime boundFunctionPaths(declaration);
-    try std.testing.expectEqual(@as(?usize, 0), paths.get("root.plain"));
-    try std.testing.expectEqual(@as(?usize, 1), paths.get("root.bare"));
-    // Nested paths resolve to the group that carries them.
-    try std.testing.expectEqual(@as(?usize, 2), paths.get("root.handle_open"));
-    try std.testing.expectEqual(@as(?usize, 2), paths.get("root.handle_close"));
-    try std.testing.expect(!paths.has("root.missing"));
-    try std.testing.expect(!paths.has("root.handle_"));
-    try std.testing.expectEqual(@as(usize, 4), paths.kvs.len);
-    // A binding with nothing listed still answers, and answers no.
-    try std.testing.expect(!comptime boundFunctionPaths(.{ .root = struct {} }).has("root.plain"));
 }
 
 test "a nested namespace path reflects with a dotted owner" {

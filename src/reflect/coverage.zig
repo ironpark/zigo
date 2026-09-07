@@ -56,6 +56,10 @@ pub fn classify(
     source_functions: []const semantic.SemanticFn,
 ) !Report {
     @setEvalBranchQuota(100_000);
+    // The paths the binding speaks for, as runtime sets: asking about every
+    // public declaration is then a hash lookup each, not a comptime scan.
+    var selectors = try Selectors.init(allocator, binding);
+    defer selectors.deinit();
     var declarations: std.ArrayList(Declaration) = .empty;
     var seen_functions: std.ArrayList([]const u8) = .empty;
     defer seen_functions.deinit(allocator);
@@ -72,6 +76,7 @@ pub fn classify(
             &public_types,
             &referenced_types,
             binding,
+            selectors,
             document,
             source_functions,
             entry.type,
@@ -80,7 +85,7 @@ pub fn classify(
             comptime walk.discoveryEnabled(binding) and entry.repr != .enumeration,
         );
     };
-    try collectContainer(allocator, &declarations, &seen_functions, &public_types, &referenced_types, binding, document, source_functions, binding.root, null, "root", comptime walk.discoveryEnabled(binding));
+    try collectContainer(allocator, &declarations, &seen_functions, &public_types, &referenced_types, binding, selectors, document, source_functions, binding.root, null, "root", comptime walk.discoveryEnabled(binding));
 
     // Field accessors are generated functions even though there is no Zig
     // declaration to enumerate. Count each getter and setter exactly once.
@@ -218,6 +223,7 @@ fn collectContainer(
     public_types: *std.ArrayList(PublicType),
     referenced_types: *std.ArrayList([]const u8),
     comptime binding: anytype,
+    selectors: Selectors,
     document: semantic.Semantic,
     source_functions: []const semantic.SemanticFn,
     comptime Container: type,
@@ -242,9 +248,9 @@ fn collectContainer(
         if (!contains(seen_functions.items, identity)) {
             try seen_functions.append(allocator, identity);
             const path = path_prefix ++ "." ++ candidate.name;
-            const status: Status = if (comptime walk.excludedPaths(binding).has(path))
+            const status: Status = if (selectors.excluded.contains(path))
                 .excluded
-            else if (discovered or comptime functionListed(binding, path))
+            else if (discovered or selectors.listed.contains(path))
                 .bound
             else
                 .unbound;
@@ -266,6 +272,7 @@ fn collectContainer(
             public_types,
             referenced_types,
             binding,
+            selectors,
             document,
             source_functions,
             value,
@@ -455,13 +462,30 @@ fn callbackReason(allocator: std.mem.Allocator, comptime binding: anytype, docum
     return null;
 }
 
-/// Whether the binding lists `path` in `.functions`. The index is built once
-/// per binding (see `walk.boundFunctionPaths`) so asking for every source
-/// declaration does not rescan every entry.
-fn functionListed(comptime binding: anytype, comptime path: []const u8) bool {
-    const paths = comptime walk.boundFunctionPaths(binding);
-    return paths.has(path);
-}
+/// The paths a binding names in `.functions` (groups flattened) and
+/// `.exclude`, as hash sets built once per report.
+const Selectors = struct {
+    listed: std.StringHashMap(void),
+    excluded: std.StringHashMap(void),
+
+    fn init(allocator: std.mem.Allocator, comptime binding: anytype) !Selectors {
+        var self: Selectors = .{
+            .listed = std.StringHashMap(void).init(allocator),
+            .excluded = std.StringHashMap(void).init(allocator),
+        };
+        errdefer self.deinit();
+        for (comptime walk.declaredFunctionPaths(binding)) |path| try self.listed.put(path, {});
+        if (@hasField(@TypeOf(binding), "exclude")) {
+            inline for (binding.exclude) |path| try self.excluded.put(path, {});
+        }
+        return self;
+    }
+
+    fn deinit(self: *Selectors) void {
+        self.listed.deinit();
+        self.excluded.deinit();
+    }
+};
 
 fn typeKnownToDocument(document: semantic.Semantic, full_name: []const u8) bool {
     for (document.types) |declaration| {
