@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T10:24:45Z"
 description: "Plugin frame for the generator: typed extension options, method/type/file hooks, build-time registry; built-ins migrated onto it and an external showcase plugin"
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-07T09:09:09Z"
 ---
 > NEXT: Define the plugin contract and put the hook calls into the public emitters. ([Phase 0](phases/00-contract-and-hooks.md))
@@ -11,7 +12,7 @@ registered_at: "2026-09-07T09:09:09Z"
 - [x] [Phase 01: Typed extension transport and validation](phases/01-ext-transport.md)
 - [x] [Phase 02: Migrate built-ins onto the frame](phases/02-migrate-builtins.md)
 - [x] [Phase 03: External plugins: build wiring and cases](phases/03-external-loading.md)
-- [ ] [Phase 04: Showcase plugins](phases/04-showcase.md)
+- [x] [Phase 04: Showcase plugins](phases/04-showcase.md)
 
 # Shared Verification
 

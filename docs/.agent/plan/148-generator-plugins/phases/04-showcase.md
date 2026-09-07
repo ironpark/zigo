@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-07T10:24:45Z"
 depends_on:
 - "148-generator-plugins#3"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Both plugins have golden cases and example tests on both backends;
 > NEXT: none
