@@ -1,9 +1,10 @@
 ---
+completed_at: "2026-09-07T13:58:41Z"
 depends_on:
 - "156-binding-authoring-polish#0"
 - "156-binding-authoring-polish#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Examples and docs demonstrate all improvements, validation passes and the final commits leave a clean working tree.
 > NEXT: none

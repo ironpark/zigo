@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T13:58:41Z"
 description: Implement concise contracts, member composition, contextual receivers, sparse callback metadata, and idiomatic examples/docs.
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-07T13:41:21Z"
 ---
 > NEXT: Implement contract constructors and explicit contextual receiver selection. ([Phase 0](phases/00-contracts-and-members.md))
@@ -9,7 +10,7 @@ registered_at: "2026-09-07T13:41:21Z"
 
 - [x] [Phase 00: Contract helpers and contextual members](phases/00-contracts-and-members.md)
 - [x] [Phase 01: Sparse callback contracts](phases/01-callback-contracts.md)
-- [ ] [Phase 02: Idiomatic examples and documentation](phases/02-examples-and-verification.md)
+- [x] [Phase 02: Idiomatic examples and documentation](phases/02-examples-and-verification.md)
 
 # Shared Verification
 
