@@ -1,5 +1,8 @@
 # 제네릭 타입 문맥을 이용한 바인딩 작성 연구
 
+후속 적용: 공개 Entry.context()와 네 예제에 구현되었습니다. 현재 사용법은
+[바인딩 문서](../../../bindings.md#제네릭-타입-문맥)를 참고하세요. 아래는 구현 전 연구 기록입니다.
+
 기준 커밋: 755501c0. Zig 0.16.0에서 검증했습니다.
 이 디렉터리의 코드는 **연구용 시제품**입니다. 공개 API와 실제 예제 파일은 변경하지 않았습니다.
 
@@ -246,6 +249,6 @@ const entry = FloatBuffer.build(Factory.members);
 python3 docs/.agent/research/generic-binding-context/verify.py
 ```
 
-Python 표준 라이브러리와 PATH의 Zig만 사용합니다. 임시 디렉터리에 변환 예제를 만들고 지웁니다.
+Python 표준 라이브러리, Git과 PATH의 Zig를 사용합니다. 기준 커밋 755501c0의 예제를 재현합니다. 임시 디렉터리에 변환 예제를 만들고 지웁니다.
 [context.zig](context.zig)는 실제 시제품, [tests.zig](tests.zig)는 검증 fixture,
 [verify.py](verify.py)는 실제 예제 변환 및 컴파일 실패 검사를 포함한 실행기입니다.

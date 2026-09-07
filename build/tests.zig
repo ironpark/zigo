@@ -785,6 +785,13 @@ fn addBindingAuthoringErrors(b: *std.Build, test_step: *std.Build.Step) void {
         .{ "callback_length", "zigo annotate the callback byte pointer, not its length" },
         .{ "callback_userdata_range", "zigo callback userdata index is outside" },
         .{ "callback_userdata_type", "zigo callback userdata must be usize" },
+        .{ "context_duplicate_alias", "zigo ambiguous registration of the same Zig type" },
+        .{ "context_function_context", "zigo context requires a type declaration" },
+        .{ "context_callback_context", "zigo callback declarations have no member context" },
+        .{ "context_missing_member", "zigo reference is not a public function" },
+        .{ "context_wrong_receiver", "zigo receiver differs from the enclosing member type" },
+        .{ "context_wrong_root", "zigo reference belongs to a different root" },
+        .{ "context_context_as_entry", "expected type" },
         .{ "contract_buffer", "zigo buffer contract does not match Zig argument" },
         .{ "contract_stream", "zigo stream contract does not match Zig argument" },
         .{ "contract_callback", "zigo callback contract does not match Zig argument" },
@@ -808,7 +815,7 @@ fn addBindingAuthoringErrors(b: *std.Build, test_step: *std.Build.Step) void {
         run.setName("authoring rejects " ++ case[0]);
         run.addPrefixedFileArg("-Mroot=", b.path("tests/binding_errors/" ++ case[0] ++ ".zig"));
         run.addPrefixedFileArg("-Mzigo=", b.path("src/root.zig"));
-        inline for (.{ "author", "normalize", "declare", "dsl", "features", "param", "result", "callback_layout" }) |source|
+        inline for (.{ "author", "normalize", "declare", "dsl", "features", "param", "result", "callback_layout", "context_tests" }) |source|
             run.addFileInput(b.path("src/" ++ source ++ ".zig"));
         run.expectExitCode(1);
         run.expectStdErrMatch(case[1]);

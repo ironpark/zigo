@@ -28,6 +28,9 @@
 
 ### Added
 
+- 타입 선언의 `.context()`: 원본 scope·타입 참조·표현 옵션을 캡처하는 제네릭 문맥.
+  `define()`·`select()`로 기존 Entry를 만들며 네 예제에 적용했습니다.
+
 - 완성된 계약 값을 반환하는 `zigo.param`·`zigo.result` helper와 멤버 목록을 교체하는 `.members(entries)`.
 
 - 명시적인 `.role = .free`, scope별 함수 선택, package 안의 명시 함수에 적용되는 추론 기본값.

@@ -2,9 +2,16 @@ const zigo = @import("zigo");
 const library = @import("callback");
 
 const api = zigo.scope(library);
-const callback_context = api.in("CallbackContext");
-const float_buffer = api.in("FloatBuffer");
-const int_buffer = api.in("IntBuffer");
+const CallbackContext = api.handle("CallbackContext", .{ .fields = &.{
+    .{
+        .path = "stats.runs",
+        .name = "runCount",
+        .set = true,
+        .doc = "RunCount reports how many callbacks have run.",
+    },
+} }).context();
+const FloatBuffer = api.handle("FloatBuffer", .{}).context();
+const IntBuffer = api.handle("IntBuffer", .{}).context();
 
 // The same explicit export list applies to both generic instantiations.
 const buffer_members: zigo.Selector = .{ .names = &.{ "create", "push", "len", "deinit" } };
@@ -12,24 +19,17 @@ const buffer_members: zigo.Selector = .{ .names = &.{ "create", "push", "len", "
 pub const bindings = zigo.define(.{
     .root = library,
     .declarations = &.{
-        api.handle("CallbackContext", .{ .fields = &.{
-            .{
-                .path = "stats.runs",
-                .name = "runCount",
-                .set = true,
-                .doc = "RunCount reports how many callbacks have run.",
-            },
-        } }).members(&.{
-            callback_context.function("create", .{
+        CallbackContext.define(&.{
+            CallbackContext.function("create", .{
                 .params = &.{
                     zigo.param.callback(0, .{ .retention = .retained, .go_error = true }),
                 },
             }),
-            callback_context.function("run", .{}),
-            callback_context.function("deinit", .{}),
+            CallbackContext.function("run", .{}),
+            CallbackContext.function("deinit", .{}),
         }),
-        api.handle("FloatBuffer", .{}).members(float_buffer.functions(buffer_members)),
-        api.handle("IntBuffer", .{}).members(int_buffer.functions(buffer_members)),
+        FloatBuffer.select(buffer_members),
+        IntBuffer.select(buffer_members),
         api.callback("Observer", .{ .on_failure = .{ .result = 0 } }),
         api.callback("VoidObserver", .{}),
         api.callback("Predicate", .{}),

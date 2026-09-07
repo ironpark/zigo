@@ -127,6 +127,17 @@ const terminal = api.handle("Terminal", .{
 
 값과 결과 트리의 자세한 지원 모양은 [타입 문서](bindings-types.md)에 있습니다.
 
+타입과 source scope를 하나로 묶는 Context:
+
+```zig
+const Store = api.handle("Store", .{}).context();
+const store = Store.select(.{ .names = &.{ "create", "deinit" } });
+// 개별 옵션은 Store.define(&.{Store.function("read", options)})로 작성.
+// 타입 참조: Store.typeRef(), 함수 참조: Store.ref("read").
+```
+
+`store`는 Entry, `Store`는 문맥 타입입니다. [전체 문맥 API](bindings.md#제네릭-타입-문맥)를 참고하세요.
+
 ## 함수와 파라미터
 
 | 옵션 | 용도 |

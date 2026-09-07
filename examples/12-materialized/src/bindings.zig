@@ -2,8 +2,8 @@ const zigo = @import("zigo");
 const library = @import("materialized");
 
 const api = zigo.scope(library);
-const legacy_leaf = api.in("LegacyLeaf");
-const legacy_probe = api.in("LegacyProbe");
+const LegacyLeaf = api.handle("LegacyLeaf", .{}).context();
+const LegacyProbe = api.handle("LegacyProbe", .{}).context();
 
 const owned_tree = zigo.result.releasedBy(api.ref("release"));
 
@@ -16,15 +16,15 @@ pub const bindings = zigo.define(.{
         api.value("Point", .{}),
         api.materialized("Leaf", .{}),
         api.materialized("Probe", .{ .fields = &.{.{ .name = "raw", .semantic = .opaque_bytes }} }),
-        api.handle("LegacyLeaf", .{}).members(&.{
-            legacy_leaf.function("value", .{}),
+        LegacyLeaf.define(&.{
+            LegacyLeaf.function("value", .{}),
         }),
-        api.handle("LegacyProbe", .{}).members(&.{
-            legacy_probe.function("create", .{}),
-            legacy_probe.function("id", .{}),
-            legacy_probe.function("active", .{}),
-            legacy_probe.function("child", .{ .returns = zigo.result.borrowed() }),
-            legacy_probe.function("deinit", .{}),
+        LegacyProbe.define(&.{
+            LegacyProbe.function("create", .{}),
+            LegacyProbe.function("id", .{}),
+            LegacyProbe.function("active", .{}),
+            LegacyProbe.function("child", .{ .returns = zigo.result.borrowed() }),
+            LegacyProbe.function("deinit", .{}),
         }),
         api.function("snapshot", .{ .returns = owned_tree }),
         api.function("probeMany", .{ .returns = owned_tree }),

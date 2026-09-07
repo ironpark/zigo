@@ -50,4 +50,5 @@ test {
     _ = @import("normalize.zig");
     _ = features;
     _ = dsl;
+    _ = @import("context_tests.zig");
 }

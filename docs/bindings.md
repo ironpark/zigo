@@ -69,6 +69,54 @@ const storage = zigo.package(.{
 helper의 옵션은 표현별로 다릅니다. 공통 이름·문서·멤버는 `.named()`, `.documented()`,
 `.members(entries)`로 설정합니다. 타입의 Go 기본 이름은 공개 Zig alias 이름입니다.
 
+## 제네릭 타입 문맥
+
+타입 이름과 source scope를 함께 관리하려면 타입 선언의 `.context()`를 사용합니다.
+Context는 제네릭이 반환한 타입이며, `.define()` 또는 `.select()`가 기존 `Entry`를 만듭니다.
+
+```zig
+const Document = api.handle("Document", .{}).context();
+
+const document = Document.define(&.{
+    Document.function("create", .{}),
+    Document.function("readInto", .{
+        .params = &.{zigo.param.output(1, .result)},
+    }),
+    Document.function("deinit", .{}),
+});
+```
+
+`document`를 `declarations`에 넣습니다. Context 타입인 `Document`를 직접 넣지는 않습니다.
+타입 문맥은 대문자, 최종 선언 값은 소문자로 구분하면 읽기 쉽습니다.
+
+| Context 항목 | 역할 |
+|---|---|
+| `Target` | 실제 Zig 대상 타입 |
+| `source` | 원본 Scope. 중첩 namespace는 `source.in("nested")`로 접근 |
+| `function(name, options)`, `functions(selector)` | 기존 source 함수 선언·선택 |
+| `ref(name)` | 원본 함수 참조 |
+| `typeRef()` | 현재 대상의 TypeRef. 이름을 다시 적지 않음 |
+| `define(entries)` | 멤버 전체를 교체하고 타입 Entry 반환 |
+| `select(selector)` | 함수 선택 결과를 멤버로 넣은 타입 Entry 반환 |
+
+예를 들어 `Buffer.select(.{ .names = &.{ "create", "push", "len", "deinit" } })`로
+공통 export 목록을 재사용할 수 있습니다. 이름·문서·plugin은 `.context()` 전 또는
+`.define()` 후의 Entry에 적용하며, 기존 전체 교체 규칙이 유지됩니다.
+
+Context 내부의 `Self = @This()`는 바인딩 문맥 타입입니다. 실제 대상 타입은 `Target`이며
+Go 이름을 바꿔도 source 경로와 참조는 유지됩니다. 멤버의 receiver는 기존 normalizer가
+결정하므로 root 함수도 `Document.define(&.{api.function("readDocument", .{})})`로 묶을 수
+있습니다. 정적 생성자의 `.none`, 자식 생성자의 `.member` 규칙도 그대로입니다.
+
+handle·value·enumeration·taggedUnion·materialized 선언에 사용할 수 있습니다.
+callback은 함수 포인터여서 자체 멤버 문맥을 제공하지 않습니다.
+기존 `.members()`도 계속 사용할 수 있습니다.
+
+실제 작성 예시는 [콜백](../examples/04-callback/src/bindings.zig),
+[event-queue](../examples/07-event-queue/src/bindings.zig),
+[스트림](../examples/11-io-streams/src/bindings.zig),
+[materialized](../examples/12-materialized/src/bindings.zig)를 참고하세요.
+
 ## 계약과 참조
 
 파라미터는 **receiver·allocator·userdata를 포함한 원본 Zig 인자 인덱스**로 선택합니다.

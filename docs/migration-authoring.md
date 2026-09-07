@@ -58,6 +58,22 @@ pub const bindings = zigo.define(.{
 필요한 최종 이름을 `.named()`로 명시하세요. `.role = .auto`는 기존 receiver 추론을 유지하며,
 `.role = .free`로 첫 handle 인자를 자유 함수의 인자로 남길 수도 있습니다.
 
+## 선택적 Context 적용
+
+기존 `api.in("Store")`와 `api.handle("Store", options)`를 한 번의 선언으로 묶을 수 있습니다.
+
+```zig
+const Store = api.handle("Store", .{}).context();
+const store = Store.define(&.{
+    Store.function("create", .{}),
+    Store.function("deinit", .{}),
+});
+```
+
+`declarations`에는 `store`를 넣습니다. 기존 Entry와 members API를 유지하므로 필수
+마이그레이션은 아닙니다. 표현별 옵션과 plugin은 context 생성 전에, 멤버는 define/select에
+지정합니다. 이름을 바꿔도 Store.typeRef()/ref()는 원본 참조를 보존합니다.
+
 ## 파라미터 계약
 
 이전 `params`는 receiver·주입 인자를 제거한 위치 목록이었습니다. 새 `params`는 필요한

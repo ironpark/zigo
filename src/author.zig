@@ -164,6 +164,11 @@ pub const Entry = union(enum) {
         }
         return result;
     }
+    /// Capture this type declaration and its source scope in a generic context.
+    pub fn context(comptime self: Entry) type {
+        return Context(self);
+    }
+
     /// Replace the type's complete member list, retaining its options and plugins.
     pub fn members(comptime self: Entry, comptime entries: []const Entry) Entry {
         if (self != .type) @compileError("zigo members requires a type declaration");
@@ -259,6 +264,32 @@ fn replace(comptime original: anytype, comptime values: anytype) @TypeOf(origina
         @field(result, field.name) = @field(values, field.name);
     }
     return result;
+}
+
+/// A compile-time authoring context; define/select return the existing Entry schema.
+fn Context(comptime entry: Entry) type {
+    if (entry != .type) @compileError("zigo context requires a type declaration");
+    if (entry.type.representation == .callback)
+        @compileError("zigo callback declarations have no member context");
+    return struct {
+        const Self = @This();
+        pub const Target = entry.type.ref.type;
+        pub const source = Scope(entry.type.ref.root, Target, entry.type.ref.path);
+        pub const function = source.function;
+        pub const functions = source.functions;
+        pub const ref = source.ref;
+
+        pub fn typeRef() TypeRef {
+            return entry.typeRef();
+        }
+        /// Replace all members while preserving the captured options and plugins.
+        pub fn define(comptime entries: []const Entry) Entry {
+            return entry.members(entries);
+        }
+        pub fn select(comptime selector: Selector) Entry {
+            return Self.define(Self.functions(selector));
+        }
+    };
 }
 
 pub const Selector = union(enum) {

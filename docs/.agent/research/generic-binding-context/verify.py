@@ -105,7 +105,12 @@ def main():
         ]
         for key, folder, library in examples:
             path = ROOT / "examples" / folder / "src"
-            before = (path / "bindings.zig").read_text()
+            before = subprocess.check_output(
+                ["git", "show", "755501c0:" + str((path / "bindings.zig").relative_to(ROOT))],
+                cwd=ROOT, text=True,
+            )
+            original = tmp / f"{key}_before.zig"
+            original.write_text(before)
             after, count = rewrite(before)
             candidate = tmp / f"{key}.zig"
             candidate.write_text(after)
@@ -116,7 +121,7 @@ def main():
             deps = ["zigo", library] + (["zigo_satisfies"] if key == "streams" else [])
             modules += [
                 (library, path / "root.zig", []),
-                (f"before_{key}", path / "bindings.zig", deps),
+                (f"before_{key}", original, deps),
                 (f"after_{key}", candidate, deps + ["context"]),
             ]
         run(["zig", "test", "-lc"] + module_args(modules))
