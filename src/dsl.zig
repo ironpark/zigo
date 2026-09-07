@@ -338,6 +338,26 @@ test "function ownership shortcuts preserve other metadata" {
     try std.testing.expectEqual(declare.Ownership.borrowed, view.returns.ownership.?);
 }
 
+test "function lifecycle shortcuts preserve other metadata" {
+    const Parent = opaque {};
+    const Child = opaque {};
+
+    const create = func("root.newChild")
+        .with(.{ .name = "OpenChild", .receiver = Parent })
+        .constructor(Child)
+        .childOfReceiver();
+    try std.testing.expectEqualStrings("OpenChild", create.name.?);
+    try std.testing.expect(create.receiver.? == Parent);
+    try std.testing.expect(create.constructs.? == Child);
+    try std.testing.expect(create.child_of_receiver);
+
+    const destroy = func("root.freeChild")
+        .with(.{ .doc = "Release one child." })
+        .destructor(Child);
+    try std.testing.expectEqualStrings("Release one child.", destroy.doc.?);
+    try std.testing.expect(destroy.destroys.? == Child);
+}
+
 test "funcs expands a prefix in declaration order to exact paths" {
     const Api = struct {
         pub const Value = u32;

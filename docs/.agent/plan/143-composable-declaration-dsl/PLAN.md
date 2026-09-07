@@ -8,7 +8,7 @@ registered_at: "2026-09-07T06:31:24Z"
 # Phases
 
 - [x] [Phase 00: Stable function lists and projections](phases/00-stable-function-lists.md)
-- [ ] [Phase 01: Named type batches](phases/01-named-type-batches.md)
+- [x] [Phase 01: Named type batches](phases/01-named-type-batches.md)
 - [ ] [Phase 02: Lifecycle ergonomics and documentation](phases/02-lifecycle-and-docs.md)
 
 # Shared Verification

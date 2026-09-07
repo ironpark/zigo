@@ -13,6 +13,10 @@
   선언 순서의 exact path 목록으로 확장됩니다.
 - `funcs`의 root 기본값·정확한 제외 목록, `func`/배열을 평탄화하는 `zigo.dsl.collect`,
   `callerOwned`·`releasedBy`·`borrowed` ownership shortcut을 추가했습니다.
+- `funcs`의 순서가 고정된 exact `.names` allowlist, 함수 배열에서 package 경로를 파생하는
+  `pathsOf`, 함수 또는 타입 배열을 조합하는 범용 `collect`를 추가했습니다.
+- 공개 선언 이름으로 단일·복수 `handle`, `value`, `enumeration`, `taggedUnion` 타입 항목을 만드는
+  helper와 `constructor`·`destructor`·`childOfReceiver` 함수 생명주기 shortcut을 추가했습니다.
 
 ## [0.15.0] - 2026-09-07
 

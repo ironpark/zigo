@@ -2,7 +2,7 @@
 depends_on:
 - "143-composable-declaration-dsl#1"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Lifecycle modifiers preserve unrelated metadata and produce the same typed schema as literals.
 > NEXT: none

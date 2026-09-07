@@ -155,6 +155,27 @@ pub const Function = struct {
         return result;
     }
 
+    /// Mark the function as constructing a handle of `T`.
+    pub fn constructor(comptime self: Function, comptime T: type) Function {
+        var result = self;
+        result.constructs = T;
+        return result;
+    }
+
+    /// Mark the function as destroying a handle of `T`.
+    pub fn destructor(comptime self: Function, comptime T: type) Function {
+        var result = self;
+        result.destroys = T;
+        return result;
+    }
+
+    /// Mark the constructed handle as borrowing its receiver's lifetime.
+    pub fn childOfReceiver(comptime self: Function) Function {
+        var result = self;
+        result.child_of_receiver = true;
+        return result;
+    }
+
     /// Mark a handle result as owned by the caller.
     pub fn callerOwned(comptime self: Function) Function {
         var result = self;

@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-07T06:39:40Z"
 depends_on:
 - "143-composable-declaration-dsl#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Every batch expands to ordered `zigo.Type` entries with the requested representation and exact Go name.
 > NEXT: none

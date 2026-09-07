@@ -56,8 +56,8 @@ snapshot typedef, enum 상수, tagged-union projection, last-error 함수까지 
 않으므로 Zig의 새 `pub fn`이 의도치 않게 Go ABI에 들어오지 않습니다.
 
 반복되는 exact path는 comptime DSL로 만들 수 있습니다. `func`는 한 항목을 만들고,
-`funcs`는 container에 직접 선언된 공개 함수 중 이름 prefix가 맞는 항목을 선언 순서대로
-고릅니다. selector는 최종 바인딩에 남지 않고 모두 exact path로 확장됩니다.
+`funcs`는 container에 직접 선언된 공개 함수를 prefix 또는 exact 이름 목록으로 고릅니다.
+selector는 최종 바인딩에 남지 않고 모두 exact path로 확장됩니다.
 
 ```zig
 const queries = zigo.dsl.funcs(mylib, .{
@@ -77,6 +77,29 @@ pub const bindings = zigo.define(.{
 });
 ```
 
+외부 라이브러리처럼 새 공개 함수가 바인딩 ABI에 자동으로 들어오면 안 되는 경우에는 `.names`로
+고정 allowlist를 만듭니다. 적은 순서가 최종 순서이며, 없는 이름·함수가 아닌 선언·중복 이름은
+compile error입니다. `.names`는 `.prefix` 또는 `.exclude`와 함께 쓸 수 없습니다.
+
+```zig
+const input_functions = zigo.dsl.funcs(mylib, .{
+    .names = &.{ "encodeMouse", "encodeKey" },
+});
+const input_paths = zigo.dsl.pathsOf(input_functions);
+
+pub const bindings = zigo.define(.{
+    .root = mylib,
+    .functions = &input_functions,
+    .packages = &.{.{
+        .path = "input",
+        .functions = &input_paths,
+    }},
+});
+```
+
+`pathsOf`는 고정 크기 `zigo.Function` 배열에서 package에 쓸 exact path 배열을 파생하므로 같은
+경로 문자열을 두 번 관리하지 않게 합니다.
+
 단일 항목은 경로 문자열로 만들고, 상세 메타데이터가 필요하면 typed `with` 옵션을 연결합니다.
 
 ```zig
@@ -92,6 +115,18 @@ const view = zigo.dsl.func("Context.view").borrowed();
 `funcs` 배열을 왼쪽부터 하나의 고정 크기 배열로 합칩니다. 여러 함수에 하나의 파라미터·반환
 계약을 일괄 적용하지 않으므로 개별 메타데이터가 필요한 함수는 `func`로 명시합니다. 그 밖의
 옵션은 `func(path).with(.{ ... })`로 적용합니다.
+
+생성·해제 함수는 생명주기 shortcut으로 기존 메타데이터를 보존하며 조합할 수 있습니다.
+
+```zig
+const open = zigo.dsl.func("root.newSearch")
+    .constructor(mylib.Search)
+    .childOfReceiver();
+const close = zigo.dsl.func("root.searchClose").destructor(mylib.Search);
+```
+
+`collect`는 함수뿐 아니라 `zigo.Type` 항목과 고정 크기 타입 배열도 하나로 합칩니다. 한 호출에서
+함수와 타입을 섞는 것은 compile error입니다.
 
 Zig 공개 API 전체가 바인딩 API인 큰 module은 자동 발견을 선택할 수 있습니다.
 

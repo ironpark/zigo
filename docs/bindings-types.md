@@ -6,6 +6,34 @@ Go에 값으로 전달할 타입을 선택하고 등록합니다. 선언의 기�
 포인터를 포함한 반환 트리는 [materialized](#materialized-결과-트리)를 사용합니다.
 객체 수명은 [handle 문서](bindings-handles.md), union은 [tagged union 문서](bindings-unions.md)에 있습니다.
 
+단순 등록 항목이 많으면 comptime DSL로 공개 선언 이름의 고정 목록을 만들 수 있습니다. 선언
+문자열 하나로 Zig 타입과 Go 이름을 함께 정하므로 둘이 어긋나지 않으며, 목록 순서를 그대로
+유지합니다.
+
+```zig
+const handles = zigo.dsl.handles(library, &.{ "Screen", "Search" });
+const values = zigo.dsl.values(library, &.{ "Point", "Size" });
+const text_enums = zigo.dsl.enumerations(
+    library,
+    &.{ "CursorStyle", "Mode" },
+    .{ .text = true },
+);
+const open_enums = zigo.dsl.enumerations(
+    library,
+    &.{"ColorName"},
+    .{ .text = true, .open = true },
+);
+const unions = zigo.dsl.taggedUnions(library, &.{"Attribute"});
+
+const types = zigo.dsl.collect(.{ handles, values, text_enums, open_enums, unions });
+```
+
+단일 항목에는 `handle`, `value`, `enumeration`, `taggedUnion`을 사용합니다. batch와 단일 helper
+모두 container의 공개 type 선언만 받으며, `value`는 struct, `enumeration`은 enum,
+`taggedUnion`은 tagged union인지 comptime에 확인합니다. 이름이 없거나 중복되거나 종류가 맞지
+않으면 호출 위치에서 compile error입니다. 필드·문서·Go adapter처럼 항목마다 다른 설정이 있는
+타입은 기존 `zigo.Type` literal로 적어 함께 `collect`하면 됩니다.
+
 ## 정수 폭
 
 C는 8, 16, 32, 64비트 정수만 이름 붙일 수 있습니다. `u21`이나 `i24`처럼 그 밖의 폭은
