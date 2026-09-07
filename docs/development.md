@@ -192,7 +192,14 @@ zig build shared-library-smoke -- \
 
 릴리즈는 `0.*` 형태의 태그를 푸시하면
 [`.github/workflows/release.yml`](../.github/workflows/release.yml)이 자동으로 처리합니다. 그
-전에 다음을 순서대로 합니다.
+전에 다음을 순서대로 합니다. `scripts/release.sh <version>`이 1~5단계와 7~8단계를 한 번에
+실행합니다. `## [Unreleased]` 절을 미리 채워 두고 깨끗한 트리에서 돌리면 검사 뒤 버전을
+올려 커밋하고 태그까지 만들며, `--push`를 주면 브랜치와 태그를 푸시합니다.
+
+```bash
+scripts/release.sh 0.14.3          # 검사 → 버전업 커밋 → 태그
+scripts/release.sh 0.14.3 --push   # 위에 더해 origin으로 푸시
+```
 
 1. **CHANGELOG 절 작성**: `CHANGELOG.md`의 `## [Unreleased]` 아래 항목을 이번 릴리즈로
    옮기고, `## [x.y.z] - YYYY-MM-DD` 절로 바꿉니다. `### Breaking`/`### Added`/`### Changed`
