@@ -1268,16 +1268,15 @@ fn discoverContainer(
         if (@typeInfo(@TypeOf(value)) != .@"fn") continue;
         const path = path_prefix ++ "." ++ candidate.name;
         if (comptime excludedPaths(declaration).has(path)) continue;
-        comptime var adjusted = false;
-        if (@hasField(@TypeOf(declaration), "functions")) {
-            inline for (declaration.functions) |entry| {
-                if (comptime functionEntryContainsPath(entry, path)) {
-                    adjusted = true;
-                    _ = try appendDiscoveredEntry(allocator, functions, types, pairings, declaration, prefix, path, candidate.name, value, owner, entry, null, null);
-                }
-            }
+        // One lookup finds the entry (or the group) that names this path.
+        // A path listed twice was already rejected by `checkDeclaredPaths`,
+        // so the single entry the index returns is the only one there is.
+        const entry_position = comptime boundFunctionPaths(declaration).get(path);
+        if (comptime entry_position) |position| {
+            _ = try appendDiscoveredEntry(allocator, functions, types, pairings, declaration, prefix, path, candidate.name, value, owner, declaration.functions[position], null, null);
+        } else {
+            try appendFunction(allocator, functions, types, pairings, declaration, prefix, candidate.name, value, .{}, owner, null, null);
         }
-        if (!adjusted) try appendFunction(allocator, functions, types, pairings, declaration, prefix, candidate.name, value, .{}, owner, null, null);
     }
     if (comptime !discoveryRecursive(declaration)) return;
     inline for (comptime std.meta.declarations(Container)) |candidate| {
@@ -1297,20 +1296,22 @@ fn discoverContainer(
     }
 }
 
-/// Every function path a binding lists, nested groups included, as one
-/// comptime index. Zig memoises comptime calls, so the index is built once
-/// per binding; a membership query is then a length-bucketed lookup rather
-/// than a walk over every entry, which is what keeps coverage of a broad root
-/// from costing `declarations × entries` comptime branches.
-pub fn boundFunctionPaths(comptime declaration: anytype) std.StaticStringMap(void) {
+/// Every function path a binding lists, nested groups included, mapped to
+/// the position of the top-level `.functions` entry that carries it. Zig
+/// memoises comptime calls, so the index is built once per binding; a lookup
+/// is then a length-bucketed search rather than a walk over every entry,
+/// which is what keeps discovery and coverage of a broad root from costing
+/// `declarations × entries` comptime branches. A group maps each nested path
+/// to the group itself, so the receiver and prefix it declares still apply.
+pub fn boundFunctionPaths(comptime declaration: anytype) std.StaticStringMap(usize) {
     comptime {
         if (!@hasField(@TypeOf(declaration), "functions")) return .{};
         var count: usize = 0;
         for (declaration.functions) |entry| count += functionEntryPathCount(entry);
-        var keys: [count]struct { []const u8 } = undefined;
-        var index: usize = 0;
-        for (declaration.functions) |entry| appendFunctionEntryPaths(entry, &keys, &index);
-        return std.StaticStringMap(void).initComptime(keys);
+        var kvs: [count]struct { []const u8, usize } = undefined;
+        var next: usize = 0;
+        for (declaration.functions, 0..) |entry, position| appendFunctionEntryPaths(entry, position, &kvs, &next);
+        return std.StaticStringMap(usize).initComptime(kvs);
     }
 }
 
@@ -1324,27 +1325,18 @@ fn functionEntryPathCount(comptime entry: anytype) usize {
     return 1;
 }
 
-fn appendFunctionEntryPaths(comptime entry: anytype, keys: anytype, index: *usize) void {
+fn appendFunctionEntryPaths(comptime entry: anytype, comptime position: usize, kvs: anytype, next: *usize) void {
     if (isStringEntry(@TypeOf(entry))) {
-        keys[index.*] = .{entry};
-        index.* += 1;
+        kvs[next.*] = .{ entry, position };
+        next.* += 1;
         return;
     }
     if (@hasField(@TypeOf(entry), "functions")) {
-        for (entry.functions) |nested| appendFunctionEntryPaths(nested, keys, index);
+        for (entry.functions) |nested| appendFunctionEntryPaths(nested, position, kvs, next);
         return;
     }
-    keys[index.*] = .{entry.path};
-    index.* += 1;
-}
-
-pub fn functionEntryContainsPath(comptime entry: anytype, comptime path: []const u8) bool {
-    if (comptime isStringEntry(@TypeOf(entry))) return std.mem.eql(u8, entry, path);
-    if (@hasField(@TypeOf(entry), "functions")) {
-        inline for (entry.functions) |nested| if (functionEntryContainsPath(nested, path)) return true;
-        return false;
-    }
-    return std.mem.eql(u8, entry.path, path);
+    kvs[next.*] = .{ entry.path, position };
+    next.* += 1;
 }
 
 fn appendDiscoveredEntry(
@@ -3320,10 +3312,11 @@ test "bound function paths are indexed once, nested groups and plain strings inc
         },
     };
     const paths = comptime boundFunctionPaths(declaration);
-    try std.testing.expect(paths.has("root.plain"));
-    try std.testing.expect(paths.has("root.bare"));
-    try std.testing.expect(paths.has("root.handle_open"));
-    try std.testing.expect(paths.has("root.handle_close"));
+    try std.testing.expectEqual(@as(?usize, 0), paths.get("root.plain"));
+    try std.testing.expectEqual(@as(?usize, 1), paths.get("root.bare"));
+    // Nested paths resolve to the group that carries them.
+    try std.testing.expectEqual(@as(?usize, 2), paths.get("root.handle_open"));
+    try std.testing.expectEqual(@as(?usize, 2), paths.get("root.handle_close"));
     try std.testing.expect(!paths.has("root.missing"));
     try std.testing.expect(!paths.has("root.handle_"));
     try std.testing.expectEqual(@as(usize, 4), paths.kvs.len);

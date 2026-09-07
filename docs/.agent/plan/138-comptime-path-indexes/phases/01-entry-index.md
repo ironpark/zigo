@@ -2,7 +2,7 @@
 depends_on:
 - "138-comptime-path-indexes#0"
 perf_phase: true
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: discovery 테스트 전부 통과, 예제 coverage 통과.
 > NEXT: none

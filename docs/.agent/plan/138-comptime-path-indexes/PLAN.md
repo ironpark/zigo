@@ -7,7 +7,7 @@ registered_at: "2026-09-07T02:57:39Z"
 
 # Phases
 
-- [ ] [Phase 00: Index excluded paths](phases/00-exclude-index.md)
+- [x] [Phase 00: Index excluded paths](phases/00-exclude-index.md)
 - [ ] [Phase 01: Index bound entries by path](phases/01-entry-index.md)
 
 # Shared Verification

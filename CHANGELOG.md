@@ -21,6 +21,9 @@
 - coverage 보고가 바인딩의 함수 경로를 comptime에 한 번 색인(`std.StaticStringMap`)한 뒤
   조회합니다. 전에는 소스 함수마다 `.functions` 항목 전체를 다시 훑어 `선언 수 × 항목 수`만큼
   comptime 분기를 썼습니다.
+- `.discover = .public` 바인딩의 discovery도 같은 색인을 씁니다. `.exclude`는 경로 색인으로,
+  `.functions`는 경로→항목 위치 색인으로 한 번에 찾으므로 소스 함수마다 두 목록을 다시 훑지
+  않습니다. 동작은 같고 comptime 비용만 `선언 수 + 항목 수`에 비례합니다.
 
 ## [0.14.2] - 2026-09-07
 

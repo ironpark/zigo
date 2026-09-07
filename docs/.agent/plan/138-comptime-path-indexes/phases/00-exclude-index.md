@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T02:58:27Z"
 perf_phase: true
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `.exclude` 관련 기존 테스트가 통과하고 `selectorContains`가 사라진다.
 > NEXT: none
