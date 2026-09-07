@@ -110,12 +110,14 @@ pub fn renderCountingStreams(writer: *std.Io.Writer, program: abi.Program) !void
     if (programNeedsCountingStream(program, .writer_to)) try writer.writeAll(
         "// zigoCountingWriter counts the bytes a WriteTo wrapper sends on to w.\n" ++
             "type zigoCountingWriter struct {\n\tw io.Writer\n\tn int64\n}\n\n" ++
+            "// Write passes p on to w and adds what w took to the count.\n" ++
             "func (c *zigoCountingWriter) Write(p []byte) (int, error) {\n" ++
             "\tn, err := c.w.Write(p)\n\tc.n += int64(n)\n\treturn n, err\n}\n\n",
     );
     if (programNeedsCountingStream(program, .reader_from)) try writer.writeAll(
         "// zigoCountingReader counts the bytes a ReadFrom wrapper takes from r.\n" ++
             "type zigoCountingReader struct {\n\tr io.Reader\n\tn int64\n}\n\n" ++
+            "// Read fills p from r and adds what r handed over to the count.\n" ++
             "func (c *zigoCountingReader) Read(p []byte) (int, error) {\n" ++
             "\tn, err := c.r.Read(p)\n\tc.n += int64(n)\n\treturn n, err\n}\n\n",
     );

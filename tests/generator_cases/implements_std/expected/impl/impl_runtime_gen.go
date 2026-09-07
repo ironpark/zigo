@@ -114,6 +114,7 @@ type zigoCountingWriter struct {
 	n int64
 }
 
+// Write passes p on to w and adds what w took to the count.
 func (c *zigoCountingWriter) Write(p []byte) (int, error) {
 	n, err := c.w.Write(p)
 	c.n += int64(n)
@@ -126,6 +127,7 @@ type zigoCountingReader struct {
 	n int64
 }
 
+// Read fills p from r and adds what r handed over to the count.
 func (c *zigoCountingReader) Read(p []byte) (int, error) {
 	n, err := c.r.Read(p)
 	c.n += int64(n)

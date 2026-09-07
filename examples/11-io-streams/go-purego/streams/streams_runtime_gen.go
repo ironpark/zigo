@@ -105,6 +105,7 @@ type zigoCountingWriter struct {
 	n int64
 }
 
+// Write passes p on to w and adds what w took to the count.
 func (c *zigoCountingWriter) Write(p []byte) (int, error) {
 	n, err := c.w.Write(p)
 	c.n += int64(n)
