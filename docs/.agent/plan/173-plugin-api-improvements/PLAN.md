@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-08T02:15:09Z"
 description: Add public plugin writers, safe file paths, value assertions, and compatible multi-diagnostic validation
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-08T01:57:11Z"
 ---
 > NEXT: Implement shared plugin paths and signature writers. ([Phase 0](phases/00-initial-work.md))
@@ -8,7 +9,7 @@ registered_at: "2026-09-08T01:57:11Z"
 # Phases
 
 - [x] [Phase 00: Initial Work](phases/00-initial-work.md)
-- [ ] [Phase 01: Validation and assertions](phases/01-validation-and-assertions.md)
+- [x] [Phase 01: Validation and assertions](phases/01-validation-and-assertions.md)
 
 # Shared Verification
 
