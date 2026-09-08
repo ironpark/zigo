@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-08T00:37:52Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `zig build test`와 예제 go-check 통과, 커밋.
 > NEXT: none

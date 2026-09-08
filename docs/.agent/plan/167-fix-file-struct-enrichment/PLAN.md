@@ -7,7 +7,7 @@ registered_at: "2026-09-08T00:37:25Z"
 
 # Phases
 
-- [ ] [Phase 00: Fix](phases/00-fix.md)
+- [x] [Phase 00: Fix](phases/00-fix.md)
 - [ ] [Phase 01: Release 0.19.1](phases/01-release.md)
 
 # Shared Verification
