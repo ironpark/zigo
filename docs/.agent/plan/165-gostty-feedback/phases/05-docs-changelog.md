@@ -1,4 +1,5 @@
 ---
+completed_at: "2026-09-08T00:03:19Z"
 depends_on:
 - "165-gostty-feedback#0"
 - "165-gostty-feedback#1"
@@ -6,7 +7,7 @@ depends_on:
 - "165-gostty-feedback#3"
 - "165-gostty-feedback#4"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 문서가 다섯 변경을 설명하고 커밋.
 > NEXT: none
