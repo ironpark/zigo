@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-08T01:48:33Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Release checks pass, version/tag 0.19.3 is pushed, and the public GitHub release exists.
 > NEXT: none
