@@ -14,8 +14,9 @@ const semantic = @import("semantic");
 /// keeps the bare registered name as before: that name is what the root
 /// module is expected to export.
 pub fn targetTypeSpellingAlloc(allocator: std.mem.Allocator, program: abi.Program, name: []const u8) ![]u8 {
+    const native_name = nativeName(program, name);
     const path = registeredZigPath(program, name) orelse
-        return std.fmt.allocPrint(allocator, "target.{s}", .{name});
+        return std.fmt.allocPrint(allocator, "target.{s}", .{native_name});
     if (std.mem.startsWith(u8, path, "root."))
         return std.fmt.allocPrint(allocator, "target.{s}", .{path["root.".len..]});
     if (registeredAncestor(program, name, path)) |ancestor| {
@@ -27,7 +28,7 @@ pub fn targetTypeSpellingAlloc(allocator: std.mem.Allocator, program: abi.Progra
     // root module re-exports. When the registered name is the Zig name there
     // is one spelling; otherwise the root may export either, so the shim
     // resolves the first one it finds at comptime.
-    if (targetTypeCandidates(path, name)) |candidates| {
+    if (targetTypeCandidates(path, native_name)) |candidates| {
         var spelling: std.ArrayList(u8) = .empty;
         errdefer spelling.deinit(allocator);
         try spelling.appendSlice(allocator, "zigoTargetType(&.{ ");
@@ -38,7 +39,7 @@ pub fn targetTypeSpellingAlloc(allocator: std.mem.Allocator, program: abi.Progra
         try spelling.appendSlice(allocator, " })");
         return spelling.toOwnedSlice(allocator);
     }
-    return std.fmt.allocPrint(allocator, "target.{s}", .{name});
+    return std.fmt.allocPrint(allocator, "target.{s}", .{native_name});
 }
 
 const RegisteredAncestor = struct { name: []const u8, path_len: usize };
@@ -96,7 +97,7 @@ pub fn programNeedsTargetTypeResolver(program: abi.Program) bool {
         // A nested type is spelled through its ancestor, which is checked on
         // its own turn through this loop.
         if (registeredAncestor(program, declaration.name, path) != null) continue;
-        if (targetTypeCandidates(path, declaration.name) != null) return true;
+        if (targetTypeCandidates(path, declaration.native_name orelse declaration.name) != null) return true;
     }
     return false;
 }
@@ -143,8 +144,28 @@ pub fn writeTargetType(writer: *std.Io.Writer, program: abi.Program, name: []con
     var buffer: [512]u8 = undefined;
     var fba = std.heap.FixedBufferAllocator.init(&buffer);
     const spelling = targetTypeSpellingAlloc(fba.allocator(), program, name) catch {
-        try writer.print("target.{s}", .{name});
+        try writer.print("target.{s}", .{nativeName(program, name)});
         return;
     };
     try writer.writeAll(spelling);
+}
+
+fn nativeName(program: abi.Program, name: []const u8) []const u8 {
+    const declaration = semantic.typeDecl(program.types, name) orelse return name;
+    return declaration.native_name orelse name;
+}
+
+test "renamed type resolution retains native exports and nested ancestors" {
+    const declarations = [_]semantic.TypeDecl{
+        .{ .name = "HTTPPlain", .native_name = "Plain", .kind = .@"opaque" },
+        .{ .name = "HTTPParent", .native_name = "Parent", .kind = .@"opaque", .zig_path = "dep.Parent" },
+        .{ .name = "HTTPChild", .native_name = "Child", .kind = .@"opaque", .zig_path = "dep.Parent.Child" },
+        .{ .name = "HTTPAlias", .native_name = "Alias", .kind = .@"opaque", .zig_path = "root.Actual" },
+    };
+    const program: abi.Program = .{ .types = &declarations, .functions = &.{}, .package = "x", .prefix = "zg" };
+    for (declarations, [_][]const u8{ "target.Plain", "target.Parent", "target.Parent.Child", "target.Actual" }) |declaration, expected| {
+        const text = try targetTypeSpellingAlloc(std.testing.allocator, program, declaration.name);
+        defer std.testing.allocator.free(text);
+        try std.testing.expectEqualStrings(expected, text);
+    }
 }

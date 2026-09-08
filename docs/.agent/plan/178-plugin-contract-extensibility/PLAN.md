@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-08T05:09:30Z"
 description: Public plugin contract, built-in isolation, analysis and complete public hooks
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-08T04:34:39Z"
 ---
 > NEXT: Implement the compatible contract foundation. ([Phase 0](phases/00-contract-foundation.md))
@@ -9,7 +10,7 @@ registered_at: "2026-09-08T04:34:39Z"
 
 - [x] [Phase 00: Contract foundation](phases/00-contract-foundation.md)
 - [x] [Phase 01: Built-in isolation and analysis](phases/01-builtin-isolation.md)
-- [ ] [Phase 02: Public hooks and verification](phases/02-public-hooks.md)
+- [x] [Phase 02: Public hooks and verification](phases/02-public-hooks.md)
 
 # Shared Verification
 

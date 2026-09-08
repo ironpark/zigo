@@ -88,6 +88,7 @@ pub const AbiDiff = struct {
 };
 
 pub const Report = struct {
+    plugin_config: []const u8 = "{}",
     semantic_path: []const u8,
     go_module: []const u8 = "",
     raw_package_path: []const u8 = "internal/raw",
@@ -136,7 +137,7 @@ pub fn writeUsage(writer: *std.Io.Writer) std.Io.Writer.Error!void {
         \\  check     --generated <dir> --source <dir> [--file <generated> <source>]...
         \\  abi-diff  --base <file> --current <file> [--base-backend cgo|purego] [--current-backend cgo|purego] [--json] [--fail-on breaking]
         \\  report    --semantic <file> [--go-module <path>] [options]
-        \\            [--go-package <name>] [--go-package-path <path>]
+        \\            [--go-package <name>] [--go-package-path <path>] [--plugin-config <json-object>]
         \\            [--library-search-paths <a:b>] [--library-env-vars <A,B>]
         \\            [--library-automatic] [--library-internal-api] [--library-platform-dirs]
         \\  doctor    [--go <path>] [--gofmt <path>] [--target native|cross]
@@ -436,6 +437,7 @@ fn parseAbiDiff(args: []const []const u8) ParseError!AbiDiff {
 }
 
 fn parseReport(args: []const []const u8) ParseError!Report {
+    var plugin_config: ?[]const u8 = null;
     var semantic_path: ?[]const u8 = null;
     var go_module: ?[]const u8 = null;
     var raw_package_path: ?[]const u8 = null;
@@ -451,6 +453,8 @@ fn parseReport(args: []const []const u8) ParseError!Report {
         index += 1;
         if (try loading.parseFlag(flag, args, &index)) {
             // handled by the shared loading-policy parser
+        } else if (std.mem.eql(u8, flag, "--plugin-config")) {
+            try set(&plugin_config, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--semantic")) {
             try set(&semantic_path, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--go-module")) {
@@ -473,6 +477,7 @@ fn parseReport(args: []const []const u8) ParseError!Report {
         }
     }
     return .{
+        .plugin_config = plugin_config orelse "{}",
         .semantic_path = semantic_path orelse return error.MissingRequiredArgument,
         .go_module = go_module orelse "",
         .raw_package_path = raw_package_path orelse "internal/raw",
@@ -768,4 +773,10 @@ test "help and parse errors render actionable usage" {
     try writeParseError(&rendered.writer, error.MissingRequiredArgument);
     try std.testing.expect(std.mem.indexOf(u8, rendered.written(), "required argument is missing") != null);
     try std.testing.expect(std.mem.indexOf(u8, rendered.written(), "generate  --semantic") != null);
+}
+
+test "report uses explicit plugin configuration" {
+    const command = try parse(&.{ "report", "--semantic", "semantic.json", "--plugin-config", "{\"CUSTOM\":{}}" });
+    try std.testing.expectEqualStrings("{\"CUSTOM\":{}}", command.report.plugin_config);
+    try std.testing.expectError(error.DuplicateArgument, parse(&.{ "report", "--semantic", "semantic.json", "--plugin-config", "{}", "--plugin-config", "{}" }));
 }

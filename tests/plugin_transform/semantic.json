@@ -1,0 +1,77 @@
+{
+  "package": "custom",
+  "prefix": "zg",
+  "zig_version": "0.16.0",
+  "types": [
+    {
+      "name": "State",
+      "kind": "enum",
+      "tag_type": {
+        "kind": "int",
+        "bits": 8,
+        "signed": false
+      },
+      "fields": [
+        {
+          "name": "ready",
+          "value": 0
+        }
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "name": "hidden",
+      "params": [],
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "zg_hidden",
+      "has_comptime_params": true
+    },
+    {
+      "name": "combine",
+      "params": [
+        {
+          "name": "left",
+          "type": {
+            "kind": "int",
+            "bits": 64,
+            "signed": false
+          }
+        },
+        {
+          "name": "right",
+          "type": {
+            "kind": "int",
+            "bits": 64,
+            "signed": false
+          }
+        }
+      ],
+      "return": {
+        "kind": "int",
+        "bits": 64,
+        "signed": false
+      },
+      "symbol": "zg_combine"
+    },
+    {
+      "name": "state",
+      "params": [
+        {
+          "name": "value",
+          "type": {
+            "kind": "enum",
+            "ref": "State"
+          }
+        }
+      ],
+      "return": {
+        "kind": "enum",
+        "ref": "State"
+      },
+      "symbol": "zg_state"
+    }
+  ]
+}

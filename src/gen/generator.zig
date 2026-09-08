@@ -11,6 +11,8 @@ const semantic = @import("semantic");
 const stream_return = @import("stream_return");
 const validate = @import("validate/validate.zig");
 
+pub const prepareDocument = validate.prepareDocument;
+
 pub const CgoTarget = emit.Options.CgoTarget;
 pub const TargetLdflags = emit.Options.TargetLdflags;
 
@@ -73,12 +75,16 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
     var parsed = try semantic.Semantic.parse(scratch_allocator, semantic_bytes);
     defer parsed.deinit();
     var facts: plugin.Facts = .{};
-    const validation_issues = try validate.findIssuesWithFacts(scratch_allocator, parsed.value, options.plugins, options.configurations, &facts);
-    if (validation_issues.len != 0) {
-        if (options.diagnostics) |issues| for (validation_issues) |issue| try issues.append(allocator, try issue.clone(allocator));
+    var preparation_issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
+    const transformed = prepareDocument(scratch_allocator, parsed.value, options.plugins, options.configurations, &facts, &preparation_issues) catch |err| {
+        if (options.diagnostics) |issues| for (preparation_issues.items) |issue| try issues.append(allocator, try issue.clone(allocator));
+        return err;
+    };
+    if (preparation_issues.items.len != 0) {
+        if (options.diagnostics) |issues| for (preparation_issues.items) |issue| try issues.append(allocator, try issue.clone(allocator));
         return error.InvalidSemantic;
     }
-    if (options.backend == .purego) if (validate.puregoCallbackIssue(parsed.value)) |issue| {
+    if (options.backend == .purego) if (validate.puregoCallbackIssue(transformed)) |issue| {
         if (options.diagnostics) |issues| try issues.append(allocator, try issue.clone(allocator));
         return error.InvalidSemantic;
     };
@@ -86,7 +92,7 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
     // works on the expansion, where a stream-returning method has become the
     // `Write`/`Flush`/`Read` operations that carry it. The error-set collection
     // below has to see them: their `WriteFailed`/`ReadFailed` need codes too.
-    const document = try stream_return.expand(scratch_allocator, parsed.value);
+    const document = try stream_return.expand(scratch_allocator, transformed);
     var baseline: ?errors_lock.ErrorsLock = if (options.errors_lock_bytes) |bytes| try errors_lock.ErrorsLock.parse(scratch_allocator, bytes) else null;
     defer if (baseline) |*value| value.deinit(scratch_allocator);
     var lock: errors_lock.ErrorsLock = if (options.errors_lock_bytes) |bytes| try errors_lock.ErrorsLock.parse(scratch_allocator, bytes) else .{};

@@ -76,7 +76,7 @@ pub fn signatureMismatch(context: plugin_api.Context) !?Mismatch {
 fn comparableSignatureAlloc(context: plugin_api.Context, function: abi.AbiFn) ![]u8 {
     var buffer: std.Io.Writer.Allocating = .init(context.allocator);
     errdefer buffer.deinit();
-    const go_name = try naming.pascalAlloc(context.allocator, function.origin.name);
+    const go_name = (try context.functionInfo(function)).go_name;
     defer context.allocator.free(go_name);
     try buffer.writer.writeAll(go_name);
     try context.writeSignatureWith(&buffer.writer, function, .{ .parameter_names = false });
@@ -138,7 +138,7 @@ fn renderInterface(context: plugin_api.Context, writer: *std.Io.Writer, interfac
         // The first type speaks for the interface: its method doc and its
         // parameter names are the ones the interface shows.
         const function = method.functions[0].*;
-        const go_name = try naming.pascalAlloc(allocator, function.origin.name);
+        const go_name = (try context.functionInfo(function)).go_name;
         defer allocator.free(go_name);
         if (function.origin.doc) |doc| {
             // The same doc the method itself gets, moved in one tab.

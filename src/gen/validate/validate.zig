@@ -133,6 +133,116 @@ pub fn findIssuesConfigured(allocator: std.mem.Allocator, document: semantic.Sem
     return findIssuesWithFacts(allocator, document, selected, configurations, &facts);
 }
 
+/// Shared entry point for generation and reports. The caller owns the arena,
+/// diagnostics and facts. A document with diagnostics must not be lowered.
+pub fn prepareDocument(allocator: std.mem.Allocator, input: semantic.Semantic, selected: ?[]const []const u8, configurations: []const plugin.Configuration, facts: *plugin.Facts, issues: *std.ArrayList(diagnostic.Diagnostic)) !semantic.Semantic {
+    const document = try transformDocument(allocator, input, selected, configurations, issues);
+    if (issues.items.len != 0) return document;
+    try issues.appendSlice(allocator, try findIssuesWithFacts(allocator, document, selected, configurations, facts));
+    return document;
+}
+
+/// Parse establishes the IR shape; transforms may repair or remove declarations
+/// that core rules would reject. Only the final document reaches core rules,
+/// validation facts and lowering. Every hook runs in registry dependency order.
+pub fn transformDocument(allocator: std.mem.Allocator, input: semantic.Semantic, selected: ?[]const []const u8, configurations: []const plugin.Configuration, issues: *std.ArrayList(diagnostic.Diagnostic)) !semantic.Semantic {
+    try checkPluginSelection(selected, configurations);
+    inline for (registry.plugins, 0..) |registered, index| {
+        if (registry.runs(index, selected)) {
+            _ = plugin.readConfig(registered, allocator, configurations) catch |err| switch (err) {
+                error.OutOfMemory => return err,
+                else => {
+                    try issues.append(allocator, .{ .severity = .@"error", .code = registered.name ++ "001", .message = "invalid plugin build configuration", .site = .{ .path = "build.zig", .declaration = registered.name }, .hint = "provide fields matching the plugin Config type" });
+                },
+            };
+        }
+    }
+    if (issues.items.len != 0) return input;
+    var document = input;
+    inline for (registry.plugins, 0..) |registered, index| {
+        if (registered.transform) |hook| if (registry.runs(index, selected)) {
+            document = try hook(.{ .allocator = allocator, .document = document, .configurations = configurations, .diagnostics = issues });
+            if (issues.items.len != 0) return document;
+        };
+    }
+    inline for (registry.plugins, 0..) |registered, index| {
+        if (registered.name_type) |hook| if (registry.runs(index, selected)) {
+            const context: plugin.TransformContext = .{ .allocator = allocator, .document = document, .configurations = configurations, .diagnostics = issues };
+            var changes: std.ArrayList(plugin.rename.Rename) = .empty;
+            for (document.types) |declaration| {
+                if (registered.supports(plugin.typeTarget(declaration.kind))) {
+                    if (try hook(context, declaration)) |name| {
+                        if (!std.mem.eql(u8, name, declaration.name)) try changes.append(allocator, .{ .from = declaration.name, .to = name });
+                    }
+                }
+            }
+            if (issues.items.len != 0) return document;
+            document = try plugin.rename.types(allocator, document, changes.items);
+        };
+    }
+    // Each policy sees a stable snapshot including earlier plugins' results.
+    // All structural transforms finish first, so synthesized declarations also
+    // receive every plugin's adapter and naming policy.
+    inline for (registry.plugins, 0..) |registered, index| {
+        if (registry.runs(index, selected) and (registered.map_type != null or registered.name_function != null)) {
+            const context: plugin.TransformContext = .{ .allocator = allocator, .document = document, .configurations = configurations, .diagnostics = issues };
+            const functions_copy = try allocator.dupe(semantic.SemanticFn, document.functions);
+            const types_copy = try allocator.dupe(semantic.TypeDecl, document.types);
+            if (registered.map_type) |hook| {
+                for (types_copy) |*declaration| {
+                    if (registered.supports(plugin.typeTarget(declaration.kind))) {
+                        if (try hook(context, .{ .declaration = declaration.* })) |adapter| declaration.go_adapter = adapter;
+                    }
+                }
+                if (registered.supports(.function)) for (functions_copy) |*function| {
+                    const params = try allocator.dupe(semantic.Parameter, function.params);
+                    for (params, 0..) |*param, param_index| {
+                        if (try hook(context, .{ .parameter = .{ .function = function.*, .index = param_index } })) |adapter| param.go_adapter = adapter;
+                    }
+                    if (try hook(context, .{ .result = function.* })) |adapter| function.return_go_adapter = adapter;
+                    function.params = params;
+                };
+            }
+            if (registered.name_function) |hook| {
+                if (registered.supports(.function)) for (functions_copy) |*function| {
+                    if (try hook(context, function.*)) |name| function.go_name = name;
+                };
+            }
+            document.functions = functions_copy;
+            document.types = types_copy;
+            if (issues.items.len != 0) return document;
+        }
+    }
+    return document;
+}
+
+fn checkPluginSelection(selected: ?[]const []const u8, configurations: []const plugin.Configuration) !void {
+    for (configurations, 0..) |entry, i| {
+        var known = false;
+        inline for (registry.plugins) |registered| if (std.mem.eql(u8, registered.name, entry.name)) {
+            known = true;
+        };
+        for (configurations[0..i]) |previous| if (std.mem.eql(u8, previous.name, entry.name)) return error.DuplicatePluginConfig;
+        if (!known) return error.UnknownPluginConfig;
+    }
+    if (selected) |names_selected| for (names_selected) |name| {
+        var known = false;
+        inline for (registry.plugins) |registered| if (std.mem.eql(u8, registered.name, name)) {
+            known = true;
+        };
+        if (!known) return error.UnknownPlugin;
+    };
+    inline for (registry.plugins, 0..) |registered, index| {
+        if (registry.runs(index, selected)) inline for (registered.requires) |required| {
+            inline for (registry.plugins, 0..) |dependency, dependency_index| {
+                if (comptime std.mem.eql(u8, dependency.name, required)) {
+                    if (!registry.runs(dependency_index, selected)) return error.DisabledPluginDependency;
+                }
+            }
+        };
+    }
+}
+
 pub fn findIssuesWithFacts(allocator: std.mem.Allocator, document: semantic.Semantic, selected: ?[]const []const u8, configurations: []const plugin.Configuration, facts: *plugin.Facts) ![]const diagnostic.Diagnostic {
     var issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
     errdefer issues.deinit(allocator);
@@ -140,23 +250,9 @@ pub fn findIssuesWithFacts(allocator: std.mem.Allocator, document: semantic.Sema
         try issues.append(allocator, issue);
         return issues.toOwnedSlice(allocator);
     };
-    for (configurations, 0..) |entry, i| {
-        var known = false;
-        inline for (registry.plugins) |registered| {
-            if (std.mem.eql(u8, registered.name, entry.name)) known = true;
-        }
-        for (configurations[0..i]) |previous| if (std.mem.eql(u8, previous.name, entry.name)) return error.DuplicatePluginConfig;
-        if (!known) return error.UnknownPluginConfig;
-    }
+    try checkPluginSelection(selected, configurations);
     inline for (registry.plugins, 0..) |registered, index| {
         if (registry.runs(index, selected)) {
-            inline for (registered.requires) |required| {
-                inline for (registry.plugins, 0..) |dependency, dependency_index| {
-                    if (comptime std.mem.eql(u8, dependency.name, required)) {
-                        if (!registry.runs(dependency_index, selected)) return error.DisabledPluginDependency;
-                    }
-                }
-            }
             try appendPluginIssuesWithFacts(registered, allocator, document, configurations, &issues, facts);
         }
     }

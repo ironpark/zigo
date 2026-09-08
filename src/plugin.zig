@@ -1,9 +1,8 @@
 //! The generator's plugin contract. A plugin is an ordinary Zig package that
 //! compiles against this file alone: it names itself, owns typed function and type options, validates its own declarations, and adds Go code through hooks.
 //!
-//! Hooks are additive and Go-only. Nothing here reaches the Zig shim, the C
-//! header or the raw package, so a plugin cannot move the ABI and works the
-//! same on the cgo and purego backends.
+//! Semantic transforms run before validation and may change the ABI. Rendering
+//! hooks are additive and Go-only; they cannot modify the shim, header or raw API.
 const std = @import("std");
 const abi = @import("abi");
 const semantic = @import("semantic");
@@ -12,7 +11,7 @@ const naming = @import("naming");
 
 /// Major versions are incompatible; minor versions add capabilities.
 pub const ContractVersion = struct { major: u16, minor: u16 };
-pub const contract_version: ContractVersion = .{ .major = 1, .minor = 0 };
+pub const contract_version: ContractVersion = .{ .major = 1, .minor = 1 };
 
 /// Serialized build configuration; decoded as the registered plugin's Config.
 pub const Configuration = struct { name: []const u8, json: []const u8 };
@@ -33,6 +32,7 @@ pub fn readConfig(comptime P: Plugin, allocator: std.mem.Allocator, configuratio
 
 pub const interfaces = @import("plugin/interfaces.zig");
 pub const site = @import("plugin/site.zig");
+pub const rename = @import("plugin/rename.zig");
 
 /// Runs before lowering. All allocations and diagnostics belong to the run arena.
 pub const DeclarationId = struct {
@@ -87,6 +87,51 @@ pub const Facts = struct {
         const stored: *const P.Facts = @ptrCast(@alignCast(value.data));
         return stored.*;
     }
+};
+
+/// An immutable input snapshot; returned documents and hook results must live in
+/// this run arena. Transform output is checked before validation callbacks or lowering.
+pub const TransformContext = struct {
+    allocator: std.mem.Allocator,
+    document: semantic.Semantic,
+    configurations: []const Configuration = &.{},
+    diagnostics: *std.ArrayList(diagnostic.Diagnostic),
+
+    pub fn config(self: TransformContext, comptime P: Plugin) !P.Config {
+        return readConfig(P, self.allocator, self.configurations);
+    }
+    pub fn diagnose(self: TransformContext, issue: diagnostic.Diagnostic) !void {
+        try self.diagnostics.append(self.allocator, issue);
+    }
+    pub fn optionsOf(self: TransformContext, comptime P: Plugin, comptime attachment: enum { function, type }, ext: ?semantic.Extensions) !?(if (attachment == .function) P.FunctionOptions else P.TypeOptions) {
+        return readOptions(P, attachment, self.allocator, ext);
+    }
+
+    /// new_order[new_index] is the old parameter index. Native argument order
+    /// (including injected arguments and the receiver) is preserved across
+    /// repeated reorders. The C and public Go parameter order changes.
+    pub fn reorderParameters(self: TransformContext, function: semantic.SemanticFn, new_order: []const usize) !semantic.SemanticFn {
+        if (new_order.len != function.params.len) return error.InvalidParameterOrder;
+        const params = try self.allocator.alloc(semantic.Parameter, new_order.len);
+        for (new_order, 0..) |old_index, new_index| {
+            if (old_index >= function.params.len) return error.InvalidParameterOrder;
+            for (new_order[0..new_index]) |previous| if (previous == old_index) return error.InvalidParameterOrder;
+            params[new_index] = function.params[old_index];
+            params[new_index].native_index = function.params[old_index].native_index orelse old_index;
+        }
+        var result = function;
+        result.params = params;
+        return result;
+    }
+};
+
+/// Conversion sites supported by the core adapter lowering. A null result
+/// preserves the current adapter; a non-null result replaces it. Later plugins
+/// see earlier choices. Unsupported adapters are rejected by core validation.
+pub const TypeUse = union(enum) {
+    declaration: semantic.TypeDecl,
+    parameter: struct { function: semantic.SemanticFn, index: usize },
+    result: semantic.SemanticFn,
 };
 
 pub const ValidateContext = struct {
@@ -435,6 +480,17 @@ pub const Plugin = struct {
     min_contract: ContractVersion = contract_version,
     Config: type = struct {},
     Facts: type = struct {},
+    /// Once, before core validation. May remove, replace or synthesize IR.
+    transform: ?*const fn (TransformContext) anyerror!semantic.Semantic = null,
+    /// Rename registered types and their core IR references after transforms.
+    /// Native Zig paths are preserved; generated ABI type identities change.
+    /// Plugin-owned extension data is opaque and is not rewritten.
+    name_type: ?*const fn (TransformContext, semantic.TypeDecl) anyerror!?[]const u8 = null,
+    /// After all transforms and type renames, select existing GoAdapter conversions.
+    map_type: ?*const fn (TransformContext, TypeUse) anyerror!?semantic.GoAdapter = null,
+    /// Exact exported public name, including constructors; null keeps the
+    /// existing name. Native paths, C symbols and raw Go names are unchanged.
+    name_function: ?*const fn (TransformContext, semantic.SemanticFn) anyerror!?[]const u8 = null,
     analyze: ?*const fn (AnalyzeContext) anyerror!void = null,
     /// Ordering only: absent plugins in after are ignored.
     after: []const []const u8 = &.{},

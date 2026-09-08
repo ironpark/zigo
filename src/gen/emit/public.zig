@@ -306,13 +306,7 @@ fn renderPublicBody(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
         else
             null;
         defer if (receiver_name) |name| allocator.free(name);
-        const go_name = if (constructor) |value|
-            if (value.name) |name|
-                try naming.pascalAlloc(allocator, name)
-            else
-                try std.fmt.allocPrint(allocator, "New{s}", .{value.type})
-        else
-            try naming.pascalAlloc(allocator, function.origin.name);
+        const go_name = try semantic.publicFunctionNameAlloc(allocator, .{ .constructors = program.constructors, .package = program.package, .prefix = program.prefix, .zig_version = "" }, function.origin.*);
         defer allocator.free(go_name);
         const operation = if (function.origin.receiver) |receiver|
             try std.fmt.allocPrint(allocator, "{s}.{s}", .{ receiver, go_name })
@@ -963,11 +957,11 @@ pub fn writePublicImports(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
     defer adapters.deinit(allocator);
     for (program.types) |declaration| {
         const adapter = declaration.go_adapter orelse continue;
-        try appendAdapterImportIfUsed(allocator, &adapters, adapter, body);
+        try appendAdapterImportIfUsed(allocator, &adapters, std_group.items, adapter, body);
     }
     for (program.functions) |function| {
-        if (function.origin.return_go_adapter) |adapter| try appendAdapterImportIfUsed(allocator, &adapters, adapter, body);
-        for (function.origin.params) |parameter| if (parameter.go_adapter) |adapter| try appendAdapterImportIfUsed(allocator, &adapters, adapter, body);
+        if (function.origin.return_go_adapter) |adapter| try appendAdapterImportIfUsed(allocator, &adapters, std_group.items, adapter, body);
+        for (function.origin.params) |parameter| if (parameter.go_adapter) |adapter| try appendAdapterImportIfUsed(allocator, &adapters, std_group.items, adapter, body);
     }
     if (count == 0 and !uses_raw and !lifecycle and !default_foreign and foreign.items.len == 0 and adapters.items.len == 0) return writer.writeByte('\n');
     if (count + @as(usize, @intFromBool(uses_raw)) + @as(usize, @intFromBool(lifecycle)) + @as(usize, @intFromBool(default_foreign)) + foreign.items.len + adapters.items.len == 1) {
@@ -1028,16 +1022,26 @@ fn writeAdapterImport(writer: *std.Io.Writer, adapter: semantic.GoAdapter, inden
 }
 
 /// Adds an adapter's import when the rendered body spells its qualifier.
-fn appendAdapterImportIfUsed(allocator: std.mem.Allocator, list: *std.ArrayList(semantic.GoAdapter), adapter: semantic.GoAdapter, body: []const u8) !void {
+fn appendAdapterImportIfUsed(allocator: std.mem.Allocator, list: *std.ArrayList(semantic.GoAdapter), existing_imports: []const plugin.Import, adapter: semantic.GoAdapter, body: []const u8) !void {
     const path = adapter.import orelse return;
     const last = if (std.mem.lastIndexOfScalar(u8, path, '/')) |slash| path[slash + 1 ..] else path;
-    if (!bodyUsesQualifier(body, adapter.qualifier() orelse last)) return;
+    const qualifier = adapter.qualifier() orelse last;
+    if (!bodyUsesQualifier(body, qualifier)) return;
+    for (existing_imports) |entry| {
+        if (!std.mem.eql(u8, entry.qualifier, qualifier)) continue;
+        if (!std.mem.eql(u8, entry.path, path)) return error.AmbiguousGoImport;
+        return;
+    }
     try appendAdapterImport(allocator, list, adapter);
 }
 
 /// Adds an adapter's import once per file, keyed by import path.
 fn appendAdapterImport(allocator: std.mem.Allocator, list: *std.ArrayList(semantic.GoAdapter), adapter: semantic.GoAdapter) !void {
-    for (list.items) |existing| if (std.mem.eql(u8, existing.import.?, adapter.import.?)) return;
+    for (list.items) |existing| {
+        if (!semantic.optionalStringEqual(existing.qualifier(), adapter.qualifier())) continue;
+        if (!std.mem.eql(u8, existing.import.?, adapter.import.?)) return error.AmbiguousGoImport;
+        return;
+    }
     try list.append(allocator, adapter);
 }
 

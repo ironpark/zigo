@@ -254,8 +254,8 @@ pub fn identifierIssue(allocator: std.mem.Allocator, document: semantic.Semantic
         if (function.name.len == 0) continue;
         if (try nameIssue(allocator, .{
             .label = "function name",
-            .spelling = function.name,
-            .convert = true,
+            .spelling = function.go_name orelse function.name,
+            .convert = function.go_name == null,
             .declaration = function.name,
             .source = function.source,
             .hint = "give the entry a `.name` that converts to a Go identifier",
@@ -602,7 +602,7 @@ fn findGeneratedAccessorCollision(allocator: std.mem.Allocator, document: semant
         }
         for (document.functions) |function| {
             if (!std.mem.eql(u8, function.receiver orelse "", declaration.name)) continue;
-            const method = try naming.pascalAlloc(allocator, function.name);
+            const method = try semantic.publicFunctionNameAlloc(allocator, document, function);
             defer allocator.free(method);
             if (std.mem.eql(u8, method, "Tag")) return function.name;
             for (declaration.fields) |field| {

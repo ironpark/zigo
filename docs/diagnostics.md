@@ -327,6 +327,12 @@ wrapper 이름이 같은 타입의 다른 메서드와 겹치면 `ZIGO024`입니
 `pathAlloc`에서 `plugin.publicFilePathAlloc`을 사용하고 파일명을 고유하게 정하세요.
 진단은 충돌한 emitter와 패키지를 표시하며, 이 오류가 나면 기존 출력은 변경하지 않습니다.
 
+### ZIGO060
+
+플러그인 변형 결과의 `native_index`가 완전한 순열이 아니거나 `receiver_at`이 파라미터 수를
+벗어납니다. `TransformContext.reorderParameters`를 사용하세요. 직접 설정할 때는 모든
+파라미터에 0부터 `params.len - 1`까지 중복 없는 인덱스를 지정해야 합니다.
+
 ## 리플렉션 단계의 오류
 
 `ZIGO027`, `ZIGO028`, `ZIGO037`, `ZIGO038`, `ZIGO054`는 reflection이 문서를 만들기 전에 걸리므로 `semantic.json` 자리가

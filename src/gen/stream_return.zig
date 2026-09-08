@@ -107,7 +107,7 @@ fn operation(
         .receiver = function.receiver,
         .@"return" = .{ .error_union = .{ .error_set = error_set, .payload = payload } },
         .source = function.source,
-        .stream_accessor = .{ .accessor = function.name, .direction = direction, .op = op },
+        .stream_accessor = .{ .accessor = function.name, .zig_path = try semantic.zigCallPathAlloc(allocator, function), .direction = direction, .op = op },
         // Lowering recomputes this from the prefix, the receiver and the
         // name, so what matters here is only that it is distinct and says
         // where it came from.

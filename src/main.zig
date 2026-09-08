@@ -216,10 +216,25 @@ fn runReport(allocator: std.mem.Allocator, io: std.Io, options: cli.Report) !voi
     const semantic_bytes = try std.Io.Dir.cwd().readFileAlloc(io, options.semantic_path, allocator, .limited(64 * 1024 * 1024));
     var parsed = try semantic.Semantic.parse(allocator, semantic_bytes);
     defer parsed.deinit();
-    try rejectInvalidAbiInput(allocator, io, parsed.value, options.semantic_path);
+    const api = @import("plugin");
+    const configurations = try api.configurationsAlloc(allocator, @import("gen/plugins/registry.zig").configurations, options.plugin_config);
+    var facts: api.Facts = .{};
+    var issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
+    const document = try generator.prepareDocument(allocator, parsed.value, null, configurations, &facts, &issues);
+    if (issues.items.len != 0) {
+        var error_buffer: [1024]u8 = undefined;
+        var stderr = std.Io.File.Writer.init(.stderr(), io, &error_buffer);
+        for (issues.items) |found| {
+            var issue = found;
+            if (issue.site.line == null) issue.site.path = options.semantic_path;
+            try issue.render(&stderr.interface);
+        }
+        try stderr.interface.flush();
+        std.process.exit(1);
+    }
     var buffer: [4096]u8 = undefined;
     var stdout = std.Io.File.Writer.init(.stdout(), io, &buffer);
-    try binding_report.render(allocator, &stdout.interface, parsed.value, .{
+    try binding_report.render(allocator, &stdout.interface, document, .{
         .go_module = options.go_module,
         .raw_package_path = options.raw_package_path,
         .raw_colocated = options.raw_colocated,

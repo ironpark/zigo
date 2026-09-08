@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-08T05:09:30Z"
 depends_on:
 - "178-plugin-contract-extensibility#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Repository checks and integration coverage pass, docs reflect shipped behavior; commit changes.
 > NEXT: none

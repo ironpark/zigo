@@ -1,8 +1,9 @@
 # 생성기 플러그인
 
-플러그인은 공개 Go 패키지에 메서드·타입·파일을 추가하는 Zig 모듈입니다. 내장 Must,
+플러그인은 semantic IR을 변형하고 Go 타입·이름을 지정하며 공개 패키지에 코드를 추가하는 Zig 모듈입니다. 내장 Must,
 Iterator, Implements, Interfaces도 공개 계약만 사용하는 별도 모듈로 컴파일됩니다.
-현재 hook은 shim·C 헤더·raw 패키지를 수정하지 않습니다.
+렌더링 hook은 shim·C 헤더·raw 패키지를 수정하지 않습니다. IR 변형과 타입 이름 변경은
+생성 ABI를 바꿀 수 있으며, 변형된 문서 전체를 검증한 뒤 lowering합니다.
 
 ## 계약과 실행 순서
 
@@ -11,7 +12,7 @@ Iterator, Implements, Interfaces도 공개 계약만 사용하는 별도 모듈�
 [`src/plugin.zig`](../src/plugin.zig)입니다. 이 모듈들이 노출하는 타입도 계약에 포함됩니다.
 
 `plugin.contract_version`은 `{ major, minor }`입니다. `Plugin.min_contract`의 major는
-동일해야 하고 minor는 생성기가 지원하는 값 이하여야 합니다. 현재 계약은 **1.0**입니다.
+동일해야 하고 minor는 생성기가 지원하는 값 이하여야 합니다. 현재 계약은 **1.1**입니다.
 이전의 `validateAll`, 구형 `validate`, optional writer 슬롯과 `go_must_variants`는 제거됐습니다.
 
 ```zig
@@ -30,7 +31,9 @@ pub const plugin: api.Plugin = .{
 };
 ```
 
-실행 순서는 core 검증 → 플러그인 검증 → lowering → 플러그인 분석 → 공개 패키지 렌더링입니다.
+실행 순서는 설정·의존성 검사 → 모든 `transform` → 모든 `name_type` → 각 플러그인의
+`map_type`·`name_function` → core 검증 → 플러그인 검증 → stream 확장 → lowering →
+플러그인 분석 → 공개 패키지 렌더링입니다. 각 단계 안에서는 아래 의존성 순서를 적용합니다.
 `after`는 등록된 플러그인 사이의 순서를 정하고, 없는 이름은 무시합니다. `requires`는
 등록과 활성화가 모두 필요한 의존성이며 실행 순서도 보장합니다. 나머지 순서는 등록 순서를
 유지합니다. 이름 중복·계약 불일치·의존성 누락·순환은 컴파일 오류입니다.
@@ -74,6 +77,72 @@ reflection은 `semantic.json`의 `ext`에 등록 이름과 옵션을 기록합�
 materialized 선언도 옵션을 전달합니다. 렌더 hook은 `context.functionOptions(plugin, fn)`
 또는 `context.typeOptions(plugin, declaration)`으로 읽습니다. 반환값 null은 해당 선언에
 옵션이 붙지 않았다는 뜻입니다. 빌드 설정은 `try context.config(plugin)`으로 읽습니다.
+
+## 문서 변형, 타입 매핑과 이름 정책
+
+계약 1.1은 다음 네 콜백을 제공합니다. 모두 한 번 실행되고 결과는 run allocator로
+할당하거나 정적 문자열을 사용합니다. 콜백이 받은 문서와 슬라이스는 입력 스냅샷입니다.
+직접 `@constCast`해서 수정하지 말고 바뀔 배열·노드만 복사하여 반환하세요.
+
+```zig
+.transform: ?fn(api.TransformContext) anyerror!semantic.Semantic
+.name_type: ?fn(api.TransformContext, semantic.TypeDecl) anyerror!?[]const u8
+.map_type: ?fn(api.TransformContext, api.TypeUse) anyerror!?semantic.GoAdapter
+.name_function: ?fn(api.TransformContext, semantic.SemanticFn) anyerror!?[]const u8
+```
+
+`TransformContext`에는 `allocator`, `document`, `config(P)`, `optionsOf(P, attachment, ext)`,
+`diagnose(issue)`가 있습니다. `transform`은 함수 제거, 문서·이름 수정, 파생 선언 추가 등
+문서 전체를 바꿀 수 있습니다. 후속 플러그인은 앞 플러그인이 반환한 문서를 받습니다.
+모든 구조 변형이 끝난 뒤 정책을 적용하므로 파생 선언에도 모든 정책이 적용됩니다.
+검증에서 저장하는 사실은 이 최종 문서를 기준으로 하며 변형 전 선언의 사실이 남지 않습니다.
+
+함수를 복제하여 파생 wrapper를 만들 때는 `zig_path`를 원래 호출 경로로 지정하세요.
+`semantic.zigCallPathAlloc(allocator, original)`로 얻을 수 있습니다. `name`, `symbol`,
+`custom_symbol`은 새 선언의 정체성에 맞춰 지정합니다. 생성자가 참조하는 함수를 제거할
+때는 `constructors` 등 관련 메타데이터도 갱신해야 합니다. 변형은 존재하지 않는 Zig 구현을
+생성하지 않으므로 새 선언의 타입·호출 경로는 실제 native 함수와 맞아야 합니다.
+
+파라미터 순서는 `try context.reorderParameters(function, &.{ 1, 0 })`으로 바꿉니다.
+배열의 각 항목은 새 위치에 올 **기존 인덱스**입니다. Go·C 인자 순서는 바뀌지만
+`native_index`를 보존하여 shim은 원래 Zig 순서로 호출합니다. 반복 재배치도 합성되며
+주입된 allocator·io와 `receiver_at` 위치도 보존됩니다. 배열을 직접 재배치하면 작성자가
+`native_index`의 완전한 순열을 유지해야 합니다. 잘못된 순열은 `ZIGO060`입니다.
+
+`map_type`의 대상은 `TypeUse.declaration`, `.parameter { function, index }`, `.result`입니다.
+기존 DSL의 `go_adapter`·`return_go_adapter`와 같은 변환 경로를 사용하므로 공개 서명,
+입력의 `to_raw`, 출력의 `from_raw`, import가 함께 바뀝니다. 예를 들어 Unix 초 `u64`를
+`time.Time`으로 내보내려면 다음 adapter를 반환합니다.
+
+```zig
+return .{
+    .type = "time.Time", .import = "time",
+    .to_raw = "unixTimeToRaw", .from_raw = "unixTimeFromRaw",
+};
+```
+
+변환 함수는 공개 패키지의 사용자 Go 파일이나 플러그인 파일에서 구현합니다. 지원 범위는
+현재 core adapter와 같습니다: 일반 scalar 입력·결과, extern struct value와 enum 선언입니다.
+callback·handle·optional 등 지원하지 않는 위치에 adapter를 주면 `ZIGO052`로 거부합니다.
+`null`은 기존 매핑 유지, 값은 기존 매핑 대체입니다. 같은 위치에 여러 플러그인이 값을
+반환하면 의존성 순서에서 뒤의 값이 적용되므로 `after`·`requires`로 정책 우선순위를 정하세요.
+
+`name_function`은 `HTTPGet`, `ParseURL`처럼 **변환하지 않을 정확한 Go 이름**을 반환합니다.
+생성자에도 적용되며 공개 함수, 인터페이스, Must wrapper, 충돌 검사와 보고서가 같은 이름을
+사용합니다. 이 정책은 Zig 경로·C 심볼·raw Go 이름을 바꾸지 않습니다. core가 생성하는
+`Close`, stream의 `Write` 같은 프로토콜 메서드는 해당 프로토콜의 고정 이름을 유지합니다.
+
+`name_type`은 등록 타입과 core IR의 참조를 한 번에 바꿉니다. 중첩 타입 노드, callback 참조,
+함수의 receiver·owner, 생성자, 인터페이스의 구현 타입 목록도 갱신합니다. 원래 `zig_path`와
+native root 이름을 보존하므로 shim은 기존 Zig 타입을 찾습니다. **생성 C 타입·심볼 이름은
+바뀔 수 있습니다.** 플러그인 소유 `ext`, 문서 문자열, 임의의 Go adapter 코드 안의 이름은
+불투명 데이터이므로 자동 변경하지 않습니다. 이런 참조는 해당 플러그인의 변형에서 관리하세요.
+공개 `api.rename.types(allocator, document, changes)` 헬퍼도 같은 작업을 제공합니다.
+
+`report --plugin-config <json-object>`는 생성과 같은 준비 단계를 실행합니다.
+`generator.prepareDocument`가 반환한 최종 문서는 `Semantic.serialize`로 저장할 수 있습니다.
+변형된 ABI를 비교하려면 이렇게 저장한 두 문서를 `abi-diff`에 넘기세요. `abi-diff`는 입력
+스냅샷 자체를 비교하며 현재 설치된 플러그인 변형을 다시 적용하지 않습니다.
 
 ## 검증과 분석 결과
 
@@ -198,7 +267,10 @@ fn render(_: api.Context, writer: *std.Io.Writer) !void {
 구형 writer 테이블을 직접 만든 코드는 모든 슬롯을 구현해야 합니다.
 
 [`tests/plugin_contract.zig`](../tests/plugin_contract.zig)는 별도 외부 모듈로 설정 전달,
-검증→분석 사실 전달, 반복 렌더링, 타입·파일·패키지 hook과 cgo/purego의 ABI 불변을 검사합니다.
+검증→분석 사실 전달, 반복 렌더링, 타입·파일·패키지 hook과 cgo/purego의 렌더링 ABI 불변을 검사합니다.
+추가로 외부 플러그인의 문서 변형·의존성 순서·시간 타입 변환·명명 정책·native 인자 재배치와
+잘못된 변형의 출력 전 거부를 검사합니다. 생성된 Go wrapper와 shim은 실제 Zig target에
+연결해 두 backend에서 인자 의미와 변환 결과를 왕복 검사합니다.
 내장 모듈은 생성기 내부를 import할 수 없는 모듈 루트에서 컴파일합니다. golden case는
 추가 hook을 켜지 않은 생성 결과를 비교합니다.
 

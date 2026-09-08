@@ -280,7 +280,7 @@ pub fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program:
     }
     try renderTaggedUnionShim(writer, program);
     try renderTaggedUnionSnapshotShim(writer, program);
-    try renderValueStructShim(writer, program);
+    try renderValueStructShim(allocator, writer, program);
 }
 
 fn writeValueUnionReturnAssignments(
@@ -394,7 +394,7 @@ fn writeFieldAccess(
 /// cross-compilation safe: a host layout that does not describe the target
 /// fails this compile with a named diagnostic instead of shipping a struct
 /// whose C and Go mirrors disagree with the Zig one.
-fn renderValueStructShim(writer: *std.Io.Writer, program: abi.Program) !void {
+fn renderValueStructShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program) !void {
     if (program.structs.len == 0) return;
     for (program.structs) |record| {
         if (record.owner.kind != .tagged_union) continue;
@@ -409,15 +409,17 @@ fn renderValueStructShim(writer: *std.Io.Writer, program: abi.Program) !void {
     try writer.writeAll(abi_guard_helper);
     for (program.structs) |record| {
         if (record.owner.kind == .tagged_union) continue;
+        const native_type = try target_types.targetTypeSpellingAlloc(allocator, program, record.name);
+        defer allocator.free(native_type);
         try writer.print(
-            "\ncomptime {{\n    zigoAbiGuard(\"@sizeOf({0s})\", {1d}, @sizeOf(target.{0s}));\n" ++
-                "    zigoAbiGuard(\"@alignOf({0s})\", {2d}, @alignOf(target.{0s}));\n",
-            .{ record.name, record.size, record.alignment },
+            "\ncomptime {{\n    zigoAbiGuard(\"@sizeOf({0s})\", {1d}, @sizeOf({3s}));\n" ++
+                "    zigoAbiGuard(\"@alignOf({0s})\", {2d}, @alignOf({3s}));\n",
+            .{ record.name, record.size, record.alignment, native_type },
         );
         for (record.fields) |field| {
             try writer.print(
-                "    zigoAbiGuard(\"@offsetOf({0s}, \\\"{1s}\\\")\", {2d}, @offsetOf(target.{0s}, \"{1s}\"));\n",
-                .{ record.name, field.name, field.offset },
+                "    zigoAbiGuard(\"@offsetOf({0s}, \\\"{1s}\\\")\", {2d}, @offsetOf({3s}, \"{1s}\"));\n",
+                .{ record.name, field.name, field.offset, native_type },
             );
         }
         try writer.writeAll("}\n");
@@ -709,30 +711,33 @@ fn renderStreamAccessorHelpers(allocator: std.mem.Allocator, writer: *std.Io.Wri
     var wrote = false;
     for (program.functions) |function| {
         const accessor = function.origin.stream_accessor orelse continue;
-        const receiver = function.origin.receiver.?;
+        const receiver = try target_types.targetTypeSpellingAlloc(allocator, program, function.origin.receiver.?);
+        defer allocator.free(receiver);
+        const call_path = accessor.zig_path orelse try std.fmt.allocPrint(allocator, "{s}.{s}", .{ function.origin.receiver.?, accessor.accessor });
+        defer if (accessor.zig_path == null) allocator.free(call_path);
         const name = try streamAccessorHelperNameAlloc(allocator, function);
         defer allocator.free(name);
         wrote = true;
         switch (accessor.op) {
             .write => try writer.print(
-                "fn {0s}(self: *target.{1s}, bytes: []const u8) std.Io.Writer.Error!isize {{\n" ++
-                    "    try target.{1s}.{2s}(self).writeAll(bytes);\n" ++
+                "fn {0s}(self: *{1s}, bytes: []const u8) std.Io.Writer.Error!isize {{\n" ++
+                    "    try target.{2s}(self).writeAll(bytes);\n" ++
                     "    return @intCast(bytes.len);\n}}\n",
-                .{ name, receiver, accessor.accessor },
+                .{ name, receiver, call_path },
             ),
             .flush => try writer.print(
-                "fn {0s}(self: *target.{1s}) std.Io.Writer.Error!void {{\n" ++
-                    "    return target.{1s}.{2s}(self).flush();\n}}\n",
-                .{ name, receiver, accessor.accessor },
+                "fn {0s}(self: *{1s}) std.Io.Writer.Error!void {{\n" ++
+                    "    return target.{2s}(self).flush();\n}}\n",
+                .{ name, receiver, call_path },
             ),
             // `readSliceShort` fills what it can and reports a short count at
             // the end of the stream rather than an error, which is exactly
             // the shape `io.Reader` wants: generated Go turns a zero into
             // `io.EOF` and leaves every other count alone.
             .read => try writer.print(
-                "fn {0s}(self: *target.{1s}, buffer: []u8) std.Io.Reader.ShortError!isize {{\n" ++
-                    "    return @intCast(try target.{1s}.{2s}(self).readSliceShort(buffer));\n}}\n",
-                .{ name, receiver, accessor.accessor },
+                "fn {0s}(self: *{1s}, buffer: []u8) std.Io.Reader.ShortError!isize {{\n" ++
+                    "    return @intCast(try target.{2s}(self).readSliceShort(buffer));\n}}\n",
+                .{ name, receiver, call_path },
             ),
         }
     }
@@ -794,16 +799,20 @@ pub fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
         const path = try semantic.zigCallPathAlloc(allocator, function.origin.*);
         defer allocator.free(path);
         try writer.print("target.{s}(", .{path});
-        if (function.origin.receiver != null and function.origin.receiver_at == null) {
+        if (function.origin.receiver != null and (function.origin.receiver_at orelse 0) == 0) {
             try writeShimReceiverArgument(writer, function.origin.*);
             if (function.origin.params.len != 0) try writer.writeAll(", ");
         }
     }
-    for (function.origin.params, 0..) |parameter, index| {
-        if (index != 0) try writer.writeAll(", ");
+    for (0..function.origin.params.len) |native_index| {
+        const index = for (function.origin.params, 0..) |candidate, candidate_index| {
+            if ((candidate.native_index orelse candidate_index) == native_index) break candidate_index;
+        } else unreachable; // validated permutation
+        const parameter = function.origin.params[index];
+        if (native_index != 0) try writer.writeAll(", ");
         // `self` goes where Zig declared it: after the injected arguments
         // that came first in the signature, if any did.
-        if (function.origin.receiver != null and function.origin.receiver_at == index and index != 0) {
+        if (function.origin.receiver != null and function.origin.receiver_at == native_index and native_index != 0) {
             try writeShimReceiverArgument(writer, function.origin.*);
             try writer.writeAll(", ");
         }

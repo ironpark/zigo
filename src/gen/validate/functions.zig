@@ -17,6 +17,13 @@ const validate = @import("validate.zig");
 /// on its sharpest fault first.
 pub fn functionIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
     for (document.functions) |function| {
+        if (!validNativeOrder(function)) return .{
+            .severity = .@"error",
+            .code = "ZIGO060",
+            .message = "native parameter indices must form a complete permutation",
+            .site = site.functionSite(function),
+            .hint = "use TransformContext.reorderParameters or supply every unique index from zero to params.len minus one",
+        };
         if (materialized.materializedOutCount(function) > 1) return .{
             .severity = .@"error",
             .code = "ZIGO048",
@@ -1204,4 +1211,20 @@ test "a value receiver rejects the metadata that needs a handle" {
         const issue = (try validate.findIssue(scratch.allocator(), document)) orelse return error.MissingDiagnostic;
         try std.testing.expectEqualStrings("ZIGO056", issue.code);
     }
+}
+
+fn validNativeOrder(function: semantic.SemanticFn) bool {
+    if ((function.receiver_at orelse 0) > function.params.len) return false;
+    var explicit = false;
+    for (function.params) |param| if (param.native_index != null) {
+        explicit = true;
+        break;
+    };
+    if (!explicit) return true;
+    for (function.params, 0..) |param, index| {
+        const native = param.native_index orelse return false;
+        if (native >= function.params.len) return false;
+        for (function.params[0..index]) |previous| if (previous.native_index == native) return false;
+    }
+    return true;
 }

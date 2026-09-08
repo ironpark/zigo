@@ -338,7 +338,7 @@ pub fn addRepositorySteps(
         .{ .path = b.path("plugins/json/src/plugin.zig") },
         .{ .path = b.path("tests/plugins/wrappers.zig") },
     });
-    const contract_modules = modules.createGeneratorModules(b, b.path("src"), target, optimize, &.{.{ .path = b.path("tests/plugins/contract.zig"), .config = "{\"label\":\"from-build\"}" }});
+    const contract_modules = modules.createGeneratorModules(b, b.path("src"), target, optimize, &.{ .{ .path = b.path("tests/plugins/transform_observer.zig") }, .{ .path = b.path("tests/plugins/contract.zig"), .config = "{\"label\":\"from-build\"}" } });
     const contract_tests = b.addTest(.{ .root_module = b.createModule(.{
         .root_source_file = b.path("tests/plugin_contract.zig"),
         .target = target,
@@ -346,10 +346,66 @@ pub fn addRepositorySteps(
         .imports = &.{
             .{ .name = "generator", .module = contract_modules.generator },
             .{ .name = "plugin", .module = contract_modules.plugin },
-            .{ .name = "contract", .module = contract_modules.plugin_registry.import_table.get("p0").? },
+            .{ .name = "contract", .module = contract_modules.plugin_registry.import_table.get("p1").? },
+            .{ .name = "observer", .module = contract_modules.plugin_registry.import_table.get("p0").? },
+            .{ .name = "semantic", .module = contract_modules.semantic },
+            .{ .name = "diagnostic", .module = contract_modules.diagnostic },
         },
     }) });
     test_step.dependOn(&b.addRunArtifact(contract_tests).step);
+    const transform_runner = b.addExecutable(.{ .name = "zigo-plugin-transform-case", .root_module = b.createModule(.{
+        .root_source_file = b.path("tests/plugin_transform_main.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "generator", .module = contract_modules.generator }},
+    }) });
+    inline for (.{ "cgo", "purego" }) |backend| {
+        const generated = b.addRunArtifact(transform_runner);
+        const output = generated.addOutputDirectoryArg(b.fmt("plugin-transform-{s}", .{backend}));
+        generated.addArg(backend);
+        const native = b.addTest(.{ .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/plugin_transform/roundtrip.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{.{ .name = "shim", .module = b.createModule(.{
+                .root_source_file = output.path(b, "shim.zig"),
+                .target = target,
+                .optimize = optimize,
+                .imports = &.{.{ .name = "zigo_target", .module = b.createModule(.{
+                    .root_source_file = b.path("tests/plugin_transform/target.zig"),
+                    .target = target,
+                    .optimize = optimize,
+                }) }},
+            }) }},
+        }) });
+        const run_native = b.addRunArtifact(native);
+        run_native.setName(b.fmt("plugin transformed {s} native round trip", .{backend}));
+        test_step.dependOn(&run_native.step);
+        const library_module = b.createModule(.{
+            .root_source_file = output.path(b, "shim.zig"),
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+            .sanitize_c = .off,
+            .imports = &.{.{ .name = "zigo_target", .module = b.createModule(.{
+                .root_source_file = b.path("tests/plugin_transform/target.zig"),
+                .target = target,
+                .optimize = optimize,
+            }) }},
+        });
+        library_module.addCSourceFile(.{ .file = output.path(b, "panic.c"), .flags = &.{} });
+        library_module.addIncludePath(output);
+        const library = b.addLibrary(.{ .name = "custom", .root_module = library_module, .linkage = if (comptime std.mem.eql(u8, backend, "cgo")) .static else .dynamic });
+        const go_test = b.addSystemCommand(&.{"env"});
+        if (comptime std.mem.eql(u8, backend, "cgo"))
+            go_test.addPrefixedFileArg("CGO_LDFLAGS=", library.getEmittedBin())
+        else
+            go_test.addPrefixedFileArg("ZIGO_TEST_LIBRARY=", library.getEmittedBin());
+        go_test.addArgs(&.{ "go", "test", "-mod=mod", "./..." });
+        go_test.setCwd(output);
+        go_test.setName(b.fmt("plugin transformed {s} Go round trip", .{backend}));
+        test_step.dependOn(&go_test.step);
+    }
     inline for (.{
         .{ "version", ".{ .name = \"BAD\", .min_contract = .{ .major = 99, .minor = 0 } }", "incompatible plugin contract: BAD" },
         .{ "duplicate", ".{ .name = \"A\" }, .{ .name = \"A\" }", "duplicate plugin: A" },

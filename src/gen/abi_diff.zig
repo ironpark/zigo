@@ -105,6 +105,8 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
             current_program.functions[current_spans[new_index]..current_spans[new_index + 1]],
         ))
             try add(allocator, &report, .breaking, identity, "signature changed");
+        if (!nativeOrderEqual(old, new))
+            try add(allocator, &report, .breaking, identity, "native parameter order changed");
         if (!semantic.optionalStringEqual(old.release, new.release))
             try add(allocator, &report, .breaking, identity, "release function changed");
         // The C symbol does not move, but the Go surface does: the function
@@ -2078,4 +2080,42 @@ fn containsDetail(report: Report, detail: []const u8) bool {
         if (std.mem.eql(u8, change.detail, detail)) return true;
     }
     return false;
+}
+
+fn nativeOrderEqual(a: semantic.SemanticFn, b: semantic.SemanticFn) bool {
+    // Injected arguments never reach the caller. Compare native order only
+    // among exposed arguments, so adding an allocator remains ABI-neutral.
+    var right: usize = 0;
+    for (a.params, 0..) |param, left| {
+        if (param.injected != null) continue;
+        while (right < b.params.len and b.params[right].injected != null) : (right += 1) {}
+        if (right == b.params.len) return true; // already a signature change
+        if (nativePublicRank(a.params, left) != nativePublicRank(b.params, right)) return false;
+        right += 1;
+    }
+    return true;
+}
+
+fn nativePublicRank(params: []const semantic.Parameter, index: usize) usize {
+    const native = params[index].native_index orelse index;
+    var rank: usize = 0;
+    for (params, 0..) |param, other| {
+        if (param.injected == null and (param.native_index orelse other) < native) rank += 1;
+    }
+    return rank;
+}
+
+test "exact public names and native parameter permutations are contract changes" {
+    const integer: semantic.TypeNode = .{ .int = .{ .bits = 64, .signed = false } };
+    const original: semantic.SemanticFn = .{ .name = "combine", .params = &.{ .{ .name = "a", .type = integer }, .{ .name = "b", .type = integer } }, .@"return" = integer, .symbol = "zg_combine" };
+    var modified = original;
+    modified.go_name = "HTTPCombine";
+    modified.params = &.{ .{ .name = "b", .type = integer, .native_index = 1 }, .{ .name = "a", .type = integer, .native_index = 0 } };
+    const base: semantic.Semantic = .{ .package = "x", .prefix = "zg", .zig_version = "0.16.0", .functions = &.{original} };
+    var current = base;
+    current.functions = &.{modified};
+    var result = try diff(std.testing.allocator, base, current);
+    defer result.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(usize, 2), result.changes.items.len);
+    for (result.changes.items) |change| try std.testing.expectEqual(ChangeKind.breaking, change.kind);
 }

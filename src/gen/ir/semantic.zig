@@ -473,6 +473,9 @@ pub const FlattenedField = struct {
 };
 
 pub const Parameter = struct {
+    /// Native position among parameters, excluding the receiver. If any entry
+    /// sets this, every entry must form a permutation of 0..params.len.
+    native_index: ?usize = null,
     /// The Zig parameter is `std.atomic.Value(T)` while Go and C pass T.
     atomic: ?bool = null,
     /// Bytes of shim-side staging buffer behind an `*std.Io.Writer` or
@@ -582,6 +585,7 @@ pub const SourceLocation = struct {
 /// operations Go needs to satisfy `io.Writer`/`io.Reader`, each of which asks
 /// the object for the stream again rather than storing what it got.
 pub const StreamAccessor = struct {
+    zig_path: ?[]const u8 = null,
     /// The Zig method that hands the stream over, called afresh every time.
     accessor: []const u8,
     direction: StreamDirection,
@@ -787,6 +791,8 @@ pub const SemanticFn = struct {
     /// shim calls through, so a root-level `newTerminal` can be `Terminal`'s
     /// constructor in Go and still be called as `target.newTerminal(...)`.
     go_owner: ?[]const u8 = null,
+    /// Exact public Go spelling, independent of native and raw identities.
+    go_name: ?[]const u8 = null,
     name: []const u8,
     /// Public sub-package name. Absent means the binding's default package.
     package: ?[]const u8 = null,
@@ -922,6 +928,8 @@ pub fn enumValueRange(fields: []const TypeField) ?struct { min: i64, max: i64, s
 }
 
 pub const TypeDecl = struct {
+    /// Root-export fallback retained when a plugin renames the registered type.
+    native_name: ?[]const u8 = null,
     access: ?Access = null,
     /// Integer storage used by a packed struct. Absent for every other type.
     backing_type: ?TypeNode = null,
@@ -1047,6 +1055,7 @@ pub fn publicFunctionNameAlloc(
     document: Semantic,
     function: SemanticFn,
 ) ![]u8 {
+    if (function.go_name) |name| return allocator.dupe(u8, name);
     if (constructorForInit(document.constructors, function)) |constructor| {
         if (constructor.name) |name| return naming.pascalAlloc(allocator, name);
         return std.fmt.allocPrint(allocator, "New{s}", .{constructor.type});
