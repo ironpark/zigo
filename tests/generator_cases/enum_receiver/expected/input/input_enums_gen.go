@@ -27,16 +27,17 @@ const (
 	KeyEnter Key = 1
 )
 
+var zigoKeyNames = [2]string{
+	0: "a",
+	1: "enter",
+}
+
 // String returns the Zig tag name.
 func (value Key) String() string {
-	switch value {
-	case KeyA:
-		return "a"
-	case KeyEnter:
-		return "enter"
-	default:
-		return "Key(" + strconv.Itoa(int(value)) + ")"
+	if value >= 0 && value <= 1 {
+		return zigoKeyNames[uint64(value)]
 	}
+	return "Key(" + strconv.Itoa(int(value)) + ")"
 }
 
 // ParseKey returns the Key named by text, which is a Zig tag name.
@@ -75,14 +76,15 @@ const (
 	ModeOn Mode = 1
 )
 
+var zigoModeNames = [2]string{
+	0: "off",
+	1: "on",
+}
+
 // String returns the Zig tag name.
 func (value Mode) String() string {
-	switch value {
-	case ModeOff:
-		return "off"
-	case ModeOn:
-		return "on"
-	default:
-		return "Mode(" + strconv.Itoa(int(value)) + ")"
+	if value >= 0 && value <= 1 {
+		return zigoModeNames[uint64(value)]
 	}
+	return "Mode(" + strconv.Itoa(int(value)) + ")"
 }

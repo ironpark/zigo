@@ -14,14 +14,15 @@ const (
 	StepLarge Step = 1
 )
 
+var zigoStepNames = [2]string{
+	0: "small",
+	1: "large",
+}
+
 // String returns the Zig tag name.
 func (value Step) String() string {
-	switch value {
-	case StepSmall:
-		return "small"
-	case StepLarge:
-		return "large"
-	default:
-		return "Step(" + strconv.Itoa(int(value)) + ")"
+	if value >= 0 && value <= 1 {
+		return zigoStepNames[uint64(value)]
 	}
+	return "Step(" + strconv.Itoa(int(value)) + ")"
 }

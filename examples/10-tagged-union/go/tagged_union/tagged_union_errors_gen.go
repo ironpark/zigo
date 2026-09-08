@@ -148,22 +148,24 @@ var ErrNever = &Error{Code: 3, Name: "Never"}
 // ErrInvalid represents Zig error.Invalid.
 var ErrInvalid = &Error{Code: 4, Name: "Invalid"}
 
+var zigoErrorNames = [4]string{
+	0: "OutOfMemory",
+	1: "DivideByZero",
+	2: "Never",
+	3: "Invalid",
+}
+
 func zigoErrorForCode(operation string, code int32) error {
 	if code <= -256 {
 		return &NativePanicError{Operation: operation, Message: raw.PanicMessage(code)}
 	}
-	switch code {
-	case -3:
+	if code == -3 {
 		return &Error{Code: -3, Name: "OmittedVariant", Operation: operation}
-	case 1:
-		return &Error{Code: 1, Name: "OutOfMemory", Operation: operation}
-	case 2:
-		return &Error{Code: 2, Name: "DivideByZero", Operation: operation}
-	case 3:
-		return &Error{Code: 3, Name: "Never", Operation: operation}
-	case 4:
-		return &Error{Code: 4, Name: "Invalid", Operation: operation}
-	default:
-		return &Error{Code: code, Name: "Unknown(" + strconv.Itoa(int(code)) + ")", Operation: operation}
 	}
+	if code >= 1 && code <= 4 {
+		if name := zigoErrorNames[code-1]; name != "" {
+			return &Error{Code: code, Name: name, Operation: operation}
+		}
+	}
+	return &Error{Code: code, Name: "Unknown(" + strconv.Itoa(int(code)) + ")", Operation: operation}
 }

@@ -22,24 +22,21 @@ const (
 	SignalTagActive SignalTag = 5
 )
 
+var zigoSignalTagNames = [6]string{
+	0: "idle",
+	1: "ticks",
+	2: "level",
+	3: "offset",
+	4: "mode",
+	5: "active",
+}
+
 // String returns the Zig tag name.
 func (value SignalTag) String() string {
-	switch value {
-	case SignalTagIdle:
-		return "idle"
-	case SignalTagTicks:
-		return "ticks"
-	case SignalTagLevel:
-		return "level"
-	case SignalTagOffset:
-		return "offset"
-	case SignalTagMode:
-		return "mode"
-	case SignalTagActive:
-		return "active"
-	default:
-		return "SignalTag(" + strconv.Itoa(int(value)) + ")"
+	if value >= 0 && value <= 5 {
+		return zigoSignalTagNames[uint64(value)]
 	}
+	return "SignalTag(" + strconv.Itoa(int(value)) + ")"
 }
 
 // Mode represents the corresponding Zig enum.
@@ -52,14 +49,15 @@ const (
 	ModeActive Mode = 1
 )
 
+var zigoModeNames = [2]string{
+	0: "idle",
+	1: "active",
+}
+
 // String returns the Zig tag name.
 func (value Mode) String() string {
-	switch value {
-	case ModeIdle:
-		return "idle"
-	case ModeActive:
-		return "active"
-	default:
-		return "Mode(" + strconv.Itoa(int(value)) + ")"
+	if value >= 0 && value <= 1 {
+		return zigoModeNames[uint64(value)]
 	}
+	return "Mode(" + strconv.Itoa(int(value)) + ")"
 }

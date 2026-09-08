@@ -14,14 +14,15 @@ const (
 	CursorStyleBar CursorStyle = 1
 )
 
+var zigoCursorStyleNames = [2]string{
+	0: "block",
+	1: "bar",
+}
+
 // String returns the Zig tag name.
 func (value CursorStyle) String() string {
-	switch value {
-	case CursorStyleBlock:
-		return "block"
-	case CursorStyleBar:
-		return "bar"
-	default:
-		return "CursorStyle(" + strconv.Itoa(int(value)) + ")"
+	if value >= 0 && value <= 1 {
+		return zigoCursorStyleNames[uint64(value)]
 	}
+	return "CursorStyle(" + strconv.Itoa(int(value)) + ")"
 }

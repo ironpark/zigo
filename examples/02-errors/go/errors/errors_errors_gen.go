@@ -88,16 +88,19 @@ var ErrDivideByZero = &Error{Code: 1, Name: "DivideByZero"}
 // ErrNotPrintable represents Zig error.NotPrintable.
 var ErrNotPrintable = &Error{Code: 2, Name: "NotPrintable"}
 
+var zigoErrorNames = [2]string{
+	0: "DivideByZero",
+	1: "NotPrintable",
+}
+
 func zigoErrorForCode(operation string, code int32) error {
 	if code <= -256 {
 		return &NativePanicError{Operation: operation, Message: raw.PanicMessage(code)}
 	}
-	switch code {
-	case 1:
-		return &Error{Code: 1, Name: "DivideByZero", Operation: operation}
-	case 2:
-		return &Error{Code: 2, Name: "NotPrintable", Operation: operation}
-	default:
-		return &Error{Code: code, Name: "Unknown(" + strconv.Itoa(int(code)) + ")", Operation: operation}
+	if code >= 1 && code <= 2 {
+		if name := zigoErrorNames[code-1]; name != "" {
+			return &Error{Code: code, Name: name, Operation: operation}
+		}
 	}
+	return &Error{Code: code, Name: "Unknown(" + strconv.Itoa(int(code)) + ")", Operation: operation}
 }

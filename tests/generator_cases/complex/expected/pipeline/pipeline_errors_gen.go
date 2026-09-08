@@ -125,22 +125,22 @@ var ErrDisabled = &Error{Code: 4, Name: "Disabled"}
 // ErrCallbackPanicked represents Zig error.CallbackPanicked.
 var ErrCallbackPanicked = &Error{Code: 5, Name: "CallbackPanicked"}
 
+var zigoErrorNames = [5]string{
+	0: "OutOfMemory",
+	1: "InvalidName",
+	2: "EmptyInput",
+	3: "Disabled",
+	4: "CallbackPanicked",
+}
+
 func zigoErrorForCode(operation string, code int32) error {
 	if code <= -256 {
 		return &NativePanicError{Operation: operation, Message: raw.PanicMessage(code)}
 	}
-	switch code {
-	case 1:
-		return &Error{Code: 1, Name: "OutOfMemory", Operation: operation}
-	case 2:
-		return &Error{Code: 2, Name: "InvalidName", Operation: operation}
-	case 3:
-		return &Error{Code: 3, Name: "EmptyInput", Operation: operation}
-	case 4:
-		return &Error{Code: 4, Name: "Disabled", Operation: operation}
-	case 5:
-		return &Error{Code: 5, Name: "CallbackPanicked", Operation: operation}
-	default:
-		return &Error{Code: code, Name: "Unknown(" + strconv.Itoa(int(code)) + ")", Operation: operation}
+	if code >= 1 && code <= 5 {
+		if name := zigoErrorNames[code - 1]; name != "" {
+			return &Error{Code: code, Name: name, Operation: operation}
+		}
 	}
+	return &Error{Code: code, Name: "Unknown(" + strconv.Itoa(int(code)) + ")", Operation: operation}
 }

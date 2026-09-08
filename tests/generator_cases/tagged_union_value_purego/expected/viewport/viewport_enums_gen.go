@@ -26,28 +26,23 @@ const (
 	ScrollViewportTagRegion ScrollViewportTag = 7
 )
 
+var zigoScrollViewportTagNames = [8]string{
+	0: "top",
+	1: "delta",
+	2: "page",
+	3: "ratio",
+	4: "animated",
+	5: "mode",
+	6: "rgb",
+	7: "region",
+}
+
 // String returns the Zig tag name.
 func (value ScrollViewportTag) String() string {
-	switch value {
-	case ScrollViewportTagTop:
-		return "top"
-	case ScrollViewportTagDelta:
-		return "delta"
-	case ScrollViewportTagPage:
-		return "page"
-	case ScrollViewportTagRatio:
-		return "ratio"
-	case ScrollViewportTagAnimated:
-		return "animated"
-	case ScrollViewportTagMode:
-		return "mode"
-	case ScrollViewportTagRgb:
-		return "rgb"
-	case ScrollViewportTagRegion:
-		return "region"
-	default:
-		return "ScrollViewportTag(" + strconv.Itoa(int(value)) + ")"
+	if value >= 0 && value <= 7 {
+		return zigoScrollViewportTagNames[uint64(value)]
 	}
+	return "ScrollViewportTag(" + strconv.Itoa(int(value)) + ")"
 }
 
 // Mode represents the corresponding Zig enum.
@@ -60,14 +55,15 @@ const (
 	ModeSmooth Mode = 1
 )
 
+var zigoModeNames = [2]string{
+	0: "instant",
+	1: "smooth",
+}
+
 // String returns the Zig tag name.
 func (value Mode) String() string {
-	switch value {
-	case ModeInstant:
-		return "instant"
-	case ModeSmooth:
-		return "smooth"
-	default:
-		return "Mode(" + strconv.Itoa(int(value)) + ")"
+	if value >= 0 && value <= 1 {
+		return zigoModeNames[uint64(value)]
 	}
+	return "Mode(" + strconv.Itoa(int(value)) + ")"
 }

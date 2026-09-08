@@ -14,14 +14,15 @@ const (
 	FormatFlac Format = 1
 )
 
+var zigoFormatNames = [2]string{
+	0: "pcm",
+	1: "flac",
+}
+
 // String returns the Zig tag name.
 func (value Format) String() string {
-	switch value {
-	case FormatPcm:
-		return "pcm"
-	case FormatFlac:
-		return "flac"
-	default:
-		return "Format(" + strconv.Itoa(int(value)) + ")"
+	if value >= 0 && value <= 1 {
+		return zigoFormatNames[uint64(value)]
 	}
+	return "Format(" + strconv.Itoa(int(value)) + ")"
 }

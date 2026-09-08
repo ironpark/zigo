@@ -14,14 +14,15 @@ const (
 	EraseDisplayAbove EraseDisplay = 1
 )
 
+var zigoEraseDisplayNames = [2]string{
+	0: "below",
+	1: "above",
+}
+
 // String returns the Zig tag name.
 func (value EraseDisplay) String() string {
-	switch value {
-	case EraseDisplayBelow:
-		return "below"
-	case EraseDisplayAbove:
-		return "above"
-	default:
-		return "EraseDisplay(" + strconv.Itoa(int(value)) + ")"
+	if value >= 0 && value <= 1 {
+		return zigoEraseDisplayNames[uint64(value)]
 	}
+	return "EraseDisplay(" + strconv.Itoa(int(value)) + ")"
 }

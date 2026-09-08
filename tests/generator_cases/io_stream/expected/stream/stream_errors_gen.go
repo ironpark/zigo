@@ -141,16 +141,19 @@ var ErrWriteFailed = &Error{Code: 1, Name: "WriteFailed"}
 // ErrReadFailed represents Zig error.ReadFailed.
 var ErrReadFailed = &Error{Code: 2, Name: "ReadFailed"}
 
+var zigoErrorNames = [2]string{
+	0: "WriteFailed",
+	1: "ReadFailed",
+}
+
 func zigoErrorForCode(operation string, code int32) error {
 	if code <= -256 {
 		return &NativePanicError{Operation: operation, Message: raw.PanicMessage(code)}
 	}
-	switch code {
-	case 1:
-		return &Error{Code: 1, Name: "WriteFailed", Operation: operation}
-	case 2:
-		return &Error{Code: 2, Name: "ReadFailed", Operation: operation}
-	default:
-		return &Error{Code: code, Name: "Unknown(" + strconv.Itoa(int(code)) + ")", Operation: operation}
+	if code >= 1 && code <= 2 {
+		if name := zigoErrorNames[code - 1]; name != "" {
+			return &Error{Code: code, Name: name, Operation: operation}
+		}
 	}
+	return &Error{Code: code, Name: "Unknown(" + strconv.Itoa(int(code)) + ")", Operation: operation}
 }

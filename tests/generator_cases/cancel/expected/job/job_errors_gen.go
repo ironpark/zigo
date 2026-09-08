@@ -88,16 +88,19 @@ var ErrCancelled = &Error{Code: 1, Name: "Cancelled"}
 // ErrEmpty represents Zig error.Empty.
 var ErrEmpty = &Error{Code: 2, Name: "Empty"}
 
+var zigoErrorNames = [2]string{
+	0: "Cancelled",
+	1: "Empty",
+}
+
 func zigoErrorForCode(operation string, code int32) error {
 	if code <= -256 {
 		return &NativePanicError{Operation: operation, Message: raw.PanicMessage(code)}
 	}
-	switch code {
-	case 1:
-		return &Error{Code: 1, Name: "Cancelled", Operation: operation}
-	case 2:
-		return &Error{Code: 2, Name: "Empty", Operation: operation}
-	default:
-		return &Error{Code: code, Name: "Unknown(" + strconv.Itoa(int(code)) + ")", Operation: operation}
+	if code >= 1 && code <= 2 {
+		if name := zigoErrorNames[code - 1]; name != "" {
+			return &Error{Code: code, Name: name, Operation: operation}
+		}
 	}
+	return &Error{Code: code, Name: "Unknown(" + strconv.Itoa(int(code)) + ")", Operation: operation}
 }

@@ -14,14 +14,15 @@ const (
 	ModeWeighted Mode = 1
 )
 
+var zigoModeNames = [2]string{
+	0: "sum",
+	1: "weighted",
+}
+
 // String returns the Zig tag name.
 func (value Mode) String() string {
-	switch value {
-	case ModeSum:
-		return "sum"
-	case ModeWeighted:
-		return "weighted"
-	default:
-		return "Mode(" + strconv.Itoa(int(value)) + ")"
+	if value >= 0 && value <= 1 {
+		return zigoModeNames[uint64(value)]
 	}
+	return "Mode(" + strconv.Itoa(int(value)) + ")"
 }

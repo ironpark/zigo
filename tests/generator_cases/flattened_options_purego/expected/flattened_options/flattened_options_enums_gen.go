@@ -14,14 +14,15 @@ const (
 	ModeAlternate Mode = 1
 )
 
+var zigoModeNames = [2]string{
+	0: "normal",
+	1: "alternate",
+}
+
 // String returns the Zig tag name.
 func (value Mode) String() string {
-	switch value {
-	case ModeNormal:
-		return "normal"
-	case ModeAlternate:
-		return "alternate"
-	default:
-		return "Mode(" + strconv.Itoa(int(value)) + ")"
+	if value >= 0 && value <= 1 {
+		return zigoModeNames[uint64(value)]
 	}
+	return "Mode(" + strconv.Itoa(int(value)) + ")"
 }

@@ -120,8 +120,7 @@ func zigoErrorForCode(operation string, code int32) error {
 	}
 	switch code {
 	case 1:
-		return &Error{Code: 1, Name: "Invalid", Operation: operation}
-	default:
-		return &Error{Code: code, Name: "Unknown(" + strconv.Itoa(int(code)) + ")", Operation: operation}
+		return &Error{Code: code, Name: "Invalid", Operation: operation}
 	}
+	return &Error{Code: code, Name: "Unknown(" + strconv.Itoa(int(code)) + ")", Operation: operation}
 }

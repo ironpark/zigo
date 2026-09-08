@@ -14,16 +14,17 @@ const (
 	KeyEscape Key = 1
 )
 
+var zigoKeyNames = [2]string{
+	0: "enter",
+	1: "escape",
+}
+
 // String returns the Zig tag name.
 func (value Key) String() string {
-	switch value {
-	case KeyEnter:
-		return "enter"
-	case KeyEscape:
-		return "escape"
-	default:
-		return "Key(" + strconv.Itoa(int(value)) + ")"
+	if value >= 0 && value <= 1 {
+		return zigoKeyNames[uint64(value)]
 	}
+	return "Key(" + strconv.Itoa(int(value)) + ")"
 }
 
 // Keyboard represents the corresponding Zig enum.
@@ -36,16 +37,17 @@ const (
 	KeyboardIso Keyboard = 1
 )
 
+var zigoKeyboardNames = [2]string{
+	0: "ansi",
+	1: "iso",
+}
+
 // String returns the Zig tag name.
 func (value Keyboard) String() string {
-	switch value {
-	case KeyboardAnsi:
-		return "ansi"
-	case KeyboardIso:
-		return "iso"
-	default:
-		return "Keyboard(" + strconv.Itoa(int(value)) + ")"
+	if value >= 0 && value <= 1 {
+		return zigoKeyboardNames[uint64(value)]
 	}
+	return "Keyboard(" + strconv.Itoa(int(value)) + ")"
 }
 
 // Mode represents the corresponding Zig enum.
@@ -58,14 +60,15 @@ const (
 	ModeActive Mode = 1
 )
 
+var zigoModeNames = [2]string{
+	0: "idle",
+	1: "active",
+}
+
 // String returns the Zig tag name.
 func (value Mode) String() string {
-	switch value {
-	case ModeIdle:
-		return "idle"
-	case ModeActive:
-		return "active"
-	default:
-		return "Mode(" + strconv.Itoa(int(value)) + ")"
+	if value >= 0 && value <= 1 {
+		return zigoModeNames[uint64(value)]
 	}
+	return "Mode(" + strconv.Itoa(int(value)) + ")"
 }

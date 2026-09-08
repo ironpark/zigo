@@ -30,16 +30,17 @@ const (
 	QueueSignalContinueProcessing QueueSignal = 1
 )
 
+var zigoQueueSignalNames = [2]string{
+	0: "pause",
+	1: "continue_processing",
+}
+
 // String returns the Zig tag name.
 func (value QueueSignal) String() string {
-	switch value {
-	case QueueSignalPause:
-		return "pause"
-	case QueueSignalContinueProcessing:
-		return "continue_processing"
-	default:
-		return "QueueSignal(" + strconv.Itoa(int(value)) + ")"
+	if value >= 0 && value <= 1 {
+		return zigoQueueSignalNames[uint64(value)]
 	}
+	return "QueueSignal(" + strconv.Itoa(int(value)) + ")"
 }
 
 // ParseQueueSignal returns the QueueSignal named by text, which is a Zig tag name.

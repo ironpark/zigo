@@ -16,18 +16,18 @@ const (
 	ModeAbsolute Mode = 2
 )
 
+var zigoModeNames = [3]string{
+	0: "raw",
+	1: "scaled",
+	2: "absolute",
+}
+
 // String returns the Zig tag name.
 func (value Mode) String() string {
-	switch value {
-	case ModeRaw:
-		return "raw"
-	case ModeScaled:
-		return "scaled"
-	case ModeAbsolute:
-		return "absolute"
-	default:
-		return "Mode(" + strconv.Itoa(int(value)) + ")"
+	if value >= 0 && value <= 2 {
+		return zigoModeNames[uint64(value)]
 	}
+	return "Mode(" + strconv.Itoa(int(value)) + ")"
 }
 
 // OverflowPolicy represents the corresponding Zig enum.
@@ -40,16 +40,17 @@ const (
 	OverflowPolicyDropOldest OverflowPolicy = 1
 )
 
+var zigoOverflowPolicyNames = [2]string{
+	0: "reject",
+	1: "drop_oldest",
+}
+
 // String returns the Zig tag name.
 func (value OverflowPolicy) String() string {
-	switch value {
-	case OverflowPolicyReject:
-		return "reject"
-	case OverflowPolicyDropOldest:
-		return "drop_oldest"
-	default:
-		return "OverflowPolicy(" + strconv.Itoa(int(value)) + ")"
+	if value >= 0 && value <= 1 {
+		return zigoOverflowPolicyNames[uint64(value)]
 	}
+	return "OverflowPolicy(" + strconv.Itoa(int(value)) + ")"
 }
 
 // Severity represents the corresponding Zig enum.
@@ -66,18 +67,17 @@ const (
 	SeverityCritical Severity = 3
 )
 
+var zigoSeverityNames = [4]string{
+	0: "debug",
+	1: "info",
+	2: "warning",
+	3: "critical",
+}
+
 // String returns the Zig tag name.
 func (value Severity) String() string {
-	switch value {
-	case SeverityDebug:
-		return "debug"
-	case SeverityInfo:
-		return "info"
-	case SeverityWarning:
-		return "warning"
-	case SeverityCritical:
-		return "critical"
-	default:
-		return "Severity(" + strconv.Itoa(int(value)) + ")"
+	if value >= 0 && value <= 3 {
+		return zigoSeverityNames[uint64(value)]
 	}
+	return "Severity(" + strconv.Itoa(int(value)) + ")"
 }

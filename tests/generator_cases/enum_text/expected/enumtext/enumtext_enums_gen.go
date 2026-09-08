@@ -30,16 +30,17 @@ const (
 	EraseDisplayAbove EraseDisplay = 1
 )
 
+var zigoEraseDisplayNames = [2]string{
+	0: "below",
+	1: "above",
+}
+
 // String returns the Zig tag name.
 func (value EraseDisplay) String() string {
-	switch value {
-	case EraseDisplayBelow:
-		return "below"
-	case EraseDisplayAbove:
-		return "above"
-	default:
-		return "EraseDisplay(" + strconv.Itoa(int(value)) + ")"
+	if value >= 0 && value <= 1 {
+		return zigoEraseDisplayNames[uint64(value)]
 	}
+	return "EraseDisplay(" + strconv.Itoa(int(value)) + ")"
 }
 
 // ParseEraseDisplay returns the EraseDisplay named by text, which is a Zig tag name.
@@ -86,18 +87,18 @@ const (
 	PriorityHigh Priority = 1
 )
 
+var zigoPriorityNames = [3]string{
+	0: "low",
+	1: "normal",
+	2: "high",
+}
+
 // String returns the Zig tag name.
 func (value Priority) String() string {
-	switch value {
-	case PriorityLow:
-		return "low"
-	case PriorityNormal:
-		return "normal"
-	case PriorityHigh:
-		return "high"
-	default:
-		return "Priority(" + strconv.Itoa(int(value)) + ")"
+	if value >= -1 && value <= 1 {
+		return zigoPriorityNames[uint64(value) + 1]
 	}
+	return "Priority(" + strconv.Itoa(int(value)) + ")"
 }
 
 // ParsePriority returns the Priority named by text, which is a Zig tag name.
@@ -138,14 +139,15 @@ const (
 	LevelInfo Level = 1
 )
 
+var zigoLevelNames = [2]string{
+	0: "debug",
+	1: "info",
+}
+
 // String returns the Zig tag name.
 func (value Level) String() string {
-	switch value {
-	case LevelDebug:
-		return "debug"
-	case LevelInfo:
-		return "info"
-	default:
-		return "Level(" + strconv.Itoa(int(value)) + ")"
+	if value >= 0 && value <= 1 {
+		return zigoLevelNames[uint64(value)]
 	}
+	return "Level(" + strconv.Itoa(int(value)) + ")"
 }

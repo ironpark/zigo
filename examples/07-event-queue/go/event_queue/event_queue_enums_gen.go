@@ -14,14 +14,15 @@ const (
 	PolicyDropOldest Policy = 1
 )
 
+var zigoPolicyNames = [2]string{
+	0: "reject",
+	1: "drop_oldest",
+}
+
 // String returns the Zig tag name.
 func (value Policy) String() string {
-	switch value {
-	case PolicyReject:
-		return "reject"
-	case PolicyDropOldest:
-		return "drop_oldest"
-	default:
-		return "Policy(" + strconv.Itoa(int(value)) + ")"
+	if value >= 0 && value <= 1 {
+		return zigoPolicyNames[uint64(value)]
 	}
+	return "Policy(" + strconv.Itoa(int(value)) + ")"
 }

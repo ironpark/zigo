@@ -37,6 +37,11 @@ fn render(allocator: std.mem.Allocator, writer: *std.Io.Writer, type_name: []con
     }
     if (options.is_known) {
         try writer.print("// IsKnown reports whether value is an exported tag; unknown open-enum values return false.\nfunc (value {s}) IsKnown() bool {{\n", .{type_name});
+        const range = semantic.enumValueRange(fields);
+        if (range != null and range.?.span == fields.len) {
+            try writer.print("\treturn value >= {d} && value <= {d}\n}}\n\n", .{ range.?.min, range.?.max });
+            return;
+        }
         if (fields.len != 0) {
             try writer.writeAll("\tswitch value {\n");
             for (fields) |field| {
@@ -79,4 +84,21 @@ test "options independently disable helpers and empty enums stay valid" {
     try render(std.testing.allocator, &values.writer, "Empty", &.{}, .{ .is_known = false });
     try std.testing.expect(std.mem.indexOf(u8, values.written(), "return []Empty{") != null);
     try std.testing.expect(std.mem.indexOf(u8, values.written(), "IsKnown") == null);
+}
+
+test "membership range requires every value including excluded holes" {
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    try render(std.testing.allocator, &output.writer, "Dense", &.{
+        .{ .name = "high", .value = 0 },
+        .{ .name = "low", .value = -1 },
+    }, .{ .values = false });
+    try std.testing.expect(std.mem.indexOf(u8, output.written(), "return value >= -1 && value <= 0") != null);
+    var sparse: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer sparse.deinit();
+    try render(std.testing.allocator, &sparse.writer, "Holes", &.{
+        .{ .name = "low", .value = -1 },
+        .{ .name = "high", .value = 1 },
+    }, .{ .values = false });
+    try std.testing.expect(std.mem.indexOf(u8, sparse.written(), "switch value") != null);
 }

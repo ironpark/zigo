@@ -16,18 +16,18 @@ const (
 	CursorStyleUnderline CursorStyle = 2
 )
 
+var zigoCursorStyleNames = [3]string{
+	0: "block",
+	1: "bar",
+	2: "underline",
+}
+
 // String returns the Zig tag name.
 func (value CursorStyle) String() string {
-	switch value {
-	case CursorStyleBlock:
-		return "block"
-	case CursorStyleBar:
-		return "bar"
-	case CursorStyleUnderline:
-		return "underline"
-	default:
-		return "CursorStyle(" + strconv.Itoa(int(value)) + ")"
+	if value >= 0 && value <= 2 {
+		return zigoCursorStyleNames[uint64(value)]
 	}
+	return "CursorStyle(" + strconv.Itoa(int(value)) + ")"
 }
 
 // CharsetSlot represents the corresponding Zig enum.
@@ -42,18 +42,18 @@ const (
 	CharsetSlotG2 CharsetSlot = 2
 )
 
+var zigoCharsetSlotNames = [3]string{
+	0: "block",
+	1: "bar",
+	2: "g2",
+}
+
 // String returns the Zig tag name.
 func (value CharsetSlot) String() string {
-	switch value {
-	case CharsetSlotBlock:
-		return "block"
-	case CharsetSlotBar:
-		return "bar"
-	case CharsetSlotG2:
-		return "g2"
-	default:
-		return "CharsetSlot(" + strconv.Itoa(int(value)) + ")"
+	if value >= 0 && value <= 2 {
+		return zigoCharsetSlotNames[uint64(value)]
 	}
+	return "CharsetSlot(" + strconv.Itoa(int(value)) + ")"
 }
 
 // DeccolmMode represents the corresponding Zig enum.
@@ -66,16 +66,17 @@ const (
 	DeccolmMode132Cols DeccolmMode = 1
 )
 
+var zigoDeccolmModeNames = [2]string{
+	0: "80_cols",
+	1: "132_cols",
+}
+
 // String returns the Zig tag name.
 func (value DeccolmMode) String() string {
-	switch value {
-	case DeccolmMode80Cols:
-		return "80_cols"
-	case DeccolmMode132Cols:
-		return "132_cols"
-	default:
-		return "DeccolmMode(" + strconv.Itoa(int(value)) + ")"
+	if value >= 0 && value <= 1 {
+		return zigoDeccolmModeNames[uint64(value)]
 	}
+	return "DeccolmMode(" + strconv.Itoa(int(value)) + ")"
 }
 
 // EraseDisplay represents the corresponding Zig open enum; values outside the named constants are valid.
@@ -88,14 +89,15 @@ const (
 	EraseDisplayAbove EraseDisplay = 1
 )
 
+var zigoEraseDisplayNames = [2]string{
+	0: "below",
+	1: "above",
+}
+
 // String returns the Zig tag name.
 func (value EraseDisplay) String() string {
-	switch value {
-	case EraseDisplayBelow:
-		return "below"
-	case EraseDisplayAbove:
-		return "above"
-	default:
-		return "EraseDisplay(" + strconv.Itoa(int(value)) + ")"
+	if value >= 0 && value <= 1 {
+		return zigoEraseDisplayNames[uint64(value)]
 	}
+	return "EraseDisplay(" + strconv.Itoa(int(value)) + ")"
 }

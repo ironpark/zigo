@@ -14,14 +14,15 @@ const (
 	StatusBusy Status = 1
 )
 
+var zigoStatusNames = [2]string{
+	0: "ready",
+	1: "busy",
+}
+
 // String returns the Zig tag name.
 func (value Status) String() string {
-	switch value {
-	case StatusReady:
-		return "ready"
-	case StatusBusy:
-		return "busy"
-	default:
-		return "Status(" + strconv.Itoa(int(value)) + ")"
+	if value >= 0 && value <= 1 {
+		return zigoStatusNames[uint64(value)]
 	}
+	return "Status(" + strconv.Itoa(int(value)) + ")"
 }

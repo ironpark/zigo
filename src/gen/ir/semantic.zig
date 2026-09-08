@@ -908,6 +908,19 @@ pub const TypeField = struct {
     type: ?TypeNode = null,
     value: ?i64 = null,
 };
+/// Numeric extent of the exported enum tags, independent of declaration order.
+/// Widen before subtracting so even the full i64 domain is representable.
+pub fn enumValueRange(fields: []const TypeField) ?struct { min: i64, max: i64, span: u128 } {
+    if (fields.len == 0) return null;
+    var min = fields[0].value.?;
+    var max = min;
+    for (fields[1..]) |field| {
+        min = @min(min, field.value.?);
+        max = @max(max, field.value.?);
+    }
+    return .{ .min = min, .max = max, .span = @intCast(@as(i128, max) - min + 1) };
+}
+
 pub const TypeDecl = struct {
     access: ?Access = null,
     /// Integer storage used by a packed struct. Absent for every other type.
@@ -1680,4 +1693,14 @@ test "plugin options round trip verbatim, in declaration order, and are omitted 
     const plain_bytes = try plain.serialize(std.testing.allocator);
     defer std.testing.allocator.free(plain_bytes);
     try std.testing.expect(std.mem.indexOf(u8, plain_bytes, "\"ext\"") == null);
+}
+
+test "enum value ranges cover unsorted and full-width domains" {
+    try std.testing.expect(enumValueRange(&.{}) == null);
+    const range = enumValueRange(&.{
+        .{ .name = "max", .value = std.math.maxInt(i64) },
+        .{ .name = "min", .value = std.math.minInt(i64) },
+    }).?;
+    try std.testing.expectEqual(std.math.minInt(i64), range.min);
+    try std.testing.expectEqual(@as(u128, 1) << 64, range.span);
 }

@@ -110,8 +110,7 @@ func zigoErrorForCode(operation string, code int32) error {
 	}
 	switch code {
 	case 1:
-		return &Error{Code: 1, Name: "OutOfMemory", Operation: operation}
-	default:
-		return &Error{Code: code, Name: "Unknown(" + strconv.Itoa(int(code)) + ")", Operation: operation}
+		return &Error{Code: code, Name: "OutOfMemory", Operation: operation}
 	}
+	return &Error{Code: code, Name: "Unknown(" + strconv.Itoa(int(code)) + ")", Operation: operation}
 }

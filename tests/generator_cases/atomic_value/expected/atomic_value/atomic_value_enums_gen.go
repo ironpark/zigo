@@ -14,14 +14,15 @@ const (
 	EventTagNone EventTag = 1
 )
 
+var zigoEventTagNames = [2]string{
+	0: "count",
+	1: "none",
+}
+
 // String returns the Zig tag name.
 func (value EventTag) String() string {
-	switch value {
-	case EventTagCount:
-		return "count"
-	case EventTagNone:
-		return "none"
-	default:
-		return "EventTag(" + strconv.Itoa(int(value)) + ")"
+	if value >= 0 && value <= 1 {
+		return zigoEventTagNames[uint64(value)]
 	}
+	return "EventTag(" + strconv.Itoa(int(value)) + ")"
 }

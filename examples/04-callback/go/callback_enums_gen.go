@@ -16,16 +16,16 @@ const (
 	LevelErr Level = 2
 )
 
+var zigoLevelNames = [3]string{
+	0: "info",
+	1: "warn",
+	2: "err",
+}
+
 // String returns the Zig tag name.
 func (value Level) String() string {
-	switch value {
-	case LevelInfo:
-		return "info"
-	case LevelWarn:
-		return "warn"
-	case LevelErr:
-		return "err"
-	default:
-		return "Level(" + strconv.Itoa(int(value)) + ")"
+	if value >= 0 && value <= 2 {
+		return zigoLevelNames[uint64(value)]
 	}
+	return "Level(" + strconv.Itoa(int(value)) + ")"
 }

@@ -14,14 +14,15 @@ const (
 	LocationSelection Location = 1
 )
 
+var zigoLocationNames = [2]string{
+	0: "standard",
+	1: "selection",
+}
+
 // String returns the Zig tag name.
 func (value Location) String() string {
-	switch value {
-	case LocationStandard:
-		return "standard"
-	case LocationSelection:
-		return "selection"
-	default:
-		return "Location(" + strconv.Itoa(int(value)) + ")"
+	if value >= 0 && value <= 1 {
+		return zigoLocationNames[uint64(value)]
 	}
+	return "Location(" + strconv.Itoa(int(value)) + ")"
 }

@@ -20,18 +20,18 @@ const (
 	ModePaused Mode = 2
 )
 
+var zigoModeNames = [3]string{
+	0: "idle",
+	1: "active",
+	2: "paused",
+}
+
 // String returns the Zig tag name.
 func (value Mode) String() string {
-	switch value {
-	case ModeIdle:
-		return "idle"
-	case ModeActive:
-		return "active"
-	case ModePaused:
-		return "paused"
-	default:
-		return "Mode(" + strconv.Itoa(int(value)) + ")"
+	if value >= 0 && value <= 2 {
+		return zigoModeNames[uint64(value)]
 	}
+	return "Mode(" + strconv.Itoa(int(value)) + ")"
 }
 
 // MarshalJSON encodes Mode as its Zig tag name.
@@ -67,15 +67,7 @@ func ModeValues() []Mode {
 
 // IsKnown reports whether value is an exported tag; unknown open-enum values return false.
 func (value Mode) IsKnown() bool {
-	switch value {
-	case ModeIdle:
-		return true
-	case ModeActive:
-		return true
-	case ModePaused:
-		return true
-	}
-	return false
+	return value >= 0 && value <= 2
 }
 
 // ValueTag represents the corresponding Zig enum.
@@ -98,26 +90,22 @@ const (
 	ValueTagMutableSamples ValueTag = 6
 )
 
+var zigoValueTagNames = [7]string{
+	0: "none",
+	1: "integer",
+	2: "flag",
+	3: "mode",
+	4: "samples",
+	5: "child",
+	6: "mutableSamples",
+}
+
 // String returns the Zig tag name.
 func (value ValueTag) String() string {
-	switch value {
-	case ValueTagNone:
-		return "none"
-	case ValueTagInteger:
-		return "integer"
-	case ValueTagFlag:
-		return "flag"
-	case ValueTagMode:
-		return "mode"
-	case ValueTagSamples:
-		return "samples"
-	case ValueTagChild:
-		return "child"
-	case ValueTagMutableSamples:
-		return "mutableSamples"
-	default:
-		return "ValueTag(" + strconv.Itoa(int(value)) + ")"
+	if value >= 0 && value <= 6 {
+		return zigoValueTagNames[uint64(value)]
 	}
+	return "ValueTag(" + strconv.Itoa(int(value)) + ")"
 }
 
 // SignalTag represents the corresponding Zig enum.
@@ -138,24 +126,21 @@ const (
 	SignalTagActive SignalTag = 5
 )
 
+var zigoSignalTagNames = [6]string{
+	0: "idle",
+	1: "ticks",
+	2: "level",
+	3: "offset",
+	4: "mode",
+	5: "active",
+}
+
 // String returns the Zig tag name.
 func (value SignalTag) String() string {
-	switch value {
-	case SignalTagIdle:
-		return "idle"
-	case SignalTagTicks:
-		return "ticks"
-	case SignalTagLevel:
-		return "level"
-	case SignalTagOffset:
-		return "offset"
-	case SignalTagMode:
-		return "mode"
-	case SignalTagActive:
-		return "active"
-	default:
-		return "SignalTag(" + strconv.Itoa(int(value)) + ")"
+	if value >= 0 && value <= 5 {
+		return zigoSignalTagNames[uint64(value)]
 	}
+	return "SignalTag(" + strconv.Itoa(int(value)) + ")"
 }
 
 // ScrollViewportTag represents the corresponding Zig enum.
@@ -176,22 +161,19 @@ const (
 	ScrollViewportTagRegion ScrollViewportTag = 5
 )
 
+var zigoScrollViewportTagNames = [6]string{
+	0: "top",
+	1: "bottom",
+	2: "delta",
+	3: "page",
+	4: "rgb",
+	5: "region",
+}
+
 // String returns the Zig tag name.
 func (value ScrollViewportTag) String() string {
-	switch value {
-	case ScrollViewportTagTop:
-		return "top"
-	case ScrollViewportTagBottom:
-		return "bottom"
-	case ScrollViewportTagDelta:
-		return "delta"
-	case ScrollViewportTagPage:
-		return "page"
-	case ScrollViewportTagRgb:
-		return "rgb"
-	case ScrollViewportTagRegion:
-		return "region"
-	default:
-		return "ScrollViewportTag(" + strconv.Itoa(int(value)) + ")"
+	if value >= 0 && value <= 5 {
+		return zigoScrollViewportTagNames[uint64(value)]
 	}
+	return "ScrollViewportTag(" + strconv.Itoa(int(value)) + ")"
 }

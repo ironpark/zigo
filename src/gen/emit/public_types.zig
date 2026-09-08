@@ -900,18 +900,65 @@ pub fn renderGoEnums(allocator: std.mem.Allocator, writer: *std.Io.Writer, progr
             defer allocator.free(field_name);
             try writer.print("\t// {s}{s} corresponds to the Zig tag {s}.\n\t{s}{s} {s} = {d}\n", .{ declaration.name, field_name, field.name, declaration.name, field_name, declaration.name, field.value.? });
         }
-        try writer.print(")\n\n// String returns the Zig tag name.\nfunc (value {s}) String() string {{\n\tswitch value {{\n", .{declaration.name});
-        for (program.liveFields(declaration.name)) |field| {
-            const field_name = try naming.pascalAlloc(allocator, field.name);
-            defer allocator.free(field_name);
-            try writer.print("\tcase {s}{s}:\n\t\treturn \"{s}\"\n", .{ declaration.name, field_name, field.name });
-        }
-        try writer.print("\tdefault:\n\t\treturn \"{s}(\" + ", .{declaration.name});
-        try writeEnumNumberFormat(writer, declaration.tag_type.?);
-        try writer.writeAll(" + \")\"\n\t}\n}\n\n");
+        try writer.writeAll(")\n\n");
+        try renderGoEnumString(allocator, writer, declaration, program.liveFields(declaration.name));
         if (declaration.text == true) try renderGoEnumText(allocator, writer, program, declaration);
         try plugin_hooks.runTypeHooks(plugin_hooks.context(allocator, program, options), writer, declaration);
     }
+}
+
+// Cap both absolute storage and wasted slots. This is a storage policy, not
+// a performance crossover claim; sparse domains keep their switch.
+fn useNameArray(count: usize, span: u128) bool {
+    return count > 1 and span <= 4096 and span <= @as(u128, count) * 2;
+}
+
+fn writeLookupIndex(writer: *std.Io.Writer, value: []const u8, min: i64) !void {
+    // Unsigned arithmetic after a range check also handles ranges crossing
+    // zero without overflowing the enum's narrow signed underlying type.
+    try writer.print("uint64({s})", .{value});
+    if (min < 0) try writer.print(" + {d}", .{-@as(i128, min)});
+    if (min > 0) try writer.print(" - {d}", .{min});
+}
+
+fn renderGoEnumString(allocator: std.mem.Allocator, writer: *std.Io.Writer, declaration: semantic.TypeDecl, fields: []const semantic.TypeField) !void {
+    const range = semantic.enumValueRange(fields);
+    var table = if (range) |r| useNameArray(fields.len, r.span) else false;
+    // Empty names cannot double as the marker for an omitted numeric value.
+    for (fields) |field| if (field.name.len == 0) {
+        table = false;
+    };
+    if (table) {
+        const r = range.?;
+        try writer.print("var zigo{0s}Names = [{1d}]string{{\n", .{ declaration.name, r.span });
+        for (fields) |field| try writer.print("\t{d}: \"{s}\",\n", .{ @as(i128, field.value.?) - r.min, field.name });
+        try writer.writeAll("}\n\n");
+    }
+    try writer.print("// String returns the Zig tag name.\nfunc (value {s}) String() string {{\n", .{declaration.name});
+    if (table) {
+        const r = range.?;
+        try writer.print("\tif value >= {d} && value <= {d} {{\n", .{ r.min, r.max });
+        if (r.span == fields.len) {
+            try writer.print("\t\treturn zigo{s}Names[", .{declaration.name});
+            try writeLookupIndex(writer, "value", r.min);
+            try writer.writeAll("]\n\t}\n");
+        } else {
+            try writer.print("\t\tif name := zigo{s}Names[", .{declaration.name});
+            try writeLookupIndex(writer, "value", r.min);
+            try writer.writeAll("]; name != \"\" {\n\t\t\treturn name\n\t\t}\n\t}\n");
+        }
+    } else {
+        try writer.writeAll("\tswitch value {\n");
+        for (fields) |field| {
+            const member = try naming.pascalAlloc(allocator, field.name);
+            defer allocator.free(member);
+            try writer.print("\tcase {s}{s}:\n\t\treturn \"{s}\"\n", .{ declaration.name, member, field.name });
+        }
+        try writer.writeAll("\t}\n");
+    }
+    try writer.print("\treturn \"{s}(\" + ", .{declaration.name});
+    try writeEnumNumberFormat(writer, declaration.tag_type.?);
+    try writer.writeAll(" + \")\"\n}\n\n");
 }
 
 /// An adapted enum has no generated type: the user's type stands in, and
@@ -1060,22 +1107,78 @@ pub fn renderGoErrors(allocator: std.mem.Allocator, writer: *std.Io.Writer, prog
         try writer.print("// Err{s} represents Zig error.{s}.\nvar Err{s} = &Error{{Code: {d}, Name: \"{s}\"}}\n", .{ name, entry.name, name, entry.code, entry.name });
     }
     if (!programReturnsErrorUnion(program)) return;
+    var min_code: i64 = std.math.maxInt(i32);
+    var max_code: i64 = 0;
+    for (program.error_codes) |entry| {
+        min_code = @min(min_code, entry.code);
+        max_code = @max(max_code, entry.code);
+    }
+    const table = useNameArray(program.error_codes.len, @intCast(@max(0, max_code - min_code + 1)));
+    if (table) {
+        try writer.print("\nvar zigoErrorNames = [{d}]string{{\n", .{max_code - min_code + 1});
+        for (program.error_codes) |entry| try writer.print("\t{d}: \"{s}\",\n", .{ entry.code - min_code, entry.name });
+        try writer.writeAll("}\n");
+    }
     // A caught panic reports a status of -256 or below; the code names the
     // slot its message was published in, readable from any thread.
     try writer.writeAll("\nfunc zigoErrorForCode(operation string, code int32) error {\n\tif code <= -256 {\n\t\treturn &NativePanicError{Operation: operation, Message: ");
     try public_writers.writeRawReferencePrefix(writer, options);
-    try writer.writeAll("PanicMessage(code)}\n\t}\n\tswitch code {\n");
+    try writer.writeAll("PanicMessage(code)}\n\t}\n");
     if (programHasValueUnionReturn(program))
-        try writer.writeAll("\tcase -3:\n\t\treturn &Error{Code: -3, Name: \"OmittedVariant\", Operation: operation}\n");
-    for (program.error_codes) |entry| {
-        const name = try naming.pascalAlloc(allocator, entry.name);
-        defer allocator.free(name);
-        try writer.print("\tcase {d}:\n\t\treturn &Error{{Code: {d}, Name: \"{s}\", Operation: operation}}\n", .{ entry.code, entry.code, entry.name });
+        try writer.writeAll("\tif code == -3 {\n\t\treturn &Error{Code: -3, Name: \"OmittedVariant\", Operation: operation}\n\t}\n");
+    if (table) {
+        try writer.print("\tif code >= {d} && code <= {d} {{\n\t\tif name := zigoErrorNames[code - {d}]; name != \"\" {{\n\t\t\treturn &Error{{Code: code, Name: name, Operation: operation}}\n\t\t}}\n\t}}\n", .{ min_code, max_code, min_code });
+    } else if (program.error_codes.len != 0) {
+        try writer.writeAll("\tswitch code {\n");
+        for (program.error_codes) |entry|
+            try writer.print("\tcase {d}:\n\t\treturn &Error{{Code: code, Name: \"{s}\", Operation: operation}}\n", .{ entry.code, entry.name });
+        try writer.writeAll("\t}\n");
     }
-    try writer.writeAll("\tdefault:\n\t\treturn &Error{Code: code, Name: \"Unknown(\" + strconv.Itoa(int(code)) + \")\", Operation: operation}\n\t}\n}\n");
+    try writer.writeAll("\treturn &Error{Code: code, Name: \"Unknown(\" + strconv.Itoa(int(code)) + \")\", Operation: operation}\n}\n");
 }
 
 fn programHasValueUnionReturn(program: abi.Program) bool {
     for (program.functions) |function| if (function.value_union_return) return true;
     return false;
+}
+
+test "name arrays bound storage and preserve sparse fallback" {
+    try std.testing.expect(!useNameArray(0, 0));
+    try std.testing.expect(!useNameArray(1, 1));
+    try std.testing.expect(useNameArray(2, 4));
+    try std.testing.expect(!useNameArray(2, 5));
+    try std.testing.expect(!useNameArray(4097, 4097));
+    try std.testing.expect(!useNameArray(2, @as(u128, 1) << 64));
+}
+
+test "error lookup arrays preserve holes and reject wide lock ranges" {
+    var nothing: semantic.TypeNode = .void;
+    const document: semantic.Semantic = .{
+        .package = "lookup",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+        .functions = &.{.{
+            .name = "run",
+            .symbol = "zg_run",
+            .params = &.{},
+            .@"return" = .{ .error_union = .{ .error_set = &.{ "First", "Last" }, .payload = &nothing } },
+        }},
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    for ([_]i32{ 4, std.math.maxInt(i32) - 1 }) |last| {
+        const program = try @import("lower").semanticDocument(allocator, document, "lookup", "zg", &.{
+            .{ .name = "First", .code = 1 },
+            .{ .name = "Last", .code = last },
+        });
+        var output: std.Io.Writer.Allocating = .init(allocator);
+        try renderGoErrors(allocator, &output.writer, program, .{ .go_module = "example.com/zigo/lookup" });
+        const has_array = std.mem.indexOf(u8, output.written(), "var zigoErrorNames") != null;
+        try std.testing.expectEqual(last == 4, has_array);
+        if (last == 4) {
+            try std.testing.expect(std.mem.indexOf(u8, output.written(), "3: \"Last\"") != null);
+            try std.testing.expect(std.mem.indexOf(u8, output.written(), "name != \"\"") != null);
+        }
+    }
 }

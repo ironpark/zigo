@@ -1,0 +1,6 @@
+{
+  "package": "lookup",
+  "prefix": "zg",
+  "go_module": "example.com/zigo/lookup",
+  "backend": "purego"
+}

@@ -271,6 +271,36 @@ pub fn addRepositorySteps(
     json_test.setName("JSON plugin generated Go round trips codepoints");
     json_test.setCwd(json_fixture.getDirectory());
     test_step.dependOn(&json_test.step);
+    const lookup_bench = b.step("lookup-bench", "Compare generated lookups with switch and map alternatives");
+    for ([_][]const u8{ "enum_lookup", "enum_lookup_purego" }) |case_name| {
+        const fixture = b.addWriteFiles();
+        _ = fixture.add("go.mod", "module example.com/zigo/lookup\n\ngo 1.26\n");
+        _ = fixture.addCopyFile(b.path(b.fmt("tests/generator_cases/{s}/expected/lookup/lookup_enums_gen.go", .{case_name})), "lookup/enums.go");
+        _ = fixture.addCopyFile(b.path("tests/enum_lookup_test.go"), "lookup/lookup_test.go");
+        const run = b.addSystemCommand(&.{ "go", "test", "./..." });
+        run.setName(b.fmt("generated enum lookup boundaries ({s})", .{case_name}));
+        run.setCwd(fixture.getDirectory());
+        test_step.dependOn(&run.step);
+        if (std.mem.eql(u8, case_name, "enum_lookup")) {
+            const bench = b.addSystemCommand(&.{ "go", "test", "./...", "-bench=.", "-benchmem", "-benchtime=300ms", "-count=3" });
+            bench.setCwd(fixture.getDirectory());
+            bench.has_side_effects = true;
+            lookup_bench.dependOn(&bench.step);
+        }
+    }
+    const error_fixture = b.addWriteFiles();
+    _ = error_fixture.add("go.mod", "module example.com/zigo/pipeline\n\ngo 1.26\n");
+    _ = error_fixture.add("internal/raw/raw.go", "package raw\nfunc PanicMessage(int32) string { return \"test panic\" }\n");
+    _ = error_fixture.addCopyFile(b.path("tests/generator_cases/complex/expected/pipeline/pipeline_errors_gen.go"), "pipeline/errors.go");
+    _ = error_fixture.addCopyFile(b.path("tests/error_lookup_test.go"), "pipeline/lookup_test.go");
+    const error_test = b.addSystemCommand(&.{ "go", "test", "./..." });
+    error_test.setName("generated error lookup preserves operation and identity");
+    error_test.setCwd(error_fixture.getDirectory());
+    test_step.dependOn(&error_test.step);
+    const error_bench = b.addSystemCommand(&.{ "go", "test", "./...", "-bench=.", "-benchmem", "-benchtime=300ms", "-count=3" });
+    error_bench.setCwd(error_fixture.getDirectory());
+    error_bench.has_side_effects = true;
+    lookup_bench.dependOn(&error_bench.step);
     test_step.dependOn(&run_tests.step);
     test_step.dependOn(&run_generator_tests.step);
     test_step.dependOn(&run_reflect_walk_tests.step);

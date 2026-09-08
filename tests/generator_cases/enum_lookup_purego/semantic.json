@@ -1,0 +1,446 @@
+{
+  "package": "lookup",
+  "prefix": "zg",
+  "zig_version": "0.16.0",
+  "types": [
+    {
+      "name": "Dense",
+      "kind": "enum",
+      "open": true,
+      "exhaustive": false,
+      "text": true,
+      "tag_type": {
+        "kind": "int",
+        "bits": 8,
+        "signed": true
+      },
+      "fields": [
+        {
+          "name": "two",
+          "value": 2
+        },
+        {
+          "name": "zero",
+          "value": 0
+        },
+        {
+          "name": "one",
+          "value": 1
+        },
+        {
+          "name": "minus",
+          "value": -1
+        }
+      ]
+    },
+    {
+      "name": "Holes",
+      "kind": "enum",
+      "open": true,
+      "exhaustive": false,
+      "text": true,
+      "tag_type": {
+        "kind": "int",
+        "bits": 8,
+        "signed": true
+      },
+      "fields": [
+        {
+          "name": "low",
+          "value": -128
+        },
+        {
+          "name": "next",
+          "value": -127
+        },
+        {
+          "name": "high",
+          "value": -125
+        }
+      ]
+    },
+    {
+      "name": "Min64",
+      "kind": "enum",
+      "open": true,
+      "exhaustive": false,
+      "text": true,
+      "tag_type": {
+        "kind": "int",
+        "bits": 64,
+        "signed": true
+      },
+      "fields": [
+        {
+          "name": "low",
+          "value": -9223372036854775808
+        },
+        {
+          "name": "high",
+          "value": -9223372036854775807
+        }
+      ]
+    },
+    {
+      "name": "Max64",
+      "kind": "enum",
+      "open": true,
+      "exhaustive": false,
+      "text": true,
+      "tag_type": {
+        "kind": "int",
+        "bits": 64,
+        "signed": false
+      },
+      "fields": [
+        {
+          "name": "low",
+          "value": 9223372036854775806
+        },
+        {
+          "name": "high",
+          "value": 9223372036854775807
+        }
+      ]
+    },
+    {
+      "name": "Max8",
+      "kind": "enum",
+      "open": true,
+      "exhaustive": false,
+      "text": true,
+      "tag_type": {
+        "kind": "int",
+        "bits": 8,
+        "signed": false
+      },
+      "fields": [
+        {
+          "name": "low",
+          "value": 254
+        },
+        {
+          "name": "high",
+          "value": 255
+        }
+      ]
+    },
+    {
+      "name": "Sparse",
+      "kind": "enum",
+      "open": true,
+      "exhaustive": false,
+      "text": true,
+      "tag_type": {
+        "kind": "int",
+        "bits": 64,
+        "signed": true
+      },
+      "fields": [
+        {
+          "name": "low",
+          "value": -9223372036854775808
+        },
+        {
+          "name": "high",
+          "value": 9223372036854775807
+        }
+      ]
+    },
+    {
+      "name": "Single",
+      "kind": "enum",
+      "open": true,
+      "exhaustive": false,
+      "text": true,
+      "tag_type": {
+        "kind": "int",
+        "bits": 8,
+        "signed": true
+      },
+      "fields": [
+        {
+          "name": "only",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "name": "Large",
+      "kind": "enum",
+      "tag_type": {
+        "kind": "int",
+        "bits": 8,
+        "signed": false
+      },
+      "fields": [
+        {
+          "name": "tag0",
+          "value": 0
+        },
+        {
+          "name": "tag1",
+          "value": 1
+        },
+        {
+          "name": "tag2",
+          "value": 2
+        },
+        {
+          "name": "tag3",
+          "value": 3
+        },
+        {
+          "name": "tag4",
+          "value": 4
+        },
+        {
+          "name": "tag5",
+          "value": 5
+        },
+        {
+          "name": "tag6",
+          "value": 6
+        },
+        {
+          "name": "tag7",
+          "value": 7
+        },
+        {
+          "name": "tag8",
+          "value": 8
+        },
+        {
+          "name": "tag9",
+          "value": 9
+        },
+        {
+          "name": "tag10",
+          "value": 10
+        },
+        {
+          "name": "tag11",
+          "value": 11
+        },
+        {
+          "name": "tag12",
+          "value": 12
+        },
+        {
+          "name": "tag13",
+          "value": 13
+        },
+        {
+          "name": "tag14",
+          "value": 14
+        },
+        {
+          "name": "tag15",
+          "value": 15
+        },
+        {
+          "name": "tag16",
+          "value": 16
+        },
+        {
+          "name": "tag17",
+          "value": 17
+        },
+        {
+          "name": "tag18",
+          "value": 18
+        },
+        {
+          "name": "tag19",
+          "value": 19
+        },
+        {
+          "name": "tag20",
+          "value": 20
+        },
+        {
+          "name": "tag21",
+          "value": 21
+        },
+        {
+          "name": "tag22",
+          "value": 22
+        },
+        {
+          "name": "tag23",
+          "value": 23
+        },
+        {
+          "name": "tag24",
+          "value": 24
+        },
+        {
+          "name": "tag25",
+          "value": 25
+        },
+        {
+          "name": "tag26",
+          "value": 26
+        },
+        {
+          "name": "tag27",
+          "value": 27
+        },
+        {
+          "name": "tag28",
+          "value": 28
+        },
+        {
+          "name": "tag29",
+          "value": 29
+        },
+        {
+          "name": "tag30",
+          "value": 30
+        },
+        {
+          "name": "tag31",
+          "value": 31
+        }
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "name": "echoDense",
+      "symbol": "zg_echo_dense",
+      "params": [
+        {
+          "name": "value",
+          "type": {
+            "kind": "enum",
+            "ref": "Dense"
+          }
+        }
+      ],
+      "return": {
+        "kind": "enum",
+        "ref": "Dense"
+      }
+    },
+    {
+      "name": "echoHoles",
+      "symbol": "zg_echo_holes",
+      "params": [
+        {
+          "name": "value",
+          "type": {
+            "kind": "enum",
+            "ref": "Holes"
+          }
+        }
+      ],
+      "return": {
+        "kind": "enum",
+        "ref": "Holes"
+      }
+    },
+    {
+      "name": "echoMin64",
+      "symbol": "zg_echo_min64",
+      "params": [
+        {
+          "name": "value",
+          "type": {
+            "kind": "enum",
+            "ref": "Min64"
+          }
+        }
+      ],
+      "return": {
+        "kind": "enum",
+        "ref": "Min64"
+      }
+    },
+    {
+      "name": "echoMax64",
+      "symbol": "zg_echo_max64",
+      "params": [
+        {
+          "name": "value",
+          "type": {
+            "kind": "enum",
+            "ref": "Max64"
+          }
+        }
+      ],
+      "return": {
+        "kind": "enum",
+        "ref": "Max64"
+      }
+    },
+    {
+      "name": "echoMax8",
+      "symbol": "zg_echo_max8",
+      "params": [
+        {
+          "name": "value",
+          "type": {
+            "kind": "enum",
+            "ref": "Max8"
+          }
+        }
+      ],
+      "return": {
+        "kind": "enum",
+        "ref": "Max8"
+      }
+    },
+    {
+      "name": "echoSparse",
+      "symbol": "zg_echo_sparse",
+      "params": [
+        {
+          "name": "value",
+          "type": {
+            "kind": "enum",
+            "ref": "Sparse"
+          }
+        }
+      ],
+      "return": {
+        "kind": "enum",
+        "ref": "Sparse"
+      }
+    },
+    {
+      "name": "echoSingle",
+      "symbol": "zg_echo_single",
+      "params": [
+        {
+          "name": "value",
+          "type": {
+            "kind": "enum",
+            "ref": "Single"
+          }
+        }
+      ],
+      "return": {
+        "kind": "enum",
+        "ref": "Single"
+      }
+    },
+    {
+      "name": "echoLarge",
+      "symbol": "zg_echo_large",
+      "params": [
+        {
+          "name": "value",
+          "type": {
+            "kind": "enum",
+            "ref": "Large"
+          }
+        }
+      ],
+      "return": {
+        "kind": "enum",
+        "ref": "Large"
+      }
+    }
+  ]
+}
