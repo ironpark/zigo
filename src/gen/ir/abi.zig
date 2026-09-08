@@ -501,9 +501,6 @@ pub const AbiFn = struct {
     /// as one serialized buffer. Go decodes it back into the caller's slice.
     materialized_out: ?MaterializedOut = null,
 
-    /// Whether the public package also emits a `Must<Name>` wrapper. Decided
-    /// once by `lower.mustVariant`; the collision check reads the same rule.
-    must_variant: bool = false,
     /// True when native code running under this call can reach a Go callback
     /// that returns an `error`, which grows the public signature by one.
     reaches_callback_errors: bool = false,

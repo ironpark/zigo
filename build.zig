@@ -128,7 +128,7 @@ pub const Options = struct {
     go_package_doc: ?[]const u8 = null,
     /// Emit `Must*` companions for public functions whose generated Go
     /// signature returns an error. Disabled by default.
-    go_must_variants: bool = false,
+    plugin_config: []const u8 = "{}",
     /// Optional source path for the JSON form of `go-coverage`.
     coverage_json: ?[]const u8 = null,
     /// purego-only run-time loading policy. The default requires an explicit
@@ -589,7 +589,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
             generate.addArgs(&.{ "--target-ldflags", b.fmt("{s}={s}", .{ constraint, steps.joinFlags(b, entry.ldflags) }) });
         }
     }
-    if (options.go_must_variants) generate.addArg("--go-must-variants");
+    generate.addArgs(&.{ "--plugin-config", options.plugin_config });
     if (backend == .purego) addLibraryLoadingArgs(b, generate, library_loading);
     if (raw_package.colocated) generate.addArg("--raw-colocated");
     const errors_lock_path = "zigo/errors.lock.json";

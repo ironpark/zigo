@@ -4,6 +4,8 @@
 //! Neither can reach the shim, the header or the raw package.
 const std = @import("std");
 const abi = @import("abi");
+const docs = @import("docs.zig");
+const naming = @import("naming");
 const common = @import("common.zig");
 const emit = @import("emit.zig");
 const plugin = @import("plugin");
@@ -19,6 +21,9 @@ const writers: plugin.Writers = .{
     .writeGoType = writeGoType,
     .receiverNameAlloc = receiverNameAlloc,
     .writeSignature = writeSignature,
+    .writeValueType = writeValueType,
+    .writeDoc = docs.writeGoDoc,
+    .functionInfo = functionInfo,
     .writeParameters = writeParameters,
     .writeResultType = writeResultType,
     .writeCallArguments = writeCallArguments,
@@ -104,22 +109,22 @@ fn receiverNameAlloc(value: plugin.Context, allocator: std.mem.Allocator, type_n
     return common.typeReceiverNameAlloc(allocator, value.program, type_name);
 }
 
-fn writeSignature(value: plugin.Context, writer: *std.Io.Writer, function: abi.AbiFn) anyerror!void {
-    const method = value.method orelse return error.NoMethodInContext;
-    return public.writePublicSignature(
-        scopeOf(value),
-        value.allocator,
-        writer,
-        function,
-        method.param_names,
-        common.constructorForInit(value.program, function.origin.*),
-    );
+fn writeSignature(value: plugin.Context, writer: *std.Io.Writer, function: abi.AbiFn, options: plugin.SignatureOptions) anyerror!void {
+    const allocated = if (options.parameter_names and value.method == null) try common.goParamNamesForAlloc(value.allocator, function.origin.params) else null;
+    defer if (allocated) |names| naming.freeParamNames(value.allocator, names);
+    const names = if (!options.parameter_names) null else if (value.method) |method| method.param_names else allocated;
+    try writer.writeByte('(');
+    try public.writePublicParameters(scopeOf(value), value.allocator, writer, function, names);
+    try writer.writeByte(')');
+    _ = try writeResultType(value, writer, function, .{ .omit_error = options.omit_error });
 }
 
 fn writeParameters(value: plugin.Context, writer: *std.Io.Writer, function: abi.AbiFn) anyerror!void {
-    const method = value.method orelse return error.NoMethodInContext;
+    const allocated = if (value.method == null) try common.goParamNamesForAlloc(value.allocator, function.origin.params) else null;
+    defer if (allocated) |names| naming.freeParamNames(value.allocator, names);
+    const names = if (value.method) |method| method.param_names else allocated.?;
     try writer.writeByte('(');
-    try public.writePublicParameters(scopeOf(value), value.allocator, writer, function, method.param_names);
+    try public.writePublicParameters(scopeOf(value), value.allocator, writer, function, names);
     try writer.writeByte(')');
 }
 
@@ -128,8 +133,40 @@ fn writeResultType(value: plugin.Context, writer: *std.Io.Writer, function: abi.
 }
 
 fn writeCallArguments(value: plugin.Context, writer: *std.Io.Writer, function: abi.AbiFn) anyerror!void {
-    const method = value.method orelse return error.NoMethodInContext;
-    return public.writePublicCallArguments(value.allocator, writer, function, method.param_names);
+    const allocated = if (value.method == null) try common.goParamNamesForAlloc(value.allocator, function.origin.params) else null;
+    defer if (allocated) |names| naming.freeParamNames(value.allocator, names);
+    return public.writePublicCallArguments(value.allocator, writer, function, if (value.method) |method| method.param_names else allocated.?);
+}
+
+fn writeValueType(value: plugin.Context, writer: *std.Io.Writer, function: abi.AbiFn) anyerror!void {
+    const origin = function.origin.*;
+    if (common.constructorForInit(value.program, origin)) |constructor| return writer.print("*{s}", .{constructor.type});
+    const result = origin.@"return".errorPayload();
+    const node = if (result == .optional) result.optional.child.* else result;
+    if (node == .opaque_ptr and docs.returnsBorrowedView(origin)) return writer.print("*{s}", .{node.opaque_ptr.ref});
+    if (node == .opaque_ptr and docs.returnsBorrowedOpaque(origin)) return writer.print("*{s}Ref", .{node.opaque_ptr.ref});
+    if (semantic.isStringSlice(node, origin.return_semantic)) return writer.writeAll("string");
+    if (public_writers.codepointTypeName(node, origin.return_semantic)) |name| return writer.writeAll(name);
+    if (origin.return_go_adapter) |adapter| return writer.writeAll(adapter.type);
+    return public_writers.writePublicGoType(scopeOf(value), writer, node);
+}
+
+fn functionInfo(value: plugin.Context, function: abi.AbiFn) anyerror!plugin.FunctionInfo {
+    const origin = function.origin.*;
+    const document: semantic.Semantic = .{ .constructors = value.program.constructors, .package = value.program.package, .prefix = value.program.prefix, .zig_version = "" };
+    return .{
+        .go_name = try semantic.publicFunctionNameAlloc(value.allocator, document, origin),
+        .is_public = public.emitsPublicFunction(value.program, function),
+        .has_error = common.constructorForInit(value.program, origin) != null or origin.@"return" == .error_union or public.signatureShape(function).needs_check,
+    };
+}
+
+pub fn analyze(allocator: std.mem.Allocator, program: abi.Program, options: emit.Options, facts: *plugin.Facts, diagnostics: *std.ArrayList(@import("diagnostic").Diagnostic)) !void {
+    inline for (registry.plugins, 0..) |registered, index| {
+        if (registered.analyze) |check| {
+            if (runs(index, options)) try check(.{ .render = context(allocator, program, options), .facts = facts, .diagnostics = diagnostics });
+        }
+    }
 }
 
 test "a registered plugin adds a method next to a bound one, a line after a type, and a file" {
@@ -273,6 +310,9 @@ test "plugin result and parameter writers avoid parsing checked signatures" {
         try std.testing.expectEqualStrings(if (index == 0) "value" else "", args.written());
         var missing = ctx;
         missing.method = null;
-        try std.testing.expectError(error.NoMethodInContext, missing.writeParameters(&args.writer, function));
+        var standalone: std.Io.Writer.Allocating = .init(allocator);
+        defer standalone.deinit();
+        try missing.writeParameters(&standalone.writer, function);
+        try std.testing.expectEqualStrings(if (index == 0) "(value int32)" else "()", standalone.written());
     }
 }

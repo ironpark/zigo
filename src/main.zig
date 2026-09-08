@@ -43,47 +43,7 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
         std.mem.trim(u8, try std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(1024 * 1024)), " \r\n\t")
     else
         options.pkg_config_libs;
-    var parsed = try semantic.Semantic.parse(allocator, semantic_bytes);
-    defer parsed.deinit();
-    // The diagnostic can name allocated text, so it lives on a scratch arena
-    // that outlives the render and nothing else.
-    var scratch = std.heap.ArenaAllocator.init(allocator);
-    defer scratch.deinit();
-    const issues = try validate.findIssues(scratch.allocator(), parsed.value);
-    if (issues.len != 0) {
-        var buffer: [2048]u8 = undefined;
-        var stderr = std.Io.File.Writer.init(.stderr(), io, &buffer);
-        for (issues) |found| try found.render(&stderr.interface);
-        try stderr.interface.flush();
-        std.process.exit(1);
-    }
-    var issue: ?diagnostic.Diagnostic = null;
-    if (issue == null and options.go_must_variants) {
-        const expanded = try stream_return.expand(scratch.allocator(), parsed.value);
-        issue = try validate.findMustVariantIssue(scratch.allocator(), expanded);
-    }
-    if (issue == null and options.backend == .purego)
-        issue = validate.puregoCallbackIssue(parsed.value);
-    if (issue == null and parsed.value.interfaces != null) {
-        const expanded = try stream_return.expand(scratch.allocator(), parsed.value);
-        issue = try generator.interfaceSignatureIssue(scratch.allocator(), expanded, .{
-            .package = options.package,
-            .prefix = options.prefix,
-            .go_module = options.go_module,
-            .go_must_variants = options.go_must_variants,
-            .backend = switch (options.backend) {
-                .cgo => .cgo,
-                .purego => .purego,
-            },
-        });
-    }
-    if (issue) |found| {
-        var buffer: [1024]u8 = undefined;
-        var stderr = std.Io.File.Writer.init(.stderr(), io, &buffer);
-        try found.render(&stderr.interface);
-        try stderr.interface.flush();
-        std.process.exit(1);
-    }
+    const configurations = try @import("plugin").configurationsAlloc(allocator, @import("plugin_registry").configurations, options.plugin_config);
     try std.Io.Dir.cwd().createDirPath(io, options.output_path);
     var output = try std.Io.Dir.cwd().openDir(io, options.output_path, .{ .iterate = true });
     defer output.close(io);
@@ -120,7 +80,7 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
         .go_package = options.go_package,
         .go_package_path = options.go_package_path,
         .go_package_doc = options.go_package_doc,
-        .go_must_variants = options.go_must_variants,
+        .configurations = configurations,
         .errors_lock_bytes = errors_lock_bytes,
         .backend = switch (options.backend) {
             .cgo => .cgo,

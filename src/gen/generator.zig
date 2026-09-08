@@ -1,3 +1,5 @@
+const plugin = @import("plugin");
+const plugin_hooks = @import("emit/plugin_hooks.zig");
 const std = @import("std");
 const emit = @import("emit/emit.zig");
 const abi = @import("abi");
@@ -37,7 +39,6 @@ pub const Options = struct {
     go_package: []const u8 = "",
     go_package_path: []const u8 = "",
     go_package_doc: []const u8 = "",
-    go_must_variants: bool = false,
     /// Which added plugins run, by name. Null runs every plugin the generator
     /// was built with; naming a subset is how a golden case pins one plugin
     /// out of a binary that holds several.
@@ -71,18 +72,21 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
 
     var parsed = try semantic.Semantic.parse(scratch_allocator, semantic_bytes);
     defer parsed.deinit();
-    const validation_issues = try validate.findIssuesConfigured(scratch_allocator, parsed.value, options.plugins, options.configurations);
+    var facts: plugin.Facts = .{};
+    const validation_issues = try validate.findIssuesWithFacts(scratch_allocator, parsed.value, options.plugins, options.configurations, &facts);
     if (validation_issues.len != 0) {
         if (options.diagnostics) |issues| for (validation_issues) |issue| try issues.append(allocator, try issue.clone(allocator));
         return error.InvalidSemantic;
     }
-    if (options.backend == .purego) try validate.puregoCallbacks(parsed.value);
+    if (options.backend == .purego) if (validate.puregoCallbackIssue(parsed.value)) |issue| {
+        if (options.diagnostics) |issues| try issues.append(allocator, try issue.clone(allocator));
+        return error.InvalidSemantic;
+    };
     // Validation judged the Zig surface the document records; everything below
     // works on the expansion, where a stream-returning method has become the
     // `Write`/`Flush`/`Read` operations that carry it. The error-set collection
     // below has to see them: their `WriteFailed`/`ReadFailed` need codes too.
     const document = try stream_return.expand(scratch_allocator, parsed.value);
-    if (options.go_must_variants) try validate.mustVariantNames(scratch_allocator, document);
     var baseline: ?errors_lock.ErrorsLock = if (options.errors_lock_bytes) |bytes| try errors_lock.ErrorsLock.parse(scratch_allocator, bytes) else null;
     defer if (baseline) |*value| value.deinit(scratch_allocator);
     var lock: errors_lock.ErrorsLock = if (options.errors_lock_bytes) |bytes| try errors_lock.ErrorsLock.parse(scratch_allocator, bytes) else .{};
@@ -102,7 +106,6 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
         .cgo => .cgo,
         .purego => .purego,
     });
-    if (try interfaceSignatureMismatch(scratch_allocator, program, options)) |_| return error.InvalidSemantic;
     var emitter_options: emit.Options = .{
         .go_module = options.go_module,
         .cflags_override = options.cflags_override,
@@ -123,9 +126,9 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
         .go_package = options.go_package,
         .go_package_path = options.go_package_path,
         .go_package_doc = options.go_package_doc,
-        .go_must_variants = options.go_must_variants,
         .plugins = options.plugins,
         .configurations = options.configurations,
+        .facts = &facts,
         .backend = options.backend,
         .link_mode = options.link_mode,
         .cgo_targets = options.cgo_targets,
@@ -137,6 +140,12 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
         .library_exported_api = options.library_exported_api,
         .library_platform_dirs = options.library_platform_dirs,
     };
+    var analysis_issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
+    try plugin_hooks.analyze(scratch_allocator, program, emitter_options, &facts, &analysis_issues);
+    if (analysis_issues.items.len != 0) {
+        if (options.diagnostics) |issues| for (analysis_issues.items) |issue| try issues.append(allocator, try issue.clone(allocator));
+        return error.InvalidSemantic;
+    }
     var prepared: std.ArrayList(PreparedFile) = .empty;
     defer prepared.deinit(scratch_allocator);
     emitter_options.default_package_path = if (options.go_package_path.len != 0) options.go_package_path else if (options.go_package.len != 0) options.go_package else try naming.snakeAlloc(scratch_allocator, document.package);
@@ -311,7 +320,7 @@ test "split documents emit package directories shared lifecycle and cross import
 /// The one interface rule that has to see the generated surface: every
 /// implementation of a method spells the same Go signature. The CLI renders
 /// it as a ZIGO049 diagnostic; `generate` only refuses.
-pub fn interfaceSignatureIssue(allocator: std.mem.Allocator, document: semantic.Semantic, options: Options) !?diagnostic.Diagnostic {
+fn analysisIssueForTest(allocator: std.mem.Allocator, document: semantic.Semantic, options: Options) !?diagnostic.Diagnostic {
     if (document.interfaces == null) return null;
     // Signatures do not depend on which code an error got, only on the
     // error set existing, so any assignment will do for this rendering.
@@ -321,20 +330,10 @@ pub fn interfaceSignatureIssue(allocator: std.mem.Allocator, document: semantic.
         .cgo => .cgo,
         .purego => .purego,
     });
-    const mismatch = try interfaceSignatureMismatch(allocator, program, options) orelse return null;
-    return .{
-        .severity = .@"error",
-        .code = "ZIGO049",
-        .message = try std.fmt.allocPrint(allocator, "method `{s}` has signature `{s}` on `{s}` but `{s}` on `{s}`", .{
-            mismatch.method, mismatch.first_signature, mismatch.first_type, mismatch.second_signature, mismatch.second_type,
-        }),
-        .site = .{ .path = "semantic.json", .declaration = mismatch.interface },
-        .hint = "give every listed type the same Go signature for the method, or drop the method or the type from the interface",
-    };
-}
-
-fn interfaceSignatureMismatch(allocator: std.mem.Allocator, program: abi.Program, options: Options) !?emit.interfaces.Mismatch {
-    return emit.interfaces.signatureMismatch(allocator, program, .{ .go_module = options.go_module, .go_must_variants = options.go_must_variants });
+    var facts: plugin.Facts = .{};
+    var issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
+    try plugin_hooks.analyze(allocator, program, .{ .go_module = options.go_module, .configurations = options.configurations, .facts = &facts }, &facts, &issues);
+    return if (issues.items.len != 0) issues.items[0] else null;
 }
 
 /// True for a Go file that got no further than its own prelude. Every emitter
@@ -1283,7 +1282,7 @@ test "an interface whose implementations disagree on a signature is a ZIGO049" {
     // Structural validation lets it through: both types have `push`.
     try validate.semanticDocument(arena.allocator(), document);
     const options: Options = .{ .package = "batches", .prefix = "zg", .go_module = "example.com/batches" };
-    const issue = (try interfaceSignatureIssue(arena.allocator(), document, options)) orelse return error.MissingDiagnostic;
+    const issue = (try analysisIssueForTest(arena.allocator(), document, options)) orelse return error.MissingDiagnostic;
     const rendered = try issue.renderAlloc(arena.allocator());
     try std.testing.expectEqualStrings(
         "error[ZIGO049]: method `push` has signature `Push(int32) error` on `IntBatch` but `Push(float64) error` on `FloatBatch`\n" ++

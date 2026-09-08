@@ -713,7 +713,7 @@ pub const renderGoHandleRuntime = handle_emit.renderGoHandleRuntime;
 /// the two wrappers the `Must*` methods delegate to.
 pub fn renderGoProjectionRuntime(writer: *std.Io.Writer, program: abi.Program, options: emit.Options) !void {
     if (program.projections.len == 0) {
-        if (!options.go_must_variants) return;
+        if (!options.emitsHelper("zigoMust") and !options.emitsHelper("zigoMustMatch")) return;
         return writer.writeAll(
             "func zigoMust[T any](value T, err error) T {\n" ++
                 "\tif err != nil {\n\t\tpanic(err)\n\t}\n" ++

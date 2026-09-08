@@ -6,21 +6,18 @@
 //! and `ZIGO049`; the file itself is registered as the plugin's `files` entry.
 const std = @import("std");
 const abi = @import("abi");
-const common = @import("../emit/common.zig");
 const diagnostic = @import("diagnostic");
-const docs = @import("../emit/docs.zig");
-const emit = @import("../emit/emit.zig");
 const must = @import("must.zig");
 const naming = @import("naming");
 const plugin_api = @import("plugin");
-const public = @import("../emit/public.zig");
-const public_writers = @import("../emit/public_writers.zig");
 const semantic = @import("semantic");
-const interface_rules = @import("../validate/interfaces.zig");
+const interface_rules = plugin_api.interfaces;
 
 pub const plugin: plugin_api.Plugin = .{
     .name = "INTERFACES",
     .validate = validateDocument,
+    .requires = &.{"MUST"},
+    .analyze = analyze,
     .files = &.{.{ .pathAlloc = interfacesPath, .render = renderInterfacesBody }},
 };
 
@@ -46,12 +43,14 @@ pub const Mismatch = struct {
 /// types. Rendering, rather than a second structural rule, is what keeps
 /// this from ever disagreeing with the file that spells the methods out.
 /// The strings in the result live on `allocator`.
-pub fn signatureMismatch(allocator: std.mem.Allocator, program: abi.Program, options: emit.Options) !?Mismatch {
+pub fn signatureMismatch(context: plugin_api.Context) !?Mismatch {
+    const allocator = context.allocator;
+    const program = context.program;
     for (program.interfaces) |interface| {
         for (interface.methods) |method| {
-            const first = try comparableSignatureAlloc(allocator, program, options, method.functions[0].*);
+            const first = try comparableSignatureAlloc(context, method.functions[0].*);
             for (method.functions[1..], interface.types[1..]) |candidate, type_name| {
-                const signature = try comparableSignatureAlloc(allocator, program, options, candidate.*);
+                const signature = try comparableSignatureAlloc(context, candidate.*);
                 if (std.mem.eql(u8, first, signature)) {
                     allocator.free(signature);
                     continue;
@@ -74,28 +73,34 @@ pub fn signatureMismatch(allocator: std.mem.Allocator, program: abi.Program, opt
 /// The signature two implementations have to share: parameter types, result,
 /// and whether a `Must` variant accompanies it. Parameter names are left out
 /// because Go does not read them when deciding whether a method matches.
-fn comparableSignatureAlloc(allocator: std.mem.Allocator, program: abi.Program, options: emit.Options, function: abi.AbiFn) ![]u8 {
-    const scope: public_writers.PublicScope = .{ .program = program, .options = options };
-    var buffer: std.Io.Writer.Allocating = .init(allocator);
+fn comparableSignatureAlloc(context: plugin_api.Context, function: abi.AbiFn) ![]u8 {
+    var buffer: std.Io.Writer.Allocating = .init(context.allocator);
     errdefer buffer.deinit();
-    // The only writer here allocates, so a failed write is a failed allocation.
-    writeComparableSignature(scope, allocator, &buffer.writer, function) catch |err| switch (err) {
-        error.WriteFailed => return error.OutOfMemory,
-        else => return err,
-    };
+    const go_name = try naming.pascalAlloc(context.allocator, function.origin.name);
+    defer context.allocator.free(go_name);
+    try buffer.writer.writeAll(go_name);
+    try context.writeSignatureWith(&buffer.writer, function, .{ .parameter_names = false });
+    if (try must.hasVariant(context, function)) try buffer.writer.writeAll(" +Must");
     return buffer.toOwnedSlice();
 }
 
-fn writeComparableSignature(scope: public_writers.PublicScope, allocator: std.mem.Allocator, writer: *std.Io.Writer, function: abi.AbiFn) !void {
-    const go_name = try naming.pascalAlloc(allocator, function.origin.name);
-    defer allocator.free(go_name);
-    try writer.writeAll(go_name);
-    try public.writePublicSignature(scope, allocator, writer, function, null, null);
-    if (scope.options.go_must_variants and function.must_variant) try writer.writeAll(" +Must");
+pub fn interfacesPath(context: plugin_api.Context) ![]u8 {
+    const package = if (context.options.go_package.len != 0) try context.allocator.dupe(u8, context.options.go_package) else try naming.snakeAlloc(context.allocator, context.program.package);
+    defer context.allocator.free(package);
+    const filename = try std.fmt.allocPrint(context.allocator, "{s}_interfaces_gen.go", .{package});
+    defer context.allocator.free(filename);
+    return context.publicFilePathAlloc(filename);
 }
 
-pub fn interfacesPath(allocator: std.mem.Allocator, program: abi.Program, options: emit.Options) ![]u8 {
-    return emit.publicConcernPathAlloc(allocator, program, options, "interfaces");
+fn analyze(context: plugin_api.AnalyzeContext) !void {
+    const mismatch = try signatureMismatch(context.render) orelse return;
+    try context.diagnose(.{
+        .severity = .@"error",
+        .code = "ZIGO049",
+        .message = try std.fmt.allocPrint(context.render.allocator, "method `{s}` has signature `{s}` on `{s}` but `{s}` on `{s}`", .{ mismatch.method, mismatch.first_signature, mismatch.first_type, mismatch.second_signature, mismatch.second_type }),
+        .site = .{ .path = "semantic.json", .declaration = mismatch.interface },
+        .hint = "give every listed type the same Go signature for the method, or drop the method or the type from the interface",
+    });
 }
 
 /// `<package>_interfaces_gen.go`: every declared interface of the active
@@ -105,21 +110,23 @@ pub fn interfacesPath(allocator: std.mem.Allocator, program: abi.Program, option
 /// The declarations alone: the generated marker, the package clause and the
 /// import block come from the public-file frame every plugin file renders
 /// through, so this writes exactly what the file declares and no more.
-fn renderInterfacesBody(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: emit.Options) !void {
+pub fn renderInterfacesBody(context: plugin_api.Context, writer: *std.Io.Writer) !void {
+    const program = context.program;
+    const options = context.options;
     var written: usize = 0;
     for (program.interfaces) |interface| {
-        if (!emit.packageMatches(interface.package, options.active_package)) continue;
+        if (!plugin_api.packageMatches(interface.package, options.active_package)) continue;
         if (written != 0) try writer.writeByte('\n');
-        try renderInterface(allocator, writer, program, options, interface);
+        try renderInterface(context, writer, interface);
         written += 1;
     }
 }
 
-fn renderInterface(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: emit.Options, interface: abi.AbiInterface) !void {
-    const scope: public_writers.PublicScope = .{ .program = program, .options = options };
+fn renderInterface(context: plugin_api.Context, writer: *std.Io.Writer, interface: abi.AbiInterface) !void {
+    const allocator = context.allocator;
     if (interface.doc) |doc| {
         var lines = std.mem.splitScalar(u8, doc, '\n');
-        while (lines.next()) |line| try docs.writeCommentLine(writer, line);
+        while (lines.next()) |line| try plugin_api.writeCommentLine(writer, line);
     }
     try writer.print("// {s} is implemented by ", .{interface.name});
     for (interface.types, 0..) |type_name, index| {
@@ -137,86 +144,22 @@ fn renderInterface(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
             // The same doc the method itself gets, moved in one tab.
             var rendered: std.Io.Writer.Allocating = .init(allocator);
             defer rendered.deinit();
-            docs.writeGoDoc(&rendered.writer, go_name, function.origin.name, doc) catch return error.OutOfMemory;
+            context.writeDoc(&rendered.writer, go_name, function.origin.name, doc) catch return error.OutOfMemory;
             var lines = std.mem.splitScalar(u8, std.mem.trim(u8, rendered.written(), "\n"), '\n');
             while (lines.next()) |line| try writer.print("\t{s}\n", .{line});
         } else {
             try writer.print("\t// {s} calls the Zig method {s} of the implementing handle.\n", .{ go_name, function.origin.name });
         }
-        const go_names = try common.goParamNamesForAlloc(allocator, function.origin.params);
-        defer naming.freeParamNames(allocator, go_names);
         try writer.print("\t{s}", .{go_name});
-        try public.writePublicSignature(scope, allocator, writer, function, go_names, null);
+        try context.writeSignature(writer, function);
         try writer.writeByte('\n');
-        if (options.go_must_variants and function.must_variant) {
-            try writer.print("\t// Must{s} calls {s} and panics with its typed error on failure.\n\tMust{s}(", .{ go_name, go_name, go_name });
-            try must.writeMustSignature(scope, allocator, writer, function, go_names, null);
+        if (try must.hasVariant(context, function)) {
+            try writer.print("\t// Must{s} calls {s} and panics with its typed error on failure.\n\tMust{s}", .{ go_name, go_name, go_name });
+            try context.writeSignatureWith(writer, function, .{ .omit_error = true });
             try writer.writeByte('\n');
         }
     }
     if (interface.closer) try writer.writeAll("\tio.Closer\n");
     try writer.writeAll("}\n\n");
     for (interface.types) |type_name| try writer.print("var _ {s} = (*{s})(nil)\n", .{ interface.name, type_name });
-}
-
-test "an interface file lists the shared methods, Must variants, io.Closer and one assertion per type" {
-    var int_batch: semantic.TypeNode = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "IntBatch" } };
-    var float_batch: semantic.TypeNode = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "FloatBatch" } };
-    const count: semantic.TypeNode = .{ .int = .{ .bits = 64, .is_usize = true, .signed = false } };
-    const document: semantic.Semantic = .{
-        .constructors = &.{
-            .{ .deinit = "deinit", .init = "create", .type = "IntBatch" },
-            .{ .deinit = "deinit", .init = "create", .type = "FloatBatch" },
-        },
-        .functions = &.{
-            .{ .name = "create", .namespace = "IntBatch", .ownership = .caller, .params = &.{}, .@"return" = .{ .error_union = .{ .error_set = &.{}, .payload = &int_batch } }, .symbol = "zg_int_batch_create" },
-            .{ .doc = "len reports how many values are staged.", .name = "len", .receiver = "IntBatch", .params = &.{}, .@"return" = count, .symbol = "zg_int_batch_len" },
-            .{ .name = "deinit", .receiver = "IntBatch", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_int_batch_deinit" },
-            .{ .name = "create", .namespace = "FloatBatch", .ownership = .caller, .params = &.{}, .@"return" = .{ .error_union = .{ .error_set = &.{}, .payload = &float_batch } }, .symbol = "zg_float_batch_create" },
-            .{ .name = "len", .receiver = "FloatBatch", .params = &.{}, .@"return" = count, .symbol = "zg_float_batch_len" },
-            .{ .name = "deinit", .receiver = "FloatBatch", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_float_batch_deinit" },
-        },
-        .interfaces = &.{.{ .doc = "Batch is any staged batch.", .methods = &.{"len"}, .name = "Batch", .types = &.{ "IntBatch", "FloatBatch" } }},
-        .package = "batches",
-        .prefix = "zg",
-        .types = &.{
-            .{ .kind = .@"opaque", .name = "IntBatch" },
-            .{ .kind = .@"opaque", .name = "FloatBatch" },
-        },
-        .zig_version = "0.16.0",
-    };
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    const lower = @import("lower");
-    const program = try lower.semanticDocument(arena.allocator(), document, "batches", "zg", &.{});
-    const options: emit.Options = .{ .go_module = "example.com/batches", .go_must_variants = true };
-    try std.testing.expectEqual(@as(?Mismatch, null), try signatureMismatch(arena.allocator(), program, options));
-
-    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
-    defer output.deinit();
-    // Through the frame, which is how the generator renders a plugin file.
-    try public.renderPublicFile(std.testing.allocator, &output.writer, program, options, renderInterfacesBody);
-    try std.testing.expectEqualStrings(
-        "// Code generated by zigo. DO NOT EDIT.\n\npackage batches\n\nimport \"io\"\n\n" ++
-            "// Batch is any staged batch.\n// Batch is implemented by *IntBatch and *FloatBatch.\ntype Batch interface {\n" ++
-            "\t// Len reports how many values are staged.\n\tLen() (uint, error)\n" ++
-            "\t// MustLen calls Len and panics with its typed error on failure.\n\tMustLen() uint\n" ++
-            "\tio.Closer\n}\n\nvar _ Batch = (*IntBatch)(nil)\nvar _ Batch = (*FloatBatch)(nil)\n",
-        output.written(),
-    );
-
-    // A parameter type that differs between the two is the first mismatch.
-    var wide: semantic.TypeNode = .{ .int = .{ .bits = 64, .signed = true } };
-    _ = &wide;
-    var narrow_document = document;
-    var functions: [6]semantic.SemanticFn = undefined;
-    for (document.functions, 0..) |function, index| functions[index] = function;
-    functions[4].@"return" = .{ .int = .{ .bits = 32, .signed = true } };
-    narrow_document.functions = &functions;
-    const mismatched = try lower.semanticDocument(arena.allocator(), narrow_document, "batches", "zg", &.{});
-    const mismatch = (try signatureMismatch(arena.allocator(), mismatched, options)) orelse return error.MissingMismatch;
-    try std.testing.expectEqualStrings("len", mismatch.method);
-    try std.testing.expectEqualStrings("Len() (uint, error) +Must", mismatch.first_signature);
-    try std.testing.expectEqualStrings("Len() (int32, error) +Must", mismatch.second_signature);
-    try std.testing.expectEqualStrings("FloatBatch", mismatch.second_type);
 }

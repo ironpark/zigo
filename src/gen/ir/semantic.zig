@@ -1704,3 +1704,16 @@ test "enum value ranges cover unsorted and full-width domains" {
     try std.testing.expectEqual(std.math.minInt(i64), range.min);
     try std.testing.expectEqual(@as(u128, 1) << 64, range.span);
 }
+
+pub fn constructorForDeinit(constructors: []const Constructor, function: SemanticFn) ?Constructor {
+    const receiver = function.receiver orelse return null;
+    for (constructors) |constructor| {
+        if (std.mem.eql(u8, constructor.type, receiver) and std.mem.eql(u8, constructor.deinit, function.name)) return constructor;
+    }
+    return null;
+}
+
+pub fn constructorForType(constructors: []const Constructor, type_name: []const u8) ?Constructor {
+    for (constructors) |constructor| if (std.mem.eql(u8, constructor.type, type_name)) return constructor;
+    return null;
+}

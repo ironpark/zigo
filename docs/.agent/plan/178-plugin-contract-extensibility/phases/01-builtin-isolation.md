@@ -2,7 +2,7 @@
 depends_on:
 - "178-plugin-contract-extensibility#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Built-ins compile only against public modules; generator and golden tests preserve output; commit changes.
 > NEXT: none

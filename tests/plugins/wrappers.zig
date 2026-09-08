@@ -28,11 +28,15 @@ fn methodHook(context: api.Context, writer: *std.Io.Writer, function: abi.AbiFn)
     try writer.writeAll("))\n}\n");
 }
 
-fn path(allocator: std.mem.Allocator, program: abi.Program, options: api.Options) ![]u8 {
+fn path(context: api.Context) ![]u8 {
+    const allocator = context.allocator;
+    const program = context.program;
+    const options = context.options;
     return api.publicFilePathAlloc(allocator, program, options, "zigo_wrappers_gen.go");
 }
 
-fn helpers(_: std.mem.Allocator, writer: *std.Io.Writer, _: abi.Program, options: api.Options) !void {
+fn helpers(context: api.Context, writer: *std.Io.Writer) !void {
+    const options = context.options;
     if (options.emitsHelper("zigoWrap0")) try writer.writeAll("func zigoWrap0(err error) { if err != nil { panic(err) } }\n");
     if (options.emitsHelper("zigoWrap1")) try writer.writeAll("func zigoWrap1[T any](v T, err error) T { if err != nil { panic(err) }; return v }\n");
     if (options.emitsHelper("zigoWrap2")) try writer.writeAll("func zigoWrap2[T any](v T, ok bool, err error) (T, bool) { if err != nil { panic(err) }; return v, ok }\n");

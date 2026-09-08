@@ -479,7 +479,6 @@ pub fn semanticDocumentForBackend(
             .origin = function,
             .materialized_return = materialized_return,
             .materialized_out = materialized_out,
-            .must_variant = try mustVariant(allocator, document, function.*),
             .reaches_callback_errors = functionReachesCallbackErrors(document.functions, document.constructors, function.*),
             .ret_struct = if (function.@"return" == .value_struct and !semantic.isPackedValue(document.types, function.@"return"))
                 structRecord(structs, function.@"return".value_struct.ref)
@@ -556,20 +555,6 @@ pub fn semanticDocumentForBackend(
 // are answered here once, on the semantic document lowering works from, and
 // recorded on the lowered function where the answer is per function.
 // ---------------------------------------------------------------------------
-
-/// The single rule for whether the public package emits a `Must<Name>`
-/// wrapper: the function is public, its Go name is not `Close`, and its
-/// signature carries an error -- a constructor, an error-union return, or any
-/// of the checks that grow a signature by `error`.
-pub fn mustVariant(allocator: std.mem.Allocator, document: semantic.Semantic, function: semantic.SemanticFn) !bool {
-    const constructor = semantic.constructorForInit(document.constructors, function);
-    if (constructor == null and constructorForDeinit(document.constructors, function) != null) return false;
-    if (isReleaseTarget(document.functions, function)) return false;
-    const public_name = try semantic.publicFunctionNameAlloc(allocator, document, function);
-    defer allocator.free(public_name);
-    if (std.mem.eql(u8, public_name, "Close")) return false;
-    return constructor != null or function.@"return" == .error_union or needsCheck(document, function);
-}
 
 /// Whether the public wrapper returns an `error` the Zig signature does not
 /// declare: a handle that can be nil or closed, a narrow integer that can be

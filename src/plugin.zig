@@ -31,14 +31,70 @@ pub fn readConfig(comptime P: Plugin, allocator: std.mem.Allocator, configuratio
     };
 }
 
+pub const interfaces = @import("plugin/interfaces.zig");
 pub const site = @import("plugin/site.zig");
 
 /// Runs before lowering. All allocations and diagnostics belong to the run arena.
+pub const DeclarationId = struct {
+    kind: enum { function, type, package },
+    name: []const u8,
+    receiver: ?[]const u8 = null,
+    namespace: ?[]const u8 = null,
+    package: ?[]const u8 = null,
+
+    pub fn function(value: semantic.SemanticFn) DeclarationId {
+        return .{ .kind = .function, .name = value.name, .receiver = value.receiver, .namespace = value.namespace, .package = value.package };
+    }
+    pub fn declaration(value: semantic.TypeDecl) DeclarationId {
+        return .{ .kind = .type, .name = value.name, .package = value.package };
+    }
+};
+
+/// A run-arena-owned, typed store. Keys borrow the document; values must live
+/// until generation ends. Rendering receives only a const view of the store.
+pub const Facts = struct {
+    const Key = struct { owner: []const u8, id: DeclarationId };
+    const Value = struct { type_name: []const u8, data: *const anyopaque };
+    const KeyContext = struct {
+        pub fn hash(_: @This(), key: Key) u64 {
+            var hasher = std.hash.Wyhash.init(@intFromEnum(key.id.kind));
+            hasher.update(key.owner);
+            hasher.update(&.{0});
+            hasher.update(key.id.name);
+            inline for (.{ key.id.receiver, key.id.namespace, key.id.package }) |part| {
+                hasher.update(&.{@intFromBool(part != null)});
+                if (part) |text| hasher.update(text);
+                hasher.update(&.{0});
+            }
+            return hasher.final();
+        }
+        pub fn eql(_: @This(), a: Key, b: Key) bool {
+            return a.id.kind == b.id.kind and std.mem.eql(u8, a.owner, b.owner) and std.mem.eql(u8, a.id.name, b.id.name) and semantic.optionalStringEqual(a.id.receiver, b.id.receiver) and semantic.optionalStringEqual(a.id.namespace, b.id.namespace) and semantic.optionalStringEqual(a.id.package, b.id.package);
+        }
+    };
+    entries: std.HashMapUnmanaged(Key, Value, KeyContext, 80) = .empty,
+
+    pub fn put(self: *Facts, allocator: std.mem.Allocator, comptime P: Plugin, id: DeclarationId, value: P.Facts) !void {
+        const key: Key = .{ .owner = P.name, .id = id };
+        if (self.entries.contains(key)) return error.DuplicatePluginFact;
+        const stored = try allocator.create(P.Facts);
+        stored.* = value;
+        try self.entries.put(allocator, key, .{ .type_name = @typeName(P.Facts), .data = stored });
+    }
+    pub fn get(self: *const Facts, comptime P: Plugin, id: DeclarationId) !?P.Facts {
+        const value = self.entries.get(.{ .owner = P.name, .id = id }) orelse return null;
+        if (!std.mem.eql(u8, value.type_name, @typeName(P.Facts))) return error.PluginFactTypeMismatch;
+        const stored: *const P.Facts = @ptrCast(@alignCast(value.data));
+        return stored.*;
+    }
+};
+
 pub const ValidateContext = struct {
     allocator: std.mem.Allocator,
     document: semantic.Semantic,
     configurations: []const Configuration = &.{},
     diagnostics: *std.ArrayList(diagnostic.Diagnostic),
+    facts: *Facts,
 
     pub fn diagnose(self: ValidateContext, issue: diagnostic.Diagnostic) !void {
         try self.diagnostics.append(self.allocator, issue);
@@ -132,8 +188,6 @@ pub const Options = struct {
     /// Body of the generated `// Package ...` doc. Empty falls back to the
     /// `//!` container doc of the bindings file, then to a default sentence.
     go_package_doc: []const u8 = "",
-    /// Emit checked-call convenience wrappers that panic on error.
-    go_must_variants: bool = false,
     /// Null renders the legacy single package; empty selects the default package
     /// of a split document; a value selects that named sub-package.
     active_package: ?[]const u8 = null,
@@ -160,6 +214,7 @@ pub const Options = struct {
     /// gated helper, which only the discovery rendering itself relies on
     /// being absent.
     helpers: ?*const Referenced = null,
+    facts: *const Facts = &.{},
 
     /// Whether an added plugin of this name runs. Built-in features are not
     /// asked: they are the generator's own surface, not an opt-in.
@@ -186,14 +241,10 @@ pub const Options = struct {
     }
 };
 
-/// One generated file: where it goes and what goes in it. Plugin files render
-/// through the same public-file path as the built-in ones, so their imports
-/// are derived from the body they wrote.
-pub const Emitter = struct {
-    /// Diagnostic label, filled with the plugin name by the generator.
-    owner: []const u8 = "generator",
-    pathAlloc: *const fn (std.mem.Allocator, abi.Program, Options) anyerror![]u8,
-    render: *const fn (std.mem.Allocator, *std.Io.Writer, abi.Program, Options) anyerror!void,
+/// One additional public file. The generator owns its package and imports.
+pub const File = struct {
+    pathAlloc: *const fn (Context) anyerror![]u8,
+    render: *const fn (Context, *std.Io.Writer) anyerror!void,
 };
 
 /// Module-relative path for a file in the currently rendered public package.
@@ -241,7 +292,10 @@ pub const Writers = struct {
     receiverNameAlloc: *const fn (Context, std.mem.Allocator, []const u8) anyerror![]u8,
     /// The parameter list and result of a public function, parentheses
     /// included, exactly as the method being hooked spells them.
-    writeSignature: *const fn (Context, *std.Io.Writer, abi.AbiFn) anyerror!void,
+    writeSignature: *const fn (Context, *std.Io.Writer, abi.AbiFn, SignatureOptions) anyerror!void,
+    writeValueType: *const fn (Context, *std.Io.Writer, abi.AbiFn) anyerror!void,
+    writeDoc: *const fn (*std.Io.Writer, []const u8, []const u8, []const u8) anyerror!void,
+    functionInfo: *const fn (Context, abi.AbiFn) anyerror!FunctionInfo,
     writeParameters: *const fn (Context, *std.Io.Writer, abi.AbiFn) anyerror!void,
     writeResultType: *const fn (Context, *std.Io.Writer, abi.AbiFn, ResultOptions) anyerror!usize,
     writeCallArguments: *const fn (Context, *std.Io.Writer, abi.AbiFn) anyerror!void,
@@ -293,7 +347,7 @@ pub const Context = struct {
     }
 
     pub fn writeSignature(self: Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
-        return self.writers.writeSignature(self, writer, function);
+        return self.writers.writeSignature(self, writer, function, .{});
     }
 
     /// Public parameter list including parentheses. Requires method context.
@@ -314,6 +368,19 @@ pub const Context = struct {
     pub fn writeCallArguments(self: Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
         const write = self.writers.writeCallArguments;
         return write(self, writer, function);
+    }
+
+    pub fn writeSignatureWith(self: Context, writer: *std.Io.Writer, function: abi.AbiFn, options: SignatureOptions) !void {
+        return self.writers.writeSignature(self, writer, function, options);
+    }
+    pub fn writeValueType(self: Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
+        return self.writers.writeValueType(self, writer, function);
+    }
+    pub fn writeDoc(self: Context, writer: *std.Io.Writer, go_name: []const u8, zig_name: []const u8, doc: []const u8) !void {
+        return self.writers.writeDoc(writer, go_name, zig_name, doc);
+    }
+    pub fn functionInfo(self: Context, function: abi.AbiFn) !FunctionInfo {
+        return self.writers.functionInfo(self, function);
     }
 
     pub fn publicFilePathAlloc(self: Context, filename: []const u8) ![]u8 {
@@ -364,6 +431,8 @@ pub fn typeTarget(kind: semantic.TypeKind) ?Target {
 pub const Plugin = struct {
     min_contract: ContractVersion = contract_version,
     Config: type = struct {},
+    Facts: type = struct {},
+    analyze: ?*const fn (AnalyzeContext) anyerror!void = null,
     /// Ordering only: absent plugins in after are ignored.
     after: []const []const u8 = &.{},
     /// Required registered and enabled plugins; also run before this plugin.
@@ -386,7 +455,7 @@ pub const Plugin = struct {
     type_hook: ?*const fn (Context, *std.Io.Writer, semantic.TypeDecl) anyerror!void = null,
     /// Whole public files this plugin adds. A file whose body comes out empty
     /// is dropped, so an emitter that has nothing to say costs nothing.
-    files: []const Emitter = &.{},
+    files: []const File = &.{},
 
     /// Non-standard imports the hooks may write, added where they are used.
     imports: []const Import = &.{},
@@ -453,4 +522,58 @@ test "plugin config decodes defaults and rejects unknown fields" {
     try std.testing.expect(!(try readConfig(p, arena.allocator(), &.{})).enabled);
     try std.testing.expect((try readConfig(p, arena.allocator(), &.{.{ .name = "CONFIG", .json = "{\"enabled\":true}" }})).enabled);
     try std.testing.expectError(error.InvalidPluginConfig, readConfig(p, arena.allocator(), &.{.{ .name = "CONFIG", .json = "{\"typo\":true}" }}));
+}
+
+pub const SignatureOptions = struct { parameter_names: bool = true, omit_error: bool = false };
+/// Names are allocated from Context.allocator. The caller owns go_name.
+pub const FunctionInfo = struct { go_name: []const u8, is_public: bool, has_error: bool };
+
+/// Once per generation, after lowering and before any package is rendered.
+pub const AnalyzeContext = struct {
+    render: Context,
+    facts: *Facts,
+    diagnostics: *std.ArrayList(diagnostic.Diagnostic),
+    pub fn diagnose(self: AnalyzeContext, issue: diagnostic.Diagnostic) !void {
+        try self.diagnostics.append(self.render.allocator, issue);
+    }
+};
+
+pub fn packageMatches(package: ?[]const u8, active: ?[]const u8) bool {
+    const selection = active orelse return true;
+    return std.mem.eql(u8, package orelse "", selection);
+}
+
+pub fn writeCommentLine(writer: *std.Io.Writer, line: []const u8) !void {
+    if (line.len == 0) return writer.writeAll("//\n");
+    try writer.print("// {s}\n", .{line});
+}
+
+/// Parse a name-to-config JSON object, then merge build defaults by plugin name.
+/// All returned strings belong to allocator (a run arena).
+pub fn configurationsAlloc(allocator: std.mem.Allocator, defaults: []const Configuration, json: []const u8) ![]const Configuration {
+    const value = try std.json.parseFromSliceLeaky(std.json.Value, allocator, json, .{});
+    if (value != .object) return error.InvalidPluginConfig;
+    var result: std.ArrayList(Configuration) = .empty;
+    var entries = value.object.iterator();
+    while (entries.next()) |entry| {
+        if (entry.value_ptr.* != .object) return error.InvalidPluginConfig;
+        try result.append(allocator, .{ .name = entry.key_ptr.*, .json = try std.json.Stringify.valueAlloc(allocator, entry.value_ptr.*, .{}) });
+    }
+    for (defaults) |entry| {
+        if (!value.object.contains(entry.name)) try result.append(allocator, entry);
+    }
+    return result.toOwnedSlice(allocator);
+}
+
+test "plugin facts preserve typed validation results across copied declarations" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var facts: Facts = .{};
+    const p: Plugin = .{ .name = "FACT", .Facts = struct { count: usize } };
+    const id: DeclarationId = .{ .kind = .function, .name = "zg_run" };
+    try facts.put(arena.allocator(), p, id, .{ .count = 42 });
+    const copied = try arena.allocator().dupe(u8, "zg_run");
+    try std.testing.expectEqual(@as(usize, 42), (try facts.get(p, .{ .kind = .function, .name = copied })).?.count);
+    try std.testing.expect(try facts.get(p, .{ .kind = .type, .name = copied }) == null);
+    try std.testing.expectError(error.DuplicatePluginFact, facts.put(arena.allocator(), p, id, .{ .count = 1 }));
 }

@@ -4,18 +4,8 @@ const std = @import("std");
 const abi = @import("abi");
 const semantic = @import("semantic");
 
-pub fn constructorForDeinit(constructors: []const semantic.Constructor, function: semantic.SemanticFn) ?semantic.Constructor {
-    const receiver = function.receiver orelse return null;
-    for (constructors) |constructor| {
-        if (std.mem.eql(u8, constructor.type, receiver) and std.mem.eql(u8, constructor.deinit, function.name)) return constructor;
-    }
-    return null;
-}
-
-pub fn constructorForType(constructors: []const semantic.Constructor, type_name: []const u8) ?semantic.Constructor {
-    for (constructors) |constructor| if (std.mem.eql(u8, constructor.type, type_name)) return constructor;
-    return null;
-}
+pub const constructorForDeinit = semantic.constructorForDeinit;
+pub const constructorForType = semantic.constructorForType;
 
 /// The constructed handle type a caller-owned function returns, when it is one.
 pub fn ownedOpaqueReturn(constructors: []const semantic.Constructor, function: semantic.SemanticFn) ?[]const u8 {

@@ -46,14 +46,20 @@ fn typeHook(_: plugin_api.Context, writer: *std.Io.Writer, declaration: semantic
     try writer.print("// zigoTestHook saw {s}.\n\n", .{declaration.name});
 }
 
-fn filePath(allocator: std.mem.Allocator, program: abi.Program, options: plugin_api.Options) ![]u8 {
+fn filePath(context: plugin_api.Context) ![]u8 {
+    const allocator = context.allocator;
+    const program = context.program;
+    const options = context.options;
+
     if (path_override) |path| return allocator.dupe(u8, path);
     return plugin_api.publicFilePathAlloc(allocator, program, options, "zigo_test_plugin_gen.go");
 }
 
 /// Only the declarations: the marker, the package clause and the import block
 /// come from the public-file frame the generator wraps every plugin file in.
-fn renderFile(_: std.mem.Allocator, writer: *std.Io.Writer, _: abi.Program, _: plugin_api.Options) !void {
+fn renderFile(context: plugin_api.Context, writer: *std.Io.Writer) !void {
+    _ = context;
+
     if (!enabled) return;
     try writer.writeAll(
         "// ZigoTestPluginName is what the test plugin calls itself.\nconst ZigoTestPluginName = \"TEST\"\n",

@@ -21,7 +21,7 @@ const CaseOptions = struct {
     raw_package_path: []const u8 = "internal/raw",
     raw_package_name: []const u8 = "raw",
     raw_colocated: bool = false,
-    go_must_variants: bool = false,
+    plugin_config: std.json.Value = .{ .object = .empty },
     /// Added plugins this case runs, by name. Absent runs every plugin the
     /// case runner was built with, which is what an ordinary case wants: none
     /// of the goldens below name one.
@@ -78,7 +78,7 @@ pub fn main(init: std.process.Init) !void {
         .raw_package_path = options.raw_package_path,
         .raw_package_name = options.raw_package_name,
         .raw_colocated = options.raw_colocated,
-        .go_must_variants = options.go_must_variants,
+        .configurations = try @import("plugin").configurationsAlloc(allocator, @import("plugin_registry").configurations, try std.json.Stringify.valueAlloc(allocator, options.plugin_config, .{})),
         .plugins = options.plugins,
         .errors_lock_bytes = errors_lock_bytes,
         .link_mode = switch (options.link_mode) {

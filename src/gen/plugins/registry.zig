@@ -5,10 +5,10 @@
 //! Order is registration order: the built-ins first, then whatever the
 //! consuming build passed to `addGoBindings(.plugins)`.
 const builtin = @import("builtin");
-const implements = @import("implements.zig");
-const interfaces = @import("interfaces.zig");
-const iterator = @import("iterator.zig");
-const must = @import("must.zig");
+const implements = @import("builtin_plugins").implements;
+const interfaces = @import("builtin_plugins").interfaces;
+const iterator = @import("builtin_plugins").iterator;
+const must = @import("builtin_plugins").must;
 const plugin = @import("plugin");
 const testing_plugin = @import("testing.zig");
 

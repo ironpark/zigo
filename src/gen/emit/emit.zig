@@ -11,7 +11,7 @@ const naming = @import("naming");
 const common = @import("common.zig");
 const docs = @import("docs.zig");
 const header = @import("header.zig");
-pub const interfaces = @import("../plugins/interfaces.zig");
+
 const public = @import("public.zig");
 const public_runtime = @import("public_runtime.zig");
 const public_types = @import("public_types.zig");
@@ -24,7 +24,11 @@ pub const references = @import("references.zig");
 /// compiled as its own module reaches them without importing the generator.
 pub const Options = plugin.Options;
 
-pub const Emitter = plugin.Emitter;
+pub const Emitter = struct {
+    owner: []const u8 = "generator",
+    pathAlloc: *const fn (std.mem.Allocator, abi.Program, Options) anyerror![]u8,
+    render: *const fn (std.mem.Allocator, *std.Io.Writer, abi.Program, Options) anyerror!void,
+};
 
 pub const core_emitters = [_]Emitter{
     .{ .pathAlloc = shimPath, .render = shim.renderShim },
@@ -82,16 +86,24 @@ pub const PublicEmitters = struct {
 /// block derived from that body are added here. A plugin therefore never
 /// spells an import block, and a body that came out empty leaves the file at
 /// its prelude, which the generator drops.
-fn framedPluginFile(comptime plugin_index: usize, comptime file: Emitter) Emitter {
+fn framedPluginFile(comptime plugin_index: usize, comptime file: plugin.File) Emitter {
     return .{
         .owner = registry.plugins[plugin_index].name,
-        .pathAlloc = file.pathAlloc,
+        .pathAlloc = struct {
+            fn path(allocator: std.mem.Allocator, program: abi.Program, options: Options) anyerror![]u8 {
+                return file.pathAlloc(plugin_hooks.context(allocator, program, options));
+            }
+        }.path,
         .render = struct {
             fn render(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) anyerror!void {
                 // A plugin this generation does not run writes nothing, which
                 // leaves the file at its prelude and the generator drops it.
                 if (!plugin_hooks.runs(plugin_index, options)) return;
-                return public.renderPublicFile(allocator, writer, program, options, file.render);
+                return public.renderPublicFile(allocator, writer, program, options, struct {
+                    fn body(a: std.mem.Allocator, w: *std.Io.Writer, p: abi.Program, o: Options) anyerror!void {
+                        return file.render(plugin_hooks.context(a, p, o), w);
+                    }
+                }.body);
             }
         }.render,
     };
@@ -1252,7 +1264,10 @@ test {
     _ = public;
     _ = public_types;
     _ = public_runtime;
-    _ = interfaces;
     _ = @import("public_writers.zig");
     _ = docs;
+}
+
+test {
+    _ = @import("interface_tests.zig");
 }

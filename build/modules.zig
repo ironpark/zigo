@@ -26,6 +26,7 @@ pub const GeneratorModules = struct {
     diagnostic: *std.Build.Module,
     plugin: *std.Build.Module,
     plugin_registry: *std.Build.Module,
+    builtin_plugins: *std.Build.Module,
     errors_lock: *std.Build.Module,
     abi_diff: *std.Build.Module,
     lower: *std.Build.Module,
@@ -85,6 +86,18 @@ pub fn createGeneratorModules(
             .{ .name = "abi", .module = abi_module },
             .{ .name = "semantic", .module = semantic_module },
             .{ .name = "diagnostic", .module = diagnostic_module },
+        },
+    });
+    const builtin_plugins_module = b.createModule(.{
+        .root_source_file = source_root.path(b, "gen/plugins/builtins.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "plugin", .module = plugin_module },
+            .{ .name = "abi", .module = abi_module },
+            .{ .name = "semantic", .module = semantic_module },
+            .{ .name = "diagnostic", .module = diagnostic_module },
+            .{ .name = "naming", .module = naming_module },
         },
     });
     // A plugin is taken as a source path, not as a module: the generator
@@ -159,6 +172,7 @@ pub fn createGeneratorModules(
             .{ .name = "lower", .module = gen_lower_module },
             .{ .name = "plugin", .module = plugin_module },
             .{ .name = "plugin_registry", .module = plugin_registry_module },
+            .{ .name = "builtin_plugins", .module = builtin_plugins_module },
             .{ .name = "stream_return", .module = gen_stream_return_module },
         },
     });
@@ -171,6 +185,7 @@ pub fn createGeneratorModules(
         .diagnostic = diagnostic_module,
         .plugin = plugin_module,
         .plugin_registry = plugin_registry_module,
+        .builtin_plugins = builtin_plugins_module,
         .errors_lock = errors_lock_module,
         .abi_diff = abi_diff_module,
         .lower = gen_lower_module,
@@ -250,6 +265,7 @@ pub fn addGeneratorWithModules(
                 .{ .name = "lower", .module = modules.lower },
                 .{ .name = "plugin", .module = modules.plugin },
                 .{ .name = "plugin_registry", .module = modules.plugin_registry },
+                .{ .name = "builtin_plugins", .module = modules.builtin_plugins },
                 .{ .name = "stream_return", .module = modules.stream_return },
                 .{ .name = "sync_check", .module = modules.sync_check },
             },

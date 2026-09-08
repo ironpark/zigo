@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-08T04:42:47Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Focused tests cover validation, config and ordering; commit changes.
 > NEXT: none

@@ -57,6 +57,7 @@ pub fn addRepositorySteps(
             .{ .name = "lower", .module = generator_modules.lower },
             .{ .name = "plugin", .module = generator_modules.plugin },
             .{ .name = "plugin_registry", .module = generator_modules.plugin_registry },
+            .{ .name = "builtin_plugins", .module = generator_modules.builtin_plugins },
             .{ .name = "diagnostic", .module = generator_modules.diagnostic },
         },
     });
@@ -71,6 +72,7 @@ pub fn addRepositorySteps(
             .{ .name = "diagnostic", .module = generator_modules.diagnostic },
             .{ .name = "plugin", .module = generator_modules.plugin },
             .{ .name = "plugin_registry", .module = generator_modules.plugin_registry },
+            .{ .name = "builtin_plugins", .module = generator_modules.builtin_plugins },
             .{ .name = "semantic", .module = generator_modules.semantic },
         },
     });
@@ -103,6 +105,7 @@ pub fn addRepositorySteps(
             .{ .name = "naming", .module = generator_modules.naming },
             .{ .name = "plugin", .module = generator_modules.plugin },
             .{ .name = "plugin_registry", .module = generator_modules.plugin_registry },
+            .{ .name = "builtin_plugins", .module = generator_modules.builtin_plugins },
             .{ .name = "semantic", .module = generator_modules.semantic },
         },
     });
@@ -385,7 +388,7 @@ pub fn addRepositorySteps(
             .root_source_file = b.path("tests/generator_case_main.zig"),
             .target = target,
             .optimize = optimize,
-            .imports = &.{.{ .name = "generator", .module = showcase_modules.generator }},
+            .imports = &.{ .{ .name = "generator", .module = showcase_modules.generator }, .{ .name = "plugin", .module = showcase_modules.plugin }, .{ .name = "plugin_registry", .module = showcase_modules.plugin_registry } },
         }),
     });
     addGeneratorCases(b, test_step, generator_case_runner, test_filters);

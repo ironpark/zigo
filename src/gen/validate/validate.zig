@@ -31,70 +31,6 @@ pub fn semanticDocumentWithPlugins(allocator: std.mem.Allocator, document: seman
     if (try findIssueWithPlugins(scratch.allocator(), document, selected) != null) return error.InvalidSemantic;
 }
 
-pub fn mustVariantNames(allocator: std.mem.Allocator, document: semantic.Semantic) !void {
-    var scratch = std.heap.ArenaAllocator.init(allocator);
-    defer scratch.deinit();
-    if (try findMustVariantIssue(scratch.allocator(), document) != null) return error.InvalidSemantic;
-}
-
-pub fn findMustVariantIssue(allocator: std.mem.Allocator, source_document: semantic.Semantic) !?diagnostic.Diagnostic {
-    // The generator decides Must variants on the promoted functions, so the
-    // collision check looks at the same shapes it will emit.
-    var document = source_document;
-    document.functions = try lower.promoteCheckedFunctions(allocator, source_document, source_document.functions);
-    defer allocator.free(document.functions);
-    // Every pair of functions compares public names, so they are spelled once.
-    const public_names = try allocator.alloc([]const u8, document.functions.len);
-    defer allocator.free(public_names);
-    for (document.functions, public_names) |function, *name| name.* = try semantic.publicFunctionNameAlloc(allocator, document, function);
-    defer for (public_names) |name| allocator.free(name);
-    for (document.functions, public_names) |function, public_name| {
-        if (!try lower.mustVariant(allocator, document, function)) continue;
-        const must_name = try std.fmt.allocPrint(allocator, "Must{s}", .{public_name});
-        defer allocator.free(must_name);
-        if (function.receiver == null) for (document.types) |declaration| {
-            if (!semantic.optionalStringEqual(declaration.package, function.package)) continue;
-            if (!std.mem.eql(u8, declaration.name, must_name)) continue;
-            const function_path = try site.functionDeclarationAlloc(allocator, function);
-            return .{
-                .severity = .@"error",
-                .code = "ZIGO024",
-                .message = try std.fmt.allocPrint(
-                    allocator,
-                    "public Go name `{s}` collides between type `{s}` and generated Must variant for `{s}`",
-                    .{ must_name, declaration.zig_path orelse declaration.name, function_path },
-                ),
-                .site = site.functionSiteFor(function, function_path),
-                .hint = "rename the function or conflicting type so the generated Must name is unique",
-            };
-        };
-        for (document.functions, public_names) |other, other_name| {
-            // The destructor of a constructor pair never reaches the public
-            // API on its own -- generation emits a shared `zigoRelease` -- so
-            // it takes no public Go name and drops out of the collision check.
-            if (lower.constructorForDeinit(document.constructors, other) != null) continue;
-            if (!std.mem.eql(u8, function.receiver orelse "", other.receiver orelse "")) continue;
-            if (!semantic.optionalStringEqual(function.package, other.package)) continue;
-            if (!std.mem.eql(u8, must_name, other_name)) continue;
-            const function_path = try site.functionDeclarationAlloc(allocator, function);
-            const other_path = try site.functionDeclarationAlloc(allocator, other);
-            defer allocator.free(other_path);
-            return .{
-                .severity = .@"error",
-                .code = "ZIGO024",
-                .message = try std.fmt.allocPrint(
-                    allocator,
-                    "public Go name `{s}` collides between `{s}` and generated Must variant for `{s}`",
-                    .{ must_name, other_path, function_path },
-                ),
-                .site = site.functionSiteFor(function, function_path),
-                .hint = "rename one declaration so the generated Must name is unique",
-            };
-        }
-    }
-    return null;
-}
-
 /// Every purego callback dispatcher returns one pointer-sized integer, which is
 /// what Windows' `syscall.NewCallback` demands and what the native side reads
 /// back as `int32_t` or ignores. A callback that returns anything else -- a
@@ -193,6 +129,11 @@ pub fn findIssuesWithPlugins(allocator: std.mem.Allocator, document: semantic.Se
 }
 
 pub fn findIssuesConfigured(allocator: std.mem.Allocator, document: semantic.Semantic, selected: ?[]const []const u8, configurations: []const plugin.Configuration) ![]const diagnostic.Diagnostic {
+    var facts: plugin.Facts = .{};
+    return findIssuesWithFacts(allocator, document, selected, configurations, &facts);
+}
+
+pub fn findIssuesWithFacts(allocator: std.mem.Allocator, document: semantic.Semantic, selected: ?[]const []const u8, configurations: []const plugin.Configuration, facts: *plugin.Facts) ![]const diagnostic.Diagnostic {
     var issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
     errdefer issues.deinit(allocator);
     for (rules) |check| if (try check(allocator, document)) |issue| {
@@ -216,7 +157,7 @@ pub fn findIssuesConfigured(allocator: std.mem.Allocator, document: semantic.Sem
                     }
                 }
             }
-            try appendPluginIssues(registered, allocator, document, configurations, &issues);
+            try appendPluginIssuesWithFacts(registered, allocator, document, configurations, &issues, facts);
         }
     }
     return issues.toOwnedSlice(allocator);
@@ -227,6 +168,11 @@ pub fn findIssues(allocator: std.mem.Allocator, document: semantic.Semantic) ![]
 }
 
 fn appendPluginIssues(comptime registered: plugin.Plugin, allocator: std.mem.Allocator, document: semantic.Semantic, configurations: []const plugin.Configuration, issues: *std.ArrayList(diagnostic.Diagnostic)) !void {
+    var facts: plugin.Facts = .{};
+    return appendPluginIssuesWithFacts(registered, allocator, document, configurations, issues, &facts);
+}
+
+fn appendPluginIssuesWithFacts(comptime registered: plugin.Plugin, allocator: std.mem.Allocator, document: semantic.Semantic, configurations: []const plugin.Configuration, issues: *std.ArrayList(diagnostic.Diagnostic), facts: *plugin.Facts) !void {
     if (try pluginOptionsIssue(registered, allocator, document)) |issue| {
         try issues.append(allocator, issue);
         return;
@@ -238,7 +184,7 @@ fn appendPluginIssues(comptime registered: plugin.Plugin, allocator: std.mem.All
             return;
         },
     };
-    if (registered.validate) |check| try check(.{ .allocator = allocator, .document = document, .configurations = configurations, .diagnostics = issues });
+    if (registered.validate) |check| try check(.{ .allocator = allocator, .document = document, .configurations = configurations, .diagnostics = issues, .facts = facts });
 }
 
 /// A hand-written `semantic.json` can carry anything under a plugin's key.
@@ -322,101 +268,6 @@ fn documentHeaderIssue(_: std.mem.Allocator, document: semantic.Semantic) !?diag
     return null;
 }
 
-test "generated Must names participate in ZIGO024 collision checks" {
-    const document: semantic.Semantic = .{
-        .functions = &.{
-            .{
-                .name = "ping",
-                .params = &.{},
-                .receiver = "Handle",
-                .@"return" = .{ .void = {} },
-                .symbol = "zg_handle_ping",
-            },
-            .{
-                .name = "mustPing",
-                .params = &.{},
-                .receiver = "Handle",
-                .@"return" = .{ .void = {} },
-                .symbol = "zg_handle_must_ping",
-            },
-        },
-        .package = "collision",
-        .prefix = "zg",
-        .types = &.{.{ .kind = .@"opaque", .name = "Handle" }},
-        .zig_version = "0.16.0",
-    };
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    const issue = (try findMustVariantIssue(arena.allocator(), document)) orelse return error.MissingDiagnostic;
-    try std.testing.expectEqualStrings("ZIGO024", issue.code);
-    try std.testing.expect(std.mem.indexOf(u8, issue.message, "MustPing") != null);
-    try std.testing.expectError(error.InvalidSemantic, mustVariantNames(std.testing.allocator, document));
-}
-
-test "a callback signature flagged go_error elsewhere gives a free function a Must variant" {
-    var status: semantic.TypeNode = .{ .int = .{ .bits = 32, .signed = true, .is_usize = false } };
-    const observer: semantic.TypeNode = .{ .callback = .{ .has_userdata = true, .params = &.{}, .@"return" = &status } };
-    const usize_node: semantic.TypeNode = .{ .int = .{ .bits = 64, .signed = false, .is_usize = true } };
-    const document: semantic.Semantic = .{
-        .functions = &.{
-            .{
-                .name = "run",
-                .params = &.{
-                    .{ .name = "observer", .type = observer },
-                    .{ .name = "userdata", .type = usize_node },
-                },
-                .@"return" = .{ .void = {} },
-                .symbol = "zg_run",
-            },
-            .{
-                .name = "watch",
-                .params = &.{
-                    .{ .go_error = true, .name = "observer", .type = observer },
-                    .{ .name = "userdata", .type = usize_node },
-                },
-                .@"return" = .{ .void = {} },
-                .symbol = "zg_watch",
-            },
-            .{ .name = "mustRun", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_must_run" },
-        },
-        .package = "collision",
-        .prefix = "zg",
-        .zig_version = "0.16.0",
-    };
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    const issue = (try findMustVariantIssue(arena.allocator(), document)) orelse return error.MissingDiagnostic;
-    try std.testing.expectEqualStrings("ZIGO024", issue.code);
-    try std.testing.expect(std.mem.indexOf(u8, issue.message, "MustRun") != null);
-}
-
-test "options a plugin cannot read are its own diagnostic, not a panic" {
-    const fixture =
-        \\{"functions":[{"ext":{"TEST":{"mode":"c"}},"name":"bump","params":[],"receiver":"Counter","return":{"kind":"void"},"symbol":"zg_counter_bump"}],"ir_version":1,"package":"meter","prefix":"zg","types":[{"kind":"opaque","name":"Counter"}],"zig_version":"0.16.0"}
-    ;
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    var parsed = try semantic.Semantic.parse(arena.allocator(), fixture);
-    defer parsed.deinit();
-    const issue = (try findIssue(arena.allocator(), parsed.value)) orelse return error.MissingDiagnostic;
-    // The plugin's own prefix, never a ZIGO code: the fault is the plugin's
-    // option type, and the message has to say whose.
-    try std.testing.expectEqualStrings("TEST001", issue.code);
-    try std.testing.expect(std.mem.indexOf(u8, issue.message, "`TEST` plugin") != null);
-    try std.testing.expectError(error.InvalidSemantic, semanticDocument(std.testing.allocator, parsed.value));
-}
-
-test "options a plugin can read leave the document valid" {
-    const fixture =
-        \\{"functions":[{"ext":{"TEST":{"mode":"b"}},"name":"bump","params":[],"receiver":"Counter","return":{"kind":"void"},"symbol":"zg_counter_bump"}],"ir_version":1,"package":"meter","prefix":"zg","types":[{"kind":"opaque","name":"Counter"}],"zig_version":"0.16.0"}
-    ;
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    var parsed = try semantic.Semantic.parse(arena.allocator(), fixture);
-    defer parsed.deinit();
-    try std.testing.expect(try findIssue(arena.allocator(), parsed.value) == null);
-}
-
 test {
     _ = functions;
     _ = interfaces;
@@ -498,4 +349,31 @@ test "plugin configuration reaches validation and malformed config skips callbac
     try appendPluginIssues(fake.p, arena.allocator(), document, &.{.{ .name = "CONFIG", .json = "{\"enabled\":7}" }}, &issues);
     try std.testing.expectEqual(@as(usize, 1), issues.items.len);
     try std.testing.expectEqualStrings("CONFIG001", issues.items[0].code);
+}
+
+test "options a plugin cannot read are its own diagnostic, not a panic" {
+    const fixture =
+        \\{"functions":[{"ext":{"TEST":{"mode":"c"}},"name":"bump","params":[],"receiver":"Counter","return":{"kind":"void"},"symbol":"zg_counter_bump"}],"ir_version":1,"package":"meter","prefix":"zg","types":[{"kind":"opaque","name":"Counter"}],"zig_version":"0.16.0"}
+    ;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var parsed = try semantic.Semantic.parse(arena.allocator(), fixture);
+    defer parsed.deinit();
+    const issue = (try findIssue(arena.allocator(), parsed.value)) orelse return error.MissingDiagnostic;
+    // The plugin's own prefix, never a ZIGO code: the fault is the plugin's
+    // option type, and the message has to say whose.
+    try std.testing.expectEqualStrings("TEST001", issue.code);
+    try std.testing.expect(std.mem.indexOf(u8, issue.message, "`TEST` plugin") != null);
+    try std.testing.expectError(error.InvalidSemantic, semanticDocument(std.testing.allocator, parsed.value));
+}
+
+test "options a plugin can read leave the document valid" {
+    const fixture =
+        \\{"functions":[{"ext":{"TEST":{"mode":"b"}},"name":"bump","params":[],"receiver":"Counter","return":{"kind":"void"},"symbol":"zg_counter_bump"}],"ir_version":1,"package":"meter","prefix":"zg","types":[{"kind":"opaque","name":"Counter"}],"zig_version":"0.16.0"}
+    ;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var parsed = try semantic.Semantic.parse(arena.allocator(), fixture);
+    defer parsed.deinit();
+    try std.testing.expect(try findIssue(arena.allocator(), parsed.value) == null);
 }

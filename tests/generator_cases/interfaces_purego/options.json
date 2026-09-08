@@ -3,5 +3,9 @@
   "package": "interfaces",
   "prefix": "zg",
   "go_module": "example.com/zigo/interfaces",
-  "go_must_variants": true
+  "plugin_config": {
+    "MUST": {
+      "enabled": true
+    }
+  }
 }

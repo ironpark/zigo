@@ -9,9 +9,7 @@
 const std = @import("std");
 const abi = @import("abi");
 const diagnostic = @import("diagnostic");
-const must = @import("must.zig");
 const plugin_api = @import("plugin");
-const public_writers = @import("../emit/public_writers.zig");
 const semantic = @import("semantic");
 const site = plugin_api.site;
 
@@ -26,17 +24,7 @@ pub const plugin: plugin_api.Plugin = .{
 /// the method: a plugin's method hook is exactly where the direct call was.
 fn methodHook(context: plugin_api.Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
     if (function.origin.iterator == null) return;
-    const method = context.method.?;
-    try renderIteratorWrapper(
-        .{ .program = context.program, .options = context.options },
-        context.allocator,
-        writer,
-        function,
-        method.param_names,
-        method.receiver_name.?,
-        method.go_name,
-        method.needs_check,
-    );
+    try renderIteratorWrapper(context, writer, function);
 }
 
 /// The shape rule for `.iterator`, run over the whole document. The name
@@ -56,22 +44,18 @@ fn validateDocument(context: plugin_api.ValidateContext) !void {
 /// carries an `error` yields `iter.Seq2[T, error]`: the error is yielded
 /// once, with the zero value, and the sequence stops. Otherwise it yields
 /// `iter.Seq[T]`.
-pub fn renderIteratorWrapper(
-    scope: public_writers.PublicScope,
-    allocator: std.mem.Allocator,
-    writer: *std.Io.Writer,
-    function: abi.AbiFn,
-    go_names: [][]u8,
-    receiver_name: []const u8,
-    go_name: []const u8,
-    needs_check: bool,
-) !void {
+pub fn renderIteratorWrapper(context: plugin_api.Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
+    const allocator = context.allocator;
+    const method = context.method.?;
+    const receiver_name = method.receiver_name.?;
+    const go_name = method.go_name;
+    const needs_check = method.needs_check;
     const iterator = function.origin.iterator.?;
     const receiver = function.origin.receiver.?;
     const with_error = needs_check or function.origin.@"return" == .error_union;
     var payload: std.Io.Writer.Allocating = .init(allocator);
     defer payload.deinit();
-    try must.writeMustResultType(scope, &payload.writer, function.origin.*, null);
+    try context.writeValueType(&payload.writer, function);
     const payload_type = payload.written();
     const cancellable = function.origin.cancel != null;
 
@@ -88,7 +72,7 @@ pub fn renderIteratorWrapper(
     try writer.writeAll("\t\tfor {\n\t\t\tvalue, ok");
     if (with_error) try writer.writeAll(", err");
     try writer.print(" := {s}.{s}(", .{ receiver_name, go_name });
-    try must.writeMustCallArguments(allocator, writer, function, go_names);
+    try context.writeCallArguments(writer, function);
     try writer.writeAll(")\n");
     if (with_error) try writer.print(
         "\t\t\tif err != nil {{\n\t\t\t\tvar zero {s}\n\t\t\t\tyield(zero, err)\n\t\t\t\treturn\n\t\t\t}}\n",

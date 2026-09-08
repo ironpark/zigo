@@ -42,7 +42,7 @@ pub const Generate = struct {
     go_package: []const u8 = "",
     go_package_path: []const u8 = "",
     go_package_doc: []const u8 = "",
-    go_must_variants: bool = false,
+    plugin_config: []const u8 = "{}",
     errors_lock_path: ?[]const u8 = null,
     backend: Backend = .cgo,
     link_mode: LinkMode = .static,
@@ -130,7 +130,7 @@ pub fn writeUsage(writer: *std.Io.Writer) std.Io.Writer.Error!void {
         \\
         \\commands:
         \\  generate  --semantic <file> --output <dir> --package <name> [--gofmt <path>] [options]
-        \\            [--go-package <name>] [--go-package-path <path>] [--go-must-variants]
+        \\            [--go-package <name>] [--go-package-path <path>] [--plugin-config <json-object>]
         \\            [--link-mode static|dynamic] [--cgo-target <goos>/<goarch>]...
         \\            [--target-ldflags <goos>[,<goarch>]=<flags>]...
         \\  check     --generated <dir> --source <dir> [--file <generated> <source>]...
@@ -231,7 +231,7 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
     var gofmt_executable: ?[]const u8 = null;
     var raw_colocated = false;
     var raw_colocated_seen = false;
-    var go_must_variants = false;
+    var plugin_config: ?[]const u8 = null;
     var backend: ?Backend = null;
     var link_mode: ?LinkMode = null;
     var cgo_targets: std.ArrayList(CgoTarget) = .empty;
@@ -247,9 +247,8 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
             if (raw_colocated_seen) return error.DuplicateArgument;
             raw_colocated_seen = true;
             raw_colocated = true;
-        } else if (std.mem.eql(u8, flag, "--go-must-variants")) {
-            if (go_must_variants) return error.DuplicateArgument;
-            go_must_variants = true;
+        } else if (std.mem.eql(u8, flag, "--plugin-config")) {
+            try set(&plugin_config, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--semantic")) {
             try set(&semantic_path, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--output")) {
@@ -346,7 +345,7 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
         .go_package = go_package orelse "",
         .go_package_path = go_package_path orelse go_package orelse "",
         .go_package_doc = go_package_doc orelse "",
-        .go_must_variants = go_must_variants,
+        .plugin_config = plugin_config orelse "{}",
         .raw_colocated = raw_colocated,
         .errors_lock_path = errors_lock_path,
         .backend = backend orelse .cgo,
@@ -637,7 +636,8 @@ test "generate command parses named arguments" {
         "--raw-colocated",
         "--errors-lock",
         "errors.lock.json",
-        "--go-must-variants",
+        "--plugin-config",
+        "{\"MUST\":{\"enabled\":true}}",
     });
     const options = command.generate;
     try std.testing.expectEqualStrings("semantic.json", options.semantic_path);
@@ -652,7 +652,7 @@ test "generate command parses named arguments" {
     try std.testing.expectEqualStrings("scalar", options.raw_package_path);
     try std.testing.expect(options.raw_colocated);
     try std.testing.expectEqualStrings("errors.lock.json", options.errors_lock_path.?);
-    try std.testing.expect(options.go_must_variants);
+    try std.testing.expectEqualStrings("{\"MUST\":{\"enabled\":true}}", options.plugin_config);
 
     const dynamic_generate = (try parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--link-mode", "dynamic", "--library-stem", "scalar_zigo" })).generate;
     try std.testing.expectEqual(LinkMode.dynamic, dynamic_generate.link_mode);
@@ -706,7 +706,7 @@ test "generate command retains defaults" {
     try std.testing.expectEqualStrings("", options.go_package_path);
     try std.testing.expect(!options.raw_colocated);
     try std.testing.expect(options.errors_lock_path == null);
-    try std.testing.expect(!options.go_must_variants);
+    try std.testing.expectEqualStrings("{}", options.plugin_config);
 
     const named = (try parse(&.{ "generate", "--semantic", "semantic.json", "--output", "out", "--package", "scalar", "--go-package", "scalarapi" })).generate;
     try std.testing.expectEqualStrings("scalarapi", named.go_package_path);
@@ -755,7 +755,7 @@ test "parser rejects incomplete unknown and duplicate arguments" {
     try std.testing.expectError(error.UnknownArgument, parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--auto-cleanup" }));
     try std.testing.expectError(error.DuplicateArgument, parse(&.{ "check", "--generated", "one", "--generated", "two", "--source", "go" }));
     try std.testing.expectError(error.DuplicateArgument, parse(&.{ "generate", "--semantic", "semantic.json", "--output", "out", "--package", "scalar", "--raw-colocated", "--raw-colocated" }));
-    try std.testing.expectError(error.DuplicateArgument, parse(&.{ "generate", "--semantic", "semantic.json", "--output", "out", "--package", "scalar", "--go-must-variants", "--go-must-variants" }));
+    try std.testing.expectError(error.DuplicateArgument, parse(&.{ "generate", "--semantic", "semantic.json", "--output", "out", "--package", "scalar", "--plugin-config", "{}", "--plugin-config", "{}" }));
     try std.testing.expectError(error.DuplicateArgument, parse(&.{ "generate", "--semantic", "semantic.json", "--output", "out", "--package", "scalar", "--pkg-config-libs", "avformat", "--pkg-config-libs-file", "resolved.txt" }));
     try std.testing.expectError(error.InvalidValue, parse(&.{ "abi-diff", "--base", "old", "--current", "new", "--fail-on", "all" }));
 }
