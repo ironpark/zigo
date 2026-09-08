@@ -4,6 +4,15 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Fixed
+
+- Windows에서 `zig build go`가 방금 게시한 하위 디렉터리의 Go 파일을 삭제하던 문제를
+  고쳤습니다. 게시 목록은 `.zigo-outputs.json`의 이식 가능한 경로(`pkg/file_gen.go`)인데
+  디렉터리 walk는 호스트 구분자(`pkg\file_gen.go`)를 쓰므로 모든 중첩 출력이 사용하지 않는
+  파일로 보였습니다. 이제 두 구분자를 같게 비교하고, walk에서 나온 경로는 `/`로 기록합니다.
+
 ## [0.21.0] - 2026-09-08
 
 ### Breaking

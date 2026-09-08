@@ -182,7 +182,7 @@ pub const PublishGeneratedGo = struct {
         if (previous) |manifest| for (manifest.value.files) |file| {
             if (!file.publishable()) continue;
             for (published.items) |path| {
-                if (std.ascii.eqlIgnoreCase(path, file.path)) break;
+                if (go_walk.eqlPath(file.path, path)) break;
             } else {
                 go_dir.deleteFile(io, file.path) catch |err| switch (err) {
                     error.FileNotFound => continue,
@@ -196,7 +196,7 @@ pub const PublishGeneratedGo = struct {
         while (try stale_walker.next(io)) |entry| {
             if (entry.kind != .file or !std.mem.endsWith(u8, entry.path, ".go")) continue;
             for (published.items) |sub_path| {
-                if (std.ascii.eqlIgnoreCase(sub_path, entry.path)) break;
+                if (go_walk.eqlPath(sub_path, entry.path)) break;
             } else {
                 if (std.mem.eql(u8, std.fs.path.basename(entry.path), volatile_cgo_link_file)) continue;
                 // Only zigo's own output is removed; anything the user wrote in

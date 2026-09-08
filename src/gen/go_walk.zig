@@ -67,3 +67,41 @@ test "walk skips build cache directories at any depth" {
     try std.testing.expectEqual(@as(usize, 1), found.items.len);
     try std.testing.expectEqualStrings("nested/keep_gen.go", found.items[0]);
 }
+
+/// The walker joins path parts with the host separator, while manifests,
+/// emitters and every diagnostic spell portable `/` paths. Comparing the two
+/// spellings directly made every nested output look unknown on Windows, so
+/// both separators compare equal here, as do case variants: the output tree
+/// must stay unambiguous on case-insensitive file systems.
+pub fn eqlPath(portable: []const u8, walked: []const u8) bool {
+    if (portable.len != walked.len) return false;
+    for (portable, walked) |left, right| {
+        if (normalizeByte(left) != normalizeByte(right)) return false;
+    }
+    return true;
+}
+
+fn normalizeByte(byte: u8) u8 {
+    return if (byte == '\\') '/' else std.ascii.toLower(byte);
+}
+
+/// A walked path respelled with `/`, which is how a path is recorded and
+/// reported once it leaves the walker.
+pub fn portableAlloc(allocator: std.mem.Allocator, walked: []const u8) ![]u8 {
+    const copy = try allocator.dupe(u8, walked);
+    if (std.fs.path.sep != '/') std.mem.replaceScalar(u8, copy, std.fs.path.sep, '/');
+    return copy;
+}
+
+test "path comparison ignores the host separator and case" {
+    try std.testing.expect(eqlPath("nested/file_gen.go", "nested\\file_gen.go"));
+    try std.testing.expect(eqlPath("Nested/File_gen.go", "nested/file_gen.go"));
+    try std.testing.expect(!eqlPath("nested/file_gen.go", "nested/other_gen.go"));
+    try std.testing.expect(!eqlPath("nested/file_gen.go", "file_gen.go"));
+}
+
+test "portable paths keep forward slashes" {
+    const portable = try portableAlloc(std.testing.allocator, "nested" ++ std.fs.path.sep_str ++ "file_gen.go");
+    defer std.testing.allocator.free(portable);
+    try std.testing.expectEqualStrings("nested/file_gen.go", portable);
+}

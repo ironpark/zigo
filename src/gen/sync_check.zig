@@ -43,7 +43,9 @@ pub fn compare(allocator: std.mem.Allocator, io: std.Io, generated: std.Io.Dir, 
         defer walker.deinit();
         while (try walker.next(io)) |entry| {
             if (entry.kind != .file or !std.mem.endsWith(u8, entry.path, ".go")) continue;
-            try compareFile(allocator, io, &result, generated, entry.path, go_dir, entry.path, entry.path);
+            const label = try go_walk.portableAlloc(allocator, entry.path);
+            defer allocator.free(label);
+            try compareFile(allocator, io, &result, generated, entry.path, go_dir, entry.path, label);
         }
     }
     if (previous) |value| for (value.value.files) |file| {
@@ -75,11 +77,14 @@ pub fn compare(allocator: std.mem.Allocator, io: std.Io, generated: std.Io.Dir, 
                 const source = try go_dir.readFileAlloc(io, entry.path, allocator, read_limit);
                 defer allocator.free(source);
                 var listed = false;
-                for (result.differences.items) |difference| if (std.mem.eql(u8, difference.path, entry.path)) {
+                for (result.differences.items) |difference| if (go_walk.eqlPath(difference.path, entry.path)) {
                     listed = true;
                 };
-                if (!listed and std.mem.startsWith(u8, source, generated_marker))
-                    try append(allocator, &result, .obsolete, entry.path);
+                if (!listed and std.mem.startsWith(u8, source, generated_marker)) {
+                    const label = try go_walk.portableAlloc(allocator, entry.path);
+                    defer allocator.free(label);
+                    try append(allocator, &result, .obsolete, label);
+                }
             },
             else => return err,
         };
