@@ -184,7 +184,6 @@ const next = api.in("Context").func("next", .{}).use(zigo.features.iterator, .{}
 
 `with()`는 적은 필드만 교체하며 null은 기존 값을 지웁니다. 중첩 계약은 전체 교체입니다.
 선언의 `.use()`는 중복 플러그인을 거절하고 `.replacePlugin()`은 명시적으로 교체합니다.
-[작성 API 마이그레이션](migration-authoring.md)에 이전 표기와의 대응표가 있습니다.
 
 ## Zig 타입 → Go 타입
 
@@ -284,7 +283,7 @@ zig build test --summary all
 staticcheck -checks U1000 ./...                                       # 각 Go 모듈에서
 ```
 
-절차 전체는 [프로젝트 개발](development.md#릴리즈-절차).
+절차 전체는 [기여 안내](../CONTRIBUTING.md#릴리스).
 
 
 작은 계약 helper: `zigo.param.output(index, .result)`, `stream(index, buffer)`,

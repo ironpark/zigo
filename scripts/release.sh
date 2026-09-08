@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs the release checklist from docs/development.md end to end: format
+# Runs the release checklist from CONTRIBUTING.md end to end: format
 # check, the full test suite, every example's generated-tree check,
 # staticcheck over the example Go modules, then the version bump
 # (CHANGELOG section, build.zig.zon, README and getting-started fetch lines),

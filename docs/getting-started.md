@@ -1,54 +1,36 @@
-# 시작 가이드
+# 첫 Go 바인딩 만들기
 
-이 가이드는 기본 경로인 cgo 정적 링크로 첫 바인딩을
-만듭니다. 완료하면 Zig 함수가 생성된 Go 패키지에서 호출되고, 생성물 최신 상태를 CI에서
-검사할 수 있습니다.
+이 가이드는 기존 Zig 라이브러리에 기본 cgo 정적 바인딩을 연결합니다. 완료하면 Zig의
+`add` 함수를 생성된 Go 패키지에서 호출하고 테스트할 수 있습니다.
 
-명령은 별도 표기가 없으면 Bash·zsh 같은 POSIX 셸 기준입니다. Windows PowerShell에서는
-`(cd go && ...)` 대신 `Push-Location go`와 `Pop-Location`으로 디렉터리를 이동하세요.
+완성된 프로젝트를 먼저 실행하려면 [00-quick-start](../examples/00-quick-start/README.md)를
+사용하세요.
 
-## 준비 사항
+## 준비
 
-완성된 프로젝트에서 먼저 실습하려면 [00-quick-start](../examples/00-quick-start/README.md)를
-사용하세요. 아래 절차는 자신의 Zig 프로젝트에 같은 구성을 연결하는 방법입니다.
+다음 도구가 필요합니다.
 
 - Zig 0.16.0
-- Go 1.24 이상과 Go 배포판에 포함된 `gofmt`
-- C 컴파일러를 사용할 수 있고 cgo가 활성화된 네이티브 macOS, Linux 또는 Windows 환경.
-  Windows에서는 `CC="zig cc"`가 그 C 컴파일러 역할을 하므로 mingw-w64를 따로 설치할
-  필요가 없습니다. [Windows에서 cgo 백엔드 쓰기](#windows에서-cgo-백엔드-쓰기)를 보세요.
+- Go 1.24 이상과 `gofmt`
+- cgo에서 사용할 C compiler
 
-다음 명령으로 현재 환경을 확인할 수 있습니다.
+Windows에서는 별도 mingw-w64 대신 `CC="zig cc"`를 사용할 수 있습니다. 처음에는 현재
+호스트용 빌드부터 완료하고 다른 백엔드와 타깃은 [빌드 설정](configuration.md)에서
+선택하세요.
 
-```bash
-zig version
-go version
-go env CGO_ENABLED CC
-```
+## 1. 프로젝트 만들기
 
-purego도 실행할 OS·아키텍처에 맞는 Zig 공유 라이브러리가 필요하며, 크로스 빌드할 수
-있습니다. 먼저 이 가이드의 기본 경로를 완료한 뒤 [purego 가이드](purego.md)로 이동하는 것을
-권장합니다.
-
-## 1. zigo 의존성 추가
-
-기존 Zig 라이브러리 프로젝트의 루트에서 실행합니다. 아직 프로젝트가 없다면 빈 디렉터리에서
-`zig init`으로 만든 뒤 진행하세요. 아래 전체 `build.zig`는 최소 예제이므로, 기존 프로젝트에서는
-필요한 바인딩 설정만 합치고 기존 빌드 스텝을 보존하세요.
-
-이 문서의 선언 트리 API는 0.17.0과 호환되지 않습니다.
-0.17.0을 고정해 사용하려면 [해당 태그의 시작 가이드](https://github.com/ironpark/zigo/blob/0.17.0/docs/getting-started.md)를 따르세요.
+기존 프로젝트가 없다면 빈 디렉터리에서 시작합니다.
 
 ```bash
+mkdir mylib
+cd mylib
+zig init
 zig fetch --save git+https://github.com/ironpark/zigo#0.21.1
+mkdir -p go
 ```
 
-명령이 `build.zig.zon`에 `zigo` 의존성을 추가합니다. 재현 가능한 빌드를 위해 생성된
-URL과 해시 변경을 함께 커밋하세요.
-
-## 2. 빌드 그래프 연결
-
-다음 디렉터리 구조를 기준으로 설명합니다.
+이후 파일 구조는 다음과 같습니다.
 
 ```text
 .
@@ -59,7 +41,46 @@ URL과 해시 변경을 함께 커밋하세요.
     └── root.zig
 ```
 
-`build.zig`에서 라이브러리 모듈을 만든 뒤 `addGoBindings`를 연결합니다.
+`zig fetch`가 추가한 URL과 hash는 재현 가능한 빌드를 위해 함께 커밋합니다.
+
+## 2. Zig API 작성하기
+
+`src/root.zig`에 Go로 공개할 함수를 만듭니다.
+
+```zig
+/// Adds two signed 32-bit integers. The sum must fit in i32.
+pub fn add(a: i32, b: i32) i32 {
+    return a + b;
+}
+```
+
+zigo는 Zig 구현을 수정하지 않습니다. 어떤 API를 Go에 공개할지는 별도의 binding 문서에서
+결정합니다.
+
+## 3. 공개 범위 선언하기
+
+`src/bindings.zig`를 만듭니다.
+
+```zig
+const zigo = @import("zigo");
+const mylib = @import("mylib");
+
+const api = zigo.scope(mylib);
+
+pub const bindings = zigo.define(.{
+    .root = mylib,
+    .declarations = &.{
+        api.func("add", .{}),
+    },
+});
+```
+
+`zigo.scope(mylib)`는 선언을 선택할 기준점을 만들고 `api.func("add", .{})`는 루트 모듈의
+공개 함수 하나를 선택합니다. 더 많은 타입과 함수는 이 목록에 명시적으로 추가할 수 있습니다.
+
+## 4. 빌드 그래프 연결하기
+
+`build.zig`를 다음 내용으로 바꿉니다.
 
 ```zig
 const std = @import("std");
@@ -90,66 +111,33 @@ pub fn build(b: *std.Build) void {
 }
 ```
 
-바꿔야 하는 값은 세 가지입니다.
+프로젝트에 맞게 바꿀 값은 다음 세 가지입니다.
 
-- `mylib`: 프로젝트의 Zig 모듈 이름
-- `go`: 생성된 Go 모듈을 둘 디렉터리
-- `example.com/mylib/go`: 실제로 사용할 Go module path
+- `mylib`: Zig 모듈과 binding set의 이름
+- `go`: 생성할 Go module 디렉터리
+- `example.com/mylib/go`: 실제 Go module path
 
-`source_root`는 함수 파라미터 이름과 문서 주석을 실제 Zig 소스에서 보강합니다. 대상 모듈의
-루트 파일을 알고 있다면 지정하는 편이 좋습니다.
+`source_root`는 Zig 소스의 파라미터 이름과 문서 주석을 생성 Go API에 보강합니다. 대상
+모듈의 루트 파일을 알고 있다면 지정하는 것을 권장합니다.
 
-## 3. 공개 API 선언
+## 5. 생성하기
 
-예제의 `src/root.zig`에 다음 함수가 있다고 가정합니다.
-
-```zig
-pub fn add(a: i32, b: i32) i32 {
-    return a + b;
-}
-```
-
-`src/bindings.zig`에는 Go에 노출할 선언만 적습니다.
-
-```zig
-const zigo = @import("zigo");
-const mylib = @import("mylib");
-
-const api = zigo.scope(mylib);
-
-pub const bindings = zigo.define(.{
-    .root = mylib,
-    .declarations = &.{api.func("add", .{})},
-});
-```
-
-`api.func("add", .{})`는 루트 모듈의 공개 함수를 선택합니다. 타입 안의 메서드는
-`api.in("Context").func("process", .{})`로 선택합니다.
-
-처음에는 안정적으로 노출할 함수만 `declarations`에 명시하세요. 공개 Zig API 전체가
-바인딩 API인 프로젝트는 `.discovery = .{ .public = .{} }`로 자동 발견을 선택할 수 있습니다.
-
-## 4. 생성하고 테스트
-
-프로젝트 루트에서 바인딩과 네이티브 라이브러리를 생성합니다.
+프로젝트 루트에서 실행합니다.
 
 ```bash
 zig build go
 ```
 
-처음 실행하면 `go/` 아래에 `go.mod`, 공개 Go 패키지, raw 패키지가 생기고 프로젝트 루트의
-`zigo/` 아래에 ABI 메타데이터가 생깁니다. 이어서 Go 테스트를 실행합니다.
+성공하면 `go/` 아래에 Go module, 공개 `mylib` 패키지와 내부 raw 패키지가 생성됩니다.
+프로젝트 루트의 `zigo/`에는 semantic과 ABI 검사용 metadata가 생성됩니다.
 
-```bash
-(cd go && go test ./...)
-```
+공개 함수의 import path는 기본적으로 `<go_module>/<go_package>`이므로 이 예제에서는
+`example.com/mylib/go/mylib`입니다.
 
-생성된 공개 패키지의 실제 import path는 기본적으로 `<go_module>/<go_package>`입니다.
-`go_package_path = "."`이면 `<go_module>`, 다른 경로이면 `<go_module>/<go_package_path>`입니다. `go_package`를
-지정하지 않았다면 `name`을 snake_case로 정규화한 값이 사용됩니다.
+## 6. Go에서 호출하기
 
-실제 함수 호출까지 확인하려면 `go/mylib/add_test.go`를 직접 만드세요. 이 파일은 사용자
-코드이므로 바인딩을 다시 생성해도 보존됩니다.
+`go/mylib/add_test.go`를 만듭니다. `_gen.go` 접미사가 없는 파일은 사용자 코드이며 다시
+생성해도 보존됩니다.
 
 ```go
 package mylib_test
@@ -167,21 +155,18 @@ func TestAdd(t *testing.T) {
 }
 ```
 
-프로젝트 루트에서 다음을 실행하면 `TestAdd`가 통과해야 합니다. 사용자 테스트를 추가하기
-전의 `go test`는 생성 패키지의 컴파일만 확인하며 `[no test files]`를 출력할 수 있습니다.
+테스트를 실행합니다.
 
 ```bash
 gofmt -w go/mylib/add_test.go
-(cd go && go test -v ./...)
+(cd go && go test ./...)
 ```
 
-Go 패키지를 다른 프로젝트에서 가져올 때도 native 아티팩트가 필요합니다. `go get`은
-`zig build`를 실행하지 않습니다. 패키지 제공자는 소비자의 빌드 환경에 맞는 헤더·라이브러리
-준비 방법을 함께 안내해야 합니다. 공유 라이브러리 배포는 [purego 가이드](purego.md)를 참고하세요.
+테스트가 통과하면 첫 바인딩이 완성된 것입니다.
 
-## 5. 일상 개발 흐름
+## 평소 작업 흐름
 
-Zig API나 `bindings.zig`를 바꾼 뒤에는 생성물을 갱신하고 테스트합니다.
+Zig API나 `bindings.zig`를 바꾼 뒤 다음 순서로 확인합니다.
 
 ```bash
 zig build go
@@ -189,89 +174,18 @@ zig build go-doctor
 (cd go && go test ./...)
 ```
 
-- `go`는 바인딩과 네이티브 라이브러리를 갱신합니다.
-- `go-doctor`는 Go 버전, `gofmt`, cgo와 C compiler 같은 환경 전제를 진단합니다.
-- 더 자세한 이름·ownership·retention 결정은 `zig build go-report`로 확인합니다.
+- `go`: Go 코드, ABI shim과 metadata를 갱신합니다.
+- `go-doctor`: Go, `gofmt`, cgo와 C compiler 전제를 점검합니다.
+- `go-report`: 최종 이름, ownership과 callback retention 결정을 설명합니다.
+- `go-check`: 커밋한 생성물이 현재 선언과 같은지 검사합니다.
 
-생성된 Go 소스와 `zigo/semantic.json`, `zigo/errors.lock.json`을 함께 커밋하세요. 생성 파일을
-직접 수정하면 다음 생성 때 덮어써집니다.
-
-## 6. CI에서 생성물 검사
-
-CI에서는 `go-check`로 커밋된 생성물을 검사하고, `go-lib`로 Go 테스트에 필요한 네이티브
-라이브러리와 헤더를 설치합니다. 아래 명령은 프로젝트 루트에서 실행합니다.
-
-```bash
-zig build go-check go-lib
-(cd go && go test ./...)
-```
-
-`go-check`는 다음 상태에서 실패합니다.
-
-- 현재 선언으로 생성한 내용과 커밋된 파일이 다름
-- 필요한 Go 생성 파일이 없음
-- 더 이상 생성되지 않는 zigo 파일이 이전 경로에 남아 있음
-
-독립 배포된 이전 버전과 ABI 호환성을 유지해야 할 때만 `.abi_base = "HEAD"` 같은 기준을
-설정하고 CI에 `zig build abi-check`를 추가합니다. 같은 저장소 안에서 항상 함께 배포하는
-코드라면 필수 설정이 아닙니다.
-
-`go-check`는 커밋 대상 Go 생성물을 갱신하지 않습니다. 다만 별도 정적 링크 입력이 있는
-프로젝트에서는 커밋하지 않는 `zigo_link_inputs_gen.go`를 만들 수 있습니다.
-자세한 범위는 [생성물과 CI 관리](generated-code.md)를 참고하세요.
-
-## Windows에서 cgo 백엔드 쓰기
-
-Windows의 cgo는 gcc 호환 C 툴체인을 요구합니다. mingw-w64를 설치하는 대신 이미 갖고
-있는 Zig를 그대로 쓰면 됩니다. `zig cc`는 gcc 호환 clang 드라이버이고 mingw 헤더와
-CRT, 링커를 함께 들고 다닙니다. 추가 `CGO_CFLAGS`나 `CGO_LDFLAGS`는 필요 없습니다.
-
-```powershell
-$env:CGO_ENABLED = "1"
-$env:CC = "zig cc"
-zig build go
-Push-Location go
-go test ./...
-Pop-Location
-```
-
-POSIX 호스트에서 Windows용으로 크로스 빌드할 수도 있습니다. 정적 아카이브를 타깃으로
-빌드한 다음 같은 타깃을 `CC`에 실어 링크합니다.
-
-```bash
-zig build go-lib -Dtarget=x86_64-windows-gnu
-cd go
-CGO_ENABLED=1 GOOS=windows GOARCH=amd64 \
-  CC="zig cc -target x86_64-windows-gnu" go build ./...
-```
-
-주의할 점:
-
-- amd64에 gnu ABI 전용입니다. `-target *-windows-msvc`, 386, arm32는 지원하지
-  않습니다.
-- 정적 아카이브는 Windows 타깃에서도 `zig-out/lib/lib<name>_zigo.a`로 설치됩니다.
-  생성된 `#cgo LDFLAGS` 줄이 모든 호스트에서 같은 이름을 쓰기 때문입니다.
-- 크로스 빌드에서는 `go-doctor`가 `FAIL target`을 보고합니다. `GOOS`와 `CC` 조합을
-  관찰할 수 없어 검증할 방법이 없기 때문이지, 링크가 안 된다는 뜻이 아닙니다. 결과
-  실행 파일은 타깃에서 실행해 확인하세요.
-- 호스트용과 Windows용을 한 트리에서 함께 링크하려면 `addGoBindings`에 `targets`를
-  나열하세요. 타깃별 archive가 `zig-out/lib/<goos>_<goarch>/`에 설치되고 cgo 블록이
-  플랫폼별 줄을 갖습니다 ([설정](configuration.md#여러-타깃용-네이티브-라이브러리)).
-
-## 문제가 생겼다면
-
-| 증상 | 확인할 것 |
-|---|---|
-| `gofmt is required` | Go 배포판을 설치하고 `gofmt`가 `PATH`에 있는지 확인 |
-| cgo 또는 C compiler 진단 실패 | `go env CGO_ENABLED CC`와 `zig build go-doctor` 출력 확인 |
-| 생성물이 오래되었다는 오류 | `zig build go` 후 변경된 생성 파일과 `zigo/`를 함께 커밋 |
-| 타입을 지원하지 않는다는 `ZIGO...` 진단 | [지원 범위와 제한사항](limitations.md)의 타입·ABI 규칙 확인 |
+생성된 Go 소스와 `zigo/semantic.json`, `zigo/errors.lock.json`은 일반적으로 커밋합니다.
+정확한 파일 범위와 CI 구성은 [생성물과 CI](generated-code.md)를 참고하세요.
 
 ## 다음 단계
 
-- 백엔드와 Go 패키지 설정: [빌드 설정](configuration.md)
-- 함수 메타데이터와 타입 등록: [`bindings.zig` 선언](bindings.md)
-- 생성 파일과 CI 세부 정책: [생성물과 CI 관리](generated-code.md)
-- 자신의 API와 가까운 실행 예제: [예제 선택 가이드](examples.md)
-- C 컴파일러 없는 Go 빌드: [공유 라이브러리와 purego](purego.md)
-- 플랫폼, 타입, ABI와 수명 제약: [지원 범위와 제한사항](limitations.md)
+- 함수와 타입을 더 공개하려면 [`bindings.zig` 선언](bindings.md)
+- 자신의 API와 가까운 코드를 찾으려면 [예제](examples.md)
+- cgo 동적 링크나 purego가 필요하면 [빌드 설정](configuration.md)
+- 지원하지 않는 타입이나 플랫폼을 확인하려면 [지원 범위](limitations.md)
+- 생성이 실패했다면 [진단](diagnostics.md)

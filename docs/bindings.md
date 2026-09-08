@@ -1,8 +1,7 @@
 # `bindings.zig` 선언
 
 `bindings.zig`는 Zig API 중 무엇을 Go에 노출할지, 값과 객체를 어떻게 전달할지 정합니다.
-빌드 연결은 [시작 가이드](getting-started.md), 이전 작성 API에서 옮기는 방법은
-[작성 API 마이그레이션](migration-authoring.md)을 참고하세요.
+빌드 연결은 [시작 가이드](getting-started.md)를 참고하세요.
 
 ## 기본 구조
 
