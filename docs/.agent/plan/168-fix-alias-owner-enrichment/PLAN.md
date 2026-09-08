@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-08T01:13:32Z"
 description: Match wrappers re-exported through import bindings, widen the receiver witness, and tell same-named alias targets apart by file
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-08T01:06:36Z"
 ---
 > NEXT: `names.zig`의 세 지점을 고치고 회귀 테스트를 붙인다. ([Phase 0](phases/00-fix.md))
@@ -8,7 +9,7 @@ registered_at: "2026-09-08T01:06:36Z"
 # Phases
 
 - [x] [Phase 00: Fix and regression tests](phases/00-fix.md)
-- [ ] [Phase 01: Release 0.19.2](phases/01-release.md)
+- [x] [Phase 01: Release 0.19.2](phases/01-release.md)
 
 # Shared Verification
 

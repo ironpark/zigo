@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-08T01:13:32Z"
 depends_on:
 - "168-fix-alias-owner-enrichment#0"
 perf_phase: false
-status: planned
+status: done
 ---
 > DONE-WHEN: 태그 `0.19.2`가 origin에 있고 릴리즈 워크플로가 노트를 게시했다.
 > NEXT: none
