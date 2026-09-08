@@ -525,7 +525,19 @@ fn scanSourceWithAliases(allocator: std.mem.Allocator, source: []const u8, funct
         const proto = tree.fullFnProto(&buffer, node) orelse continue;
         const doc = try declDocAlloc(allocator, tree, proto.firstToken());
         defer if (doc) |value| allocator.free(value);
-        try enrichMatches(allocator, tree, proto, null, functions, matched, false, doc, path, owners.items, aliases);
+        try enrichMatches(allocator, tree, proto, null, functions, matched, .anonymous, doc, path, owners.items, aliases);
+    }
+
+    // A file that is a struct (`const Terminal = @This();`) or a namespace
+    // registered under another path declares owned functions at its root.
+    // They are judged last, once every container the file names is known,
+    // and with their receiver type as the witness.
+    for (tree.rootDecls()) |node| {
+        var buffer: [1]std.zig.Ast.Node.Index = undefined;
+        const proto = tree.fullFnProto(&buffer, node) orelse continue;
+        const doc = try declDocAlloc(allocator, tree, proto.firstToken());
+        defer if (doc) |value| allocator.free(value);
+        try enrichMatches(allocator, tree, proto, null, functions, matched, .file, doc, path, owners.items, aliases);
     }
     return 0;
 }
@@ -588,7 +600,10 @@ fn scanMembers(
                 if (group_doc) |previous| allocator.free(previous);
                 group_doc = null;
             }
-            try enrichMatches(allocator, tree, proto, owner, functions, matched, true, group_doc, path, &.{}, aliases);
+            // A root `fn` is its own node plus a prototype node; both are
+            // this declaration, so neither may reach the anonymous fallback.
+            visited[@intFromEnum(proto.ast.proto_node)] = true;
+            try enrichMatches(allocator, tree, proto, owner, functions, matched, if (owner == null) .root else .named, group_doc, path, &.{}, aliases);
             group_end = declarationEnd(tree, node);
             continue;
         }
@@ -678,6 +693,23 @@ fn recordAlias(
     }
 }
 
+/// Where a prototype was found, which decides what it may be matched to.
+const Scope = enum {
+    /// Inside a container the file names: the owner is known exactly.
+    named,
+    /// A root declaration, for functions with no owner: the file is a
+    /// namespace and the function sits in it.
+    root,
+    /// A root declaration, for functions with an owner: the file may itself
+    /// be the struct (`const Terminal = @This();`) or the namespace the
+    /// binding registered under another path, so the receiver type or the
+    /// absence of a contradicting container is what vouches for it.
+    file,
+    /// Inside an anonymous container: a generic factory's method, which only
+    /// an instantiation's method can be.
+    anonymous,
+};
+
 fn enrichMatches(
     allocator: std.mem.Allocator,
     tree: std.zig.Ast,
@@ -685,7 +717,7 @@ fn enrichMatches(
     source_owner: ?[]const u8,
     functions: []semantic.SemanticFn,
     matched: []bool,
-    qualified: bool,
+    scope: Scope,
     doc: ?[]const u8,
     path: ?[]const u8,
     /// Containers this file declares by name. Only the unqualified pass reads
@@ -716,25 +748,27 @@ fn enrichMatches(
         const alias = aliases.get(bound);
         const declaration: Declaration = if (alias) |value| .{ .name = value.name, .owner = value.owner } else bound;
         if (!std.mem.eql(u8, declaration.name, declaration_name)) continue;
-        if (qualified) {
-            if (!ownerMatches(declaration.owner, source_owner, alias != null)) continue;
-        } else if (declaration.owner) |owner| {
-            // A prototype in an anonymous container belongs to a generic
-            // factory. It can only be the declaration of a function whose
-            // owner is an instantiation of one; a plainly declared owner has
-            // its prototype under its own name, in some file, and a
-            // same-named method of any arity-matching factory is a stranger.
-            if (!(function.owner_generic orelse false)) continue;
-            // A declaration in an anonymous container cannot be the one this
-            // function names when the same file writes that owner out.
-            var contradicted = false;
-            for (declared_owners) |declared| {
-                if (std.mem.eql(u8, declared, owner)) {
-                    contradicted = true;
-                    break;
-                }
-            }
-            if (contradicted) continue;
+        switch (scope) {
+            .named => if (!ownerMatches(declaration.owner, source_owner, alias != null)) continue,
+            .root => if (declaration.owner != null) continue,
+            .file => {
+                const owner = declaration.owner orelse continue;
+                if (ownerDeclaredHere(declared_owners, owner)) continue;
+                // A method's receiver names the struct the file is; a
+                // namespace function has nothing to show, and the file
+                // is taken at its word once no container contradicts it.
+                if (function.receiver != null and !receiverTypeNames(tree, proto, owner)) continue;
+            },
+            .anonymous => if (declaration.owner) |owner| {
+                // A prototype in an anonymous container belongs to a generic
+                // factory. It can only be the declaration of a function whose
+                // owner is an instantiation of one; a plainly declared owner
+                // has its prototype under its own name, in some file, and a
+                // same-named method of any arity-matching factory is a
+                // stranger.
+                if (!(function.owner_generic orelse false)) continue;
+                if (ownerDeclaredHere(declared_owners, owner)) continue;
+            },
         }
         const receiver_count: usize = @intFromBool(function.receiver != null);
         if (names.items.len != function.params.len + receiver_count) continue;
@@ -847,6 +881,32 @@ fn hasBlankLine(gap: []const u8) bool {
 
 fn tokenEnd(tree: std.zig.Ast, token: std.zig.Ast.TokenIndex) usize {
     return tree.tokenStart(token) + tree.tokenSlice(token).len;
+}
+
+/// A declaration at the root cannot be the one this function names when the
+/// same file writes that owner out as a container of its own.
+fn ownerDeclaredHere(declared_owners: []const []const u8, owner: []const u8) bool {
+    for (declared_owners) |declared| if (std.mem.eql(u8, declared, owner)) return true;
+    return false;
+}
+
+/// Whether the prototype's first parameter is typed as `owner`: `*Terminal`,
+/// `*const Terminal`, `Terminal`, or the `Self`/`@This()` a file-as-struct
+/// spells itself with. Only the trailing identifier is compared, so an
+/// import-qualified `terminal.Terminal` counts too.
+fn receiverTypeNames(tree: std.zig.Ast, proto: std.zig.Ast.full.FnProto, owner: []const u8) bool {
+    var iterator = proto.iterate(&tree);
+    const first = iterator.next() orelse return false;
+    const type_node = first.type_expr orelse return false;
+    const spelled = std.mem.trimEnd(u8, tree.getNodeSource(type_node), " \t\r\n");
+    if (std.mem.endsWith(u8, spelled, "@This()")) return true;
+    var start = spelled.len;
+    while (start > 0 and (std.ascii.isAlphanumeric(spelled[start - 1]) or spelled[start - 1] == '_')) start -= 1;
+    const tail = spelled[start..];
+    if (tail.len == 0) return false;
+    if (std.mem.eql(u8, tail, "Self")) return true;
+    const wanted = if (std.mem.lastIndexOfScalar(u8, owner, '.')) |index| owner[index + 1 ..] else owner;
+    return std.mem.eql(u8, tail, wanted);
 }
 
 /// Whether the container a prototype sits in is the one a declaration names.
@@ -1200,6 +1260,73 @@ test "a plainly declared owner never takes names from an unrelated generic facto
     try std.testing.expectEqual(@as(usize, 0), try scanSource(arena.allocator(), render_source, &functions, "render.zig"));
     try std.testing.expectEqualStrings("t", functions[0].params[0].name);
     try std.testing.expectEqualStrings("Refreshes the state from the terminal.", functions[0].doc.?);
+}
+
+test "a file that is the struct lends its root methods to the registered owner" {
+    // ghostty's `Terminal.zig`: the file is the struct, so its methods are
+    // root declarations with no container named `Terminal` around them.
+    const source =
+        \\const Terminal = @This();
+        \\cols: u16,
+        \\/// Moves the cursor up.
+        \\pub fn cursorUp(self: *Terminal, count_req: usize) void { _ = self; _ = count_req; }
+        \\/// Reports the column count.
+        \\pub fn cols(self: *const Terminal) u16 { return self.cols; }
+        \\pub fn update(self: *Terminal, cell: u8) void { _ = self; _ = cell; }
+    ;
+    var functions = [_]semantic.SemanticFn{
+        .{
+            .name = "cursorUp",
+            .params = &.{.{ .name = "p0", .type = .{ .int = .{ .bits = 64, .signed = false, .is_usize = true } } }},
+            .receiver = "Terminal",
+            .@"return" = .{ .void = {} },
+            .symbol = "zg_terminal_cursor_up",
+        },
+        .{
+            .field_access = .{ .path = "cols" },
+            .name = "cols",
+            .params = &.{},
+            .receiver = "Terminal",
+            .@"return" = .{ .int = .{ .bits = 16, .signed = false } },
+            .symbol = "zg_terminal_cols",
+        },
+        // Another plain struct's `update` of the same arity: the receiver
+        // type says this file is not `RenderState`.
+        .{
+            .name = "update",
+            .params = &.{.{ .name = "p0", .type = .{ .int = .{ .bits = 8, .signed = false } } }},
+            .receiver = "RenderState",
+            .@"return" = .{ .void = {} },
+            .symbol = "zg_render_state_update",
+        },
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    try std.testing.expectEqual(@as(usize, 0), try scanSource(arena.allocator(), source, &functions, "Terminal.zig"));
+    try std.testing.expectEqualStrings("count_req", functions[0].params[0].name);
+    try std.testing.expectEqualStrings("Moves the cursor up.", functions[0].doc.?);
+    try std.testing.expectEqualStrings("Reports the column count.", functions[1].doc.?);
+    try std.testing.expectEqualStrings("p0", functions[2].params[0].name);
+    try std.testing.expect(functions[2].doc == null);
+}
+
+test "a file that is a namespace lends its root functions to the registered namespace" {
+    const source =
+        \\/// Reports the display width of a codepoint.
+        \\pub fn codepointWidth(cp: u21) u8 { _ = cp; return 1; }
+    ;
+    var functions = [_]semantic.SemanticFn{.{
+        .name = "codepointWidth",
+        .namespace = "unicode",
+        .params = &.{.{ .name = "p0", .type = .{ .int = .{ .bits = 21, .signed = false } } }},
+        .@"return" = .{ .int = .{ .bits = 8, .signed = false } },
+        .symbol = "zg_unicode_codepoint_width",
+    }};
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    try std.testing.expectEqual(@as(usize, 0), try scanSource(arena.allocator(), source, &functions, "unicode.zig"));
+    try std.testing.expectEqualStrings("cp", functions[0].params[0].name);
+    try std.testing.expectEqualStrings("Reports the display width of a codepoint.", functions[0].doc.?);
 }
 
 test "the anonymous-container fallback refuses an owner the source contradicts" {

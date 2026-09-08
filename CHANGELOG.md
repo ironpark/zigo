@@ -4,6 +4,16 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Fixed
+
+- 0.19.0의 AST 이름 보강 게이트가 파일이 곧 struct이거나 namespace인 소스(`const Terminal = @This();`
+  꼴의 ghostty `Terminal.zig` 등)의 root 선언까지 막아 파라미터 이름이 `p0`으로, 문서가 비어
+  퇴화하던 문제를 고쳤습니다. root 선언은 메서드면 첫 파라미터 타입이 owner를 가리킬 때,
+  namespace 함수면 같은 파일이 그 owner를 다른 컨테이너로 선언하지 않을 때 매칭되며, 익명
+  컨테이너 fallback은 generic 인스턴스에만 남습니다.
+
 ## [0.19.0] - 2026-09-08
 
 ### Added

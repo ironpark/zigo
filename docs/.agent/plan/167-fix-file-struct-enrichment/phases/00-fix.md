@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `zig build test`와 예제 go-check 통과, 커밋.
 > NEXT: none

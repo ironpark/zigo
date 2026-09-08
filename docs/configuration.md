@@ -296,11 +296,15 @@ Zig reflection에는 함수 파라미터 이름이 없습니다. zigo는 다음 
 2. `source_root`에서 시작한 Zig AST 탐색
 3. `p0`, `p1` 형식의 fallback
 
-AST 탐색은 함수가 선언된 컨테이너 이름으로 prototype을 찾습니다. `Stream(Handler)`처럼 generic
-factory의 인스턴스가 receiver·namespace이면 그 메서드는 이름 없는 컨테이너에 있으므로, 이름과
-인자 수가 맞는 익명 컨테이너의 prototype을 받아들입니다. 평범하게 선언된 타입의 메서드는 그
-fallback을 쓰지 않으므로, 무관한 generic의 같은 이름 메서드가 파라미터 이름을 빌려주는 일은
-없습니다. 그런 함수의 파일이 탐색 범위 밖이면 `p0` 경고가 남고, `params`로 이름을 지정하면 됩니다.
+AST 탐색은 함수가 선언된 컨테이너 이름으로 prototype을 찾습니다. 파일이 곧 struct인 경우
+(`const Terminal = @This();`)나 파일이 namespace인 경우 prototype은 root 선언이므로, 메서드는
+첫 파라미터 타입이 등록한 owner를 가리킬 때(`self: *Terminal`, `*const Terminal`, `Self`,
+`@This()`), namespace 함수는 같은 파일이 그 owner를 다른 컨테이너로 선언하지 않을 때 매칭됩니다.
+`Stream(Handler)`처럼 generic factory의 인스턴스가 receiver·namespace이면 그 메서드는 이름 없는
+컨테이너에 있으므로, 이름과 인자 수가 맞는 익명 컨테이너의 prototype을 받아들입니다. 평범하게
+선언된 타입의 메서드는 그 fallback을 쓰지 않으므로, 무관한 generic의 같은 이름 메서드가 파라미터
+이름을 빌려주는 일은 없습니다. 그런 함수의 파일이 탐색 범위 밖이면 `p0` 경고가 남고, `params`로
+이름을 지정하면 됩니다.
 
 ```zig
 .source_root = b.path("src/root.zig"),

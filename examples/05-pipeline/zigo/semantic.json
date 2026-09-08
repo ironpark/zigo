@@ -389,8 +389,8 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 90,
-        "column": 12
+        "line": 118,
+        "column": 16
       },
       "symbol": "zg_int_batch_deinit"
     },
@@ -486,8 +486,8 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 90,
-        "column": 12
+        "line": 118,
+        "column": 16
       },
       "symbol": "zg_float_batch_deinit"
     },
