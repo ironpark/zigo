@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-08T06:29:36Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Plugin regression tests and full check pass, and gostty compiles option lookup.
 > NEXT: none
