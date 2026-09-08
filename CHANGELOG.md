@@ -4,6 +4,23 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Changed
+
+- 생성 Go 코드의 enum 이름과 에러 코드 조회를 값 범위가 촘촘하면 고정 크기 배열로
+  생성합니다. 배열은 최대 4,096칸, 50% 이상 밀도로 제한하고 희소 값은 `switch`를
+  유지합니다. 음수 경계, 누락된 값, 알 수 없는 값의 문자열 표현과 에러의 호출별
+  `Operation` 및 `errors.Is` 동작은 그대로 유지합니다.
+- enumkit의 `IsKnown()`은 공개된 enum 값이 연속되면 범위 검사로 생성합니다.
+  값 사이에 누락된 항목이 있으면 기존 `switch`를 유지합니다.
+
+### Added
+
+- `zig build lookup-bench`로 생성 배열 조회와 `switch`, 문자열 map 대안을 비교할 수
+  있습니다. 측정에서 배열과 `switch`의 실행 시간은 대체로 비슷했고, 작은 enum의
+  문자열 파싱은 map이 더 느려 기존 `switch`를 유지합니다.
+
 ## [0.19.2] - 2026-09-08
 
 ### Fixed
