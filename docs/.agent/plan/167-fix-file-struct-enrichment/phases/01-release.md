@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-08T00:40:58Z"
 depends_on:
 - "167-fix-file-struct-enrichment#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: GitHub 릴리스 0.19.1 공개.
 > NEXT: none
