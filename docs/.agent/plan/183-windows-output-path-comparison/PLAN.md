@@ -1,13 +1,14 @@
 ---
+completed_at: "2026-09-08T10:28:17Z"
 description: Fix Windows-only deletion of published Go files caused by comparing manifest paths to walked paths
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-08T09:49:56Z"
 ---
 > NEXT: Fix the comparisons and watch the Windows CI jobs. ([Phase 0](phases/00-portable-paths.md))
 
 # Phases
 
-- [ ] [Phase 00: Portable path comparison](phases/00-portable-paths.md)
+- [x] [Phase 00: Portable path comparison](phases/00-portable-paths.md)
 
 # Shared Verification
 

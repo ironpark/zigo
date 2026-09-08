@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-08T10:28:17Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `cgo-windows` and `purego-windows` succeed on main and the fix is released.
 > NEXT: none
