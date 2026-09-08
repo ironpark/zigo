@@ -16,3 +16,9 @@ status: in-progress
 ## Done When
 
 - GitHub 릴리스 0.19.1 공개.
+
+## Release result
+
+- scripts/release.sh 0.19.1 passed formatting, full tests, all example cgo/purego generated checks and staticcheck U1000.
+- Release commit and remote tag: 1d8e7e49. GitHub Release workflow 34173969496 completed successfully.
+- Published https://github.com/ironpark/zigo/releases/tag/0.19.1 as a non-draft release.
