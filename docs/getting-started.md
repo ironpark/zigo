@@ -184,7 +184,7 @@ zig build go-doctor
 
 ## 다음 단계
 
-- 함수와 타입을 더 공개하려면 [`bindings.zig` 선언](bindings.md)
+- 함수와 타입을 더 공개하려면 [바인딩 작성](authoring/README.md)
 - 자신의 API와 가까운 코드를 찾으려면 [예제](examples.md)
 - cgo 동적 링크나 purego가 필요하면 [빌드 설정](configuration.md)
 - 지원하지 않는 타입이나 플랫폼을 확인하려면 [지원 범위](limitations.md)

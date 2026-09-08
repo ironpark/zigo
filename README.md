@@ -64,7 +64,7 @@ zig build go
 - [시작 가이드](docs/getting-started.md) — 첫 바인딩 생성과 Go 호출
 - [zigo의 작동 방식](docs/how-zigo-works.md) — 선언에서 생성 패키지까지의 구조
 - [예제](docs/examples.md) — 기능별 실행 가능한 프로젝트
-- [바인딩 작성](docs/bindings.md) — 함수와 타입을 공개하는 방법
+- [바인딩 작성](docs/authoring/README.md) — 함수와 타입을 공개하는 방법
 - [빌드 설정](docs/configuration.md) — 백엔드, 패키지와 설치 옵션
 - [생성물과 CI](docs/generated-code.md) — 생성, 검사와 커밋 정책
 - [전체 사용자 문서](docs/README.md) — 목적별 문서 탐색

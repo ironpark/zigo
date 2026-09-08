@@ -12,15 +12,14 @@
 
 | 하고 싶은 일 | 문서 |
 |---|---|
-| 공개 함수 선택, 이름 변경과 Go 패키지 구성 | [함수와 패키지](bindings-functions.md) |
-| scalar, enum, struct와 중첩 결과 노출 | [값 타입과 결과 트리](bindings-types.md) |
-| string, slice, optional과 출력 버퍼 사용 | [문자열과 버퍼](bindings-buffers.md) |
-| 객체 생성, 메서드, borrowed 관계와 `Close` 설계 | [객체 수명](bindings-handles.md) |
-| Go callback과 오류·panic 처리 | [콜백과 오류](bindings-callbacks.md) |
-| `io.Reader`, `io.Writer`와 취소 연결 | [스트림과 취소](bindings-streams.md) |
-| tagged union을 Go 값으로 표현 | [Tagged union](bindings-unions.md) |
+| 공개 함수 선택, 이름 변경과 Go 패키지 구성 | [함수와 패키지](authoring/functions-and-packages.md) |
+| scalar, enum, struct와 중첩 결과 노출 | [값과 데이터](authoring/values-and-data.md) |
+| 객체 생성, 메서드, borrowed 관계와 `Close` 설계 | [객체와 수명](authoring/objects-and-lifetimes.md) |
+| Go callback과 오류·panic 처리 | [콜백과 오류](authoring/callbacks-and-errors.md) |
+| `io.Reader`, `io.Writer`와 취소 연결 | [스트림과 취소](authoring/streams-and-cancellation.md) |
+| tagged union을 Go 값으로 표현 | [Tagged union](authoring/tagged-unions.md) |
 
-바인딩 선언의 전체 형태와 기능 선택은 [`bindings.zig` 선언](bindings.md)에서 시작하세요.
+바인딩 선언의 전체 형태와 기능 선택은 [바인딩 작성](authoring/README.md)에서 시작하세요.
 
 ## 빌드와 배포
 

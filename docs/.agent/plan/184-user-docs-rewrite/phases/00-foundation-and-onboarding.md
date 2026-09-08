@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-08T17:14:51Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 새 사용자가 README에서 기본 예제를 실행하고 시작 가이드로 이동할 수 있으며, 새 문서 트리가 탐색 가능하고 마이그레이션 문서가 존재하지 않는다.
 > NEXT: none
