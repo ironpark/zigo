@@ -4,6 +4,27 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Added
+
+- handle `.fields` 항목에 `zigo.HandleField.extend(plugin, options)`로 플러그인 옵션을 붙일 수
+  있습니다. getter와 setter가 함께 `ext`를 갖고 `method_hook`에서 일반 메서드처럼 읽힙니다.
+- 필드 접근자가 `?T`(scalar)와 `[]const T` leaf를 지원합니다. `?T`는 메서드의 optional 결과와
+  같은 `(T, bool, error)`·`*T` setter로, slice는 handle 메모리를 빌린 view를 복사해 돌려줍니다.
+  slice에는 setter가 없고 narrow 정수·atomic element는 `ZIGO037`입니다.
+- 함수 옵션 `.symbol`로 exported C 심볼을 직접 씁니다. C 식별자가 아니면 선언 자리에서
+  컴파일 오류이고, `semantic.json`에 `custom_symbol: true`로 기록되어 생성기가 다시 유도하지
+  않습니다.
+
+### Fixed
+
+- `pub const keyFromASCII = Key.fromASCII;` 같은 alias 재노출을 바인딩하면 대상 선언의 doc과
+  파라미터 이름을 읽습니다. alias 자체의 `///` 문서가 있으면 그 문서가 우선합니다.
+- AST 이름 보강이 평범하게 선언된 타입의 메서드에 무관한 generic factory의 같은 이름 prototype을
+  붙이지 않습니다. reflection이 receiver·namespace가 generic 인스턴스인지 `owner_generic`으로
+  기록하고, 익명 컨테이너 fallback은 그 경우에만 적용됩니다.
+
 ## [0.18.0] - 2026-09-08
 
 ### Changed

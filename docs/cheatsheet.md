@@ -121,7 +121,10 @@ const batch = zigo.interface(.{
 const mode = api.enumType("Mode", .{ .exhaustive = false })
     .use(zigo.features.text, .{});
 const terminal = api.handle("Terminal", .{
-    .fields = &.{.{ .path = "cols", .set = true }},
+    .fields = &.{
+        .{ .path = "cols", .set = true },
+        .{ .path = "title" }, // `[]const u8`·`?T` leaf도 getter가 됩니다
+    },
 }).members(api.in("Terminal").funcs(.{ .names = &.{ "create", "deinit" } }));
 ```
 

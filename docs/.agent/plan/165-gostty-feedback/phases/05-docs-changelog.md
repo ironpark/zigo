@@ -6,7 +6,7 @@ depends_on:
 - "165-gostty-feedback#3"
 - "165-gostty-feedback#4"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: 문서가 다섯 변경을 설명하고 커밋.
 > NEXT: none
