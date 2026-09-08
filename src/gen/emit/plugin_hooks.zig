@@ -19,6 +19,9 @@ const writers: plugin.Writers = .{
     .writeGoType = writeGoType,
     .receiverNameAlloc = receiverNameAlloc,
     .writeSignature = writeSignature,
+    .writeParameters = writeParameters,
+    .writeResultType = writeResultType,
+    .writeCallArguments = writeCallArguments,
 };
 
 /// The context a `type_hook`, a `files` emitter or a validator sees.
@@ -113,6 +116,22 @@ fn writeSignature(value: plugin.Context, writer: *std.Io.Writer, function: abi.A
     );
 }
 
+fn writeParameters(value: plugin.Context, writer: *std.Io.Writer, function: abi.AbiFn) anyerror!void {
+    const method = value.method orelse return error.NoMethodInContext;
+    try writer.writeByte('(');
+    try public.writePublicParameters(scopeOf(value), value.allocator, writer, function, method.param_names);
+    try writer.writeByte(')');
+}
+
+fn writeResultType(value: plugin.Context, writer: *std.Io.Writer, function: abi.AbiFn, options: plugin.ResultOptions) anyerror!usize {
+    return public.writePublicResults(scopeOf(value), writer, function, common.constructorForInit(value.program, function.origin.*), options);
+}
+
+fn writeCallArguments(value: plugin.Context, writer: *std.Io.Writer, function: abi.AbiFn) anyerror!void {
+    const method = value.method orelse return error.NoMethodInContext;
+    return public.writePublicCallArguments(value.allocator, writer, function, method.param_names);
+}
+
 test "a registered plugin adds a method next to a bound one, a line after a type, and a file" {
     const document: semantic.Semantic = .{
         .package = "meter",
@@ -204,4 +223,56 @@ test "a hook reads the typed options the declaration attached" {
     try public.renderPublic(allocator, &rendered.writer, program, .{ .go_module = "example.com/meter" });
     // `.mode = .b` travelled through `extend`, the document and the parse.
     try std.testing.expect(std.mem.indexOf(u8, rendered.written(), "func (c *Counter) BumpTestHook() string { return \"b\" }") != null);
+}
+
+test "plugin public paths follow root and split package options" {
+    const program: abi.Program = .{ .package = "MyLibrary", .prefix = "zg", .functions = &.{} };
+    const cases = [_]struct { options: emit.Options, expected: []const u8 }{
+        .{ .options = .{ .go_module = "m" }, .expected = "my_library/helpers.go" },
+        .{ .options = .{ .go_module = "m", .go_package = "api" }, .expected = "api/helpers.go" },
+        .{ .options = .{ .go_module = "m", .go_package = "api", .go_package_path = "." }, .expected = "helpers.go" },
+        .{ .options = .{ .go_module = "m", .go_package = "input", .go_package_path = "api/input" }, .expected = "api/input/helpers.go" },
+    };
+    for (cases) |case| {
+        const path = try context(std.testing.allocator, program, case.options).publicFilePathAlloc("helpers.go");
+        defer std.testing.allocator.free(path);
+        try std.testing.expectEqualStrings(case.expected, path);
+    }
+}
+
+test "plugin result and parameter writers avoid parsing checked signatures" {
+    var integer: semantic.TypeNode = .{ .int = .{ .bits = 32, .signed = true } };
+    var optional: semantic.TypeNode = .{ .optional = .{ .child = &integer } };
+    var nothing: semantic.TypeNode = .void;
+    const document: semantic.Semantic = .{
+        .package = "sample",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+        .functions = &.{
+            .{ .name = "optional", .symbol = "zg_optional", .params = &.{.{ .name = "value", .type = integer }}, .@"return" = .{ .error_union = .{ .payload = &optional, .error_set = &.{"Failure"} } } },
+            .{ .name = "empty", .symbol = "zg_empty", .params = &.{}, .@"return" = .{ .error_union = .{ .payload = &nothing, .error_set = &.{"Failure"} } } },
+        },
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const program = try @import("lower").semanticDocument(allocator, document, "sample", "zg", &.{.{ .name = "Failure", .code = 1 }});
+    for (program.functions, 0..) |function, index| {
+        const names = try common.goParamNamesForAlloc(allocator, function.origin.params);
+        const ctx = methodContext(allocator, program, .{ .go_module = "example.com/sample" }, .{ .go_name = "Call", .param_names = names });
+        var output: std.Io.Writer.Allocating = .init(allocator);
+        try ctx.writeParameters(&output.writer, function);
+        const count = try ctx.writeResultType(&output.writer, function, .{ .omit_error = true });
+        try std.testing.expectEqual(@as(usize, if (index == 0) 2 else 0), count);
+        try std.testing.expectEqualStrings(if (index == 0) "(value int32) (int32, bool)" else "()", output.written());
+        var results: std.Io.Writer.Allocating = .init(allocator);
+        try std.testing.expectEqual(count + 1, try ctx.writeResultType(&results.writer, function, .{}));
+        try std.testing.expectEqualStrings(if (index == 0) " (int32, bool, error)" else " error", results.written());
+        var args: std.Io.Writer.Allocating = .init(allocator);
+        try ctx.writeCallArguments(&args.writer, function);
+        try std.testing.expectEqualStrings(if (index == 0) "value" else "", args.written());
+        var missing = ctx;
+        missing.method = null;
+        try std.testing.expectError(error.NoMethodInContext, missing.writeParameters(&args.writer, function));
+    }
 }

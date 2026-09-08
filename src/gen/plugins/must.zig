@@ -35,28 +35,7 @@ fn methodHook(context: plugin_api.Context, writer: *std.Io.Writer, function: abi
 }
 
 pub fn writeMustCallArguments(allocator: std.mem.Allocator, writer: *std.Io.Writer, function: abi.AbiFn, go_names: [][]u8) !void {
-    var index: usize = 0;
-    if (function.origin.cancel != null) {
-        try writer.writeAll("ctx");
-        index = 1;
-    }
-    for (function.origin.params, 0..) |parameter, parameter_index| {
-        if (function.userdataFor(parameter_index) != null or parameter.injected != null or parameter.type == .cancel_flag) continue;
-        if (parameter.flatten) |fields| {
-            for (fields, 0..) |_, field_index| {
-                const abi_parameter = function.flattenedParam(parameter_index, field_index);
-                const name = try common.flattenedGoNameAlloc(allocator, abi_parameter.name);
-                defer allocator.free(name);
-                if (index != 0) try writer.writeAll(", ");
-                try writer.writeAll(name);
-                index += 1;
-            }
-            continue;
-        }
-        if (index != 0) try writer.writeAll(", ");
-        try writer.writeAll(go_names[parameter_index]);
-        index += 1;
-    }
+    return public.writePublicCallArguments(allocator, writer, function, go_names);
 }
 
 pub fn mustHasSecondResult(function: semantic.SemanticFn) bool {

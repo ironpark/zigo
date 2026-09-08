@@ -8,6 +8,7 @@ const semantic = @import("semantic");
 
 /// Set by the test that wants the hooks to write, cleared by the same test.
 pub var enabled = false;
+pub var path_override: ?[]const u8 = null;
 
 /// What the test plugin can be told to do. It exists so a test can prove that
 /// a typed option survives `extend`, the document, and the parse on the way
@@ -42,8 +43,9 @@ fn typeHook(_: plugin_api.Context, writer: *std.Io.Writer, declaration: semantic
     try writer.print("// zigoTestHook saw {s}.\n\n", .{declaration.name});
 }
 
-fn filePath(allocator: std.mem.Allocator, _: abi.Program, _: plugin_api.Options) ![]u8 {
-    return allocator.dupe(u8, "zigo_test_plugin_gen.go");
+fn filePath(allocator: std.mem.Allocator, program: abi.Program, options: plugin_api.Options) ![]u8 {
+    if (path_override) |path| return allocator.dupe(u8, path);
+    return plugin_api.publicFilePathAlloc(allocator, program, options, "zigo_test_plugin_gen.go");
 }
 
 /// Only the declarations: the marker, the package clause and the import block

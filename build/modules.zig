@@ -79,6 +79,7 @@ pub fn createGeneratorModules(
         .target = target,
         .optimize = optimize,
         .imports = &.{
+            .{ .name = "naming", .module = naming_module },
             .{ .name = "abi", .module = abi_module },
             .{ .name = "semantic", .module = semantic_module },
             .{ .name = "diagnostic", .module = diagnostic_module },

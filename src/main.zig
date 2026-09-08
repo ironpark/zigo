@@ -1,6 +1,7 @@
 const std = @import("std");
 const abi_diff = @import("abi_diff");
 const cli = @import("gen/cli.zig");
+const diagnostic = @import("diagnostic");
 const doctor = @import("gen/doctor.zig");
 const generator = @import("gen/generator.zig");
 const binding_report = @import("gen/report.zig");
@@ -89,7 +90,9 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
     const target_ldflags = try allocator.alloc(generator.TargetLdflags, options.target_ldflags.len);
     defer allocator.free(target_ldflags);
     for (options.target_ldflags, target_ldflags) |source, *entry| entry.* = .{ .constraint = source.constraint, .flags = source.flags };
-    try generator.generate(allocator, io, semantic_bytes, output, .{
+    var generation_issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
+    generator.generate(allocator, io, semantic_bytes, output, .{
+        .diagnostics = &generation_issues,
         .package = options.package,
         .prefix = options.prefix,
         .go_module = options.go_module,
@@ -127,7 +130,14 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
         .library_automatic = options.library_automatic,
         .library_exported_api = options.library_exported_api,
         .library_platform_dirs = options.library_platform_dirs,
-    });
+    }) catch |err| {
+        if (generation_issues.items.len == 0) return err;
+        var buffer: [2048]u8 = undefined;
+        var stderr = std.Io.File.Writer.init(.stderr(), io, &buffer);
+        for (generation_issues.items) |found| try found.render(&stderr.interface);
+        try stderr.interface.flush();
+        std.process.exit(1);
+    };
     try formatGeneratedGo(allocator, io, options.output_path, options.gofmt_executable);
 }
 

@@ -868,12 +868,61 @@ pub fn writePublicSignature(
     try writer.writeByte('(');
     try writePublicParameters(scope, allocator, writer, function, go_names);
     try writer.writeByte(')');
+    _ = try writePublicResults(scope, writer, function, constructor, .{});
+}
+
+/// The same result spelling used by normal methods and external wrappers.
+/// Returns arity after applying the trailing-error policy.
+pub fn writePublicResults(scope: public_writers.PublicScope, writer: *std.Io.Writer, function: abi.AbiFn, constructor: ?semantic.Constructor, options: @import("plugin").ResultOptions) !usize {
+    const origin = function.origin.*;
+    const payload = origin.@"return".errorPayload();
+    const has_error = constructor != null or origin.@"return" == .error_union or signatureShape(function).needs_check;
+    const value_count: usize = if (constructor != null) 1 else if (payload == .void) 0 else if (payload == .optional or
+        (payload == .opaque_ptr and payload.opaque_ptr.nullable and docs.returnsBorrowedView(origin))) 2 else 1;
+    if (options.omit_error) {
+        if (constructor) |value| {
+            try writer.print(" *{s}", .{value.type});
+        } else {
+            var unwrapped = origin;
+            unwrapped.@"return" = payload;
+            try public_writers.writePublicFunctionReturnType(scope, writer, unwrapped);
+        }
+        return value_count;
+    }
     if (constructor) |value| {
         try writer.print(" (*{s}, error)", .{value.type});
     } else if (signatureShape(function).needs_check and function.origin.@"return" != .error_union) {
         try public_writers.writeCheckedFunctionReturnType(scope, writer, function.origin.*);
     } else {
         try public_writers.writePublicFunctionReturnType(scope, writer, function.origin.*);
+    }
+    return value_count + @intFromBool(has_error);
+}
+
+/// Forward the exact public argument list, including flattened fields and
+/// context, while omitting native-only userdata and injected parameters.
+pub fn writePublicCallArguments(allocator: std.mem.Allocator, writer: *std.Io.Writer, function: abi.AbiFn, go_names: [][]u8) !void {
+    var index: usize = 0;
+    if (function.origin.cancel != null) {
+        try writer.writeAll("ctx");
+        index = 1;
+    }
+    for (function.origin.params, 0..) |parameter, parameter_index| {
+        if (function.userdataFor(parameter_index) != null or parameter.injected != null or parameter.type == .cancel_flag) continue;
+        if (parameter.flatten) |fields| {
+            for (fields, 0..) |_, field_index| {
+                const abi_parameter = function.flattenedParam(parameter_index, field_index);
+                const name = try common.flattenedGoNameAlloc(allocator, abi_parameter.name);
+                defer allocator.free(name);
+                if (index != 0) try writer.writeAll(", ");
+                try writer.writeAll(name);
+                index += 1;
+            }
+            continue;
+        }
+        if (index != 0) try writer.writeAll(", ");
+        try writer.writeAll(go_names[parameter_index]);
+        index += 1;
     }
 }
 

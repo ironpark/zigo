@@ -8,6 +8,7 @@ const std = @import("std");
 const abi = @import("abi");
 const semantic = @import("semantic");
 const diagnostic = @import("diagnostic");
+const naming = @import("naming");
 
 /// The identifiers a rendering of the public package used. Selectors
 /// (`x.Name`) are not identifiers of this package and are skipped. It lives
@@ -145,8 +146,31 @@ pub const Options = struct {
 /// through the same public-file path as the built-in ones, so their imports
 /// are derived from the body they wrote.
 pub const Emitter = struct {
+    /// Diagnostic label, filled with the plugin name by the generator.
+    owner: []const u8 = "generator",
     pathAlloc: *const fn (std.mem.Allocator, abi.Program, Options) anyerror![]u8,
     render: *const fn (std.mem.Allocator, *std.Io.Writer, abi.Program, Options) anyerror!void,
+};
+
+/// Module-relative path for a file in the currently rendered public package.
+/// Call from Emitter.pathAlloc; the caller owns the returned allocation.
+pub fn publicFilePathAlloc(allocator: std.mem.Allocator, program: abi.Program, options: Options, filename: []const u8) ![]u8 {
+    const directory = if (options.go_package_path.len != 0)
+        try allocator.dupe(u8, options.go_package_path)
+    else if (options.go_package.len != 0)
+        try allocator.dupe(u8, options.go_package)
+    else
+        try naming.snakeAlloc(allocator, program.package);
+    defer allocator.free(directory);
+    if (std.mem.eql(u8, directory, ".")) return allocator.dupe(u8, filename);
+    return std.fmt.allocPrint(allocator, "{s}/{s}", .{ directory, filename });
+}
+
+const publicFilePathAllocImpl = publicFilePathAlloc;
+
+pub const ResultOptions = struct {
+    /// Drop only the public trailing error; optional presence flags remain.
+    omit_error: bool = false,
 };
 
 /// A non-standard Go import a hook may write. It is added to a file only when
@@ -174,6 +198,10 @@ pub const Writers = struct {
     /// The parameter list and result of a public function, parentheses
     /// included, exactly as the method being hooked spells them.
     writeSignature: *const fn (Context, *std.Io.Writer, abi.AbiFn) anyerror!void,
+    // Optional slots keep manually constructed legacy writer tables valid.
+    writeParameters: ?*const fn (Context, *std.Io.Writer, abi.AbiFn) anyerror!void = null,
+    writeResultType: ?*const fn (Context, *std.Io.Writer, abi.AbiFn, ResultOptions) anyerror!usize = null,
+    writeCallArguments: ?*const fn (Context, *std.Io.Writer, abi.AbiFn) anyerror!void = null,
 };
 
 /// What a `method_hook` is adjacent to: the method the generator just wrote.
@@ -219,6 +247,30 @@ pub const Context = struct {
 
     pub fn writeSignature(self: Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
         return self.writers.writeSignature(self, writer, function);
+    }
+
+    /// Public parameter list including parentheses. Requires method context.
+    pub fn writeParameters(self: Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
+        const write = self.writers.writeParameters orelse return error.UnsupportedPluginWriter;
+        return write(self, writer, function);
+    }
+
+    /// Public results including their leading space and any tuple parentheses.
+    /// Returns the number of emitted results, allowing wrappers to choose a
+    /// forwarding helper without parsing Go source. Zero results write nothing.
+    pub fn writeResultType(self: Context, writer: *std.Io.Writer, function: abi.AbiFn, options: ResultOptions) !usize {
+        const write = self.writers.writeResultType orelse return error.UnsupportedPluginWriter;
+        return write(self, writer, function, options);
+    }
+
+    /// Arguments in public parameter order, without parentheses.
+    pub fn writeCallArguments(self: Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
+        const write = self.writers.writeCallArguments orelse return error.UnsupportedPluginWriter;
+        return write(self, writer, function);
+    }
+
+    pub fn publicFilePathAlloc(self: Context, filename: []const u8) ![]u8 {
+        return publicFilePathAllocImpl(self.allocator, self.program, self.options, filename);
     }
 
     /// `P`'s options on the function being written, or null when the

@@ -84,6 +84,7 @@ pub const PublicEmitters = struct {
 /// its prelude, which the generator drops.
 fn framedPluginFile(comptime plugin_index: usize, comptime file: Emitter) Emitter {
     return .{
+        .owner = registry.plugins[plugin_index].name,
         .pathAlloc = file.pathAlloc,
         .render = struct {
             fn render(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) anyerror!void {
@@ -267,10 +268,7 @@ fn publicErrorsPath(allocator: std.mem.Allocator, program: abi.Program, options:
 }
 
 fn publicFilePathAlloc(allocator: std.mem.Allocator, program: abi.Program, options: Options, filename: []const u8) ![]u8 {
-    const path = try common.publicPackagePathAlloc(allocator, program, options);
-    defer allocator.free(path);
-    if (std.mem.eql(u8, path, ".")) return allocator.dupe(u8, filename);
-    return std.fmt.allocPrint(allocator, "{s}/{s}", .{ path, filename });
+    return @import("plugin").publicFilePathAlloc(allocator, program, options, filename);
 }
 
 /// One generated file, produced outside the fixed emitter table because how

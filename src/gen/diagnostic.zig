@@ -21,6 +21,18 @@ pub const Diagnostic = struct {
     hint: []const u8,
     note: ?[]const u8 = null,
 
+    /// Copy all diagnostic text into the caller's arena.
+    pub fn clone(self: Diagnostic, allocator: std.mem.Allocator) !Diagnostic {
+        var copy = self;
+        copy.code = try allocator.dupe(u8, self.code);
+        copy.message = try allocator.dupe(u8, self.message);
+        copy.site.path = try allocator.dupe(u8, self.site.path);
+        copy.site.declaration = try allocator.dupe(u8, self.site.declaration);
+        copy.hint = try allocator.dupe(u8, self.hint);
+        copy.note = if (self.note) |note| try allocator.dupe(u8, note) else null;
+        return copy;
+    }
+
     pub fn render(self: Diagnostic, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         if (self.site.line) |line| {
             try writer.print("{s}[{s}]: {s}\n  --> {s}:{d}:{d} ({s})\n  hint: {s}\n", .{

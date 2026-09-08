@@ -13,6 +13,9 @@ pub const CgoTarget = emit.Options.CgoTarget;
 pub const TargetLdflags = emit.Options.TargetLdflags;
 
 pub const Options = struct {
+    /// Optional failure details. Text is copied into the caller allocator;
+    /// use an arena to release the list and its text together.
+    diagnostics: ?*std.ArrayList(diagnostic.Diagnostic) = null,
     package: []const u8,
     prefix: []const u8,
     go_module: []const u8,
@@ -55,6 +58,7 @@ pub const Options = struct {
 };
 
 const PreparedFile = struct {
+    owner: []const u8 = "generator",
     path: []const u8,
     contents: []const u8,
 };
@@ -152,6 +156,11 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
     const serialized_lock = try lock.serialize(scratch_allocator);
     try prepared.append(scratch_allocator, .{ .path = "errors.lock.json", .contents = serialized_lock });
 
+    if (try outputPathIssue(scratch_allocator, prepared.items)) |issue| {
+        if (options.diagnostics) |issues| try issues.append(allocator, try issue.clone(allocator));
+        return error.InvalidOutputPath;
+    }
+
     // Do not mutate the output tree until parsing, validation, lowering, every
     // emitter, and lock serialization have completed successfully. The commit
     // loop deliberately performs no work with the caller-provided allocator.
@@ -172,6 +181,54 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
     }
 }
 
+/// Normalize before writing anything so aliases such as ./x and dir/../x
+/// cannot silently replace a different emitter's output. All output paths
+/// are portable module-relative paths, including on Windows.
+fn normalizeOutputPath(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
+    if (path.len == 0 or path[0] == '/' or path[0] == '\\' or std.mem.indexOfScalar(u8, path, ':') != null or std.mem.indexOfScalar(u8, path, 0) != null)
+        return error.InvalidOutputPath;
+    var parts: std.ArrayList([]const u8) = .empty;
+    defer parts.deinit(allocator);
+    var it = std.mem.tokenizeAny(u8, path, "/\\");
+    while (it.next()) |part| {
+        if (std.mem.eql(u8, part, ".")) continue;
+        if (std.mem.eql(u8, part, "..")) {
+            if (parts.items.len == 0) return error.InvalidOutputPath;
+            _ = parts.pop();
+        } else try parts.append(allocator, part);
+    }
+    if (parts.items.len == 0) return error.InvalidOutputPath;
+    return std.mem.join(allocator, "/", parts.items);
+}
+
+fn outputPathIssue(allocator: std.mem.Allocator, files: []PreparedFile) !?diagnostic.Diagnostic {
+    var paths: std.StringHashMapUnmanaged(usize) = .empty;
+    defer paths.deinit(allocator);
+    for (files, 0..) |*file, index| {
+        const normalized = normalizeOutputPath(allocator, file.path) catch |err| switch (err) {
+            error.InvalidOutputPath => return .{
+                .severity = .@"error",
+                .code = "ZIGO059",
+                .message = try std.fmt.allocPrint(allocator, "invalid output path `{s}` from {s}", .{ file.path, file.owner }),
+                .site = .{ .path = file.path, .declaration = file.owner },
+                .hint = "emit a file path inside the output directory; use plugin.publicFilePathAlloc for public files",
+            },
+            else => return err,
+        };
+        file.path = normalized;
+        const entry = try paths.getOrPut(allocator, normalized);
+        if (entry.found_existing) return .{
+            .severity = .@"error",
+            .code = "ZIGO059",
+            .message = try std.fmt.allocPrint(allocator, "output path `{s}` is emitted by both {s} and {s}", .{ normalized, files[entry.value_ptr.*].owner, file.owner }),
+            .site = .{ .path = normalized, .declaration = file.owner },
+            .hint = "give each emitter a unique public file path; use plugin.publicFilePathAlloc to include the active package",
+        };
+        entry.value_ptr.* = index;
+    }
+    return null;
+}
+
 fn appendEmitters(allocator: std.mem.Allocator, prepared: *std.ArrayList(PreparedFile), program: abi.Program, options: emit.Options, emitters: []const emit.Emitter) !void {
     for (emitters) |emitter| {
         const relative_path = try emitter.pathAlloc(allocator, program, options);
@@ -186,7 +243,11 @@ fn appendEmitters(allocator: std.mem.Allocator, prepared: *std.ArrayList(Prepare
             rendered.shrinkRetainingCapacity(std.mem.trimEnd(u8, rendered.written(), "\n").len);
             rendered.writer.writeByte('\n') catch return error.OutOfMemory;
         }
-        try prepared.append(allocator, .{ .path = relative_path, .contents = try rendered.toOwnedSlice() });
+        try prepared.append(allocator, .{
+            .path = relative_path,
+            .contents = try rendered.toOwnedSlice(),
+            .owner = try std.fmt.allocPrint(allocator, "{s} (package {s})", .{ emitter.owner, options.go_package }),
+        });
     }
 }
 
@@ -1247,4 +1308,51 @@ test "disabled plugin options do not prevent generation but selected and builtin
         \\{"functions":[],"types":[{"kind":"opaque","name":"Counter","ext":{"MUST":{"unknown":true}}}],"package":"meter","prefix":"zg","zig_version":"0.16.0"}
     ;
     try std.testing.expectError(error.InvalidSemantic, generate(std.testing.allocator, std.testing.io, builtin_fixture, output.dir, options));
+}
+
+test "normalized output collisions report both owners before mutation" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    var files = [_]PreparedFile{
+        .{ .path = "input/../shared.go", .contents = "first", .owner = "FIRST (package input)" },
+        .{ .path = "./shared.go", .contents = "last", .owner = "SECOND (package root)" },
+    };
+    const issue = (try outputPathIssue(allocator, &files)).?;
+    try std.testing.expectEqualStrings("ZIGO059", issue.code);
+    try std.testing.expect(std.mem.indexOf(u8, issue.message, "FIRST") != null);
+    try std.testing.expect(std.mem.indexOf(u8, issue.message, "SECOND") != null);
+    for ([_][]const u8{ "../escape.go", "/absolute.go", "C:\\absolute.go", "a/../../escape.go", "." }) |path|
+        try std.testing.expectError(error.InvalidOutputPath, normalizeOutputPath(allocator, path));
+    try std.testing.expectEqualStrings("input/file.go", try normalizeOutputPath(allocator, "input\\.\\file.go"));
+}
+
+test "output collision leaves existing generated files untouched" {
+    const testing_plugin = @import("plugins/testing.zig");
+    testing_plugin.enabled = true;
+    testing_plugin.path_override = "./shim.zig";
+    defer {
+        testing_plugin.enabled = false;
+        testing_plugin.path_override = null;
+    }
+    const fixture =
+        \\{"functions":[],"package":"collision","prefix":"zg","zig_version":"0.16.0"}
+    ;
+    var temporary = std.testing.tmpDir(.{ .iterate = true });
+    defer temporary.cleanup();
+    try temporary.dir.writeFile(std.testing.io, .{ .sub_path = "shim.zig", .data = "keep original" });
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
+    try std.testing.expectError(error.InvalidOutputPath, generate(arena.allocator(), std.testing.io, fixture, temporary.dir, .{
+        .package = "collision",
+        .prefix = "zg",
+        .go_module = "example.com/collision",
+        .diagnostics = &issues,
+    }));
+    try std.testing.expectEqual(@as(usize, 1), issues.items.len);
+    try std.testing.expect(std.mem.indexOf(u8, issues.items[0].message, "TEST") != null);
+    const actual = try temporary.dir.readFileAlloc(std.testing.io, "shim.zig", arena.allocator(), .limited(64));
+    try std.testing.expectEqualStrings("keep original", actual);
+    try std.testing.expectError(error.FileNotFound, temporary.dir.access(std.testing.io, "errors.lock.json", .{}));
 }
