@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-08T00:14:37Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: origin에 0.19.0 태그가 있고 워크플로가 시작됨.
 > NEXT: none

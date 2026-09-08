@@ -1,13 +1,14 @@
 ---
+completed_at: "2026-09-08T00:14:37Z"
 description: "0.19.0 릴리스: gostty 피드백 개선 5건 공개"
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-08T00:10:53Z"
 ---
 > NEXT: 릴리스 실행. ([Phase 0](phases/00-release.md))
 
 # Phases
 
-- [ ] [Phase 00: Release](phases/00-release.md)
+- [x] [Phase 00: Release](phases/00-release.md)
 
 # Shared Verification
 
