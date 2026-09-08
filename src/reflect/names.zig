@@ -719,6 +719,12 @@ fn enrichMatches(
         if (qualified) {
             if (!ownerMatches(declaration.owner, source_owner, alias != null)) continue;
         } else if (declaration.owner) |owner| {
+            // A prototype in an anonymous container belongs to a generic
+            // factory. It can only be the declaration of a function whose
+            // owner is an instantiation of one; a plainly declared owner has
+            // its prototype under its own name, in some file, and a
+            // same-named method of any arity-matching factory is a stranger.
+            if (!(function.owner_generic orelse false)) continue;
             // A declaration in an anonymous container cannot be the one this
             // function names when the same file writes that owner out.
             var contradicted = false;
@@ -1000,6 +1006,7 @@ test "AST enrichment applies a generic factory method to every specialization" {
     var functions = [_]semantic.SemanticFn{
         .{
             .name = "push",
+            .owner_generic = true,
             .params = &.{.{ .name = "p0", .type = .{ .int = .{ .bits = 32, .signed = true } } }},
             .receiver = "IntBatch",
             .@"return" = .{ .void = {} },
@@ -1007,6 +1014,7 @@ test "AST enrichment applies a generic factory method to every specialization" {
         },
         .{
             .name = "push",
+            .owner_generic = true,
             .params = &.{.{ .name = "p0", .type = .{ .float = .{ .bits = 64 } } }},
             .receiver = "FloatBatch",
             .@"return" = .{ .void = {} },
@@ -1157,6 +1165,41 @@ test "an alias inside a container resolves a bare identifier against that contai
     try std.testing.expectEqual(@as(usize, 0), try scanSource(arena.allocator(), source, &functions, "key.zig"));
     try std.testing.expectEqualStrings("byte", functions[0].params[0].name);
     try std.testing.expectEqualStrings("Maps an ASCII byte to a key.", functions[0].doc.?);
+}
+
+test "a plainly declared owner never takes names from an unrelated generic factory" {
+    // The shape gostty hit: `RenderState.update(self, t)` is a plain struct
+    // method, and a generic `Screen(...)` scanned earlier declares an
+    // `update(self, cell)` of the same arity. Without the owner being an
+    // instantiation, the anonymous prototype is a stranger.
+    const screen_source =
+        \\pub fn Screen(comptime Cell: type) type {
+        \\    return struct {
+        \\        pub fn update(self: *@This(), cell: Cell) void { _ = self; _ = cell; }
+        \\    };
+        \\}
+    ;
+    const render_source =
+        \\pub const RenderState = struct {
+        \\    /// Refreshes the state from the terminal.
+        \\    pub fn update(self: *RenderState, t: *Terminal) void { _ = self; _ = t; }
+        \\};
+    ;
+    var functions = [_]semantic.SemanticFn{.{
+        .name = "update",
+        .params = &.{.{ .name = "p0", .type = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "Terminal" } } }},
+        .receiver = "RenderState",
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_render_state_update",
+    }};
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    try std.testing.expectEqual(@as(usize, 0), try scanSource(arena.allocator(), screen_source, &functions, "screen.zig"));
+    try std.testing.expectEqualStrings("p0", functions[0].params[0].name);
+    try std.testing.expectEqual(.fallback, functions[0].params[0].name_source);
+    try std.testing.expectEqual(@as(usize, 0), try scanSource(arena.allocator(), render_source, &functions, "render.zig"));
+    try std.testing.expectEqualStrings("t", functions[0].params[0].name);
+    try std.testing.expectEqualStrings("Refreshes the state from the terminal.", functions[0].doc.?);
 }
 
 test "the anonymous-container fallback refuses an owner the source contradicts" {

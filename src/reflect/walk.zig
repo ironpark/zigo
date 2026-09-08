@@ -1003,12 +1003,29 @@ fn appendFunction(
         try returnTypeNode(allocator, declaration, return_type, types, comptime std.fmt.comptimePrint("`{s}{s}` return value", .{ owner_label, function_label }))
     else
         semantic.TypeNode{ .void = {} };
+    // A generic instantiation spells its arguments in its type name --
+    // `Stream(root.Handler)` -- and that is the one case where the source
+    // enrichment may take a prototype from an anonymous container.
+    const owner_generic = comptime blk: {
+        if (receiver_index) |index| {
+            const T = info.params[index].type.?;
+            const Base = switch (@typeInfo(T)) {
+                .pointer => |pointer| pointer.child,
+                else => T,
+            };
+            break :blk std.mem.indexOfScalar(u8, @typeName(Base), '(') != null;
+        }
+        if (discovered_owner != null)
+            break :blk std.mem.indexOfScalar(u8, @typeName(pathContainer(declaration, discovered_owner)), '(') != null;
+        break :blk false;
+    };
     var reflected_function: semantic.SemanticFn = .{
         .boxed = if (boxed_type != null) .create else null,
         .doc = metadata.doc,
         .has_comptime_params = if (info.is_generic) true else null,
         .name = function_name,
         .namespace = if (receiver == null) discovered_owner else null,
+        .owner_generic = if (owner_generic) true else null,
         .params = params,
         .receiver = receiver,
         .receiver_by_value = comptime if (enum_receiver != null) null else if (receiver_index) |index|
@@ -3182,6 +3199,42 @@ test "a namespace function renamed after its container writes its own symbol" {
     // derives nothing for it.
     const bytes = try document.serialize(arena.allocator());
     try std.testing.expect(std.mem.indexOf(u8, bytes, "\"custom_symbol\": true") != null);
+}
+
+test "a generic instantiation owner is marked so source enrichment may use its factory" {
+    const Api = struct {
+        pub fn Batch(comptime T: type) type {
+            return struct {
+                pub fn push(self: *@This(), value: T) void {
+                    _ = self;
+                    _ = value;
+                }
+            };
+        }
+        pub const IntBatch = Batch(i32);
+        pub const Plain = struct {
+            pub fn update(self: *Plain, amount: i32) void {
+                _ = self;
+                _ = amount;
+            }
+        };
+    };
+    const declaration: zigo.Binding = .{
+        .root = Api,
+        .types = &.{
+            .{ .handle = .{ .type = Api.IntBatch, .name = "IntBatch" } },
+            .{ .handle = .{ .type = Api.Plain } },
+        },
+        .functions = &.{
+            .{ .path = "IntBatch.push" },
+            .{ .path = "Plain.update" },
+        },
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), declaration, "batch", "zg");
+    try std.testing.expect(document.functions[0].owner_generic.?);
+    try std.testing.expect(document.functions[1].owner_generic == null);
 }
 
 test "a nested namespace path reflects with a dotted owner" {

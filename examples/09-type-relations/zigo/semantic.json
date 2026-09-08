@@ -894,6 +894,7 @@
     {
       "doc": "Reports whether a cursor of this style blinks.",
       "name": "blinks",
+      "owner_generic": true,
       "ownership": "borrowed",
       "params": [],
       "receiver": "CursorStyle",

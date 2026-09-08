@@ -196,6 +196,7 @@
     {
       "name": "create",
       "namespace": "FloatBuffer",
+      "owner_generic": true,
       "ownership": "caller",
       "params": [],
       "return": {
@@ -219,6 +220,7 @@
     },
     {
       "name": "push",
+      "owner_generic": true,
       "ownership": "borrowed",
       "params": [
         {
@@ -249,6 +251,7 @@
     },
     {
       "name": "len",
+      "owner_generic": true,
       "ownership": "borrowed",
       "params": [],
       "receiver": "FloatBuffer",
@@ -267,6 +270,7 @@
     },
     {
       "name": "deinit",
+      "owner_generic": true,
       "ownership": "borrowed",
       "params": [],
       "receiver": "FloatBuffer",
@@ -283,6 +287,7 @@
     {
       "name": "create",
       "namespace": "IntBuffer",
+      "owner_generic": true,
       "ownership": "caller",
       "params": [],
       "return": {
@@ -306,6 +311,7 @@
     },
     {
       "name": "push",
+      "owner_generic": true,
       "ownership": "borrowed",
       "params": [
         {
@@ -338,6 +344,7 @@
     },
     {
       "name": "len",
+      "owner_generic": true,
       "ownership": "borrowed",
       "params": [],
       "receiver": "IntBuffer",
@@ -356,6 +363,7 @@
     },
     {
       "name": "deinit",
+      "owner_generic": true,
       "ownership": "borrowed",
       "params": [],
       "receiver": "IntBuffer",

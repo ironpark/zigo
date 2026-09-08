@@ -298,6 +298,7 @@
     {
       "name": "create",
       "namespace": "IntBatch",
+      "owner_generic": true,
       "ownership": "caller",
       "params": [],
       "return": {
@@ -321,6 +322,7 @@
     },
     {
       "name": "push",
+      "owner_generic": true,
       "ownership": "borrowed",
       "params": [
         {
@@ -359,6 +361,7 @@
     },
     {
       "name": "len",
+      "owner_generic": true,
       "ownership": "borrowed",
       "params": [],
       "receiver": "IntBatch",
@@ -377,6 +380,7 @@
     },
     {
       "name": "deinit",
+      "owner_generic": true,
       "ownership": "borrowed",
       "params": [],
       "receiver": "IntBatch",
@@ -393,6 +397,7 @@
     {
       "name": "create",
       "namespace": "FloatBatch",
+      "owner_generic": true,
       "ownership": "caller",
       "params": [],
       "return": {
@@ -416,6 +421,7 @@
     },
     {
       "name": "push",
+      "owner_generic": true,
       "ownership": "borrowed",
       "params": [
         {
@@ -452,6 +458,7 @@
     },
     {
       "name": "len",
+      "owner_generic": true,
       "ownership": "borrowed",
       "params": [],
       "receiver": "FloatBatch",
@@ -470,6 +477,7 @@
     },
     {
       "name": "deinit",
+      "owner_generic": true,
       "ownership": "borrowed",
       "params": [],
       "receiver": "FloatBatch",

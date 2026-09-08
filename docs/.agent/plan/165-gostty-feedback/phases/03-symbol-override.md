@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T23:58:39Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 오버라이드 심볼이 문서에 나타나고 충돌은 ZIGO036, `zig build test` 통과, 커밋.
 > NEXT: none

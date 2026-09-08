@@ -793,6 +793,13 @@ pub const SemanticFn = struct {
     /// The Zig container the function is declared in, and the owner its C
     /// symbol is built from. Go grouping goes through `goOwner`.
     namespace: ?[]const u8 = null,
+    /// Set when the receiver or namespace is an instantiation of a generic
+    /// type factory (`Stream(Handler)`), whose methods sit in an anonymous
+    /// container no source-level owner names. Source enrichment then accepts
+    /// a prototype from such a container; a plainly declared owner never
+    /// does, so an unrelated `update(self, cell)` elsewhere cannot lend its
+    /// parameter names to `RenderState.update`. Omitted otherwise.
+    owner_generic: ?bool = null,
     ownership: Ownership = .borrowed,
     params: []const Parameter,
     receiver: ?[]const u8 = null,

@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: 평범한 struct 메서드가 익명 컨테이너 이름을 받지 않는 테스트 통과, `zig build test` 통과, 커밋.
 > NEXT: none
