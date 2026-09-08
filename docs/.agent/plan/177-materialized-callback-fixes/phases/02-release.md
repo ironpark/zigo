@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-08T04:28:07Z"
 depends_on:
 - "177-materialized-callback-fixes#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Release checks pass, main and version tag are pushed, and GitHub publication succeeds.
 > NEXT: none
