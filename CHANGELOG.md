@@ -4,6 +4,50 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Breaking
+
+- 플러그인 계약이 **2.0**으로 올라갔습니다. `validateAll`과 구형 `validate`는
+  `validate(ValidateContext)` 하나로 합쳐지고, optional writer 슬롯은 공개 writer로,
+  `Plugin.files`와 `File`은 `go_files: []const GoFile`과 `artifacts: []const Artifact`로
+  대체됐습니다. 호환 계층은 남기지 않았으므로 기존 플러그인은
+  `min_contract = .{ .major = 2, .minor = 0 }`에 맞춰 갱신해야 합니다.
+- `addGoBindings`의 `go_must_variants`를 제거하고 플러그인 설정으로 옮겼습니다.
+  `.plugin_config = zigo.configJson(b, .{ .MUST = .{ .enabled = true } })`를 사용하고,
+  생성기 CLI에서는 `--go-must-variants` 대신
+  `--plugin-config '{"MUST":{"enabled":true}}'`를 씁니다.
+- 내장 Must·Iterator·Implements·Interfaces 플러그인이 emitter 내부 대신 공개 계약만
+  사용하는 별도 모듈로 컴파일됩니다. `Must` 정책은 lowering이 아니라 타입 분석에서
+  결정합니다. 생성되는 Go 코드는 그대로입니다.
+
+### Added
+
+- 플러그인이 검증·lowering 전에 semantic 문서를 바꿀 수 있습니다. `transform`은 문서
+  전체를, `name_type`·`name_function`은 등록 타입과 공개 함수 이름을, `map_type`은
+  선언·파라미터·반환 자리의 Go adapter를 정합니다. 모든 변형이 끝난 문서를 검증하고
+  lowering하므로 파생 선언에도 정책이 그대로 적용됩니다.
+  `context.reorderParameters(function, &.{ 1, 0 })`로 Go·C 인자 순서만 바꾸고 shim은
+  원래 Zig 순서로 호출합니다.
+- 빌드 전체 설정 `Config`와 선언에 붙는 `FunctionOptions`·`TypeOptions`를 JSON으로
+  전달합니다. 플러그인마다 `PluginModule.config`로, 등록 이름 기준으로는
+  `addGoBindings`의 `plugin_config`로 덮어쓰며, `zigo.configJson`이 Zig 구조체를
+  직렬화합니다. 알 수 없는 필드와 잘못된 값은 `<NAME>001` 진단입니다.
+- `GoFile`은 `.public`·`.external_test`·`.raw` 패키지, `.source`·`.test_file` 종류,
+  `//go:build` 제약, 파일별 `imports`, `.document`·`.package` 실행 범위를 지원합니다.
+  `Artifact`는 Go 프레이밍 없이 작성한 바이트를 그대로 출력하므로 스키마·데이터 파일을
+  함께 낼 수 있습니다. 출력 소유자를 추적해 emitter 사이의 경로 충돌을 그대로 거부합니다.
+- 공개 타입·파일·패키지 렌더 hook과 공개 writer로 내장 플러그인과 외부 플러그인이 같은
+  API를 씁니다. `after`는 순서만, `requires`는 등록·활성화까지 요구하는 의존성입니다.
+
+### Fixed
+
+- 잘못된 파라미터 재배치를 `ZIGO060`으로 거부합니다. `native_index`가 완전한 순열이
+  아니거나 `receiver_at`이 파라미터 수를 벗어나는 경우입니다.
+- `TransformContext.optionsOf`와 `ValidateContext.optionsOf`의 attachment 인자가
+  컨텍스트마다 다른 익명 enum이어서, 두 컨텍스트에서 옵션을 함께 읽는 플러그인이
+  컴파일되지 않던 문제를 고쳤습니다. 공개 `plugin.Attachment`로 통일했습니다.
+
 ## [0.20.0] - 2026-09-08
 
 ### Added
@@ -1115,7 +1159,7 @@
 - 생성된 Go doc이 식별자로 시작하지 않는 문장을 두 줄 형식으로 내고, `//` 그룹 주석과
   빈 줄 없이 이어진 선언의 doc 공유를 지원합니다. 모든 생성 패키지에 패키지 doc이 있습니다.
 
-[Unreleased]: https://github.com/ironpark/zigo/compare/0.13.1...HEAD
+[Unreleased]: https://github.com/ironpark/zigo/compare/0.20.0...HEAD
 [0.13.1]: https://github.com/ironpark/zigo/compare/0.13.0...0.13.1
 [0.13.0]: https://github.com/ironpark/zigo/compare/0.12.1...0.13.0
 [0.12.1]: https://github.com/ironpark/zigo/compare/0.12.0...0.12.1
