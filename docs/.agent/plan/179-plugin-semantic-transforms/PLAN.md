@@ -1,15 +1,16 @@
 ---
+completed_at: "2026-09-08T05:38:38Z"
 depends_on:
 - plugin-contract-extensibility
 description: Add plugin-driven type adapters, public naming and validated semantic document transforms.
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-08T05:13:22Z"
 ---
 > NEXT: Implement the semantic customization pipeline and verify external plugins end to end. ([Phase 0](phases/00-semantic-customization.md))
 
 # Phases
 
-- [ ] [Phase 00: Semantic customization](phases/00-semantic-customization.md)
+- [x] [Phase 00: Semantic customization](phases/00-semantic-customization.md)
 
 # Shared Verification
 

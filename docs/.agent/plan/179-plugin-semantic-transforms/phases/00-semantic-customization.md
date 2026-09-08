@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-08T05:38:38Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: External plugins can remove and derive functions, reorder parameters safely, select scalar adapters and set exact public names.
 > NEXT: none
