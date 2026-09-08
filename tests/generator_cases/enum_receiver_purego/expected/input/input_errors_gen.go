@@ -2,11 +2,7 @@
 
 package input
 
-import (
-	"errors"
-
-	"example.com/zigo/input/internal/raw"
-)
+import "example.com/zigo/input/internal/raw"
 
 // ErrLibraryLoad identifies a shared-library load or symbol resolution failure.
 var ErrLibraryLoad = raw.ErrLibraryLoad

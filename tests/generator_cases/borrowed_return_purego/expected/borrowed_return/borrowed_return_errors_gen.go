@@ -3,8 +3,8 @@
 package borrowed_return
 
 import (
-	lifecycle "example.com/zigo/borrowed-return/internal/lifecycle"
 	"example.com/zigo/borrowed-return/internal/raw"
+	lifecycle "example.com/zigo/borrowed-return/internal/lifecycle"
 )
 
 var (

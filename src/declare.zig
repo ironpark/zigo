@@ -337,6 +337,7 @@ pub const Materialized = struct {
     /// Go doc override; absent uses the generated description.
     doc: ?[]const u8 = null,
     fields: []const ValueField = &.{},
+    ext: []const Extension = &.{},
 };
 
 pub const Enum = struct {
@@ -403,6 +404,7 @@ pub const Callback = struct {
     reentrancy: ?Reentrancy = null,
     thread: ?Thread = null,
     on_callback_failure: ?CallbackFailure = null,
+    ext: []const Extension = &.{},
 };
 
 /// A registered type. The variant is what `.repr` used to say, and it is

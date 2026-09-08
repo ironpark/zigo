@@ -65,7 +65,7 @@ cd go && go test ./...
 | `go_package`, `go_package_path` | `name` 기반 | 공개 패키지 이름·경로 |
 | `raw_package` | `"internal/raw"` | raw 계층 경로 |
 | `go_package_doc` | 모듈 `//!` 주석 | 공개 패키지 GoDoc |
-| `go_must_variants` | `false` | `Must*` 동반 API 생성 |
+| `plugin_config.MUST.enabled` | `false` | `Must*` 동반 API 생성 |
 | `gofmt` | `PATH`의 `gofmt` | 생성물 포맷 도구 경로 |
 | `targets` | `&.{}` | 추가 타깃용 네이티브 라이브러리 (`library_dir/<goos>_<goarch>/`) |
 | `cgo_flags` | 모듈에서 계산 | `.cflags`, `.ldflags`(교체), `.extra_ldflags`(보강), `.target_ldflags`(GOOS별) |
@@ -216,7 +216,7 @@ defer h.Close()                        // 두 번 호출해도 안전
 n, err := h.Write(data)                // 메서드: 닫힌 handle이면 ErrInvalidHandle
 for v, err := range h.All() { ... }    // features.iterator → All(); .name = "Checked" → Checked()
 fmt.Fprintf(doc, "%d", n)              // features.implements의 .writer → Write
-v := MustParse(s)                      // go_must_variants = true일 때
+v := MustParse(s)                      // plugin_config.MUST.enabled = true일 때
 ```
 
 | `errors.Is` 대상 | 뜻 | `errors.As` 타입 |

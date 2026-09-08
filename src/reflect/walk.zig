@@ -22,7 +22,8 @@ fn entryExtensions(comptime entry: zigo.Type) []const zigo.Extension {
         .value => |value| value.ext,
         .enumeration => |value| value.ext,
         .tagged_union => |value| value.ext,
-        else => &.{},
+        .materialized => |value| value.ext,
+        .callback => |value| value.ext,
     };
 }
 
@@ -5229,4 +5230,28 @@ test "authoring sparse callback hints survive native userdata and byte pair lowe
     try std.testing.expectEqual(@as(?semantic.SemanticHint, .codepoint), callback.paramHint(0));
     try std.testing.expectEqual(@as(?semantic.SemanticHint, .utf8_string), callback.paramHint(1));
     try std.testing.expectEqual(@as(i128, -1), document.types[0].on_callback_failure.?.result);
+}
+
+test "callback and materialized plugin attachments survive authoring and reflection" {
+    const public = @import("zigo");
+    const Fixture = struct {
+        pub const Observer = *const fn (usize) callconv(.c) void;
+        pub const Snapshot = struct { text: []const u8 };
+    };
+    const P = .{ .name = "EXTRA", .FunctionOptions = struct {}, .TypeOptions = struct { enabled: bool }, .targets = [_]enum { callback, materialized }{ .callback, .materialized } };
+    const api = public.scope(Fixture);
+    const binding = comptime public.define(.{ .root = Fixture, .declarations = &.{
+        api.callback("Observer", .{}).use(P, .{ .enabled = true }),
+        api.materialized("Snapshot", .{}).use(P, .{ .enabled = true }),
+    } });
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), binding, "sample", "zg");
+    var attached: usize = 0;
+    for (document.types) |declaration| {
+        if (declaration.kind != .callback and declaration.kind != .materialized) continue;
+        try std.testing.expect(declaration.ext.?.get("EXTRA").?.object.get("enabled").?.bool);
+        attached += 1;
+    }
+    try std.testing.expectEqual(@as(usize, 2), attached);
 }

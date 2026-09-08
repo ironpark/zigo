@@ -2,11 +2,7 @@
 
 package flattened_options
 
-import (
-	"errors"
-
-	"example.com/zigo/flattened-options/internal/raw"
-)
+import "example.com/zigo/flattened-options/internal/raw"
 
 // ErrLibraryLoad identifies a shared-library load or symbol resolution failure.
 var ErrLibraryLoad = raw.ErrLibraryLoad

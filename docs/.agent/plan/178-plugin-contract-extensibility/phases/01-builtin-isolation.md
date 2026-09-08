@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-08T04:55:42Z"
 depends_on:
 - "178-plugin-contract-extensibility#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Built-ins compile only against public modules; generator and golden tests preserve output; commit changes.
 > NEXT: none

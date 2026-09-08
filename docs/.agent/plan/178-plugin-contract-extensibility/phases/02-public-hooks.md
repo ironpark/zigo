@@ -2,7 +2,7 @@
 depends_on:
 - "178-plugin-contract-extensibility#1"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Repository checks and integration coverage pass, docs reflect shipped behavior; commit changes.
 > NEXT: none

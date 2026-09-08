@@ -36,7 +36,7 @@ pub const site = @import("plugin/site.zig");
 
 /// Runs before lowering. All allocations and diagnostics belong to the run arena.
 pub const DeclarationId = struct {
-    kind: enum { function, type, package },
+    kind: enum { document, function, type, package },
     name: []const u8,
     receiver: ?[]const u8 = null,
     namespace: ?[]const u8 = null,
@@ -214,6 +214,7 @@ pub const Options = struct {
     /// gated helper, which only the discovery rendering itself relies on
     /// being absent.
     helpers: ?*const Referenced = null,
+    file: ?FileInfo = null,
     facts: *const Facts = &.{},
 
     /// Whether an added plugin of this name runs. Built-in features are not
@@ -248,7 +249,7 @@ pub const File = struct {
 };
 
 /// Module-relative path for a file in the currently rendered public package.
-/// Call from Emitter.pathAlloc; the caller owns the returned allocation.
+/// Call from File.pathAlloc; the caller owns the returned allocation.
 pub fn publicFilePathAlloc(allocator: std.mem.Allocator, program: abi.Program, options: Options, filename: []const u8) ![]u8 {
     const directory = if (options.go_package_path.len != 0)
         try allocator.dupe(u8, options.go_package_path)
@@ -327,7 +328,7 @@ pub const Context = struct {
     program: abi.Program,
     options: Options,
     writers: *const Writers,
-    /// Set for `method_hook`, null for `type_hook` and for `validate`.
+    /// Set for method_hook, null in other rendering contexts.
     method: ?Method = null,
 
     pub fn config(self: Context, comptime P: Plugin) !P.Config {
@@ -350,7 +351,7 @@ pub const Context = struct {
         return self.writers.writeSignature(self, writer, function, .{});
     }
 
-    /// Public parameter list including parentheses. Requires method context.
+    /// Public parameter list including parentheses. Names are derived outside method hooks.
     pub fn writeParameters(self: Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
         const write = self.writers.writeParameters;
         return write(self, writer, function);
@@ -416,15 +417,17 @@ pub fn readOptions(comptime P: anytype, comptime attachment: enum { function, ty
 
 /// A generator plugin. Every field but `name` is optional, so a plugin that
 /// only adds a method next to an existing one is four lines long.
-pub const Target = enum { function, handle, value, enumeration, tagged_union };
+pub const Target = enum { function, handle, value, enumeration, tagged_union, callback, materialized, error_set };
 
-pub fn typeTarget(kind: semantic.TypeKind) ?Target {
+pub fn typeTarget(kind: semantic.TypeKind) Target {
     return switch (kind) {
         .@"opaque" => .handle,
         .value_struct => .value,
         .@"enum" => .enumeration,
         .tagged_union => .tagged_union,
-        .callback, .materialized, .error_set => null,
+        .callback => .callback,
+        .materialized => .materialized,
+        .error_set => .error_set,
     };
 }
 
@@ -445,7 +448,7 @@ pub const Plugin = struct {
     /// struct. A plugin that takes none leaves it at the empty struct.
     FunctionOptions: type = struct {},
     TypeOptions: type = struct {},
-    targets: []const Target = &.{ .function, .handle, .value, .enumeration, .tagged_union },
+    targets: []const Target = &.{ .function, .handle, .value, .enumeration, .tagged_union, .callback, .materialized, .error_set },
     /// Runs after core and option validation; report any number of diagnostics.
     validate: ?*const fn (ValidateContext) anyerror!void = null,
     /// Written after each public method, into the file that owns it.
@@ -453,6 +456,11 @@ pub const Plugin = struct {
     /// Written after each handle, value struct and enum, into the file that
     /// owns it.
     type_hook: ?*const fn (Context, *std.Io.Writer, semantic.TypeDecl) anyerror!void = null,
+    /// Body boundaries, inside the package/import frame. Called on every render
+    /// pass; must be deterministic and must not mutate analysis state.
+    file_hook: ?*const fn (Context, *std.Io.Writer, FileInfo, FilePhase) anyerror!void = null,
+    /// One contribution per package per render pass, in zigo_plugins_gen.go.
+    package_hook: ?*const fn (Context, *std.Io.Writer) anyerror!void = null,
     /// Whole public files this plugin adds. A file whose body comes out empty
     /// is dropped, so an emitter that has nothing to say costs nothing.
     files: []const File = &.{},
@@ -577,3 +585,10 @@ test "plugin facts preserve typed validation results across copied declarations"
     try std.testing.expect(try facts.get(p, .{ .kind = .type, .name = copied }) == null);
     try std.testing.expectError(error.DuplicatePluginFact, facts.put(arena.allocator(), p, id, .{ .count = 1 }));
 }
+
+pub const FilePhase = enum { begin, end };
+pub const FileInfo = struct {
+    path: []const u8,
+    owner: []const u8 = "generator",
+    kind: enum { api, enums, structs, handles, runtime, errors, tagged_union, plugin, package },
+};

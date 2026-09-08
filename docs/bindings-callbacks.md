@@ -361,7 +361,7 @@ defer func() {
 
 ## `Must*` 동반 API
 
-`addGoBindings`에 `.go_must_variants = true`를 지정하면 생성된 Go 시그니처가 `error`를
+`addGoBindings`에 `.plugin_config = zigo.configJson(b, .{ .MUST = .{ .enabled = true } })`를 지정하면 생성된 Go 시그니처가 `error`를
 반환하는 모든 공개 함수와 메서드에 `Must<Name>`이 함께 생깁니다. 생성자는 최종 공개 이름
 `New<Type>`을 기준으로 `MustNew<Type>`이 되고, `Close`에는 동반 API를 만들지 않습니다.
 단일 값은 값만, optional 같은 다중 값은 오류를 뺀 값들을 반환하며, 오류 전용 함수는 반환값이

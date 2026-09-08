@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 
 	"example.com/zigo/wrappers/internal/raw"
+
 	zigo_pkg_model "example.com/zigo/wrappers/model"
 )
 

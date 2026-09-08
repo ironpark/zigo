@@ -47,7 +47,45 @@ const builtin_public_emitters = [_]Emitter{
     .{ .pathAlloc = publicHandlesPath, .render = public.renderPublicHandlesFile },
     .{ .pathAlloc = publicRuntimePath, .render = public.renderPublicRuntimeFile },
     .{ .pathAlloc = publicErrorsPath, .render = public_runtime.renderPublicErrors },
-};
+} ++ if (hasPackageHooks()) [_]Emitter{.{ .pathAlloc = packageHooksPath, .render = renderPackageHooks }} else [_]Emitter{};
+
+fn hasPackageHooks() bool {
+    inline for (registry.plugins) |registered| if (registered.package_hook != null) return true;
+    return false;
+}
+
+fn packageHooksPath(allocator: std.mem.Allocator, program: abi.Program, options: Options) ![]u8 {
+    return plugin.publicFilePathAlloc(allocator, program, options, "zigo_plugins_gen.go");
+}
+
+fn renderPackageHooks(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
+    return public.renderPublicFile(allocator, writer, program, options, struct {
+        fn body(a: std.mem.Allocator, w: *std.Io.Writer, p: abi.Program, o: Options) !void {
+            return plugin_hooks.runPackageHooks(plugin_hooks.context(a, p, o), w);
+        }
+    }.body);
+}
+
+fn framedBuiltin(comptime index: usize) Emitter {
+    const source = builtin_public_emitters[index];
+    return .{ .pathAlloc = source.pathAlloc, .render = struct {
+        fn render(a: std.mem.Allocator, w: *std.Io.Writer, p: abi.Program, o: Options) !void {
+            const path = try source.pathAlloc(a, p, o);
+            defer a.free(path);
+            var options = o;
+            options.file = .{ .path = path, .kind = comptime switch (index) {
+                0 => .api,
+                1 => .enums,
+                2 => .structs,
+                3 => .handles,
+                4 => .runtime,
+                5 => .errors,
+                else => .package,
+            } };
+            return source.render(a, w, p, options);
+        }
+    }.render };
+}
 
 /// Every public-package emitter, in order: the built-in files first, then the
 /// files each registered plugin adds, in registration order. Plugins are a
@@ -65,7 +103,10 @@ pub const PublicEmitters = struct {
     pub fn next(self: *PublicEmitters) ?Emitter {
         if (self.index < builtin_public_emitters.len) {
             defer self.index += 1;
-            return builtin_public_emitters[self.index];
+            inline for (builtin_public_emitters, 0..) |_, index| {
+                if (self.index == index) return framedBuiltin(index);
+            }
+            unreachable;
         }
         var offset = builtin_public_emitters.len;
         inline for (registry.plugins, 0..) |registered, plugin_index| {
@@ -99,7 +140,11 @@ fn framedPluginFile(comptime plugin_index: usize, comptime file: plugin.File) Em
                 // A plugin this generation does not run writes nothing, which
                 // leaves the file at its prelude and the generator drops it.
                 if (!plugin_hooks.runs(plugin_index, options)) return;
-                return public.renderPublicFile(allocator, writer, program, options, struct {
+                const path = try file.pathAlloc(plugin_hooks.context(allocator, program, options));
+                defer allocator.free(path);
+                var file_options = options;
+                file_options.file = .{ .path = path, .owner = registry.plugins[plugin_index].name, .kind = .plugin };
+                return public.renderPublicFile(allocator, writer, program, file_options, struct {
                     fn body(a: std.mem.Allocator, w: *std.Io.Writer, p: abi.Program, o: Options) anyerror!void {
                         return file.render(plugin_hooks.context(a, p, o), w);
                     }
@@ -319,7 +364,9 @@ pub fn unionFilesAlloc(allocator: std.mem.Allocator, program: abi.Program, optio
         var rendered: std.Io.Writer.Allocating = .init(allocator);
         defer rendered.deinit();
         // The writer only allocates, so a failed write is a failed allocation.
-        public_types.renderUnionFile(allocator, &rendered.writer, program, options, entry) catch |err| switch (err) {
+        var file_options = options;
+        file_options.file = .{ .path = path, .kind = .tagged_union };
+        public_types.renderUnionFile(allocator, &rendered.writer, program, file_options, entry) catch |err| switch (err) {
             error.WriteFailed => return error.OutOfMemory,
             else => return err,
         };

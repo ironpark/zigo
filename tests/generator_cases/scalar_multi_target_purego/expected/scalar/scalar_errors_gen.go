@@ -2,11 +2,7 @@
 
 package scalar
 
-import (
-	"errors"
-
-	"example.com/zigo/scalar/internal/raw"
-)
+import "example.com/zigo/scalar/internal/raw"
 
 // ErrLibraryLoad identifies a shared-library load or symbol resolution failure.
 var ErrLibraryLoad = raw.ErrLibraryLoad

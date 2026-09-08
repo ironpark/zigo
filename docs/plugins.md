@@ -1,196 +1,67 @@
 # 생성기 플러그인
 
-플러그인은 생성된 Go 표면에 코드를 더하는 보통의 Zig 패키지입니다. 메서드 옆에 메서드를
-하나 더 쓰거나, 타입 뒤에 줄을 붙이거나, 공개 파일을 하나 더 만듭니다. zigo 자체의
-`features.iterator`, `features.implements`, `Must*`, `zigo.interface()`도 같은 프레임 위에서 돕니다.
+플러그인은 공개 Go 패키지에 메서드·타입·파일을 추가하는 Zig 모듈입니다. 내장 Must,
+Iterator, Implements, Interfaces도 공개 계약만 사용하는 별도 모듈로 컴파일됩니다.
+현재 hook은 shim·C 헤더·raw 패키지를 수정하지 않습니다.
 
-플러그인은 **Go 표면만** 바꿉니다. Zig shim, C 헤더, raw 패키지에는 손을 댈 수 없으므로
-플러그인을 추가해서 ABI가 움직이는 일은 없고, cgo와 purego에서 똑같이 동작합니다.
+## 계약과 실행 순서
 
-## 계약
+루트 소스에서 `pub const plugin: @import("plugin").Plugin`을 선언합니다.
+공개 모듈은 `plugin`, `abi`, `semantic`, `diagnostic`, `naming`이며 계약의 정본은
+[`src/plugin.zig`](../src/plugin.zig)입니다. 이 모듈들이 노출하는 타입도 계약에 포함됩니다.
 
-플러그인 패키지는 `plugin`이라는 모듈 하나를 노출하고, 그 루트 파일이
-`const plugin_api = @import("plugin");`로 계약을 가져와 `pub const plugin: plugin_api.Plugin`을
-선언합니다. 계약은 `src/plugin.zig`가 전부이며,
-플러그인은 이 파일 하나에만 기대면 됩니다.
+`plugin.contract_version`은 `{ major, minor }`입니다. `Plugin.min_contract`의 major는
+동일해야 하고 minor는 생성기가 지원하는 값 이하여야 합니다. 현재 계약은 **1.0**입니다.
+이전의 `validateAll`, 구형 `validate`, optional writer 슬롯과 `go_must_variants`는 제거됐습니다.
 
 ```zig
-pub const Plugin = struct {
-    /// 플러그인의 이름. `ext` 키이자 진단 코드 접두어입니다. 진단 코드가
-    /// 대문자이므로 이름도 대문자로 씁니다.
-    name: []const u8,
-    /// 이 플러그인이 읽는 선언 옵션. `std.json`으로 직렬화 가능한 struct입니다.
-    FunctionOptions: type = struct {},
-    TypeOptions: type = struct {},
-    targets: []const Target = &.{ .function, .handle, .value, .enumeration, .tagged_union },
-    /// 핵심 규칙 뒤에 도는 이 플러그인만의 문서 규칙.
-    validate: ?*const fn (std.mem.Allocator, semantic.Semantic) anyerror!?diagnostic.Diagnostic = null,
-    /// 여러 독립적인 진단. 둘 다 설정하면 validateAll을 사용합니다.
-    validateAll: ?*const fn (std.mem.Allocator, semantic.Semantic) anyerror![]const diagnostic.Diagnostic = null,
-    /// 공개 메서드마다, 그 메서드를 담은 파일에 이어서 씁니다.
-    method_hook: ?*const fn (Context, *std.Io.Writer, abi.AbiFn) anyerror!void = null,
-    /// handle·value struct·enum마다, 그 타입을 담은 파일에 이어서 씁니다.
-    type_hook: ?*const fn (Context, *std.Io.Writer, semantic.TypeDecl) anyerror!void = null,
-    /// 이 플러그인이 추가하는 공개 파일.
-    files: []const Emitter = &.{},
-    /// hook이 쓸 수 있는 비표준 import. 본문이 실제로 쓴 것만 들어갑니다.
-    imports: []const Import = &.{},
+const api = @import("plugin");
+pub const plugin: api.Plugin = .{
+    .name = "EXAMPLE",
+    .min_contract = .{ .major = 1, .minor = 0 },
+    .Config = struct { enabled: bool = true },
+    .FunctionOptions = struct {},
+    .TypeOptions = struct {},
+    .Facts = struct { eligible: bool },
+    .after = &.{"MUST"},
+    // .validate = validate,
+    // .analyze = analyze,
+    // .method_hook = methodHook,
 };
 ```
 
-`validate`와 `validateAll`은 `Context`를 받지 않습니다. 검증은 lowering 전에 돌기 때문에 아직 프로그램도
-writer도 없습니다.
+실행 순서는 core 검증 → 플러그인 검증 → lowering → 플러그인 분석 → 공개 패키지 렌더링입니다.
+`after`는 등록된 플러그인 사이의 순서를 정하고, 없는 이름은 무시합니다. `requires`는
+등록과 활성화가 모두 필요한 의존성이며 실행 순서도 보장합니다. 나머지 순서는 등록 순서를
+유지합니다. 이름 중복·계약 불일치·의존성 누락·순환은 컴파일 오류입니다.
 
-### Context
+## 빌드 설정과 선언 옵션
 
-`Context`는 hook이 writer 말고 받는 것 전부입니다. lowering된 프로그램(`program`), 지금
-적용 중인 emitter 옵션(`options`), 공개 패키지의 writer들, 그리고 `method_hook`이라면
-방금 쓰인 메서드(`method`)입니다. `method`의 이름들은 메서드 자신이 쓴 것과 같은 값이므로,
-그 메서드를 호출하는 wrapper가 호출을 다르게 적을 수는 없습니다.
-
-```zig
-try context.writeTypeName(writer, "Document");   // 다른 패키지면 한정된 이름으로
-try context.writeGoType(writer, node);           // semantic 타입의 Go 표기
-try context.writeSignature(writer, function);    // 메서드가 쓴 그대로의 시그니처
-const options = try context.typeOptions(plugin, declaration) orelse return;
-```
-
-시그니처를 파싱하지 않고 wrapper를 만들 수도 있습니다. 아래 writer는 생성기와 같은
-타입 표기와 인자 순서를 사용합니다.
+`Config`는 빌드 전체 설정이고, `FunctionOptions`·`TypeOptions`는 선언에 붙는 설정입니다.
+세 타입은 JSON으로 표현 가능한 struct입니다. 빌드와 생성기는 별도 프로그램이므로 설정은
+JSON으로 전달하고 생성기에서 등록된 플러그인의 `Config` 타입으로 검사합니다.
 
 ```zig
-try context.writeParameters(writer, function); // 괄호를 포함한 매개변수 목록
-const count = try context.writeResultType(writer, function, .{ .omit_error = true });
-// 결과 앞 공백과 필요한 tuple 괄호까지 쓰며, 쓴 결과 개수를 반환합니다.
-// error → 0개, (T, error) → 1개, (T, bool, error) → 2개
-// .{}는 error를 포함한 원래 공개 결과를 씁니다.
-try context.writeCallArguments(writer, function); // 괄호 없는 호출 인자 목록
-```
-
-`writeParameters`와 `writeCallArguments`는 `method_hook`의 context가 필요합니다.
-`writeResultType`은 생성자, optional의 bool, borrowed 결과, adapter, 다른 패키지 타입을
-공개 시그니처와 동일하게 처리합니다. 호출 인자 writer는 context를 앞에 넣고, flatten된
-필드를 펼치며, 주입 파라미터와 callback userdata·취소 플래그는 제외합니다.
-이전 `writeSignature`는 그대로 지원합니다. 생성기 밖에서 `Writers`를 직접 구성했다면
-새 슬롯을 생략할 수 있으나, 그 writer를 호출하면 `UnsupportedPluginWriter` 오류입니다.
-실제 외부 플러그인 예제는 [wrapper 테스트 플러그인](../tests/plugins/wrappers.zig)을 참고하세요.
-
-### 옵션 전달
-
-옵션은 선언에 붙습니다. `bindings.zig`에서 `use`를 쓰면 값이 comptime에 잡히므로,
-플러그인에 없는 필드나 모양이 다른 값은 **선언한 자리에서 Zig 컴파일 오류**가 됩니다.
-
-```zig
-const satisfies = @import("zigo_satisfies");
-const api = zigo.scope(mylib);
-
-const document = api.handle("Document", .{})
-    .use(satisfies.plugin, .{ .interfaces = &.{"io.ReadWriteCloser"} });
-```
-
-handle의 `.fields` 항목은 `Entry`가 아니므로 `.use()` 대신 `zigo.HandleField`의 `.extend()`를 씁니다.
-getter와 setter가 같은 `FunctionOptions`를 받으며, hook에는 일반 메서드로 도착합니다.
-
-`targets`는 attachment를 허용할 대상입니다. function에는 `FunctionOptions`, 타입에는
-`TypeOptions`를 검사합니다. 현재 materialized와 callback 타입의 attachment는 지원하지 않습니다.
-같은 이름을 두 번 `.use()`하면 컴파일 오류이고, `.replacePlugin(plugin, options)`로 교체할 수
-있습니다. null은 JSON에도 보존합니다. hook은 등록 순서대로 실행되며, 선언에 붙은 옵션이
-필요한 hook은 `context.functionOptions()` 또는 `context.typeOptions()`의 null을 확인합니다.
-
-reflection은 이를 `semantic.json`에 플러그인 이름을 키로 그대로 적고, 생성기는 같은 옵션
-타입으로 다시 읽습니다. 문서에는 선언한 순서 그대로 남으므로 재작성해도 바이트가 같습니다.
-
-```json
-"ext": { "SATIS": { "interfaces": ["io.ReadWriteCloser"] } }
-```
-
-`semantic.json`을 손으로 고쳐 플러그인이 읽을 수 없는 값이 들어가면 `<NAME>001` 진단이
-나옵니다. 직접 읽는 validator는 `readOptions(plugin, .function, allocator, ext)` 또는
-`readOptions(plugin, .type, allocator, ext)`로 대상 옵션을 선택합니다. 자세한 내용은 [진단 코드](diagnostics.md#플러그인-진단)를 참고하세요.
-
-### 파일
-
-`files`의 emitter는 **선언만** 씁니다. `// Code generated by zigo.` 표시, `package` 절,
-그리고 본문에서 유도한 import 블록은 생성기가 감싸 줍니다. 그래서 플러그인이 import
-블록을 직접 적을 일이 없고, 아무것도 쓰지 않은 파일은 그대로 버려집니다.
-
-`Emitter.pathAlloc`의 결과는 **Go 모듈 루트 기준**입니다. 하위 패키지마다 렌더링되므로
-파일명만 반환하지 말고 공개 경로 헬퍼를 사용하세요.
-
-```zig
-fn helperPath(allocator: std.mem.Allocator, program: abi.Program, options: plugin_api.Options) ![]u8 {
-    return plugin_api.publicFilePathAlloc(allocator, program, options, "zigo_helpers_gen.go");
-}
-```
-
-이 헬퍼는 `go_package_path` → `go_package` → binding 이름의 snake_case 순서로 디렉터리를
-정하고, `.`이면 모듈 루트에 둡니다. hook 안에서는
-`context.publicFilePathAlloc("zigo_helpers_gen.go")`도 사용할 수 있습니다. 반환한 경로는
-호출자가 해제합니다. 생성기는 실제 쓰기 전에 모든 경로를 정규화하고 중복을 검사합니다.
-서로 다른 emitter의 경로가 같거나 출력 디렉터리를 벗어나면 `ZIGO059`로 실패하며 기존
-출력 파일은 변경하지 않습니다. 비어 있어서 삭제할 출력도 충돌 검사에 포함합니다.
-
-표준 라이브러리 밖의 패키지를 쓴다면 `imports`에 적으세요. 본문이 그 한정자를 실제로 쓴
-파일에만 들어갑니다.
-
-## 빌드에 넣기
-
-```zig
-// build.zig.zon
-.dependencies = .{
-    .zigo = .{ .url = "...", .hash = "..." },
-    .zigo_satisfies = .{ .url = "...", .hash = "..." },
-},
-```
-
-```zig
-// build.zig
-const satisfies: zigo.PluginModule = .{
-    // `bindings.zig`가 import할 이름
-    .name = "zigo_satisfies",
-    // 플러그인의 루트 소스 파일
-    .root_source_file = b.dependency("zigo_satisfies", .{}).path("src/plugin.zig"),
-};
+const plugins = [_]zigo.PluginModule{.{
+    .name = "example", // bindings.zig에서 import하는 이름
+    .root_source_file = b.path("plugins/example.zig"),
+    .config = zigo.configJson(b, .{ .enabled = true }),
+}};
 _ = zigo.addGoBindings(b, .{
     // ...
-    .plugins = &.{satisfies},
+    .plugins = &plugins,
+    .plugin_config = zigo.configJson(b, .{ .MUST = .{ .enabled = true } }),
 });
 ```
 
-`.plugins`의 순서가 실행 순서입니다. 생성기는 소비하는 프로젝트마다 새로 컴파일되므로
-플러그인은 빌드 시점에 정적으로 링크됩니다. 별도의 프로세스도, 런타임 로딩도 없습니다.
+`plugin_config`는 등록 이름(`Plugin.name`)을 키로 하는 객체이며 각 항목의 `.config`를
+덮어씁니다. 지정되지 않은 필드는 `Config`의 기본값을 사용합니다. CLI에서는
+`--plugin-config '{"MUST":{"enabled":true}}'`로 같은 설정을 전달합니다.
+알 수 없는 설정 필드·잘못된 값은 `<NAME>001` 진단입니다.
 
-모듈이 아니라 소스 경로를 받는 이유가 여기 있습니다. `addGoBindings`는 그 파일을 생성기
-자신의 `plugin`, `abi`, `semantic`, `diagnostic`, `naming` 위에서 컴파일합니다. 같은
-파일에서 나온 두 벌의 모듈은 Zig에서 서로 다른 타입이므로, 모듈을 그대로 넘겨받으면
-플러그인과 그것을 돌리는 생성기가 겉모습만 같은 두 개의 `Plugin`을 이야기하게 됩니다.
-플러그인 패키지의 `build.zig`가 노출하는 모듈은 편집기와 단독 `zig build`를 위한 것입니다.
-
-## 진단
-
-플러그인 진단은 `ZIGO` 코드를 쓰지 않고 플러그인 이름을 접두어로 씁니다(`SATIS002`).
-`validate`는 생성기의 핵심 규칙이 모두 통과한 뒤에 도므로, 플러그인 규칙이 문서 자체의
-결함을 가리는 일은 없습니다.
-
-### 여러 진단 반환
-
-`validateAll`은 같은 플러그인의 여러 오류를 반환합니다. 반환할 slice와 진단 문자열은
-전달받은 allocator의 arena에 할당합니다. 실행기는 플러그인 등록 순서, 반환한 slice 순서로
-진단을 모아 CLI의 generate·report·abi-diff에 출력합니다. 기존 `validate`는 그대로 동작하며,
-둘 다 있으면 `validateAll`만 실행합니다.
-
-핵심 구조 검증에서 오류가 나면 플러그인 검증을 실행하지 않습니다. 특정 플러그인의 옵션을
-파싱할 수 없으면 `<NAME>001`을 기록하고 그 플러그인의 validator를 건너뛰지만, 다른
-플러그인은 계속 검사합니다. 따라서 모든 핵심 오류를 무조건 한 번에 검사하는 API는 아닙니다.
-라이브러리 사용자는 `validate.findIssuesWithPlugins`로 진단을 모으거나,
-`generator.Options.diagnostics`에 `std.ArrayList(Diagnostic)` 포인터를 전달할 수 있습니다.
-후자는 진단 텍스트를 `generate` 호출자의 allocator로 복사하므로 오류 반환 뒤에도 읽을 수
-있습니다. 목록과 문자열은 호출자 arena와 함께 해제하세요.
-
-### satisfies의 값·포인터 단언
-
-기본 `.form = .pointer`는 기존과 같이 `(*T)(nil)`의 인터페이스 구현을 검사합니다.
-값으로 사용하는 타입을 검사하려면 `.form = .value`를 지정하세요.
+선언에는 `.use(plugin, options)`로 붙입니다. 선언 종류는 `targets`와 대조하고 옵션은
+comptime에 타입 검사합니다. 같은 플러그인을 두 번 붙일 수 없으며
+`.replacePlugin(plugin, options)`로 교체할 수 있습니다.
 
 ```zig
 api.enumeration("Mode", .{}).use(satisfies.plugin, .{
@@ -199,36 +70,137 @@ api.enumeration("Mode", .{}).use(satisfies.plugin, .{
 })
 ```
 
-값 단언은 `var _ fmt.Stringer = *new(Mode)`로 생성하므로 struct뿐 아니라 enum에도
-유효합니다. 포인터 receiver에만 메서드가 있으면 값 단언은 Go 컴파일에서 실패합니다.
+reflection은 `semantic.json`의 `ext`에 등록 이름과 옵션을 기록합니다. callback과
+materialized 선언도 옵션을 전달합니다. 렌더 hook은 `context.functionOptions(plugin, fn)`
+또는 `context.typeOptions(plugin, declaration)`으로 읽습니다. 반환값 null은 해당 선언에
+옵션이 붙지 않았다는 뜻입니다. 빌드 설정은 `try context.config(plugin)`으로 읽습니다.
 
-## 플러그인 테스트하기
+## 검증과 분석 결과
 
-가장 짧은 길은 golden case입니다. `semantic.json`에 `ext`를 적고, `options.json`에서
-플러그인 이름으로 그 플러그인만 켠 뒤, 생성된 트리를 `expected/`에 고정합니다.
+검증 함수의 시그니처는 `fn(api.ValidateContext) !void`입니다. 컨텍스트에는 `allocator`,
+`document`, `configurations`, `facts`, `diagnostics`가 있습니다.
 
-```json
-{ "package": "docs", "prefix": "zg", "go_module": "example.com/docs", "plugins": ["SATIS"] }
+```zig
+fn validate(context: api.ValidateContext) !void {
+    for (context.document.functions) |function| {
+        // 옵션 타입을 알고 있는 다른 플러그인의 옵션도 읽을 수 있습니다.
+        const options = try context.optionsOf(plugin, .function, function.ext) orelse continue;
+        _ = options;
+        try context.diagnose(.{
+            .severity = .@"error",
+            .code = "EXAMPLE002",
+            .message = "설명",
+            .site = api.site.functionSite(function),
+            .hint = "수정 방법",
+        });
+    }
+}
 ```
 
-`plugins`를 적지 않으면 생성기가 함께 빌드된 플러그인이 전부 돕니다. 이름을 적는 것은
-하나의 실행 파일에 여러 플러그인이 들어 있어도 golden이 정확히 하나를 고정하기 위해서입니다.
-내장 기능(`Must*`, `features.implements`, `features.iterator`, `zigo.interface()`)은 생성기 자신의 표면이므로
-이 목록과 무관하게 항상 돕니다. 선택하지 않은 외부 플러그인은 옵션 검증과 자체 검증도
-실행하지 않습니다.
+`diagnose`를 여러 번 호출해 독립적인 진단을 모읍니다. `api.site.functionSiteFor`와
+`functionDeclarationAlloc`은 소스 위치와 receiver를 포함한 선언 경로를 만들고,
+`api.interfaces`는 인터페이스 선언 규칙과 메서드 조회를 제공합니다.
 
-`zigo doctor`(`zig build go-doctor`)는 생성기가 어떤 플러그인과 함께 빌드되었는지
-`PASS plugins:` 줄로 알려 줍니다. 플러그인이 정말 링크되었는지 확인하는 자리입니다.
+`analyze: fn(api.AnalyzeContext) !void`는 lowering 뒤, 패키지 분할과 helper 탐색 전에
+생성 실행당 한 번 호출됩니다. `context.render`에는 읽기 전용 프로그램과 공개 writer가
+있고, `context.facts`에는 검증 단계와 같은 저장소가 있습니다.
 
-## 예제
+```zig
+try context.facts.put(context.render.allocator, plugin,
+    api.DeclarationId.function(function.origin.*), .{ .eligible = true });
+// 렌더링 단계:
+const fact = try context.options.facts.get(plugin,
+    api.DeclarationId.function(function.origin.*));
+```
 
-- [`plugins/satisfies`](../plugins/satisfies): `type_hook` 하나로
-  `var _ io.ReadWriteCloser = (*Document)(nil)` 어서션을 붙입니다.
-  [`11-io-streams`](../examples/11-io-streams/README.md)가 씁니다.
-- [`plugins/json`](../plugins/json): 값 struct와 enum에 `MarshalJSON`/`UnmarshalJSON`을
-  씁니다. 옵션(`field_names`)으로 JSON 키 철자를 고르고, `imports`로 `encoding/json`과
-  `fmt`를 선언합니다. [`10-tagged-union`](../examples/10-tagged-union/README.md)이 씁니다.
+`Plugin.Facts`로 타입을 지정합니다. 키는 플러그인 이름과 선언 ID입니다. 함수 ID는 이름,
+receiver, namespace, package로 구성되어 lowering이 함수를 복사해도 유지됩니다. 원본
+`symbol`은 재계산되는 입력일 수 있어 ID로 쓰지 않습니다. 문서 전체 사실은
+`.{ .kind = .document, .name = "" }`, 타입 사실은 `DeclarationId.declaration(type)`을
+사용합니다. 동일 키에 두 번 쓰면 오류입니다. 분석이 새로 만드는 사실은 별도 선언 ID를
+사용하거나 검증에서 저장한 사실을 그대로 읽습니다.
 
-- [`plugins/enumkit`](../plugins/enumkit): enum의 `<Type>Values()`와 `IsKnown()`을 생성합니다.
-  값 목록은 선언 순서의 새 slice이며, 열린 enum의 알 수 없는 숫자는 known으로 취급하지 않습니다.
-  [`10-tagged-union`](../examples/10-tagged-union/README.md)에서 JSON과 함께 사용합니다.
+키·값·내부 할당은 생성 실행의 arena 수명을 따릅니다. 포인터를 다음 생성 실행까지
+보관하면 안 됩니다. 렌더 컨텍스트의 저장소는 `*const Facts`이므로 렌더링은 사실을 읽기만
+합니다. Must는 이 저장소에 생성 여부를 기록하고 Interfaces가 같은 결과를 읽습니다.
+
+## 공개 writer
+
+writer 슬롯은 모두 필수이며 생성기가 제공하는 테이블을 사용합니다.
+
+```zig
+try context.writeTypeName(writer, "Document");
+try context.writeGoType(writer, node);
+try context.writeSignature(writer, function);
+try context.writeSignatureWith(writer, function, .{ .parameter_names = false });
+try context.writeParameters(writer, function);
+const count = try context.writeResultType(writer, function, .{ .omit_error = true });
+try context.writeCallArguments(writer, function);
+try context.writeValueType(writer, function); // optional의 bool/error를 제외한 값 타입
+```
+
+메서드 hook 밖에서도 이름을 계산하므로 파일·분석 컨텍스트에서도 쓸 수 있습니다.
+`writeResultType`은 앞 공백과 tuple 괄호를 포함하고 결과 개수를 반환합니다. 생성자,
+borrowed 결과, optional의 bool, adapter, 분할 패키지 한정자를 생성기와 동일하게 처리합니다.
+`functionInfo`는 공개 이름·공개 노출 여부·error 반환 여부를 조회합니다. 반환한 `go_name`은
+컨텍스트 allocator에 할당되며 호출자가 소유합니다. `writeDoc`은 생성기의 GoDoc 규칙을 씁니다.
+
+## 렌더 hook
+
+모든 렌더 hook은 결정적이어야 합니다. helper 탐색이 같은 패키지를 반복 렌더링하므로,
+외부 작업을 수행하거나 호출 횟수에 따라 출력·분석 상태를 바꾸면 안 됩니다.
+
+| hook | 호출 위치 |
+|---|---|
+| `method_hook(Context, writer, AbiFn)` | 각 공개 함수·메서드 뒤 |
+| `type_hook(Context, writer, TypeDecl)` | 생성된 handle·value·enum·tagged union·callback·materialized 타입 뒤 |
+| `file_hook(Context, writer, FileInfo, FilePhase)` | 공개 파일 본문 시작과 끝 (`begin`, `end`) |
+| `package_hook(Context, writer)` | 패키지별 `zigo_plugins_gen.go` 본문에 한 번씩, 각 렌더 pass마다 |
+
+error-set 선언의 type hook은 해당 패키지의 오류 파일에서 실행합니다. 오류 집합은 공통
+`Error` 표현을 사용하므로 선언 이름과 같은 Go 타입이 존재한다고 가정하면 안 됩니다.
+이름 없이 파생된 callback도 합성 `TypeDecl`을 받으며 그 선언에는 `ext`가 없습니다.
+사용되지 않아 생성되지 않는 callback·materialized 타입에는 type hook을 호출하지 않습니다.
+
+`FileInfo`에는 출력 루트 기준 `path`, `owner`, `kind`가 있습니다. kind는 `api`, `enums`,
+`structs`, `handles`, `runtime`, `errors`, `tagged_union`, `plugin`, `package`입니다.
+파일 hook은 package/import 바깥이 아닌 **본문**에 씁니다. `var`, `init()` 등을 추가할 수
+있으며 hook이 쓴 한정자도 import 분석에 포함됩니다. raw·shim·헤더·내부 lifecycle 파일에는
+호출되지 않습니다. `active_package`는 분할 패키지 선택값이고 null은 단일 패키지,
+빈 문자열은 분할된 기본 패키지입니다.
+
+## 추가 파일과 import
+
+```zig
+pub const plugin: api.Plugin = .{
+    .name = "HELPERS",
+    .files = &.{.{ .pathAlloc = path, .render = render }},
+};
+fn path(context: api.Context) ![]u8 {
+    return context.publicFilePathAlloc("zigo_helpers_gen.go");
+}
+fn render(_: api.Context, writer: *std.Io.Writer) !void {
+    try writer.writeAll("const HelperVersion = 1\\n");
+}
+```
+
+`File`은 본문만 작성합니다. 생성 표식·package·import는 생성기가 관리하고 비어 있는 파일은
+제거합니다. 모든 경로는 쓰기 전에 정규화·충돌 검사하며 잘못된 경로나 중복은 `ZIGO059`입니다.
+경로는 생성 출력 루트 기준이며 `publicFilePathAlloc`을 쓰면 활성 공개 패키지 아래로 갑니다.
+
+추가 import는 `.imports = &.{.{ .qualifier = "json", .path = "encoding/json" }}`처럼
+선언합니다. 본문에서 실제로 사용하는 한정자만 import에 들어갑니다.
+
+## 테스트와 이전
+
+이전 플러그인은 validator를 `ValidateContext`와 `diagnose`로 바꾸고, 파일 콜백을
+`Context` 기반으로 바꿔야 합니다. Must 설정은 `plugin_config.MUST.enabled`로 옮깁니다.
+구형 writer 테이블을 직접 만든 코드는 모든 슬롯을 구현해야 합니다.
+
+[`tests/plugin_contract.zig`](../tests/plugin_contract.zig)는 별도 외부 모듈로 설정 전달,
+검증→분석 사실 전달, 반복 렌더링, 타입·파일·패키지 hook과 cgo/purego의 ABI 불변을 검사합니다.
+내장 모듈은 생성기 내부를 import할 수 없는 모듈 루트에서 컴파일합니다. golden case는
+추가 hook을 켜지 않은 생성 결과를 비교합니다.
+
+예제: [satisfies](../plugins/satisfies), [JSON](../plugins/json), [enumkit](../plugins/enumkit),
+[wrapper writer](../tests/plugins/wrappers.zig).

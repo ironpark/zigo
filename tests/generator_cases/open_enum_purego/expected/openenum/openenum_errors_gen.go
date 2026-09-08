@@ -2,11 +2,7 @@
 
 package openenum
 
-import (
-	"errors"
-
-	"example.com/zigo/openenum/internal/raw"
-)
+import "example.com/zigo/openenum/internal/raw"
 
 // ErrLibraryLoad identifies a shared-library load or symbol resolution failure.
 var ErrLibraryLoad = raw.ErrLibraryLoad

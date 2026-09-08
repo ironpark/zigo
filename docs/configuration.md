@@ -58,7 +58,7 @@ raw 패키지는 `internal/raw`에서 생성됩니다. `addStandardSteps`는 기
 | `go_package` | `name`의 snake_case | 공개 Go 패키지 이름 |
 | `go_package_path` | `go_package` | `go_dir` 기준 공개 패키지 경로 |
 | `go_package_doc` | Zig 모듈 주석 | 공개 패키지의 GoDoc 본문 |
-| `go_must_variants` | `false` | 오류를 panic으로 바꾸는 `Must*` API 추가 |
+| `plugin_config.MUST.enabled` | `false` | 오류를 panic으로 바꾸는 `Must*` API 추가 |
 | `raw_package` | `"internal/raw"` | `go_dir` 기준 raw 패키지 경로 |
 
 `prefix`는 함수뿐 아니라 런타임 심볼에도 적용됩니다. 한 실행 파일에 여러 바인딩을

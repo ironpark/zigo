@@ -338,6 +338,29 @@ pub fn addRepositorySteps(
         .{ .path = b.path("plugins/json/src/plugin.zig") },
         .{ .path = b.path("tests/plugins/wrappers.zig") },
     });
+    const contract_modules = modules.createGeneratorModules(b, b.path("src"), target, optimize, &.{.{ .path = b.path("tests/plugins/contract.zig"), .config = "{\"label\":\"from-build\"}" }});
+    const contract_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("tests/plugin_contract.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "generator", .module = contract_modules.generator },
+            .{ .name = "plugin", .module = contract_modules.plugin },
+            .{ .name = "contract", .module = contract_modules.plugin_registry.import_table.get("p0").? },
+        },
+    }) });
+    test_step.dependOn(&b.addRunArtifact(contract_tests).step);
+    inline for (.{
+        .{ "version", ".{ .name = \"BAD\", .min_contract = .{ .major = 99, .minor = 0 } }", "incompatible plugin contract: BAD" },
+        .{ "duplicate", ".{ .name = \"A\" }, .{ .name = \"A\" }", "duplicate plugin: A" },
+        .{ "dependency", ".{ .name = \"A\", .requires = &.{\"MISSING\"} }", "missing plugin dependency: A requires MISSING" },
+        .{ "cycle", ".{ .name = \"A\", .after = &.{\"B\"} }, .{ .name = \"B\", .after = &.{\"A\"} }", "cycle in plugin ordering" },
+    }) |case| {
+        const source = b.addWriteFiles().add(case[0] ++ ".zig", "comptime { _ = @import(\"plugin\").ordered(&.{" ++ case[1] ++ "}); }\n");
+        const rejected = b.addTest(.{ .root_module = b.createModule(.{ .root_source_file = source, .target = target, .optimize = optimize, .imports = &.{.{ .name = "plugin", .module = generator_modules.plugin }} }) });
+        rejected.expect_errors = .{ .contains = case[2] };
+        test_step.dependOn(&rejected.step);
+    }
     // Compile the complete external-plugin surface, including a foreign
     // optional result, callbacks, flattened arguments and cancellation.
     for ([_]bool{ false, true }) |pointer_only| {
@@ -896,7 +919,7 @@ fn addBindingAuthoringErrors(b: *std.Build, test_step: *std.Build.Step) void {
         .{ "empty_selection", "zigo function selection is empty" },
         .{ "duplicate_plugin", "zigo duplicate plugin attachment" },
         .{ "plugin_target", "zigo plugin TEST does not support handle" },
-        .{ "unsupported_plugin_target", "zigo plugin attachments are not supported on callback" },
+        .{ "unsupported_plugin_target", "zigo plugin TEST does not support callback" },
         .{ "plugin_options", "no field named 'limit'" },
     };
     inline for (cases) |case| {

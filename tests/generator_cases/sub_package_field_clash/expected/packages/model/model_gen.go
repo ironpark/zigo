@@ -2,5 +2,3 @@
 
 // Package model contains shared values.
 package model
-
-import "example.com/zigo/packages/internal/raw"

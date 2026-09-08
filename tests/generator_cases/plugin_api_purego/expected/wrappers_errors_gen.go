@@ -5,8 +5,8 @@ package wrappers
 import (
 	"strconv"
 
-	lifecycle "example.com/zigo/wrappers/internal/lifecycle"
 	"example.com/zigo/wrappers/internal/raw"
+	lifecycle "example.com/zigo/wrappers/internal/lifecycle"
 )
 
 var (

@@ -3,8 +3,8 @@
 package model
 
 import (
-	lifecycle "example.com/zigo/packages/internal/lifecycle"
 	"example.com/zigo/packages/internal/raw"
+	lifecycle "example.com/zigo/packages/internal/lifecycle"
 )
 
 var (

@@ -247,8 +247,6 @@ fn pluginOptions(comptime P: anytype, comptime entry: Entry) type {
     return if (entry == .function) P.FunctionOptions else P.TypeOptions;
 }
 fn checkPluginTarget(comptime P: anytype, comptime entry: Entry) void {
-    if (entry == .type and (entry.type.representation == .materialized or entry.type.representation == .callback))
-        @compileError("zigo plugin attachments are not supported on " ++ @tagName(entry.type.representation));
     if (@hasField(@TypeOf(P), "targets")) {
         const target = switch (entry) {
             .function => "function",

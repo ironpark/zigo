@@ -5,6 +5,7 @@ package packages
 
 import (
 	"example.com/zigo/packages/internal/raw"
+
 	zigo_pkg_model "example.com/zigo/packages/packages/model"
 )
 

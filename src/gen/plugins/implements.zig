@@ -15,6 +15,7 @@ pub const plugin: plugin_api.Plugin = .{
     .name = "IMPLEMENTS",
     .validate = validateDocument,
     .method_hook = methodHook,
+    .file_hook = runtimeHook,
 };
 
 fn methodHook(context: plugin_api.Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
@@ -219,4 +220,8 @@ pub fn implementsIssue(allocator: std.mem.Allocator, function: semantic.Semantic
         };
     }
     return null;
+}
+
+fn runtimeHook(context: plugin_api.Context, writer: *std.Io.Writer, file: plugin_api.FileInfo, phase: plugin_api.FilePhase) !void {
+    if (file.kind == .runtime and phase == .end) try renderCountingStreams(writer, context.program);
 }

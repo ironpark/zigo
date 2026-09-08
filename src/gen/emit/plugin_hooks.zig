@@ -51,7 +51,7 @@ pub fn methodContext(
 pub fn runMethodHooks(value: plugin.Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
     inline for (registry.plugins, 0..) |registered, index| {
         if (registered.method_hook) |hook| {
-            if (runs(index, value.options)) try hook(value, writer, function);
+            if (registered.supports(.function) and runs(index, value.options)) try hook(value, writer, function);
         }
     }
 }
@@ -60,7 +60,7 @@ pub fn runMethodHooks(value: plugin.Context, writer: *std.Io.Writer, function: a
 pub fn runTypeHooks(value: plugin.Context, writer: *std.Io.Writer, declaration: semantic.TypeDecl) !void {
     inline for (registry.plugins, 0..) |registered, index| {
         if (registered.type_hook) |hook| {
-            if (runs(index, value.options)) try hook(value, writer, declaration);
+            if (registered.supports(plugin.typeTarget(declaration.kind)) and runs(index, value.options)) try hook(value, writer, declaration);
         }
     }
 }
@@ -314,5 +314,22 @@ test "plugin result and parameter writers avoid parsing checked signatures" {
         defer standalone.deinit();
         try missing.writeParameters(&standalone.writer, function);
         try std.testing.expectEqualStrings(if (index == 0) "(value int32)" else "()", standalone.written());
+    }
+}
+
+pub fn runFileHooks(value: plugin.Context, writer: *std.Io.Writer, phase: plugin.FilePhase) !void {
+    const file = value.options.file orelse return;
+    inline for (registry.plugins, 0..) |registered, index| {
+        if (registered.file_hook) |hook| {
+            if (runs(index, value.options)) try hook(value, writer, file, phase);
+        }
+    }
+}
+
+pub fn runPackageHooks(value: plugin.Context, writer: *std.Io.Writer) !void {
+    inline for (registry.plugins, 0..) |registered, index| {
+        if (registered.package_hook) |hook| {
+            if (runs(index, value.options)) try hook(value, writer);
+        }
     }
 }

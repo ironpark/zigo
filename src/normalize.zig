@@ -94,8 +94,6 @@ fn collectTypes(comptime entries: []const a.Entry, state: *State) void {
             checkRoot(t.ref.root, state.root, t.ref.path);
             checkExtensions(t.extensions);
             if (t.representation == .handle) for (t.representation.handle.fields) |field| checkExtensions(field.ext);
-            if (t.extensions.len != 0 and (t.representation == .materialized or t.representation == .callback))
-                @compileError("zigo plugin attachments are not supported on " ++ @tagName(t.representation));
             for (state.source_types) |previous| {
                 if (std.mem.eql(u8, previous.ref.path, t.ref.path)) @compileError("zigo duplicate type declaration: " ++ t.ref.path);
                 if (previous.ref.type == t.ref.type) @compileError("zigo ambiguous registration of the same Zig type: " ++ t.ref.path);
@@ -105,10 +103,10 @@ fn collectTypes(comptime entries: []const a.Entry, state: *State) void {
             const result: ir.Type = switch (t.representation) {
                 .handle => |o| .{ .handle = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .fields = o.fields, .ext = externalExtensions(t.extensions) } },
                 .value => |o| .{ .value = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .fields = o.fields, .go = o.go, .ext = externalExtensions(t.extensions) } },
-                .materialized => |o| .{ .materialized = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .fields = o.fields } },
+                .materialized => |o| .{ .materialized = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .fields = o.fields, .ext = externalExtensions(t.extensions) } },
                 .enumeration => |o| .{ .enumeration = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .go = o.go, .exhaustive = o.exhaustive, .text = hasText(t.extensions), .ext = externalExtensions(t.extensions) } },
                 .tagged_union => |o| .{ .tagged_union = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .access = o.access, .omit = o.omit, .ext = externalExtensions(t.extensions) } },
-                .callback => |o| .{ .callback = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .params = callbackParams(t.ref.type, o, t.ref.path), .returns = .{ .semantic = o.returns.semantic }, .userdata = o.userdata, .retention = o.retention, .thread = o.thread, .reentrancy = o.reentrancy, .on_callback_failure = o.on_failure } },
+                .callback => |o| .{ .callback = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .params = callbackParams(t.ref.type, o, t.ref.path), .returns = .{ .semantic = o.returns.semantic }, .userdata = o.userdata, .retention = o.retention, .thread = o.thread, .reentrancy = o.reentrancy, .on_callback_failure = o.on_failure, .ext = externalExtensions(t.extensions) } },
             };
             state.source_types = state.source_types ++ [_]a.Type{t};
             state.types = state.types ++ [_]ir.Type{result};

@@ -2,11 +2,7 @@
 
 package lookup
 
-import (
-	"errors"
-
-	"example.com/zigo/lookup/internal/raw"
-)
+import "example.com/zigo/lookup/internal/raw"
 
 // ErrLibraryLoad identifies a shared-library load or symbol resolution failure.
 var ErrLibraryLoad = raw.ErrLibraryLoad

@@ -56,6 +56,8 @@ pub fn renderPublicMaterializedStructs(allocator: std.mem.Allocator, writer: *st
             try writer.writeByte('\n');
         }
         try writer.writeAll("}\n\n");
+        const hooks = @import("plugin_hooks.zig");
+        try hooks.runTypeHooks(hooks.context(allocator, program, options), writer, layout.owner.*);
     }
     if (!any) return;
     try writer.writeAll(
