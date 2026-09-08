@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-08T01:23:53Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Review note identifies array/map candidates, preserved behavior, and required performance validation.
 > NEXT: none
