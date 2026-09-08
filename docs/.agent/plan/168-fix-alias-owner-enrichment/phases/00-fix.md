@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-08T01:07:25Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `zig build test`가 통과하고 `git status --porcelain examples`가 비어 있다.
 > NEXT: none
