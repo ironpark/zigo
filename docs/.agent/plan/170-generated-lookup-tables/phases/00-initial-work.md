@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-08T01:39:35Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Unit tests, generated Go behavior tests, snapshot checks and representative benchmarks pass; changes are committed.
 > NEXT: none
