@@ -637,6 +637,7 @@
       "exhaustive": true,
       "ext": {
         "SATIS": {
+          "form": "pointer",
           "interfaces": [
             "io.ReadWriteCloser"
           ]
