@@ -97,6 +97,9 @@ func (f *FloatBatch) Len() (uint, error) {
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func NewPipeline(name string, mode Mode, callback PipelineCallback) (*Pipeline, error) {
+	if callback == nil {
+		return nil, &CallbackError{Operation: "NewPipeline", Callback: "callback", Err: ErrNilCallback}
+	}
 	callbackHandle := zigoNewPipelineCallbackHandle(callback)
 	result, code := raw.PipelineCreate(name, uint32(mode), uintptr(callbackHandle))
 	if zigoCallbackPanicPending() {

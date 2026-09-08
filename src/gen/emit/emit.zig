@@ -118,6 +118,7 @@ fn renderLifecycle(_: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Pr
             "\tErrCallbackPanic = errors.New(\"zigo: callback panic\")\n" ++
             "\tErrCallbackFailed = errors.New(\"zigo: callback failed\")\n" ++
             "\tErrOutOfRange = errors.New(\"zigo: argument out of range\")\n" ++
+            "\tErrNilCallback = errors.New(\"zigo: nil callback argument\")\n" ++
             "\tErrNilStream = errors.New(\"zigo: nil stream argument\")\n" ++
             ")\n\n" ++
             "type Handle interface {\n" ++

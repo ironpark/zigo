@@ -3,8 +3,6 @@
 package borrowed_return
 
 import (
-	"strconv"
-
 	lifecycle "example.com/zigo/borrowed-return/internal/lifecycle"
 	"example.com/zigo/borrowed-return/internal/raw"
 )
@@ -24,6 +22,8 @@ var (
 	ErrCallbackFailed = lifecycle.ErrCallbackFailed
 	// ErrOutOfRange identifies an argument outside its Zig range.
 	ErrOutOfRange = lifecycle.ErrOutOfRange
+	// ErrNilCallback identifies a nil callback argument.
+	ErrNilCallback = lifecycle.ErrNilCallback
 	// ErrNilStream identifies a nil stream argument.
 	ErrNilStream = lifecycle.ErrNilStream
 )

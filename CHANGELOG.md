@@ -4,6 +4,19 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Fixed
+
+- Go 패키지별 함수 필터링 후 materialized 반환·출력 버퍼의 해제 함수 참조가
+  어긋나 패닉하거나 다른 함수를 호출하던 문제를 수정했습니다. 오류를 반환하지 않는
+  하위 패키지에 불필요한 오류 처리 import가 생성되어 Go 컴파일이 실패하던 문제도 수정했습니다.
+- materialized 버퍼 해제 인자가 Go 문자열로 매핑되는 계약을 `ZIGO048`로 거부합니다.
+  해제 함수에는 opaque byte buffer를 사용해야 합니다.
+- 필수 콜백의 nil 인자를 handle 생성과 native 등록 전에 거부합니다. 기존 `error`
+  반환 함수는 `ErrNilCallback`을 감싼 `CallbackError`를 반환하고, 오류 반환이 없는
+  함수는 같은 오류로 즉시 panic합니다. 실패한 등록은 기존 콜백과 handle 수를 유지합니다.
+
 ## [0.19.5] - 2026-09-08
 
 ### Fixed

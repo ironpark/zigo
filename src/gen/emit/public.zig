@@ -134,14 +134,15 @@ fn writePublicMaterializedRelease(
     function: abi.AbiFn,
     buffer_name: []const u8,
 ) !void {
+    _ = program;
     if (function.materialized_return == null and function.materialized_out == null) return;
     const owned = function.ownership.asBuffer() orelse return;
-    const release = program.functions[owned.release];
-    const release_name = try common.rawGoNameAlloc(allocator, release.origin.*);
+    const release = owned.release_function;
+    const release_name = try common.rawGoNameAlloc(allocator, release.*);
     defer allocator.free(release_name);
     try writer.writeAll("\tdefer ");
     try public_writers.writeRawReferencePrefix(writer, options);
-    try writer.print("{s}({s}{s})\n", .{ release_name, if (release.origin.receiver != null) "ptr, " else "", buffer_name });
+    try writer.print("{s}({s}{s})\n", .{ release_name, if (release.receiver != null) "ptr, " else "", buffer_name });
 }
 
 fn writePublicCapturedReturn(scope: public_writers.PublicScope, writer: *std.Io.Writer, program: abi.Program, function: semantic.SemanticFn, needs_handle_check: bool) !void {
@@ -436,6 +437,19 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
         // an early return cannot strand a retained callback.
         if (needs_handle_check)
             try public_writers.renderHandleChecks(scope, allocator, writer, function.origin.*, go_names, operation, constructor, options);
+        // Check every callback before allocating any handle or changing a native slot.
+        for (function.origin.params, 0..) |parameter, parameter_index| {
+            if (parameter.type != .callback) continue;
+            try writer.print("\tif {s} == nil {{\n\t\t", .{go_names[parameter_index]});
+            var expression: std.Io.Writer.Allocating = .init(allocator);
+            defer expression.deinit();
+            try expression.writer.print("&CallbackError{{Operation: \"{s}\", Callback: \"{s}\", Err: ErrNilCallback}}", .{ operation, go_names[parameter_index] });
+            if (shape.needs_check or function.origin.@"return" == .error_union)
+                try public_writers.writeCheckedErrorReturn(scope, writer, function.origin.*, constructor, expression.written())
+            else
+                try writer.print("panic({s})\n", .{expression.written()});
+            try writer.writeAll("\t}\n");
+        }
         try renderCallbackHandleSetup(allocator, writer, program, function);
         for (function.origin.params, 0..) |parameter, parameter_index| {
             if (!isValueStructSlice(parameter.type)) continue;

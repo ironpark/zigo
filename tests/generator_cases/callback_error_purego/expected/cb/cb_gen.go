@@ -27,6 +27,9 @@ var DefaultLibraryName = raw.DefaultLibraryName
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 // An error a Go callback returned is returned as *CallbackError once the native call returns.
 func NewHub(observer HubCreateObserver) (*Hub, error) {
+	if observer == nil {
+		return nil, &CallbackError{Operation: "NewHub", Callback: "observer", Err: ErrNilCallback}
+	}
 	observerHandle := zigoNewHubCreateObserverHandle(observer)
 	result, code := raw.HubCreate(raw.CallbackPointer0(), uintptr(observerHandle))
 	if zigoCallbackPanicPending() {
@@ -82,6 +85,9 @@ func (h *Hub) SetObserver(observer HubSetObserverObserver) error {
 		return err
 	}
 	defer h.zigoRelease()
+	if observer == nil {
+		return &CallbackError{Operation: "Hub.SetObserver", Callback: "observer", Err: ErrNilCallback}
+	}
 	observerHandle := zigoNewHubSetObserverObserverHandle(observer)
 	observerHandleAdopted := false
 	defer func() { if !observerHandleAdopted { zigoDeleteCallbackHandle(observerHandle) } }()
@@ -113,6 +119,9 @@ func (h *Hub) SetObserver(observer HubSetObserverObserver) error {
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 // An error a Go callback returned is returned as *CallbackError once the native call returns.
 func Apply(value int32, observer ApplyObserverCallback) (int32, error) {
+	if observer == nil {
+		return 0, &CallbackError{Operation: "Apply", Callback: "observer", Err: ErrNilCallback}
+	}
 	observerHandle := zigoNewApplyObserverCallbackHandle(observer)
 	defer zigoDeleteCallbackHandle(observerHandle)
 	result := raw.Apply(value, raw.CallbackPointer0(), uintptr(observerHandle))
@@ -128,6 +137,9 @@ func Apply(value int32, observer ApplyObserverCallback) (int32, error) {
 // Notify calls the Zig function notify.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func Notify(value int32, observer NotifyObserverCallback) {
+	if observer == nil {
+		panic(&CallbackError{Operation: "Notify", Callback: "observer", Err: ErrNilCallback})
+	}
 	observerHandle := zigoNewNotifyObserverCallbackHandle(observer)
 	defer zigoDeleteCallbackHandle(observerHandle)
 	raw.Notify(value, raw.CallbackPointer1(), uintptr(observerHandle))

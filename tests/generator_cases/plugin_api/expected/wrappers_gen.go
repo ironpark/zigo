@@ -73,6 +73,9 @@ func WrapConfigure(enabled bool, optionsRows uint16, scale float32, mode zigo_pk
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func Reduce(acc int32, reducer ReduceReducerCallback) (int32, error) {
+	if reducer == nil {
+		return 0, &CallbackError{Operation: "Reduce", Callback: "reducer", Err: ErrNilCallback}
+	}
 	reducerHandle := zigoNewReduceReducerCallbackHandle(reducer)
 	defer zigoDeleteCallbackHandle(reducerHandle)
 	result, code := raw.Reduce(acc, uintptr(reducerHandle))

@@ -19,6 +19,9 @@ import (
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func NewEventQueue(name string, capacity uint, policy Policy, observer EventQueueCreateObserver) (*EventQueue, error) {
+	if observer == nil {
+		return nil, &CallbackError{Operation: "NewEventQueue", Callback: "observer", Err: ErrNilCallback}
+	}
 	observerHandle := zigoNewEventQueueCreateObserverHandle(observer)
 	result, code := raw.EventQueueCreate(name, capacity, uint32(policy), uintptr(observerHandle))
 	if zigoCallbackPanicPending() {
@@ -50,6 +53,9 @@ func (e *EventQueue) Clone(observer EventQueueCloneObserver) (*EventQueue, error
 		return nil, err
 	}
 	defer e.zigoRelease()
+	if observer == nil {
+		return nil, &CallbackError{Operation: "EventQueue.Clone", Callback: "observer", Err: ErrNilCallback}
+	}
 	observerHandle := zigoNewEventQueueCloneObserverHandle(observer)
 	result, code := raw.EventQueueClone(ptr, uintptr(observerHandle))
 	if zigoCallbackPanicPending() {
@@ -203,6 +209,9 @@ func (e *EventQueue) SetObserver(observer EventQueueSetObserverObserver) error {
 		return err
 	}
 	defer e.zigoRelease()
+	if observer == nil {
+		return &CallbackError{Operation: "EventQueue.SetObserver", Callback: "observer", Err: ErrNilCallback}
+	}
 	observerHandle := zigoNewEventQueueSetObserverObserverHandle(observer)
 	observerHandleAdopted := false
 	defer func() {

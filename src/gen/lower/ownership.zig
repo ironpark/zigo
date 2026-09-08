@@ -113,6 +113,7 @@ pub fn ownershipOf(
         if (materialized) |value| return .{ .buffer = .{
             .element = byte,
             .release = release.index,
+            .release_function = &source_functions[release.index],
             .release_receiver_c_name = receiver_c_name,
             .materialized = value.layout,
             .fallible = value.fallible,
@@ -121,6 +122,7 @@ pub fn ownershipOf(
         return .{ .buffer = .{
             .element = element,
             .release = release.index,
+            .release_function = &source_functions[release.index],
             .release_receiver_c_name = receiver_c_name,
             .narrow = abi.narrowInt(element) != null,
             .absent = payload == .optional,

@@ -2,33 +2,16 @@
 
 package materialized
 
-import "unsafe"
+import (
+	lifecycle "example.com/zigo/materialized-purego/internal/lifecycle"
+	"unsafe"
+)
 
-// zigoHandle is what every handle and borrowed reference offers a generated
-// call: pin it open for the native call, let it go afterwards, and mark it
-// unusable when the call ended in a Zig panic.
-type zigoHandle interface {
-	zigoAcquire(operation string) (unsafe.Pointer, error)
-	zigoRelease()
-	zigoPoison(cause *NativePanicError)
-}
+type zigoHandle = lifecycle.Handle
 
-// zigoCheckedPointer pins value open for the rest of the call and hands back
-// its native pointer; the caller defers zigoRelease. A nil, closed, or
-// poisoned handle is the error instead, and nothing is pinned.
 func zigoCheckedPointer(operation string, value zigoHandle) (unsafe.Pointer, error) {
-	return value.zigoAcquire(operation)
+	return lifecycle.CheckedPointer(operation, value)
 }
-
-// zigoPoisonAfterPanic marks every handle a call reached unusable when that
-// call ended in a Zig panic: the panic unwound the native frames without
-// running their defers, so what is behind those handles is unknown. Any
-// other error passes through untouched.
 func zigoPoisonAfterPanic(err error, handles ...zigoHandle) error {
-	if cause, ok := err.(*NativePanicError); ok {
-		for _, handle := range handles {
-			handle.zigoPoison(cause)
-		}
-	}
-	return err
+	return lifecycle.PoisonAfterPanic(err, handles...)
 }

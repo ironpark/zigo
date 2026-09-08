@@ -18,6 +18,7 @@ var (
 	ErrCallbackPanic  = errors.New("zigo: callback panic")
 	ErrCallbackFailed = errors.New("zigo: callback failed")
 	ErrOutOfRange     = errors.New("zigo: argument out of range")
+	ErrNilCallback    = errors.New("zigo: nil callback argument")
 	ErrNilStream      = errors.New("zigo: nil stream argument")
 )
 

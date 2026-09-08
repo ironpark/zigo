@@ -9,6 +9,9 @@ import "example.com/zigo/cbbytes/internal/raw"
 // OnLog calls the Zig function onLog.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func OnLog(callback OnLogCallback) {
+	if callback == nil {
+		panic(&CallbackError{Operation: "OnLog", Callback: "callback", Err: ErrNilCallback})
+	}
 	callbackHandle := zigoNewOnLogCallbackHandle(callback)
 	defer zigoDeleteCallbackHandle(callbackHandle)
 	raw.OnLog(uintptr(callbackHandle))
@@ -20,6 +23,9 @@ func OnLog(callback OnLogCallback) {
 // OnChunk calls the Zig function onChunk.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func OnChunk(callback OnChunkCallback) {
+	if callback == nil {
+		panic(&CallbackError{Operation: "OnChunk", Callback: "callback", Err: ErrNilCallback})
+	}
 	callbackHandle := zigoNewOnChunkCallbackHandle(callback)
 	defer zigoDeleteCallbackHandle(callbackHandle)
 	raw.OnChunk(uintptr(callbackHandle))

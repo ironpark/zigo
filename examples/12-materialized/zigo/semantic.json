@@ -215,6 +215,25 @@
       "symbol": "zg_fill"
     },
     {
+      "doc": "Reports the materialized wire format used by this example.",
+      "name": "wireVersion",
+      "package": "metadata",
+      "ownership": "borrowed",
+      "params": [],
+      "return": {
+        "bits": 32,
+        "is_usize": false,
+        "kind": "int",
+        "signed": false
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 130,
+        "column": 8
+      },
+      "symbol": "zg_wire_version"
+    },
+    {
       "name": "release",
       "ownership": "borrowed",
       "params": [
@@ -252,6 +271,12 @@
   ],
   "ir_version": 1,
   "package": "materialized",
+  "packages": [
+    {
+      "name": "metadata",
+      "path": "metadata"
+    }
+  ],
   "prefix": "zg",
   "types": [
     {

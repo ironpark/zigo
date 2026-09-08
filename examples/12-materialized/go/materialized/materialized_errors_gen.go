@@ -3,106 +3,59 @@
 package materialized
 
 import (
-	"errors"
 	"strconv"
 
+	lifecycle "example.com/zigo/materialized/internal/lifecycle"
 	"example.com/zigo/materialized/internal/raw"
 )
 
-// ErrInvalidHandle identifies a nil, closed, or invalid borrowed handle.
-var ErrInvalidHandle = errors.New("zigo: nil or closed handle")
+var (
+	// ErrInvalidHandle identifies a nil or closed handle.
+	ErrInvalidHandle = lifecycle.ErrInvalidHandle
+	// ErrHandleInUse identifies a handle with open children.
+	ErrHandleInUse = lifecycle.ErrHandleInUse
+	// ErrNativePanic identifies a panic crossing the native boundary.
+	ErrNativePanic = lifecycle.ErrNativePanic
+	// ErrNativeStatus identifies an unknown native status.
+	ErrNativeStatus = lifecycle.ErrNativeStatus
+	// ErrCallbackPanic identifies a panic recovered from a callback.
+	ErrCallbackPanic = lifecycle.ErrCallbackPanic
+	// ErrCallbackFailed identifies a callback-reported failure.
+	ErrCallbackFailed = lifecycle.ErrCallbackFailed
+	// ErrOutOfRange identifies an argument outside its Zig range.
+	ErrOutOfRange = lifecycle.ErrOutOfRange
+	// ErrNilCallback identifies a nil callback argument.
+	ErrNilCallback = lifecycle.ErrNilCallback
+	// ErrNilStream identifies a nil stream argument.
+	ErrNilStream = lifecycle.ErrNilStream
+)
 
-// ErrHandleInUse identifies a parent handle with dependent children still open.
-var ErrHandleInUse = errors.New("zigo: handle has open children")
+// HandleError reports a nil or closed handle.
+type HandleError = lifecycle.HandleError
 
-// ErrNativePanic identifies a Zig panic caught at the native boundary.
-var ErrNativePanic = errors.New("zigo: native panic")
+// HandleInUseError reports a handle with open children.
+type HandleInUseError = lifecycle.HandleInUseError
 
-// HandleError reports which generated operation received an invalid handle.
-type HandleError struct {
-	// Operation names the generated operation and offending receiver or parameter.
-	Operation string
-}
+// NativePanicError reports a Zig panic at the native boundary.
+type NativePanicError = lifecycle.NativePanicError
 
-// Error implements error.
-func (err *HandleError) Error() string {
-	return "zigo: " + err.Operation + ": nil or closed handle"
-}
+// RangeError reports an argument outside its Zig range.
+type RangeError = lifecycle.RangeError
 
-// Unwrap returns ErrInvalidHandle for errors.Is classification.
-func (err *HandleError) Unwrap() error { return ErrInvalidHandle }
+// StreamError reports an error returned by a Go stream.
+type StreamError = lifecycle.StreamError
 
-// HandleInUseError reports a Close refused because dependent children remain open.
-type HandleInUseError struct {
-	// Operation names the generated Close operation.
-	Operation string
-	// Children is the number of dependent handles still open or being constructed.
-	Children int
-}
+// CallbackError reports an error returned by a Go callback.
+type CallbackError = lifecycle.CallbackError
 
-// Error implements error.
-func (err *HandleInUseError) Error() string {
-	return "zigo: " + err.Operation + ": handle has open children: " + strconv.Itoa(err.Children)
-}
+// StatusError reports an unrecognized native status.
+type StatusError = lifecycle.StatusError
 
-// Unwrap returns ErrHandleInUse for errors.Is classification.
-func (err *HandleInUseError) Unwrap() error { return ErrHandleInUse }
+// CallbackPanicError reports a panic recovered from a Go callback.
+type CallbackPanicError = lifecycle.CallbackPanicError
 
-// NativePanicError reports a Zig panic caught at the native boundary.
-type NativePanicError struct {
-	// Operation names the generated call or projection.
-	Operation string
-	// Message is the native panic message when available.
-	Message string
-}
-
-// Error implements error.
-func (err *NativePanicError) Error() string {
-	if err.Message == "" {
-		return "zigo: " + err.Operation + ": native panic"
-	}
-	return "zigo: " + err.Operation + ": native panic: " + err.Message
-}
-
-// Unwrap returns ErrNativePanic for errors.Is classification.
-func (err *NativePanicError) Unwrap() error { return ErrNativePanic }
-
-// poisoned is what a handle answers once err has left the native state behind
-// it unknown: the same kind of error, naming the call that was refused.
-func (err *NativePanicError) poisoned(operation string) error {
-	message := "handle unusable after a native panic in " + err.Operation
-	if err.Message != "" {
-		message += ": " + err.Message
-	}
-	return &NativePanicError{Operation: operation, Message: message}
-}
-
-// Error is a stable Zig error-set value returned by the generated binding.
-// Classify it with errors.Is against the Err* sentinels; a returned value
-// also names the operation it came from.
-type Error struct {
-	// Code is the stable integer stored in errors.lock.json.
-	Code int32
-	// Name is the Zig error name.
-	Name string
-	// Operation names the generated call that returned the error. It is
-	// empty on the package-level sentinels.
-	Operation string
-}
-
-// Error implements error.
-func (err *Error) Error() string {
-	if err.Operation == "" {
-		return err.Name
-	}
-	return "zigo: " + err.Operation + ": " + err.Name
-}
-
-// Is compares generated errors by stable code.
-func (err *Error) Is(target error) bool {
-	other, ok := target.(*Error)
-	return ok && err.Code == other.Code
-}
+// Error reports a named Zig error code.
+type Error = lifecycle.Error
 
 // ErrInvalid represents Zig error.Invalid.
 var ErrInvalid = &Error{Code: 1, Name: "Invalid"}

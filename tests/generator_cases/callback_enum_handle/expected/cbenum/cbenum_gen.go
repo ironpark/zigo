@@ -9,6 +9,9 @@ import "example.com/zigo/cbenum/internal/raw"
 // OnLocation calls the Zig function onLocation.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func OnLocation(callback OnLocationCallback) {
+	if callback == nil {
+		panic(&CallbackError{Operation: "OnLocation", Callback: "callback", Err: ErrNilCallback})
+	}
 	callbackHandle := zigoNewOnLocationCallbackHandle(callback)
 	defer zigoDeleteCallbackHandle(callbackHandle)
 	raw.OnLocation(uintptr(callbackHandle))
@@ -20,6 +23,9 @@ func OnLocation(callback OnLocationCallback) {
 // OnStream calls the Zig function onStream.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func OnStream(callback OnStreamCallback) {
+	if callback == nil {
+		panic(&CallbackError{Operation: "OnStream", Callback: "callback", Err: ErrNilCallback})
+	}
 	callbackHandle := zigoNewOnStreamCallbackHandle(callback)
 	defer zigoDeleteCallbackHandle(callbackHandle)
 	raw.OnStream(uintptr(callbackHandle))
@@ -31,6 +37,9 @@ func OnStream(callback OnStreamCallback) {
 // OnView calls the Zig function onView.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func OnView(callback OnViewCallback) {
+	if callback == nil {
+		panic(&CallbackError{Operation: "OnView", Callback: "callback", Err: ErrNilCallback})
+	}
 	callbackHandle := zigoNewOnViewCallbackHandle(callback)
 	defer zigoDeleteCallbackHandle(callbackHandle)
 	raw.OnView(uintptr(callbackHandle))
@@ -42,6 +51,9 @@ func OnView(callback OnViewCallback) {
 // PickLocation calls the Zig function pickLocation.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func PickLocation(callback PickLocationCallback) {
+	if callback == nil {
+		panic(&CallbackError{Operation: "PickLocation", Callback: "callback", Err: ErrNilCallback})
+	}
 	callbackHandle := zigoNewPickLocationCallbackHandle(callback)
 	defer zigoDeleteCallbackHandle(callbackHandle)
 	raw.PickLocation(uintptr(callbackHandle))

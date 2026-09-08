@@ -8,6 +8,17 @@ Go 함수를 Zig에 넘길 때의 수명, 오류 반환과 panic 전달을 설�
 [`go_error`](#콜백이-돌려주는-go-error)를 지정하세요.
 호출 결과는 [오류 분류](#생성된-go-error-판별)로 확인합니다.
 
+## nil 콜백
+
+필수 콜백에 `nil`을 전달하면 callback handle 생성과 native 호출 전에 거부합니다.
+생성된 함수가 `error`를 반환하면 `*CallbackError`를 반환하며,
+`errors.Is(err, ErrNilCallback)`로 판별할 수 있습니다. `error` 반환이 없는 함수는
+기존 시그니처를 유지하고 같은 오류로 즉시 panic합니다.
+
+실패한 등록은 기존 콜백을 교체하거나 해제하지 않습니다. `nil`은 등록 해제를
+뜻하지 않으며, 여러 콜백을 받는 함수도 모든 nil 검사를 마친 뒤 handle을 만듭니다.
+cgo와 purego에 같은 규칙을 적용합니다.
+
 ## 콜백 시그니처 규약
 
 Go 콜백은 native가 부를 때 함께 넘기는 `usize` 토큰(userdata)으로 찾습니다. 기본 규약은
@@ -274,6 +285,7 @@ callback state에 기록하고, 생성된 공개 함수는 native 호출이 끝�
 | `ErrNativeStatus` | 알려지지 않은 native status | `*StatusError` |
 | `ErrLibraryLoad` | purego library·symbol load 실패 | `*LibraryError` |
 | `ErrCallbackPanic` | Go 콜백 panic; 오류 반환이 아니라 다시 panic | `*CallbackPanicError` |
+| `ErrNilCallback` | 필수 콜백의 nil 인자 | `*CallbackError` |
 | `ErrCallbackFailed` | `.go_error` 콜백이 돌려준 error | `*CallbackError` |
 | `Err<ZigError>` | Zig error set의 오류 | `*Error` |
 

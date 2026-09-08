@@ -15,7 +15,8 @@ pub fn renderPublicErrors(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
     const has_dependent_handles = common.programHasDependentHandles(program);
     // `zigoErrorForCode` is what every status-returning call routes through, and a
     // checked infallible function has one without naming a single Zig error.
-    const has_codes = program.error_codes.len != 0 or public_types.programReturnsErrorUnion(program);
+    const has_error_calls = public_types.programReturnsErrorUnion(program);
+    const has_codes = program.error_codes.len != 0 or has_error_calls;
     const has_status = common.programHasTaggedUnionTypes(program);
     const has_callbacks = common.programHasCallbacks(program);
     // A promoted integer parameter is range-checked in Go, and the refusal
@@ -32,14 +33,14 @@ pub fn renderPublicErrors(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
     // needed whenever either exists.
     if (!has_handles and !has_codes and !has_library and !has_callbacks and !has_ranges and !has_streams) return;
     if (options.shared_lifecycle) {
-        const raw_import = (has_codes or has_library) and !options.raw_colocated;
-        const import_count = 1 + @as(usize, @intFromBool(has_codes)) + @as(usize, @intFromBool(raw_import));
+        const raw_import = (has_error_calls or has_library) and !options.raw_colocated;
+        const import_count = 1 + @as(usize, @intFromBool(has_error_calls)) + @as(usize, @intFromBool(raw_import));
         if (import_count == 1) {
             try writer.print("\nimport lifecycle \"{s}/{s}\"\n\n", .{ options.go_module, options.lifecycle_package_path });
         } else {
             try writer.writeAll("\nimport (\n");
-            if (has_codes) try writer.writeAll("\t\"strconv\"\n");
-            if (has_codes and raw_import) try writer.writeByte('\n');
+            if (has_error_calls) try writer.writeAll("\t\"strconv\"\n");
+            if (has_error_calls and raw_import) try writer.writeByte('\n');
             try writer.print("\tlifecycle \"{s}/{s}\"\n", .{ options.go_module, options.lifecycle_package_path });
             if (raw_import) try public_writers.writeRawImport(writer, options, "\t");
             try writer.writeAll(")\n\n");
@@ -52,6 +53,7 @@ pub fn renderPublicErrors(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
             "\t// ErrCallbackPanic identifies a panic recovered from a callback.\n\tErrCallbackPanic = lifecycle.ErrCallbackPanic\n" ++
             "\t// ErrCallbackFailed identifies a callback-reported failure.\n\tErrCallbackFailed = lifecycle.ErrCallbackFailed\n" ++
             "\t// ErrOutOfRange identifies an argument outside its Zig range.\n\tErrOutOfRange = lifecycle.ErrOutOfRange\n" ++
+            "\t// ErrNilCallback identifies a nil callback argument.\n\tErrNilCallback = lifecycle.ErrNilCallback\n" ++
             "\t// ErrNilStream identifies a nil stream argument.\n\tErrNilStream = lifecycle.ErrNilStream\n)\n\n" ++
             "// HandleError reports a nil or closed handle.\ntype HandleError = lifecycle.HandleError\n" ++
             "// HandleInUseError reports a handle with open children.\ntype HandleInUseError = lifecycle.HandleInUseError\n" ++
@@ -71,8 +73,8 @@ pub fn renderPublicErrors(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
     }
     // zigoErrorForCode names an unrecognized code with its number; the callback
     // panic error prints the recovered value.
-    const raw_import = (has_codes or has_library) and !options.raw_colocated;
-    const needs_strconv = has_codes or has_dependent_handles;
+    const raw_import = (has_error_calls or has_library) and !options.raw_colocated;
+    const needs_strconv = has_error_calls or has_dependent_handles;
     const import_count = 1 + @as(usize, @intFromBool(needs_strconv)) + @as(usize, @intFromBool(has_callbacks)) + @as(usize, @intFromBool(raw_import));
     if (import_count == 1) {
         try writer.writeAll("\nimport \"errors\"\n");
@@ -96,7 +98,7 @@ pub fn renderPublicErrors(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
         .callbacks = has_callbacks,
         .ranges = has_ranges,
         .streams = has_streams,
-        .callback_errors = common.programHasCallbackErrors(program),
+        .callback_errors = has_callbacks,
     }, options);
     try public_types.renderGoErrors(allocator, writer, program, options);
 }
@@ -134,6 +136,10 @@ fn renderGoSentinels(writer: *std.Io.Writer, set: SentinelSet, options: emit.Opt
     if (set.ranges) try writer.writeAll(
         "// ErrOutOfRange identifies an argument outside the range of the Zig integer that carries it.\n" ++
             "var ErrOutOfRange = errors.New(\"zigo: argument out of range\")\n",
+    );
+    if (set.callbacks) try writer.writeAll(
+        "// ErrNilCallback identifies a nil callback argument.\n" ++
+            "var ErrNilCallback = errors.New(\"zigo: nil callback argument\")\n",
     );
     if (set.streams) try writer.writeAll(
         "// ErrNilStream identifies a nil io.Writer or io.Reader argument.\n" ++
@@ -230,13 +236,11 @@ fn renderGoSentinels(writer: *std.Io.Writer, set: SentinelSet, options: emit.Opt
     // from a callback that failed; and Unwrap hands the caller's own error
     // back so errors.Is against their sentinel still matches.
     if (set.callback_errors) try writer.writeAll(
-        "// CallbackError reports an error a Go callback returned while a native call\n" ++
-            "// was running. The trampoline stores it and reports -5 to the native caller;\n" ++
-            "// the generated call hands it back once that caller has returned.\n" ++
+        "// CallbackError reports a nil callback argument or an error returned by a Go callback.\n" ++
             "type CallbackError struct {\n" ++
             "\t// Operation names the generated call the callback was running under.\n\tOperation string\n" ++
             "\t// Callback names the Go callback parameter that failed.\n\tCallback string\n" ++
-            "\t// Err is the error the callback returned.\n\tErr error\n" ++
+            "\t// Err is the callback error, or ErrNilCallback for a nil argument.\n\tErr error\n" ++
             "}\n\n" ++
             "// Error implements error.\nfunc (err *CallbackError) Error() string {\n" ++
             "\treturn \"zigo: \" + err.Operation + \": callback \" + err.Callback + \": \" + err.Err.Error()\n" ++

@@ -22,6 +22,9 @@ var DefaultLibraryName = raw.DefaultLibraryName
 // Apply calls the Zig function apply.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func Apply(value int32, callback Observer) int32 {
+	if callback == nil {
+		panic(&CallbackError{Operation: "Apply", Callback: "callback", Err: ErrNilCallback})
+	}
 	callbackHandle := zigoNewObserverHandle(callback)
 	defer zigoDeleteCallbackHandle(callbackHandle)
 	result := raw.Apply(value, raw.CallbackPointer0(), uintptr(callbackHandle))

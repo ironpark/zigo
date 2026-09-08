@@ -125,8 +125,10 @@ pub const Ownership = union(enum) {
         /// The element the release function frees; a byte for a caller-owned
         /// C string and for a materialized tree.
         element: semantic.TypeNode,
-        /// Index in `Program.functions` of the release function.
+        /// Index in the full, unfiltered `Program.functions` of the release function.
         release: usize,
+        /// Stable declaration reference, also valid in a package-filtered program.
+        release_function: *const semantic.SemanticFn,
         /// C typedef of the release function's receiver, when it is a method.
         release_receiver_c_name: ?[]const u8 = null,
         /// The element is narrower than the C integer that carries it, so the

@@ -75,6 +75,9 @@ func (c *CallbackContext) SetRunCount(v uint32) error {
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 // An error a Go callback returned is returned as *CallbackError once the native call returns.
 func NewCallbackContext(callback Observer) (*CallbackContext, error) {
+	if callback == nil {
+		return nil, &CallbackError{Operation: "NewCallbackContext", Callback: "callback", Err: ErrNilCallback}
+	}
 	callbackHandle := zigoNewObserverHandle(callback)
 	result, code := zigoRawCallbackContextCreate(uintptr(callbackHandle))
 	if zigoCallbackPanicPending() {
@@ -236,6 +239,9 @@ func ReadShared(value *atomic.Int32) int32 {
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 // An error a Go callback returned is returned as *CallbackError once the native call returns.
 func Apply(value int32, callback Observer) (int32, error) {
+	if callback == nil {
+		return 0, &CallbackError{Operation: "Apply", Callback: "callback", Err: ErrNilCallback}
+	}
 	callbackHandle := zigoNewObserverHandle(callback)
 	defer zigoDeleteCallbackHandle(callbackHandle)
 	result := zigoRawApply(value, uintptr(callbackHandle))
@@ -271,6 +277,9 @@ func ApplyUntilCancelled(ctx context.Context, limit uint32, callback Observer) (
 			}
 		}()
 	}
+	if callback == nil {
+		return 0, &CallbackError{Operation: "ApplyUntilCancelled", Callback: "callback", Err: ErrNilCallback}
+	}
 	callbackHandle := zigoNewObserverHandle(callback)
 	defer zigoDeleteCallbackHandle(callbackHandle)
 	setCallbackCancel(callbackHandle, &zigoCancel)
@@ -295,6 +304,9 @@ func ApplyUntilCancelled(ctx context.Context, limit uint32, callback Observer) (
 // Notify calls the Zig function notify.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func Notify(value int32, callback VoidObserver) {
+	if callback == nil {
+		panic(&CallbackError{Operation: "Notify", Callback: "callback", Err: ErrNilCallback})
+	}
 	callbackHandle := zigoNewVoidObserverHandle(callback)
 	defer zigoDeleteCallbackHandle(callbackHandle)
 	zigoRawNotify(value, uintptr(callbackHandle))
@@ -307,6 +319,9 @@ func Notify(value int32, callback VoidObserver) {
 // the round trip of a `bool` parameter is observable from Go.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func Filter(value int32, strict bool, predicate Predicate) bool {
+	if predicate == nil {
+		panic(&CallbackError{Operation: "Filter", Callback: "predicate", Err: ErrNilCallback})
+	}
 	predicateHandle := zigoNewPredicateHandle(predicate)
 	defer zigoDeleteCallbackHandle(predicateHandle)
 	result := zigoRawFilter(value, zigoBoolToUint8(strict), uintptr(predicateHandle))
@@ -319,6 +334,9 @@ func Filter(value int32, strict bool, predicate Predicate) bool {
 // Reduce: Folds values through reducer, starting from zero.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func Reduce(values []int32, reducer Reducer) int32 {
+	if reducer == nil {
+		panic(&CallbackError{Operation: "Reduce", Callback: "reducer", Err: ErrNilCallback})
+	}
 	reducerHandle := zigoNewReducerHandle(reducer)
 	defer zigoDeleteCallbackHandle(reducerHandle)
 	result := zigoRawReduce(values, uintptr(reducerHandle))
@@ -331,6 +349,9 @@ func Reduce(values []int32, reducer Reducer) int32 {
 // LogMessage: Logs message at the info level, then at the debug level, through logger.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func LogMessage(message []byte, logger Logger) {
+	if logger == nil {
+		panic(&CallbackError{Operation: "LogMessage", Callback: "logger", Err: ErrNilCallback})
+	}
 	loggerHandle := zigoNewLoggerHandle(logger)
 	defer zigoDeleteCallbackHandle(loggerHandle)
 	zigoRawLogMessage(message, uintptr(loggerHandle))
@@ -342,6 +363,9 @@ func LogMessage(message []byte, logger Logger) {
 // EmitChunks: Splits data into chunks of at most chunk_len bytes and hands each to sink.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func EmitChunks(data []byte, chunkLen uint, sink ByteSink) uint {
+	if sink == nil {
+		panic(&CallbackError{Operation: "EmitChunks", Callback: "sink", Err: ErrNilCallback})
+	}
 	sinkHandle := zigoNewByteSinkHandle(sink)
 	defer zigoDeleteCallbackHandle(sinkHandle)
 	result := zigoRawEmitChunks(data, chunkLen, uintptr(sinkHandle))
@@ -362,6 +386,9 @@ func Inspect(context *CallbackContext, level Level, strict bool, inspector Inspe
 		return 0, err
 	}
 	defer context.zigoRelease()
+	if inspector == nil {
+		return 0, &CallbackError{Operation: "Inspect", Callback: "inspector", Err: ErrNilCallback}
+	}
 	inspectorHandle := zigoNewInspectorHandle(inspector)
 	defer zigoDeleteCallbackHandle(inspectorHandle)
 	result, code := zigoRawInspect(contextPtr, int32(level), zigoBoolToUint8(strict), uintptr(inspectorHandle))
@@ -390,6 +417,9 @@ func Inspect(context *CallbackContext, level Level, strict bool, inspector Inspe
 // for empty text. Malformed bytes are visited as U+FFFD.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func VisitCodepoints(text []byte, visitor Visitor) rune {
+	if visitor == nil {
+		panic(&CallbackError{Operation: "VisitCodepoints", Callback: "visitor", Err: ErrNilCallback})
+	}
 	visitorHandle := zigoNewVisitorHandle(visitor)
 	defer zigoDeleteCallbackHandle(visitorHandle)
 	result := zigoRawVisitCodepoints(text, uintptr(visitorHandle))

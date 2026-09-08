@@ -60,6 +60,7 @@ type nativeBindings struct {
 	fnSnapshot          func(*unsafe.Pointer, *uintptr)
 	fnProbeMany         func(*unsafe.Pointer, *uintptr) int32
 	fnFill              func(uintptr, *unsafe.Pointer, *uintptr) uintptr
+	fnWireVersion       func() uint32
 	fnRelease           func(unsafe.Pointer, uintptr)
 }
 
@@ -182,6 +183,10 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_fill", err)
 	}
+	addrWireVersion, err := resolveSymbol(handle, "zg_wire_version")
+	if err != nil {
+		return fail("zg_wire_version", err)
+	}
 	addrRelease, err := resolveSymbol(handle, "zg_release")
 	if err != nil {
 		return fail("zg_release", err)
@@ -198,6 +203,7 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnSnapshot, addrSnapshot)
 	purego.RegisterFunc(&next.fnProbeMany, addrProbeMany)
 	purego.RegisterFunc(&next.fnFill, addrFill)
+	purego.RegisterFunc(&next.fnWireVersion, addrWireVersion)
 	purego.RegisterFunc(&next.fnRelease, addrRelease)
 	loadedBindings.Store(&next)
 	return nil
@@ -321,6 +327,12 @@ func Fill(output int) ([]byte, uint) {
 		result = unsafe.Slice((*uint8)(outResultPtr), int(outResultLen))
 	}
 	return result, uint(written)
+}
+
+// WireVersion calls the generated purego ABI wrapper for zg_wire_version.
+func WireVersion() uint32 {
+	result := bindings().fnWireVersion()
+	return uint32(result)
 }
 
 // Release calls the generated purego ABI wrapper for zg_release.

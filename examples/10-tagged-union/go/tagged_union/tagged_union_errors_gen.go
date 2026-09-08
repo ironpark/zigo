@@ -22,6 +22,12 @@ var ErrNativeStatus = errors.New("zigo: unrecognized native status")
 // ErrCallbackPanic identifies a panic raised by a Go callback inside a native call.
 var ErrCallbackPanic = errors.New("zigo: callback panic")
 
+// ErrCallbackFailed identifies an error a Go callback returned inside a native call.
+var ErrCallbackFailed = errors.New("zigo: callback failed")
+
+// ErrNilCallback identifies a nil callback argument.
+var ErrNilCallback = errors.New("zigo: nil callback argument")
+
 // HandleError reports which generated operation received an invalid handle.
 type HandleError struct {
 	// Operation names the generated operation and offending receiver or parameter.
@@ -64,6 +70,27 @@ func (err *NativePanicError) poisoned(operation string) error {
 	}
 	return &NativePanicError{Operation: operation, Message: message}
 }
+
+// CallbackError reports a nil callback argument or an error returned by a Go callback.
+type CallbackError struct {
+	// Operation names the generated call the callback was running under.
+	Operation string
+	// Callback names the Go callback parameter that failed.
+	Callback string
+	// Err is the callback error, or ErrNilCallback for a nil argument.
+	Err error
+}
+
+// Error implements error.
+func (err *CallbackError) Error() string {
+	return "zigo: " + err.Operation + ": callback " + err.Callback + ": " + err.Err.Error()
+}
+
+// Is reports ErrCallbackFailed for errors.Is classification.
+func (err *CallbackError) Is(target error) bool { return target == ErrCallbackFailed }
+
+// Unwrap returns the callback's own error for errors.Is and errors.As.
+func (err *CallbackError) Unwrap() error { return err.Err }
 
 // StatusError reports a native status code this binding does not recognize.
 type StatusError struct {

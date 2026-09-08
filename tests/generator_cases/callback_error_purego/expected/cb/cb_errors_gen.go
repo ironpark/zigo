@@ -18,6 +18,8 @@ var ErrNativePanic = errors.New("zigo: native panic")
 var ErrCallbackPanic = errors.New("zigo: callback panic")
 // ErrCallbackFailed identifies an error a Go callback returned inside a native call.
 var ErrCallbackFailed = errors.New("zigo: callback failed")
+// ErrNilCallback identifies a nil callback argument.
+var ErrNilCallback = errors.New("zigo: nil callback argument")
 // ErrLibraryLoad identifies a shared-library load or symbol resolution failure.
 var ErrLibraryLoad = raw.ErrLibraryLoad
 
@@ -64,15 +66,13 @@ func (err *NativePanicError) poisoned(operation string) error {
 	return &NativePanicError{Operation: operation, Message: message}
 }
 
-// CallbackError reports an error a Go callback returned while a native call
-// was running. The trampoline stores it and reports -5 to the native caller;
-// the generated call hands it back once that caller has returned.
+// CallbackError reports a nil callback argument or an error returned by a Go callback.
 type CallbackError struct {
 	// Operation names the generated call the callback was running under.
 	Operation string
 	// Callback names the Go callback parameter that failed.
 	Callback string
-	// Err is the error the callback returned.
+	// Err is the callback error, or ErrNilCallback for a nil argument.
 	Err error
 }
 

@@ -1386,3 +1386,48 @@ test "library caller receives all diagnostics without mutating output" {
     const actual = try temporary.dir.readFileAlloc(std.testing.io, "shim.zig", arena.allocator(), .limited(64));
     try std.testing.expectEqualStrings("unchanged", actual);
 }
+
+test "materialized release identity survives package filtering and declaration order" {
+    var byte: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
+    const fields = [_]semantic.TypeField{.{ .name = "value", .type = byte }};
+    const release: semantic.SemanticFn = .{
+        .name = "freeBuffer",
+        .params = &.{.{ .name = "buffer", .type = .{ .slice = .{ .@"const" = false, .element = &byte } } }},
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_free_buffer",
+    };
+    const snapshot: semantic.SemanticFn = .{
+        .name = "snapshot",
+        .ownership = .caller,
+        .release = "freeBuffer",
+        .params = &.{},
+        .@"return" = .{ .materialized = .{ .ref = "Node" } },
+        .symbol = "zg_snapshot",
+    };
+    const child: semantic.SemanticFn = .{ .name = "child", .package = "child", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_child" };
+    const other: semantic.SemanticFn = .{ .name = "other", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_other" };
+    // The original index is either out of bounds or points to Other after filtering.
+    for ([_][4]semantic.SemanticFn{ .{ child, snapshot, other, release }, .{ child, release, other, snapshot } }) |functions| {
+        for ([_]@FieldType(Options, "backend"){ .cgo, .purego }) |backend| {
+            var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+            defer arena.deinit();
+            const allocator = arena.allocator();
+            const document: semantic.Semantic = .{
+                .allocator = "std.heap.smp_allocator",
+                .package = "tree",
+                .prefix = "zg",
+                .zig_version = "0.16.0",
+                .packages = &.{.{ .name = "child", .path = "child" }},
+                .functions = &functions,
+                .types = &.{.{ .name = "Node", .zig_path = "Node", .kind = .materialized, .materialized_version = 1, .fields = &fields }},
+            };
+            const json = try std.json.Stringify.valueAlloc(allocator, document, .{});
+            var temporary = std.testing.tmpDir(.{ .iterate = true });
+            defer temporary.cleanup();
+            try generate(allocator, std.testing.io, json, temporary.dir, .{ .package = "tree", .prefix = "zg", .go_module = "example.com/tree", .backend = backend });
+            const source = try temporary.dir.readFileAlloc(std.testing.io, "tree/tree_gen.go", allocator, .limited(1024 * 1024));
+            try std.testing.expect(std.mem.indexOf(u8, source, "defer raw.FreeBuffer(result)") != null);
+            try std.testing.expect(std.mem.indexOf(u8, source, "defer raw.Other(result)") == null);
+        }
+    }
+}

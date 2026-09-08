@@ -38,6 +38,13 @@ pub fn materializedReleaseTargetIssue(document: semantic.Semantic, function: sem
     const parameter = target.parameter;
     if (parameter.type != .slice or parameter.type.slice.element.* != .int or
         parameter.type.slice.element.int.bits != 8 or parameter.type.slice.element.int.signed) return missing;
+    if (semantic.isUtf8Slice(parameter.type, parameter.semantic) or semantic.isCStringSlice(parameter.type, parameter.semantic)) return .{
+        .severity = .@"error",
+        .code = "ZIGO048",
+        .message = "materialized buffer release parameter maps to a Go string",
+        .site = site.functionSite(function),
+        .hint = "use an opaque byte buffer release parameter (`.semantic = .opaque_bytes`), not a string",
+    };
     return null;
 }
 
@@ -265,4 +272,20 @@ test "a materialized release target may take the allocator zigo injects" {
         .zig_version = "0.16.0",
     };
     try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try validate.findIssue(std.testing.allocator, document));
+}
+
+test "materialized release rejects text semantics and accepts opaque bytes" {
+    var byte: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
+    for ([_]?semantic.SemanticHint{ null, .opaque_bytes, .utf8_string, .c_string }) |hint| {
+        const functions = [_]semantic.SemanticFn{
+            .{ .name = "snapshot", .ownership = .caller, .release = "free", .params = &.{}, .@"return" = .{ .materialized = .{ .ref = "Node" } }, .symbol = "zg_snapshot" },
+            .{ .name = "free", .params = &.{.{ .name = "buffer", .semantic = hint, .type = .{ .slice = .{ .@"const" = true, .element = &byte } } }}, .@"return" = .{ .void = {} }, .symbol = "zg_free" },
+        };
+        const document: semantic.Semantic = .{ .package = "tree", .prefix = "zg", .zig_version = "0.16.0", .functions = &functions };
+        const issue = materializedReleaseTargetIssue(document, functions[0]);
+        if (hint == .utf8_string or hint == .c_string) {
+            try std.testing.expectEqualStrings("ZIGO048", issue.?.code);
+            try std.testing.expect(std.mem.indexOf(u8, issue.?.hint, "opaque_bytes") != null);
+        } else try std.testing.expect(issue == null);
+    }
 }

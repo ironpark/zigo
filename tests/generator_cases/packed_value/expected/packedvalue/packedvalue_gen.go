@@ -77,6 +77,9 @@ func (o *Owner) SetFlags(v Flags) error {
 // Visit calls the Zig function visit.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func Visit(callback VisitCallback) {
+	if callback == nil {
+		panic(&CallbackError{Operation: "Visit", Callback: "callback", Err: ErrNilCallback})
+	}
 	callbackHandle := zigoNewVisitCallbackHandle(callback)
 	defer zigoDeleteCallbackHandle(callbackHandle)
 	raw.Visit(uintptr(callbackHandle))

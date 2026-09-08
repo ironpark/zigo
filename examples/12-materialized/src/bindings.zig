@@ -34,6 +34,8 @@ pub const bindings = zigo.define(.{
                 zigo.param.output(0, .result),
             },
         }),
+        // Keep a foreign package before release to exercise stable release references.
+        zigo.package(.{ .path = "metadata", .declarations = &.{api.func("wireVersion", .{})} }),
         api.func("release", .{}),
     },
 });

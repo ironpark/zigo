@@ -16,6 +16,10 @@ var ErrInvalidHandle = errors.New("zigo: nil or closed handle")
 var ErrNativePanic = errors.New("zigo: native panic")
 // ErrCallbackPanic identifies a panic raised by a Go callback inside a native call.
 var ErrCallbackPanic = errors.New("zigo: callback panic")
+// ErrCallbackFailed identifies an error a Go callback returned inside a native call.
+var ErrCallbackFailed = errors.New("zigo: callback failed")
+// ErrNilCallback identifies a nil callback argument.
+var ErrNilCallback = errors.New("zigo: nil callback argument")
 // ErrNilStream identifies a nil io.Writer or io.Reader argument.
 var ErrNilStream = errors.New("zigo: nil stream argument")
 // ErrLibraryLoad identifies a shared-library load or symbol resolution failure.
@@ -83,6 +87,27 @@ func (err *StreamError) Error() string {
 
 // Unwrap returns the stream's own error for errors.Is and errors.As.
 func (err *StreamError) Unwrap() error { return err.Err }
+
+// CallbackError reports a nil callback argument or an error returned by a Go callback.
+type CallbackError struct {
+	// Operation names the generated call the callback was running under.
+	Operation string
+	// Callback names the Go callback parameter that failed.
+	Callback string
+	// Err is the callback error, or ErrNilCallback for a nil argument.
+	Err error
+}
+
+// Error implements error.
+func (err *CallbackError) Error() string {
+	return "zigo: " + err.Operation + ": callback " + err.Callback + ": " + err.Err.Error()
+}
+
+// Is reports ErrCallbackFailed for errors.Is classification.
+func (err *CallbackError) Is(target error) bool { return target == ErrCallbackFailed }
+
+// Unwrap returns the callback's own error for errors.Is and errors.As.
+func (err *CallbackError) Unwrap() error { return err.Err }
 
 // CallbackPanicError is what a generated call panics with after a Go callback
 // panicked inside it. The trampoline recovers the panic so the native frames

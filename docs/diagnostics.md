@@ -244,7 +244,8 @@ bool·정수·등록 enum·등록된 정수 기반 packed struct 필드로 바�
 
 materialized 결과의 필드나 소유권·해제 선언이 잘못되었습니다. 진단의 전체 필드 경로를
 먼저 확인하고, 결과에 `.returns.lifetime = .{ .owned = .{} }`와 직렬화 버퍼 `[]u8`를 해제하는 `.returns.lifetime.owned.release`를
-지정했는지 확인하세요. 필드 제약은 [Materialized 버퍼 ABI](abi.md)에 있습니다.
+지정했는지 확인하세요. 해제 인자는 Go `[]byte`로 매핑되어야 하며, 문자열로 추론되는
+인자는 `.semantic = .opaque_bytes`를 명시하세요. 필드 제약은 [Materialized 버퍼 ABI](abi.md)에 있습니다.
 
 ### ZIGO049
 

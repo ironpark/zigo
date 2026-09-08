@@ -111,6 +111,11 @@ func Fill(output int) ([]byte, uint) {
 	return result, written
 }
 
+// WireVersion calls the generated C ABI wrapper for zg_wire_version.
+func WireVersion() uint32 {
+	return uint32(C.zg_wire_version())
+}
+
 // Release calls the generated C ABI wrapper for zg_release.
 func Release(buffer []uint8) {
 	bufferPtr := (*C.uint8_t)(zigoSlicePtr(buffer))

@@ -84,6 +84,9 @@ func CountWide(glyphs []Glyph) uint64 {
 // Visit: Calls the visitor for each codepoint of text and returns the last visitor result.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func Visit(text []byte, callback Visitor) rune {
+	if callback == nil {
+		panic(&CallbackError{Operation: "Visit", Callback: "callback", Err: ErrNilCallback})
+	}
 	callbackHandle := zigoNewVisitorHandle(callback)
 	defer zigoDeleteCallbackHandle(callbackHandle)
 	result := raw.Visit(text, uintptr(callbackHandle))

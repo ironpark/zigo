@@ -449,6 +449,9 @@ func FlattenFlags(flags Flags) Flags {
 // VisitFlags calls the Zig function visitFlags.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func VisitFlags(callback FlagsObserver) {
+	if callback == nil {
+		panic(&CallbackError{Operation: "VisitFlags", Callback: "callback", Err: ErrNilCallback})
+	}
 	callbackHandle := zigoNewFlagsObserverHandle(callback)
 	defer zigoDeleteCallbackHandle(callbackHandle)
 	raw.VisitFlags(uintptr(callbackHandle))

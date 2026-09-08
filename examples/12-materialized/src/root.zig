@@ -125,3 +125,8 @@ test "materialized sources expose the same tree in every position" {
     try std.testing.expectEqual(@as(usize, 2), fill(&output));
     try std.testing.expectEqualStrings("second", output[0].children[1].label);
 }
+
+/// Reports the materialized wire format used by this example.
+pub fn wireVersion() u32 {
+    return 1;
+}

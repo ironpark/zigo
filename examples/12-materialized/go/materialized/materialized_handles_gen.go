@@ -33,7 +33,7 @@ func (l *LegacyLeaf) zigoAcquire(operation string) (unsafe.Pointer, error) {
 	parent := l.owner
 	l.mu.Unlock()
 	if parent != nil {
-		if _, err := parent.zigoAcquire(operation); err != nil {
+		if _, err := parent.ZigoAcquire(operation); err != nil {
 			return nil, err
 		}
 	}
@@ -43,7 +43,7 @@ func (l *LegacyLeaf) zigoAcquire(operation string) (unsafe.Pointer, error) {
 	case l.closed || l.ptr == nil:
 		err = &HandleError{Operation: operation}
 	case l.poison != nil:
-		err = l.poison.poisoned(operation)
+		err = l.poison.Poisoned(operation)
 	default:
 		l.active++
 	}
@@ -51,7 +51,7 @@ func (l *LegacyLeaf) zigoAcquire(operation string) (unsafe.Pointer, error) {
 	l.mu.Unlock()
 	if err != nil {
 		if parent != nil {
-			parent.zigoRelease()
+			parent.ZigoRelease()
 		}
 		return nil, err
 	}
@@ -67,7 +67,7 @@ func (l *LegacyLeaf) zigoRelease() {
 	parent := l.owner
 	l.mu.Unlock()
 	if parent != nil {
-		parent.zigoRelease()
+		parent.ZigoRelease()
 	}
 }
 
@@ -84,9 +84,20 @@ func (l *LegacyLeaf) zigoPoison(cause *NativePanicError) {
 	}
 	l.mu.Unlock()
 	if parent != nil {
-		parent.zigoPoison(cause)
+		parent.ZigoPoison(cause)
 	}
 }
+
+// ZigoAcquire implements the shared lifecycle handle contract.
+func (l *LegacyLeaf) ZigoAcquire(operation string) (unsafe.Pointer, error) {
+	return l.zigoAcquire(operation)
+}
+
+// ZigoRelease implements the shared lifecycle handle contract.
+func (l *LegacyLeaf) ZigoRelease() { l.zigoRelease() }
+
+// ZigoPoison implements the shared lifecycle handle contract.
+func (l *LegacyLeaf) ZigoPoison(cause *NativePanicError) { l.zigoPoison(cause) }
 
 // Close detaches this borrowed LegacyLeaf view without releasing native resources.
 func (l *LegacyLeaf) Close() error {
@@ -132,7 +143,7 @@ func (l *LegacyProbe) zigoAcquire(operation string) (unsafe.Pointer, error) {
 		return nil, &HandleError{Operation: operation}
 	}
 	if l.poison != nil {
-		return nil, l.poison.poisoned(operation)
+		return nil, l.poison.Poisoned(operation)
 	}
 	l.active++
 	return l.ptr, nil
@@ -164,6 +175,17 @@ func (l *LegacyProbe) zigoPoison(cause *NativePanicError) {
 		l.cleanup.Stop()
 	}
 }
+
+// ZigoAcquire implements the shared lifecycle handle contract.
+func (l *LegacyProbe) ZigoAcquire(operation string) (unsafe.Pointer, error) {
+	return l.zigoAcquire(operation)
+}
+
+// ZigoRelease implements the shared lifecycle handle contract.
+func (l *LegacyProbe) ZigoRelease() { l.zigoRelease() }
+
+// ZigoPoison implements the shared lifecycle handle contract.
+func (l *LegacyProbe) ZigoPoison(cause *NativePanicError) { l.zigoPoison(cause) }
 
 type zigoLegacyProbeCleanupState struct {
 	ptr unsafe.Pointer
