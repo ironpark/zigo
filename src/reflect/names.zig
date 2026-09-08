@@ -60,6 +60,12 @@ const Scanned = struct {
 const Alias = struct {
     name: []const u8,
     owner: ?[]const u8,
+    /// The file `owner` was `@import`ed from, when the alias spelled its
+    /// target through an import binding this container makes. It is the only
+    /// thing that says which file the target is in: an owner like `paste` is
+    /// a name the aliasing file made up, and two containers may each bind it
+    /// to a different file.
+    owner_import: ?[]const u8 = null,
 };
 
 const Aliases = struct {
@@ -71,6 +77,7 @@ const Aliases = struct {
             allocator.free(entry.key_ptr.*);
             allocator.free(entry.value_ptr.name);
             if (entry.value_ptr.owner) |owner| allocator.free(owner);
+            if (entry.value_ptr.owner_import) |import| allocator.free(import);
         }
         self.entries.deinit(allocator);
     }
@@ -78,15 +85,28 @@ const Aliases = struct {
     /// Records `key` as standing for `target`, a dotted path as the source
     /// spelled it, resolved against the container the alias sits in when it
     /// is a bare identifier. The first spelling wins.
-    fn put(self: *Aliases, allocator: std.mem.Allocator, key: []const u8, target: []const u8, current_owner: ?[]const u8) !void {
+    fn put(
+        self: *Aliases,
+        allocator: std.mem.Allocator,
+        key: []const u8,
+        target: []const u8,
+        current_owner: ?[]const u8,
+        owner_import: ?[]const u8,
+    ) !void {
         if (self.entries.contains(key)) return;
-        const alias: Alias = if (std.mem.lastIndexOfScalar(u8, target, '.')) |index|
-            .{ .name = try allocator.dupe(u8, target[index + 1 ..]), .owner = try allocator.dupe(u8, target[0..index]) }
-        else
-            .{ .name = try allocator.dupe(u8, target), .owner = if (current_owner) |owner| try allocator.dupe(u8, owner) else null };
+        // Only a dotted target has an owner the import binding could name.
+        const alias: Alias = if (std.mem.lastIndexOfScalar(u8, target, '.')) |index| .{
+            .name = try allocator.dupe(u8, target[index + 1 ..]),
+            .owner = try allocator.dupe(u8, target[0..index]),
+            .owner_import = if (owner_import) |import| try allocator.dupe(u8, import) else null,
+        } else .{
+            .name = try allocator.dupe(u8, target),
+            .owner = if (current_owner) |owner| try allocator.dupe(u8, owner) else null,
+        };
         errdefer {
             allocator.free(alias.name);
             if (alias.owner) |owner| allocator.free(owner);
+            if (alias.owner_import) |import| allocator.free(import);
         }
         try self.entries.put(allocator, try allocator.dupe(u8, key), alias);
     }
@@ -97,6 +117,19 @@ const Aliases = struct {
         return self.entries.get(key);
     }
 };
+
+/// The path in `@import("path")`, or null when the initialiser is anything
+/// else. Only a string literal counts; a computed import names no file the
+/// scanner could compare against.
+fn importPath(tree: std.zig.Ast, init_node: std.zig.Ast.Node.Index) ?[]const u8 {
+    if (tree.nodeTag(init_node) != .builtin_call_two) return null;
+    if (!std.mem.eql(u8, tree.tokenSlice(tree.nodeMainToken(init_node)), "@import")) return null;
+    const spelled = tree.getNodeSource(init_node);
+    const open = std.mem.indexOfScalar(u8, spelled, '"') orelse return null;
+    const close = std.mem.lastIndexOfScalar(u8, spelled, '"') orelse return null;
+    if (close <= open + 1) return null;
+    return spelled[open + 1 .. close];
+}
 
 /// `owner.name`, or `name` at the root; null when it does not fit `buffer`,
 /// which no real declaration path fails.
@@ -638,13 +671,25 @@ fn collectAliases(
     functions: []semantic.SemanticFn,
     aliases: *Aliases,
 ) !void {
+    // The files this container imports under a name, so an alias spelled
+    // `paste.encode` can say which file `paste` is. Collected first: Zig has
+    // no declaration order, and the import may be written below the alias.
+    var imports: std.StringHashMapUnmanaged([]const u8) = .empty;
+    defer imports.deinit(allocator);
+    for (members) |node| {
+        const variable = tree.fullVarDecl(node) orelse continue;
+        const init_node = variable.ast.init_node.unwrap() orelse continue;
+        const import = importPath(tree, init_node) orelse continue;
+        try imports.put(allocator, tree.tokenSlice(variable.ast.mut_token + 1), import);
+    }
+
     for (members) |node| {
         const variable = tree.fullVarDecl(node) orelse continue;
         const init_node = variable.ast.init_node.unwrap() orelse continue;
         const declaration_name = tree.tokenSlice(variable.ast.mut_token + 1);
         var container_buffer: [2]std.zig.Ast.Node.Index = undefined;
         const container = tree.fullContainerDecl(&container_buffer, init_node) orelse {
-            try recordAlias(allocator, tree, variable, init_node, declaration_name, owner, functions, aliases);
+            try recordAlias(allocator, tree, variable, init_node, declaration_name, owner, functions, aliases, imports);
             continue;
         };
         const nested_owner = if (owner) |parent|
@@ -670,6 +715,7 @@ fn recordAlias(
     owner: ?[]const u8,
     functions: []semantic.SemanticFn,
     aliases: *Aliases,
+    imports: std.StringHashMapUnmanaged([]const u8),
 ) !void {
     switch (tree.nodeTag(init_node)) {
         .identifier, .field_access => {},
@@ -680,7 +726,10 @@ fn recordAlias(
     if (std.mem.eql(u8, target, declaration_name)) return;
     var key_buffer: [512]u8 = undefined;
     const key = declarationKey(&key_buffer, .{ .name = declaration_name, .owner = owner }) orelse return;
-    try aliases.put(allocator, key, target, owner);
+    // `paste.encode` leads with a binding this container makes; when that
+    // binding is an `@import`, the file the target sits in is known.
+    const leading = target[0 .. std.mem.indexOfScalar(u8, target, '.') orelse target.len];
+    try aliases.put(allocator, key, target, owner, imports.get(leading));
 
     const doc = try declDocAlloc(allocator, tree, variable.firstToken());
     defer if (doc) |value| allocator.free(value);
@@ -754,10 +803,31 @@ fn enrichMatches(
             .file => {
                 const owner = declaration.owner orelse continue;
                 if (ownerDeclaredHere(declared_owners, owner)) continue;
+                // An alias owner is a name the aliasing file made up, so the
+                // file it points at is the only thing that can vouch for the
+                // match. ghostty's `input` binds both `encodeFocus =
+                // focus.encode` and `encodePaste = paste.encode`: the target
+                // name alone would let `input/paste.zig` claim the focus
+                // encoder. When the owner is an import, the path decides;
+                // when it is not, nothing here can, and the file does not get
+                // to be taken at its word.
+                if (alias) |value| if (value.owner != null) {
+                    const import = value.owner_import orelse continue;
+                    if (!fileIsImport(path, import)) continue;
+                };
                 // A method's receiver names the struct the file is; a
                 // namespace function has nothing to show, and the file
                 // is taken at its word once no container contradicts it.
-                if (function.receiver != null and !receiverTypeNames(tree, proto, owner)) continue;
+                if (function.receiver) |receiver| {
+                    // An alias spells its target from where the alias stands,
+                    // so `pub const setTabstop = config_.setTabstop;` makes the
+                    // owner `config_` -- an import binding the target file has
+                    // no name for and no receiver can ever be typed as. The
+                    // type the binding groups the function under is the second
+                    // witness, and it is the one the prototype writes down.
+                    if (!receiverTypeNames(tree, proto, owner) and
+                        !receiverTypeNames(tree, proto, receiver)) continue;
+                }
             },
             .anonymous => if (declaration.owner) |owner| {
                 // A prototype in an anonymous container belongs to a generic
@@ -885,19 +955,42 @@ fn tokenEnd(tree: std.zig.Ast, token: std.zig.Ast.TokenIndex) usize {
 
 /// A declaration at the root cannot be the one this function names when the
 /// same file writes that owner out as a container of its own.
+/// Whether the file being scanned is the one `@import("import")` names. The
+/// import is written relative to the file that spelled it and `path` relative
+/// to the module root, so the tail is what the two agree on; a leading `../`
+/// leaves nothing to compare and the match is refused.
+fn fileIsImport(path: ?[]const u8, import: []const u8) bool {
+    const actual = path orelse return false;
+    const wanted = std.mem.trimStart(u8, import, "./");
+    if (std.mem.startsWith(u8, wanted, "..")) return false;
+    if (!std.mem.endsWith(u8, actual, wanted)) return false;
+    const boundary = actual.len - wanted.len;
+    return boundary == 0 or actual[boundary - 1] == '/' or actual[boundary - 1] == '\\';
+}
+
 fn ownerDeclaredHere(declared_owners: []const []const u8, owner: []const u8) bool {
     for (declared_owners) |declared| if (std.mem.eql(u8, declared, owner)) return true;
     return false;
 }
 
-/// Whether the prototype's first parameter is typed as `owner`: `*Terminal`,
+/// Whether the prototype takes `owner` as a parameter: `*Terminal`,
 /// `*const Terminal`, `Terminal`, or the `Self`/`@This()` a file-as-struct
-/// spells itself with. Only the trailing identifier is compared, so an
-/// import-qualified `terminal.Terminal` counts too.
+/// spells itself with. The receiver is usually first, but an injected
+/// allocator or writer precedes it -- `newStream(gpa: Allocator, terminal:
+/// *Terminal, ...)` -- so every parameter is a candidate. Naming the type at
+/// all is the witness; the exact name and arity are checked separately.
 fn receiverTypeNames(tree: std.zig.Ast, proto: std.zig.Ast.full.FnProto, owner: []const u8) bool {
     var iterator = proto.iterate(&tree);
-    const first = iterator.next() orelse return false;
-    const type_node = first.type_expr orelse return false;
+    while (iterator.next()) |parameter| {
+        const type_node = parameter.type_expr orelse continue;
+        if (typeNames(tree, type_node, owner)) return true;
+    }
+    return false;
+}
+
+/// Whether a parameter's written type ends in `owner`. Only the trailing
+/// identifier is compared, so an import-qualified `terminal.Terminal` counts.
+fn typeNames(tree: std.zig.Ast, type_node: std.zig.Ast.Node.Index, owner: []const u8) bool {
     const spelled = std.mem.trimEnd(u8, tree.getNodeSource(type_node), " \t\r\n");
     if (std.mem.endsWith(u8, spelled, "@This()")) return true;
     var start = spelled.len;
@@ -1327,6 +1420,123 @@ test "a file that is a namespace lends its root functions to the registered name
     try std.testing.expectEqual(@as(usize, 0), try scanSource(arena.allocator(), source, &functions, "unicode.zig"));
     try std.testing.expectEqualStrings("cp", functions[0].params[0].name);
     try std.testing.expectEqualStrings("Reports the display width of a codepoint.", functions[0].doc.?);
+}
+
+test "a wrapper re-exported through an import binding still names its receiver" {
+    // gostty's shape: the method body lives in its own file, `root.zig`
+    // re-exports it, and the alias owner is `config_` -- a name only
+    // `root.zig` knows and no receiver can ever be typed as. The type the
+    // binding groups the function under is what the prototype writes down.
+    const root_source =
+        \\const config_ = @import("config.zig");
+        \\pub const setTabstop = config_.setTabstop;
+    ;
+    const config_source =
+        \\const Terminal = @import("common.zig").Terminal;
+        \\/// Marks a tab stop at the given column.
+        \\pub fn setTabstop(self: *Terminal, col: usize) void { _ = self; _ = col; }
+    ;
+    var functions = [_]semantic.SemanticFn{.{
+        .name = "setTabstop",
+        .zig_path = "setTabstop",
+        .params = &.{.{ .name = "p0", .type = .{ .int = .{ .bits = 64, .signed = false, .is_usize = true } } }},
+        .receiver = "Terminal",
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_terminal_set_tabstop",
+    }};
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var aliases: Aliases = .{};
+    try std.testing.expectEqual(@as(usize, 0), try scanSourceWithAliases(arena.allocator(), root_source, &functions, "root.zig", &aliases));
+    try std.testing.expectEqual(@as(usize, 0), try scanSourceWithAliases(arena.allocator(), config_source, &functions, "config.zig", &aliases));
+    try std.testing.expectEqualStrings("col", functions[0].params[0].name);
+    try std.testing.expectEqualStrings("Marks a tab stop at the given column.", functions[0].doc.?);
+}
+
+test "a receiver behind an injected allocator still vouches for the file" {
+    // `newStream(gpa, terminal, ...)` takes the allocator first, so the
+    // receiver is the second parameter; the witness is that the prototype
+    // names the type at all, not that it names it first.
+    const root_source =
+        \\const stream_ = @import("stream.zig");
+        \\pub const newStream = stream_.newStream;
+    ;
+    const stream_source =
+        \\const Terminal = @import("common.zig").Terminal;
+        \\/// Creates a VT stream over the terminal.
+        \\pub fn newStream(gpa: Allocator, terminal: *Terminal, max: usize) !*Stream {
+        \\    _ = gpa; _ = terminal; _ = max; return undefined;
+        \\}
+    ;
+    var functions = [_]semantic.SemanticFn{.{
+        .name = "newStream",
+        .zig_path = "newStream",
+        .params = &.{
+            .{ .name = "allocator", .type = .{ .void = {} } },
+            .{ .name = "p1", .type = .{ .int = .{ .bits = 64, .signed = false, .is_usize = true } } },
+        },
+        .receiver = "Terminal",
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_terminal_new_stream",
+    }};
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var aliases: Aliases = .{};
+    try std.testing.expectEqual(@as(usize, 0), try scanSourceWithAliases(arena.allocator(), root_source, &functions, "root.zig", &aliases));
+    try std.testing.expectEqual(@as(usize, 0), try scanSourceWithAliases(arena.allocator(), stream_source, &functions, "stream.zig", &aliases));
+    try std.testing.expectEqualStrings("max", functions[0].params[1].name);
+    try std.testing.expectEqualStrings("Creates a VT stream over the terminal.", functions[0].doc.?);
+}
+
+test "two aliases onto the same target name are told apart by the file each imports" {
+    // ghostty's `input` namespace binds `encodeFocus = focus.encode` and
+    // `encodePaste = paste.encode`. Both targets are named `encode`, and
+    // `paste` is the only one of the two owners that is an import, so
+    // `input/paste.zig` may claim the paste encoder and nothing else.
+    const root_source =
+        \\pub const input = struct {
+        \\    const focus = terminal.focus;
+        \\    const paste = @import("input/paste.zig");
+        \\    pub const encodeFocus = focus.encode;
+        \\    pub const encodePaste = paste.encode;
+        \\};
+    ;
+    const paste_source =
+        \\/// Encodes the given data for pasting.
+        \\pub fn encode(writer: *Writer, data: []const u8) void { _ = writer; _ = data; }
+    ;
+    var functions = [_]semantic.SemanticFn{
+        .{
+            .name = "encodeFocus",
+            .zig_path = "input.encodeFocus",
+            .params = &.{
+                .{ .name = "p0", .type = .{ .void = {} } },
+                .{ .name = "p1", .type = .{ .void = {} } },
+            },
+            .@"return" = .{ .void = {} },
+            .symbol = "zg_encode_focus",
+        },
+        .{
+            .name = "encodePaste",
+            .zig_path = "input.encodePaste",
+            .params = &.{
+                .{ .name = "p0", .type = .{ .void = {} } },
+                .{ .name = "p1", .type = .{ .void = {} } },
+            },
+            .@"return" = .{ .void = {} },
+            .symbol = "zg_encode_paste",
+        },
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var aliases: Aliases = .{};
+    try std.testing.expectEqual(@as(usize, 0), try scanSourceWithAliases(arena.allocator(), root_source, &functions, "root.zig", &aliases));
+    try std.testing.expectEqual(@as(usize, 0), try scanSourceWithAliases(arena.allocator(), paste_source, &functions, "input/paste.zig", &aliases));
+    try std.testing.expectEqualStrings("writer", functions[1].params[0].name);
+    try std.testing.expectEqualStrings("Encodes the given data for pasting.", functions[1].doc.?);
+    // The focus encoder is not in this file, and nothing here may say it is.
+    try std.testing.expectEqualStrings("p0", functions[0].params[0].name);
+    try std.testing.expect(functions[0].doc == null);
 }
 
 test "the anonymous-container fallback refuses an owner the source contradicts" {

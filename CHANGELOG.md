@@ -4,6 +4,23 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Fixed
+
+- 0.19.1의 root 선언 매칭이 다른 파일에서 재노출된 래퍼를 놓쳐, 파라미터 이름이 `p0`으로,
+  문서가 비어 퇴화하던 문제를 고쳤습니다. `pub const setTabstop = config_.setTabstop;`은
+  alias owner를 `config_`로 남기는데, 이는 재노출한 파일만 아는 import 이름이라 어떤
+  receiver도 그렇게 타이핑될 수 없습니다. 바인딩이 함수를 묶은 타입을 두 번째 증인으로
+  받아들이며, 그 이름은 프로토타입이 실제로 적어 둔 것입니다.
+- receiver 증인 검사가 첫 파라미터만 보던 것을 전체 파라미터로 넓혔습니다. 주입된 allocator나
+  writer가 앞서는 `newStream(gpa: Allocator, terminal: *Terminal, ...)` 꼴에서 receiver를
+  찾지 못했습니다. 이름과 arity는 그대로 따로 검사합니다.
+- 같은 대상 이름을 가리키는 두 alias를 각자가 import한 파일로 구분합니다. ghostty의 `input`은
+  `encodeFocus = focus.encode`와 `encodePaste = paste.encode`를 함께 두는데, 대상 이름이 둘 다
+  `encode`라 `input/paste.zig`가 focus 인코더까지 가져가 **틀린 문서**를 붙였습니다. alias owner가
+  `@import`이면 그 경로가 판단하고, 아니면 그 파일은 자기 말만으로 대상을 주장할 수 없습니다.
+
 ## [0.19.1] - 2026-09-08
 
 ### Fixed
