@@ -324,7 +324,9 @@ wrapper 이름이 같은 타입의 다른 메서드와 겹치면 `ZIGO024`입니
 
 출력 파일 경로가 유효하지 않거나 다른 emitter와 겹칩니다. 경로는 출력 디렉터리 안의
 상대 경로여야 하며, `./file.go`와 `dir/../file.go`도 같은 경로로 취급합니다. 플러그인의
-`pathAlloc`에서 `plugin.publicFilePathAlloc`을 사용하고 파일명을 고유하게 정하세요.
+`GoFile.pathAlloc`에서 `context.goFilePathAlloc`을 사용하고 파일명을 고유하게 정하세요.
+Go 파일은 선택한 패키지 디렉터리에 있어야 하고, `test_file`만 `_test.go`로 끝나야 합니다.
+Go 이외의 파일은 `Artifact`를 사용합니다.
 진단은 충돌한 emitter와 패키지를 표시하며, 이 오류가 나면 기존 출력은 변경하지 않습니다.
 
 ### ZIGO060

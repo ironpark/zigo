@@ -32,6 +32,7 @@ pub const GeneratorModules = struct {
     lower: *std.Build.Module,
     stream_return: *std.Build.Module,
     sync_check: *std.Build.Module,
+    output_manifest: *std.Build.Module,
     generator: *std.Build.Module,
 };
 
@@ -154,8 +155,14 @@ pub fn createGeneratorModules(
             .{ .name = "semantic", .module = semantic_module },
         },
     });
+    const output_manifest_module = b.createModule(.{
+        .root_source_file = source_root.path(b, "gen/output_manifest.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
     const sync_check_module = b.createModule(.{
         .root_source_file = source_root.path(b, "gen/sync_check.zig"),
+        .imports = &.{.{ .name = "output_manifest", .module = output_manifest_module }},
         .target = target,
         .optimize = optimize,
     });
@@ -164,6 +171,7 @@ pub fn createGeneratorModules(
         .target = target,
         .optimize = optimize,
         .imports = &.{
+            .{ .name = "output_manifest", .module = output_manifest_module },
             .{ .name = "semantic", .module = semantic_module },
             .{ .name = "naming", .module = naming_module },
             .{ .name = "abi", .module = abi_module },
@@ -191,6 +199,7 @@ pub fn createGeneratorModules(
         .lower = gen_lower_module,
         .stream_return = gen_stream_return_module,
         .sync_check = sync_check_module,
+        .output_manifest = output_manifest_module,
         .generator = generator_module,
     };
 }
@@ -268,6 +277,7 @@ pub fn addGeneratorWithModules(
                 .{ .name = "builtin_plugins", .module = modules.builtin_plugins },
                 .{ .name = "stream_return", .module = modules.stream_return },
                 .{ .name = "sync_check", .module = modules.sync_check },
+                .{ .name = "output_manifest", .module = modules.output_manifest },
             },
         }),
     });

@@ -61,6 +61,7 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
     var generation_issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
     generator.generate(allocator, io, semantic_bytes, output, .{
         .diagnostics = &generation_issues,
+        .write_manifest = true,
         .package = options.package,
         .prefix = options.prefix,
         .go_module = options.go_module,
@@ -109,19 +110,29 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
     try formatGeneratedGo(allocator, io, options.output_path, options.gofmt_executable);
 }
 
-/// `gofmt` owns the formatting of generated Go: it ships with every Go
-/// distribution and its rules change between releases, so zigo formats through
-/// it rather than emitting output a newer `gofmt` would rewrite. It recurses
-/// into a directory, so one call covers whatever set of files this run wrote —
-/// nothing outside generation has to know which files those are.
+/// Format only framed Go outputs. Artifacts, including .go artifacts, keep
+/// their exact bytes and user-owned files in the output tree are untouched.
 fn formatGeneratedGo(
     allocator: std.mem.Allocator,
     io: std.Io,
     output_path: []const u8,
     gofmt_executable: []const u8,
 ) !void {
+    const manifest_api = @import("output_manifest");
+    var directory = try std.Io.Dir.cwd().openDir(io, output_path, .{});
+    defer directory.close(io);
+    const manifest = (try manifest_api.read(allocator, io, directory)) orelse return error.MissingOutputManifest;
+    defer manifest.deinit();
+    var args: std.ArrayList([]const u8) = .empty;
+    defer args.deinit(allocator);
+    try args.appendSlice(allocator, &.{ gofmt_executable, "-w" });
+    for (manifest.value.files) |file| {
+        if (file.kind == .go) try args.append(allocator, try std.fs.path.join(allocator, &.{ output_path, file.path }));
+    }
+    defer for (args.items[2..]) |path| allocator.free(path);
+    if (args.items.len == 2) return;
     const result = std.process.run(allocator, io, .{
-        .argv = &.{ gofmt_executable, "-w", output_path },
+        .argv = args.items,
         .stdout_limit = .limited(1024 * 1024),
         .stderr_limit = .limited(1024 * 1024),
     }) catch {

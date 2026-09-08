@@ -2,6 +2,7 @@
 //! pkg-config resolution, host reflection clones and the publish steps.
 const std = @import("std");
 const go_walk = @import("../src/gen/go_walk.zig");
+const output_manifest = @import("../src/gen/output_manifest.zig");
 
 pub const volatile_cgo_link_file = "zigo_link_inputs_gen.go";
 
@@ -145,15 +146,26 @@ pub const PublishGeneratedGo = struct {
         };
         defer go_dir.close(io);
 
+        const current = try output_manifest.read(b.allocator, io, generated_dir);
+        defer if (current) |value| value.deinit();
+        const previous = try output_manifest.read(b.allocator, io, go_dir);
+        defer if (previous) |value| value.deinit();
         var published: std.ArrayList([]const u8) = .empty;
         defer published.deinit(b.allocator);
         var any_miss = false;
-        var walker = try go_walk.walk(generated_dir, b.allocator);
-        defer walker.deinit();
-        while (try walker.next(io)) |entry| {
-            if (entry.kind != .file or !std.mem.endsWith(u8, entry.path, ".go")) continue;
-            const sub_path = try b.allocator.dupe(u8, entry.path);
-            try published.append(b.allocator, sub_path);
+        if (current) |manifest| {
+            for (manifest.value.files) |file| {
+                if (file.publishable()) try published.append(b.allocator, file.path);
+            }
+        } else {
+            var walker = try go_walk.walk(generated_dir, b.allocator);
+            defer walker.deinit();
+            while (try walker.next(io)) |entry| {
+                if (entry.kind == .file and std.mem.endsWith(u8, entry.path, ".go"))
+                    try published.append(b.allocator, try b.allocator.dupe(u8, entry.path));
+            }
+        }
+        for (published.items) |sub_path| {
             if (std.fs.path.dirname(sub_path)) |dirname| {
                 go_dir.createDirPath(io, dirname) catch |err| {
                     return step.fail("unable to make path '{f}{s}/{s}': {t}", .{ b.build_root, self.go_dir, dirname, err });
@@ -165,12 +177,26 @@ pub const PublishGeneratedGo = struct {
             any_miss = any_miss or status == .stale;
         }
 
+        // Exact artifacts do not carry a marker; their previous manifest is
+        // the ownership record. Only obsolete publishable entries are pruned.
+        if (previous) |manifest| for (manifest.value.files) |file| {
+            if (!file.publishable()) continue;
+            for (published.items) |path| {
+                if (std.ascii.eqlIgnoreCase(path, file.path)) break;
+            } else {
+                go_dir.deleteFile(io, file.path) catch |err| switch (err) {
+                    error.FileNotFound => continue,
+                    else => return err,
+                };
+                any_miss = true;
+            }
+        };
         var stale_walker = try go_walk.walk(go_dir, b.allocator);
         defer stale_walker.deinit();
         while (try stale_walker.next(io)) |entry| {
             if (entry.kind != .file or !std.mem.endsWith(u8, entry.path, ".go")) continue;
             for (published.items) |sub_path| {
-                if (std.mem.eql(u8, sub_path, entry.path)) break;
+                if (std.ascii.eqlIgnoreCase(sub_path, entry.path)) break;
             } else {
                 if (std.mem.eql(u8, std.fs.path.basename(entry.path), volatile_cgo_link_file)) continue;
                 // Only zigo's own output is removed; anything the user wrote in
@@ -185,6 +211,10 @@ pub const PublishGeneratedGo = struct {
             }
         }
 
+        if (current != null) {
+            const status = try generated_dir.updateFile(io, output_manifest.filename, go_dir, output_manifest.filename, .{});
+            if (status != .fresh) any_miss = true;
+        }
         step.result_cached = !any_miss;
     }
 };

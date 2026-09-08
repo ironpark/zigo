@@ -18,7 +18,7 @@ pub const plugin: plugin_api.Plugin = .{
     .validate = validateDocument,
     .requires = &.{"MUST"},
     .analyze = analyze,
-    .files = &.{.{ .pathAlloc = interfacesPath, .render = renderInterfacesBody }},
+    .go_files = &.{.{ .pathAlloc = interfacesPath, .render = renderInterfacesBody }},
 };
 
 /// The declaration rules live with the other validation rules; the plugin is

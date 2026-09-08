@@ -12,14 +12,14 @@ Iterator, Implements, Interfaces도 공개 계약만 사용하는 별도 모듈�
 [`src/plugin.zig`](../src/plugin.zig)입니다. 이 모듈들이 노출하는 타입도 계약에 포함됩니다.
 
 `plugin.contract_version`은 `{ major, minor }`입니다. `Plugin.min_contract`의 major는
-동일해야 하고 minor는 생성기가 지원하는 값 이하여야 합니다. 현재 계약은 **1.1**입니다.
+동일해야 하고 minor는 생성기가 지원하는 값 이하여야 합니다. 현재 계약은 **2.0**입니다.
 이전의 `validateAll`, 구형 `validate`, optional writer 슬롯과 `go_must_variants`는 제거됐습니다.
 
 ```zig
 const api = @import("plugin");
 pub const plugin: api.Plugin = .{
     .name = "EXAMPLE",
-    .min_contract = .{ .major = 1, .minor = 0 },
+    .min_contract = .{ .major = 2, .minor = 0 },
     .Config = struct { enabled: bool = true },
     .FunctionOptions = struct {},
     .TypeOptions = struct {},
@@ -80,7 +80,7 @@ materialized 선언도 옵션을 전달합니다. 렌더 hook은 `context.functi
 
 ## 문서 변형, 타입 매핑과 이름 정책
 
-계약 1.1은 다음 네 콜백을 제공합니다. 모두 한 번 실행되고 결과는 run allocator로
+문서 변형에는 다음 네 콜백을 사용합니다. 모두 한 번 실행되고 결과는 run allocator로
 할당하거나 정적 문자열을 사용합니다. 콜백이 받은 문서와 슬라이스는 입력 스냅샷입니다.
 직접 `@constCast`해서 수정하지 말고 바뀔 배열·노드만 복사하여 반환하세요.
 
@@ -234,34 +234,108 @@ error-set 선언의 type hook은 해당 패키지의 오류 파일에서 실행�
 `FileInfo`에는 출력 루트 기준 `path`, `owner`, `kind`가 있습니다. kind는 `api`, `enums`,
 `structs`, `handles`, `runtime`, `errors`, `tagged_union`, `plugin`, `package`입니다.
 파일 hook은 package/import 바깥이 아닌 **본문**에 씁니다. `var`, `init()` 등을 추가할 수
-있으며 hook이 쓴 한정자도 import 분석에 포함됩니다. raw·shim·헤더·내부 lifecycle 파일에는
+있으며 hook이 쓴 한정자도 import 분석에 포함됩니다. 테스트·문서 단위 Go 파일·raw·shim·헤더·내부 lifecycle 파일에는
 호출되지 않습니다. `active_package`는 분할 패키지 선택값이고 null은 단일 패키지,
 빈 문자열은 분할된 기본 패키지입니다.
 
-## 추가 파일과 import
+## Go 파일과 범용 산출물
+
+계약 2.0은 `Plugin.files`와 `File`을 제거하고 `go_files: []const GoFile`과
+`artifacts: []const Artifact`로 분리합니다.
+
+| 계약 | 생성기 처리 | 기본 실행 범위 |
+|---|---|---|
+| `GoFile` | build constraint·생성 표식·package·import를 붙이고 Go 본문 출력 | `.package` |
+| `Artifact` | 작성한 바이트 그대로 출력 | `.document` |
+
+`scope = .document`는 모든 패키지를 포함한 lowered program으로 한 번 실행됩니다.
+`scope = .package`는 공개 패키지마다 실행되고 `program.functions`에는 해당 패키지의 함수만
+있습니다. 타입을 포함한 공유 ABI 테이블은 전체 program을 유지합니다. 분할 패키지에서는
+`options.active_package`가 기본 패키지는 빈 문자열, 하위 패키지는 그 이름입니다.
+문서 단위 Go 파일의 `.package = .public`은 기본 공개 패키지에 출력합니다.
+
+### Go 파일
 
 ```zig
 pub const plugin: api.Plugin = .{
     .name = "HELPERS",
-    .files = &.{.{ .pathAlloc = path, .render = render }},
+    .go_files = &.{.{ .pathAlloc = path, .render = render }},
 };
 fn path(context: api.Context) ![]u8 {
-    return context.publicFilePathAlloc("zigo_helpers_gen.go");
+    return context.goFilePathAlloc("zigo_helpers_gen.go");
 }
 fn render(_: api.Context, writer: *std.Io.Writer) !void {
-    try writer.writeAll("const HelperVersion = 1\\n");
+    try writer.writeAll("const HelperVersion = 1\n");
 }
 ```
 
-`File`은 본문만 작성합니다. 생성 표식·package·import는 생성기가 관리하고 비어 있는 파일은
-제거합니다. 모든 경로는 쓰기 전에 정규화·충돌 검사하며 잘못된 경로나 중복은 `ZIGO059`입니다.
-경로는 생성 출력 루트 기준이며 `publicFilePathAlloc`을 쓰면 활성 공개 패키지 아래로 갑니다.
+`GoFile.package`는 `.public`, `.external_test`, `.raw`입니다. `.external_test`는 현재
+공개 패키지명에 `_test`를 붙입니다. `.raw`는 `raw_package_name`과 `raw_package_path`를
+따르며 **`.scope = .document`가 필수**입니다. 다른 파일과의 패키지 일관성을 위해 경로는
+선택한 패키지 디렉터리 안에 있어야 합니다. `context.goFilePathAlloc`이 이 경로를 만듭니다.
 
-추가 import는 `.imports = &.{.{ .qualifier = "json", .path = "encoding/json" }}`처럼
-선언합니다. 본문에서 실제로 사용하는 한정자만 import에 들어갑니다.
+`kind = .test_file`이면 파일명은 `_test.go`로 끝나야 합니다. 기본값 `.source`는 일반 `.go`
+파일이어야 합니다. 외부 테스트 패키지는 `.test_file`이 필수입니다. 동일 패키지의 `Test…`,
+`Example…`도 `.public`과 `.test_file`로 생성합니다. 예제의 `// Output:` 주석은 본문에 씁니다.
+
+`build_constraint = "linux && !integration"`은 package 앞의 `//go:build` 줄로 생성됩니다.
+ASCII 태그·`!`·`&&`·`||`·괄호를 지원하며, 잘못된 식·개행·4096바이트 초과·과도한 중첩은
+등록 시 컴파일 오류입니다. 빌드 태그만 있는 파일은 아래 `Artifact`로 만들 수 있습니다.
+
+파일별 import는 `imports: ?fn(Context) ![]const Import` 콜백으로 제공합니다. 정적 배열을
+반환하거나 현재 `go_module`·패키지 경로에 맞춰 run allocator로 배열을 만들면 됩니다.
+외부 테스트·raw 파일에서는 공개 Go 타입의 import를 자동 추론하지 않으므로 필요한 패키지를
+명시하세요. `Context`의 타입 writer는 공개 API 타입을 위한 것이며 raw 타입 변환기가 아닙니다.
+
+```zig
+fn testImports(_: api.Context) ![]const api.Import {
+    return &.{.{ .qualifier = "testing", .path = "testing" }};
+}
+```
+
+플러그인 공통 import는 기존처럼 `Plugin.imports` 배열에 선언할 수 있습니다. 일반 import는
+본문에서 사용한 한정자만 출력하며 `_`·`.` import는 명시된 대로 포함됩니다. 파일별 `_ "embed"`
+import와 `//go:embed`를 사용하면 함께 생성한 artifact를 Go 파일에 포함할 수 있습니다.
+동일한 한정자에 서로 다른 경로를 지정하면 오류로 거부합니다.
+
+공개 패키지 단위의 일반 Go 파일만 생산 코드의 `file_hook`과 helper 참조 분석에 참여합니다.
+테스트·외부 테스트·raw·문서 단위 Go 파일은 별도로 렌더링하므로 생산 코드의 private helper에
+의존하지 마세요. 일반 Go 파일은 helper 분석 때문에 여러 번 렌더링될 수 있어야 합니다.
+
+### 바이트 산출물
+
+```zig
+pub const plugin: api.Plugin = .{
+    .name = "SCHEMA",
+    .artifacts = &.{.{ .pathAlloc = path, .render = render }},
+};
+fn path(context: api.ArtifactContext) ![]u8 {
+    return context.allocator.dupe(u8, "api.proto");
+}
+fn render(_: api.ArtifactContext, writer: *std.Io.Writer) !void {
+    try writer.writeAll("syntax = \"proto3\";");
+}
+```
+
+`ArtifactContext`는 `allocator`, `program`, `options`, `config(P)`, `publicFilePathAlloc`을
+제공합니다. Go writer나 파일 hook은 없습니다. `.md`, `.proto`, TypeScript, `go.mod` 조각,
+바이너리, `.go` 모두 확장자와 무관하게 **빈 파일·NUL·CRLF·끝 개행까지 그대로 보존**합니다.
+`go.mod` 조각을 생성하더라도 기존 `go.mod`에 자동 병합하지 않습니다.
+
+두 파일 계약 모두 선택적인 `enabled` 콜백으로 설정에 따라 생략할 수 있습니다.
+`GoFile.enabled`는 `Context`, `Artifact.enabled`는 `ArtifactContext`를 받고 `!bool`을
+반환합니다. false이면 경로와 본문 콜백을 호출하지 않습니다. Artifact의 빈 본문은 생략이
+아닌 0바이트 파일입니다. GoFile의 빈 본문은 파일을 생성하지 않거나 해당 경로의 기존 산출물을 제거합니다.
+
+모든 출력 경로는 생성 루트 기준으로 정규화하고, core 파일과 다른 플러그인 산출물을 포함해
+중복 검사합니다. 대소문자만 다른 ASCII 경로도 충돌로 취급합니다. 잘못된 경로·패키지 디렉터리·확장자·중복은 `ZIGO059`입니다. 렌더링이나
+검증에 실패하면 기존 출력에 쓰지 않습니다. raw 추가 파일과 완성된 Go artifact는 사용자
+코드를 실행할 수 있으므로 동작 불변을 보장하지 않지만, core가 생성하는 파일을 덮어쓸 수는 없습니다.
 
 ## 테스트와 이전
 
+`files`를 `go_files`로, `File`을 `GoFile`로 옮기고 계약 major를 2로 바꾸세요.
+Go 프레임이 필요 없는 파일은 `artifacts`와 `ArtifactContext`로 옮깁니다.
 이전 플러그인은 validator를 `ValidateContext`와 `diagnose`로 바꾸고, 파일 콜백을
 `Context` 기반으로 바꿔야 합니다. Must 설정은 `plugin_config.MUST.enabled`로 옮깁니다.
 구형 writer 테이블을 직접 만든 코드는 모든 슬롯을 구현해야 합니다.
@@ -271,8 +345,19 @@ fn render(_: api.Context, writer: *std.Io.Writer) !void {
 추가로 외부 플러그인의 문서 변형·의존성 순서·시간 타입 변환·명명 정책·native 인자 재배치와
 잘못된 변형의 출력 전 거부를 검사합니다. 생성된 Go wrapper와 shim은 실제 Zig target에
 연결해 두 backend에서 인자 의미와 변환 결과를 왕복 검사합니다.
+[`tests/plugin_outputs.zig`](../tests/plugin_outputs.zig)는 산출물 바이트 보존·패키지 범위·경로
+충돌을 검사하고, Go 테스트에서는 생성된 내부·외부 테스트, raw 추가 파일, build constraint와
+artifact의 `go:embed`까지 컴파일하고 실행합니다.
 내장 모듈은 생성기 내부를 import할 수 없는 모듈 루트에서 컴파일합니다. golden case는
 추가 hook을 켜지 않은 생성 결과를 비교합니다.
 
 예제: [satisfies](../plugins/satisfies), [JSON](../plugins/json), [enumkit](../plugins/enumkit),
 [wrapper writer](../tests/plugins/wrappers.zig).
+
+The CLI records output kinds in `.zigo-outputs.json`. Only `GoFile` outputs are
+passed to gofmt; artifacts retain their exact bytes, including `.go` artifacts.
+The build update step publishes Go files and artifacts, and removes obsolete
+artifacts listed in the previous manifest. Untracked consumer files remain
+unowned. Source synchronization checks include these artifacts as well.
+Direct generator callers can request this metadata with `write_manifest = true`.
+The manifest path is reserved when metadata is enabled.

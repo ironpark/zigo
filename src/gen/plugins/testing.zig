@@ -25,7 +25,7 @@ pub const plugin: plugin_api.Plugin = .{
     .FunctionOptions = Options,
     .method_hook = methodHook,
     .type_hook = typeHook,
-    .files = &.{.{ .pathAlloc = filePath, .render = renderFile }},
+    .go_files = &.{.{ .pathAlloc = filePath, .render = renderFile }},
 };
 
 /// A method next to the bound one, spelled from the names the method used.

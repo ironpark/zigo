@@ -73,6 +73,8 @@ pub fn referencedHelpersAlloc(allocator: std.mem.Allocator, program: abi.Program
         errdefer next.deinit(allocator);
         var emitters = emit.publicEmitters();
         while (emitters.next()) |emitter| {
+            if (!emitter.helper_scan) continue;
+            if (emitter.enabled) |enabled| if (!try enabled(allocator, program, options)) continue;
             var rendered: std.Io.Writer.Allocating = .init(allocator);
             defer rendered.deinit();
             // The writer only allocates, so a failed write is a failed allocation.

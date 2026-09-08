@@ -11,7 +11,7 @@ const naming = @import("naming");
 
 /// Major versions are incompatible; minor versions add capabilities.
 pub const ContractVersion = struct { major: u16, minor: u16 };
-pub const contract_version: ContractVersion = .{ .major = 1, .minor = 1 };
+pub const contract_version: ContractVersion = .{ .major = 2, .minor = 0 };
 
 /// Serialized build configuration; decoded as the registered plugin's Config.
 pub const Configuration = struct { name: []const u8, json: []const u8 };
@@ -287,14 +287,57 @@ pub const Options = struct {
     }
 };
 
-/// One additional public file. The generator owns its package and imports.
-pub const File = struct {
+/// Document outputs run once with the full program. Package outputs run once
+/// per public package, with that package's function view and active_package.
+pub const OutputScope = enum { document, package };
+pub const GoPackage = enum { public, external_test, raw };
+pub const GoFileKind = enum { source, test_file };
+
+/// A framed Go body. The path is module-relative and must belong to the chosen
+/// package directory. Use goFilePathAlloc to construct it. Raw outputs require
+/// document scope; external_test outputs require test kind.
+pub const GoFile = struct {
+    enabled: ?*const fn (Context) anyerror!bool = null,
+    scope: OutputScope = .package,
+    package: GoPackage = .public,
+    kind: GoFileKind = .source,
+    /// Single-line ASCII Go build expression (up to 4096 bytes).
+    build_constraint: ?[]const u8 = null,
+    imports: ?*const fn (Context) anyerror![]const Import = null,
     pathAlloc: *const fn (Context) anyerror![]u8,
     render: *const fn (Context, *std.Io.Writer) anyerror!void,
 };
 
+/// Exact bytes, including empty output and trailing newlines. No Go framing,
+/// hooks, helper scan or automatic import inference applies, even for .go paths.
+pub const Artifact = struct {
+    enabled: ?*const fn (ArtifactContext) anyerror!bool = null,
+    scope: OutputScope = .document,
+    pathAlloc: *const fn (ArtifactContext) anyerror![]u8,
+    render: *const fn (ArtifactContext, *std.Io.Writer) anyerror!void,
+};
+
+pub const ArtifactContext = struct {
+    allocator: std.mem.Allocator,
+    program: abi.Program,
+    options: Options,
+    pub fn config(self: ArtifactContext, comptime P: Plugin) !P.Config {
+        return readConfig(P, self.allocator, self.options.configurations);
+    }
+    pub fn publicFilePathAlloc(self: ArtifactContext, filename: []const u8) ![]u8 {
+        return publicFilePathAllocImpl(self.allocator, self.program, self.options, filename);
+    }
+};
+
+pub fn goFilePathAlloc(allocator: std.mem.Allocator, program: abi.Program, options: Options, package: GoPackage, filename: []const u8) ![]u8 {
+    if (package != .raw) return publicFilePathAlloc(allocator, program, options, filename);
+    if (options.raw_package_path.len == 0 or std.mem.eql(u8, options.raw_package_path, ".")) return allocator.dupe(u8, filename);
+    return std.fmt.allocPrint(allocator, "{s}/{s}", .{ options.raw_package_path, filename });
+}
+const goFilePathAllocImpl = goFilePathAlloc;
+
 /// Module-relative path for a file in the currently rendered public package.
-/// Call from File.pathAlloc; the caller owns the returned allocation.
+/// Call from GoFile.pathAlloc or Artifact.pathAlloc; the caller owns the returned allocation.
 pub fn publicFilePathAlloc(allocator: std.mem.Allocator, program: abi.Program, options: Options, filename: []const u8) ![]u8 {
     const directory = if (options.go_package_path.len != 0)
         try allocator.dupe(u8, options.go_package_path)
@@ -429,6 +472,12 @@ pub const Context = struct {
         return self.writers.functionInfo(self, function);
     }
 
+    /// Path in this GoFile's selected package, or the public package in other hooks.
+    pub fn goFilePathAlloc(self: Context, filename: []const u8) ![]u8 {
+        const target = if (self.options.file) |file| if (file.go_file) |go| go.package else .public else .public;
+        return goFilePathAllocImpl(self.allocator, self.program, self.options, target, filename);
+    }
+
     pub fn publicFilePathAlloc(self: Context, filename: []const u8) ![]u8 {
         return publicFilePathAllocImpl(self.allocator, self.program, self.options, filename);
     }
@@ -517,9 +566,8 @@ pub const Plugin = struct {
     file_hook: ?*const fn (Context, *std.Io.Writer, FileInfo, FilePhase) anyerror!void = null,
     /// One contribution per package per render pass, in zigo_plugins_gen.go.
     package_hook: ?*const fn (Context, *std.Io.Writer) anyerror!void = null,
-    /// Whole public files this plugin adds. A file whose body comes out empty
-    /// is dropped, so an emitter that has nothing to say costs nothing.
-    files: []const File = &.{},
+    go_files: []const GoFile = &.{},
+    artifacts: []const Artifact = &.{},
 
     /// Non-standard imports the hooks may write, added where they are used.
     imports: []const Import = &.{},
@@ -538,6 +586,11 @@ pub fn ordered(comptime entries: []const Plugin) [entries.len]Plugin {
         for (entries, 0..) |entry, i| {
             if (entry.min_contract.major != contract_version.major or entry.min_contract.minor > contract_version.minor)
                 @compileError("incompatible plugin contract: " ++ entry.name);
+            for (entry.go_files) |file| {
+                if (file.package == .raw and file.scope != .document) @compileError("raw Go files require document scope: " ++ entry.name);
+                if (file.package == .external_test and file.kind != .test_file) @compileError("external test Go files require test kind: " ++ entry.name);
+                if (file.build_constraint) |constraint| if (!@import("plugin/build_constraint.zig").valid(constraint)) @compileError("invalid Go build constraint: " ++ entry.name);
+            }
             for (entries[0..i]) |previous| if (std.mem.eql(u8, previous.name, entry.name))
                 @compileError("duplicate plugin: " ++ entry.name);
             for (entry.requires) |name| {
@@ -644,6 +697,7 @@ test "plugin facts preserve typed validation results across copied declarations"
 
 pub const FilePhase = enum { begin, end };
 pub const FileInfo = struct {
+    go_file: ?GoFile = null,
     path: []const u8,
     owner: []const u8 = "generator",
     kind: enum { api, enums, structs, handles, runtime, errors, tagged_union, plugin, package },

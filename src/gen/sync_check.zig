@@ -1,5 +1,6 @@
 const std = @import("std");
 const go_walk = @import("go_walk.zig");
+const output_manifest = @import("output_manifest");
 
 pub const DifferenceKind = enum { missing, content, obsolete };
 pub const Difference = struct { kind: DifferenceKind, path: []const u8 };
@@ -27,17 +28,42 @@ pub const Result = struct {
     }
 };
 
-/// Compare only generated Go files. Other source files in go_dir belong to the
-/// consumer and are deliberately outside the check's scope.
+/// Compare tracked Go files and exact artifacts; untracked consumer files are ignored.
 pub fn compare(allocator: std.mem.Allocator, io: std.Io, generated: std.Io.Dir, go_dir: std.Io.Dir) !Result {
     var result: Result = .{};
     errdefer result.deinit(allocator);
-    var walker = try go_walk.walk(generated, allocator);
-    defer walker.deinit();
-    while (try walker.next(io)) |entry| {
-        if (entry.kind != .file or !std.mem.endsWith(u8, entry.path, ".go")) continue;
-        try compareFile(allocator, io, &result, generated, entry.path, go_dir, entry.path, entry.path);
+    const manifest = try output_manifest.read(allocator, io, generated);
+    defer if (manifest) |value| value.deinit();
+    const previous = try output_manifest.read(allocator, io, go_dir);
+    defer if (previous) |value| value.deinit();
+    if (manifest) |value| {
+        for (value.value.files) |file| if (file.publishable()) try compareFile(allocator, io, &result, generated, file.path, go_dir, file.path, file.path);
+    } else {
+        var walker = try go_walk.walk(generated, allocator);
+        defer walker.deinit();
+        while (try walker.next(io)) |entry| {
+            if (entry.kind != .file or !std.mem.endsWith(u8, entry.path, ".go")) continue;
+            try compareFile(allocator, io, &result, generated, entry.path, go_dir, entry.path, entry.path);
+        }
     }
+    if (previous) |value| for (value.value.files) |file| {
+        if (!file.publishable()) continue;
+        if (manifest) |current| {
+            if (current.value.contains(file.path)) continue;
+        } else {
+            if (generated.access(io, file.path, .{})) |_| {
+                continue;
+            } else |err| switch (err) {
+                error.FileNotFound => {},
+                else => return err,
+            }
+        }
+        go_dir.access(io, file.path, .{}) catch |err| switch (err) {
+            error.FileNotFound => continue,
+            else => return err,
+        };
+        try append(allocator, &result, .obsolete, file.path);
+    };
 
     var source_walker = try go_walk.walk(go_dir, allocator);
     defer source_walker.deinit();
@@ -48,7 +74,11 @@ pub fn compare(allocator: std.mem.Allocator, io: std.Io, generated: std.Io.Dir, 
             error.FileNotFound => {
                 const source = try go_dir.readFileAlloc(io, entry.path, allocator, read_limit);
                 defer allocator.free(source);
-                if (std.mem.startsWith(u8, source, generated_marker))
+                var listed = false;
+                for (result.differences.items) |difference| if (std.mem.eql(u8, difference.path, entry.path)) {
+                    listed = true;
+                };
+                if (!listed and std.mem.startsWith(u8, source, generated_marker))
                     try append(allocator, &result, .obsolete, entry.path);
             },
             else => return err,
@@ -196,4 +226,29 @@ test "sidecar file check reports a stale or missing semantic.json" {
     defer fresh.deinit(std.testing.allocator);
     try compareFile(std.testing.allocator, std.testing.io, &fresh, generated.dir, "semantic.json", source.dir, "semantic.json", "zigo/semantic.json");
     try std.testing.expect(fresh.matches());
+}
+
+test "manifest checks exact artifacts and prunes only owned outputs" {
+    var generated = std.testing.tmpDir(.{ .iterate = true });
+    defer generated.cleanup();
+    var source = std.testing.tmpDir(.{ .iterate = true });
+    defer source.cleanup();
+    const io = std.testing.io;
+    try generated.dir.writeFile(io, .{ .sub_path = output_manifest.filename, .data =
+        \\{"files":[{"path":"doc.md","kind":"artifact"},{"path":"tags.go","kind":"artifact"},{"path":"shim.zig","kind":"native"}]}
+    });
+    try source.dir.writeFile(io, .{ .sub_path = output_manifest.filename, .data =
+        \\{"files":[{"path":"obsolete.md","kind":"artifact"}]}
+    });
+    try generated.dir.writeFile(io, .{ .sub_path = "doc.md", .data = "exact\r\n" });
+    try generated.dir.writeFile(io, .{ .sub_path = "tags.go", .data = "//go:build ignore\n\n" });
+    try source.dir.writeFile(io, .{ .sub_path = "doc.md", .data = "edited" });
+    try source.dir.writeFile(io, .{ .sub_path = "obsolete.md", .data = "owned" });
+    try source.dir.writeFile(io, .{ .sub_path = "user.md", .data = "keep" });
+    var result = try compare(std.testing.allocator, io, generated.dir, source.dir);
+    defer result.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(usize, 3), result.differences.items.len);
+    try std.testing.expectEqual(DifferenceKind.content, result.differences.items[0].kind);
+    try std.testing.expectEqual(DifferenceKind.obsolete, result.differences.items[1].kind);
+    try std.testing.expectEqual(DifferenceKind.missing, result.differences.items[2].kind);
 }

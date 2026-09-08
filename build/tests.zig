@@ -54,6 +54,7 @@ pub fn addRepositorySteps(
             .{ .name = "naming", .module = generator_modules.naming },
             .{ .name = "semantic", .module = generator_modules.semantic },
             .{ .name = "abi", .module = generator_modules.abi },
+            .{ .name = "output_manifest", .module = generator_modules.output_manifest },
             .{ .name = "lower", .module = generator_modules.lower },
             .{ .name = "plugin", .module = generator_modules.plugin },
             .{ .name = "plugin_registry", .module = generator_modules.plugin_registry },
@@ -67,6 +68,7 @@ pub fn addRepositorySteps(
         .optimize = optimize,
         .imports = &.{
             .{ .name = "abi", .module = generator_modules.abi },
+            .{ .name = "output_manifest", .module = generator_modules.output_manifest },
             .{ .name = "lower", .module = generator_modules.lower },
             .{ .name = "naming", .module = generator_modules.naming },
             .{ .name = "diagnostic", .module = generator_modules.diagnostic },
@@ -85,6 +87,7 @@ pub fn addRepositorySteps(
         .imports = &.{
             .{ .name = "naming", .module = generator_modules.naming },
             .{ .name = "abi", .module = generator_modules.abi },
+            .{ .name = "output_manifest", .module = generator_modules.output_manifest },
             .{ .name = "lower", .module = generator_modules.lower },
             .{ .name = "semantic", .module = generator_modules.semantic },
         },
@@ -101,6 +104,7 @@ pub fn addRepositorySteps(
             // The plugin registry reaches the emitters a built-in plugin
             // writes through, so doctor's module carries the same graph the
             // generator does.
+            .{ .name = "output_manifest", .module = generator_modules.output_manifest },
             .{ .name = "lower", .module = generator_modules.lower },
             .{ .name = "naming", .module = generator_modules.naming },
             .{ .name = "plugin", .module = generator_modules.plugin },
@@ -338,7 +342,7 @@ pub fn addRepositorySteps(
         .{ .path = b.path("plugins/json/src/plugin.zig") },
         .{ .path = b.path("tests/plugins/wrappers.zig") },
     });
-    const contract_modules = modules.createGeneratorModules(b, b.path("src"), target, optimize, &.{ .{ .path = b.path("tests/plugins/transform_observer.zig") }, .{ .path = b.path("tests/plugins/contract.zig"), .config = "{\"label\":\"from-build\"}" } });
+    const contract_modules = modules.createGeneratorModules(b, b.path("src"), target, optimize, &.{ .{ .path = b.path("tests/plugins/transform_observer.zig") }, .{ .path = b.path("tests/plugins/contract.zig"), .config = "{\"label\":\"from-build\"}" }, .{ .path = b.path("tests/plugins/outputs.zig") } });
     const contract_tests = b.addTest(.{ .root_module = b.createModule(.{
         .root_source_file = b.path("tests/plugin_contract.zig"),
         .target = target,
@@ -348,11 +352,13 @@ pub fn addRepositorySteps(
             .{ .name = "plugin", .module = contract_modules.plugin },
             .{ .name = "contract", .module = contract_modules.plugin_registry.import_table.get("p1").? },
             .{ .name = "observer", .module = contract_modules.plugin_registry.import_table.get("p0").? },
+            .{ .name = "outputs", .module = contract_modules.plugin_registry.import_table.get("p2").? },
             .{ .name = "semantic", .module = contract_modules.semantic },
             .{ .name = "diagnostic", .module = contract_modules.diagnostic },
         },
     }) });
     test_step.dependOn(&b.addRunArtifact(contract_tests).step);
+    const output_cli = modules.addGeneratorWithModules(b, b.path("src/main.zig"), target, optimize, contract_modules);
     const transform_runner = b.addExecutable(.{ .name = "zigo-plugin-transform-case", .root_module = b.createModule(.{
         .root_source_file = b.path("tests/plugin_transform_main.zig"),
         .target = target,
@@ -363,6 +369,8 @@ pub fn addRepositorySteps(
         const generated = b.addRunArtifact(transform_runner);
         const output = generated.addOutputDirectoryArg(b.fmt("plugin-transform-{s}", .{backend}));
         generated.addArg(backend);
+        generated.addArtifactArg(output_cli);
+        generated.addFileArg(b.path("tests/plugin_transform/semantic.json"));
         const native = b.addTest(.{ .root_module = b.createModule(.{
             .root_source_file = b.path("tests/plugin_transform/roundtrip.zig"),
             .target = target,
@@ -396,17 +404,25 @@ pub fn addRepositorySteps(
         library_module.addCSourceFile(.{ .file = output.path(b, "panic.c"), .flags = &.{} });
         library_module.addIncludePath(output);
         const library = b.addLibrary(.{ .name = "custom", .root_module = library_module, .linkage = if (comptime std.mem.eql(u8, backend, "cgo")) .static else .dynamic });
-        const go_test = b.addSystemCommand(&.{"env"});
-        if (comptime std.mem.eql(u8, backend, "cgo"))
-            go_test.addPrefixedFileArg("CGO_LDFLAGS=", library.getEmittedBin())
-        else
-            go_test.addPrefixedFileArg("ZIGO_TEST_LIBRARY=", library.getEmittedBin());
-        go_test.addArgs(&.{ "go", "test", "-mod=mod", "./..." });
-        go_test.setCwd(output);
-        go_test.setName(b.fmt("plugin transformed {s} Go round trip", .{backend}));
-        test_step.dependOn(&go_test.step);
+        inline for (.{ "", "zigo_output_disabled" }) |tags| {
+            const go_test = b.addSystemCommand(&.{"env"});
+            if (comptime std.mem.eql(u8, backend, "cgo"))
+                go_test.addPrefixedFileArg("CGO_LDFLAGS=", library.getEmittedBin())
+            else
+                go_test.addPrefixedFileArg("ZIGO_TEST_LIBRARY=", library.getEmittedBin());
+            go_test.addArgs(&.{ "go", "test", "-mod=mod" });
+            if (tags.len != 0) go_test.addArgs(&.{ "-tags", tags });
+            go_test.addArg("./...");
+            go_test.setCwd(output);
+            go_test.setName(b.fmt("plugin transformed {s} Go round trip ({s})", .{ backend, tags }));
+            test_step.dependOn(&go_test.step);
+        }
     }
     inline for (.{
+        .{ "old-version", ".{ .name = \"BAD\", .min_contract = .{ .major = 1, .minor = 1 } }", "incompatible plugin contract: BAD" },
+        .{ "raw-scope", ".{ .name = \"BAD\", .go_files = &.{.{ .package = .raw, .pathAlloc = undefined, .render = undefined }} }", "raw Go files require document scope: BAD" },
+        .{ "external-kind", ".{ .name = \"BAD\", .go_files = &.{.{ .package = .external_test, .pathAlloc = undefined, .render = undefined }} }", "external test Go files require test kind: BAD" },
+        .{ "build-constraint", ".{ .name = \"BAD\", .go_files = &.{.{ .build_constraint = \"linux &&\", .pathAlloc = undefined, .render = undefined }} }", "invalid Go build constraint: BAD" },
         .{ "version", ".{ .name = \"BAD\", .min_contract = .{ .major = 99, .minor = 0 } }", "incompatible plugin contract: BAD" },
         .{ "duplicate", ".{ .name = \"A\" }, .{ .name = \"A\" }", "duplicate plugin: A" },
         .{ "dependency", ".{ .name = \"A\", .requires = &.{\"MISSING\"} }", "missing plugin dependency: A requires MISSING" },

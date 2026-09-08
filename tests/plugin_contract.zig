@@ -231,3 +231,7 @@ test "plugin preflight rejects disabled dependencies and malformed config before
         if (malformed) try std.testing.expectEqualStrings("CONTRACT001", issues.items[0].code);
     }
 }
+
+test {
+    _ = @import("plugin_outputs.zig");
+}

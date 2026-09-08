@@ -1,4 +1,5 @@
 const plugin = @import("plugin");
+const output_manifest = @import("output_manifest");
 const plugin_hooks = @import("emit/plugin_hooks.zig");
 const std = @import("std");
 const emit = @import("emit/emit.zig");
@@ -17,6 +18,8 @@ pub const CgoTarget = emit.Options.CgoTarget;
 pub const TargetLdflags = emit.Options.TargetLdflags;
 
 pub const Options = struct {
+    /// Emit ownership metadata for CLI formatting, publishing and checking.
+    write_manifest: bool = false,
     /// Optional failure details. Text is copied into the caller allocator;
     /// use an arena to release the list and its text together.
     diagnostics: ?*std.ArrayList(diagnostic.Diagnostic) = null,
@@ -62,6 +65,9 @@ pub const Options = struct {
 };
 
 const PreparedFile = struct {
+    verbatim: bool = false,
+    go_kind: ?plugin.GoFileKind = null,
+    go_directory: ?[]const u8 = null,
     owner: []const u8 = "generator",
     path: []const u8,
     contents: []const u8,
@@ -174,12 +180,28 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
     } else {
         try appendPublicPackage(scratch_allocator, &prepared, program, emitter_options);
     }
+    // Document outputs see the full program once. They never run in the
+    // package helper-discovery passes or inherit the last package's options.
+    var document_emitters: emit.PublicEmitters = .{ .scope = .document };
+    while (document_emitters.next()) |emitter| try appendEmitters(scratch_allocator, &prepared, program, emitter_options, &.{emitter});
+    try appendArtifacts(scratch_allocator, &prepared, program, emitter_options, .document);
     const serialized_lock = try lock.serialize(scratch_allocator);
     try prepared.append(scratch_allocator, .{ .path = "errors.lock.json", .contents = serialized_lock });
 
+    // Reserve metadata before validation so a plugin cannot overwrite it.
+    if (options.write_manifest) try prepared.append(scratch_allocator, .{ .path = output_manifest.filename, .contents = "", .verbatim = true });
     if (try outputPathIssue(scratch_allocator, prepared.items)) |issue| {
         if (options.diagnostics) |issues| try issues.append(allocator, try issue.clone(allocator));
         return error.InvalidOutputPath;
+    }
+
+    if (options.write_manifest) {
+        var files: std.ArrayList(output_manifest.File) = .empty;
+        for (prepared.items[0 .. prepared.items.len - 1]) |file| {
+            if (!file.verbatim and declaresNothing(file.path, file.contents)) continue;
+            try files.append(scratch_allocator, .{ .path = file.path, .kind = if (file.verbatim) .artifact else if (std.mem.endsWith(u8, file.path, ".go")) .go else .native });
+        }
+        prepared.items[prepared.items.len - 1].contents = try std.json.Stringify.valueAlloc(scratch_allocator, output_manifest.Document{ .files = files.items }, .{ .whitespace = .indent_2 });
     }
 
     // Do not mutate the output tree until parsing, validation, lowering, every
@@ -190,7 +212,7 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
         // package clause and no declarations, indistinguishable from a failed
         // generation. Every path here belongs to this run, so an earlier run's
         // copy is removed rather than left for `zigo check` to call obsolete.
-        if (declaresNothing(file.path, file.contents)) {
+        if (!file.verbatim and declaresNothing(file.path, file.contents)) {
             output.deleteFile(io, file.path) catch |err| switch (err) {
                 error.FileNotFound => {},
                 else => return err,
@@ -237,7 +259,10 @@ fn outputPathIssue(allocator: std.mem.Allocator, files: []PreparedFile) !?diagno
             else => return err,
         };
         file.path = normalized;
-        const entry = try paths.getOrPut(allocator, normalized);
+        // Output trees must also be unambiguous on case-insensitive file
+        // systems. Preserve spelling on disk, but compare portable path keys.
+        const path_key = try std.ascii.allocLowerString(allocator, normalized);
+        const entry = try paths.getOrPut(allocator, path_key);
         if (entry.found_existing) return .{
             .severity = .@"error",
             .code = "ZIGO059",
@@ -245,6 +270,22 @@ fn outputPathIssue(allocator: std.mem.Allocator, files: []PreparedFile) !?diagno
             .site = .{ .path = normalized, .declaration = file.owner },
             .hint = "give each emitter a unique public file path; use plugin.publicFilePathAlloc to include the active package",
         };
+        if (file.go_kind) |kind| {
+            const expected_directory = file.go_directory.?;
+            // Normalize a sentinel path so the root directory remains representable.
+            const probe = try normalizeOutputPath(allocator, try std.fmt.allocPrint(allocator, "{s}/_.go", .{expected_directory}));
+            const directory = std.fs.path.dirname(probe) orelse ".";
+            const actual_directory = std.fs.path.dirname(normalized) orelse ".";
+            if (!std.mem.endsWith(u8, normalized, ".go") or
+                (std.mem.endsWith(u8, normalized, "_test.go") != (kind == .test_file)) or
+                !std.mem.eql(u8, directory, actual_directory)) return .{
+                .severity = .@"error",
+                .code = "ZIGO059",
+                .message = try std.fmt.allocPrint(allocator, "Go file `{s}` does not match its package directory or source/test kind", .{normalized}),
+                .site = .{ .path = normalized, .declaration = file.owner },
+                .hint = "use context.goFilePathAlloc and a .go filename (_test.go only for test_file); use artifacts for other formats",
+            };
+        }
         entry.value_ptr.* = index;
     }
     return null;
@@ -252,6 +293,7 @@ fn outputPathIssue(allocator: std.mem.Allocator, files: []PreparedFile) !?diagno
 
 fn appendEmitters(allocator: std.mem.Allocator, prepared: *std.ArrayList(PreparedFile), program: abi.Program, options: emit.Options, emitters: []const emit.Emitter) !void {
     for (emitters) |emitter| {
+        if (emitter.enabled) |enabled| if (!try enabled(allocator, program, options)) continue;
         const relative_path = try emitter.pathAlloc(allocator, program, options);
         var rendered: std.Io.Writer.Allocating = .init(allocator);
         defer rendered.deinit();
@@ -265,11 +307,41 @@ fn appendEmitters(allocator: std.mem.Allocator, prepared: *std.ArrayList(Prepare
             rendered.writer.writeByte('\n') catch return error.OutOfMemory;
         }
         try prepared.append(allocator, .{
+            .go_kind = if (emitter.go_file) |file| file.kind else null,
+            .go_directory = if (emitter.go_file) |file| blk: {
+                const example = try plugin.goFilePathAlloc(allocator, program, options, file.package, "_.go");
+                break :blk std.fs.path.dirname(example) orelse ".";
+            } else null,
             .path = relative_path,
             .contents = try rendered.toOwnedSlice(),
             .owner = try std.fmt.allocPrint(allocator, "{s} (package {s})", .{ emitter.owner, if (options.go_package.len != 0) options.go_package else program.package }),
         });
     }
+}
+
+fn appendArtifacts(allocator: std.mem.Allocator, prepared: *std.ArrayList(PreparedFile), program: abi.Program, options: emit.Options, scope: plugin.OutputScope) !void {
+    const registry = @import("plugins/registry.zig");
+    inline for (registry.plugins, 0..) |registered, index| {
+        if (registry.runs(index, options.plugins)) inline for (registered.artifacts) |artifact| {
+            if (artifact.scope == scope) {
+                const context: plugin.ArtifactContext = .{ .allocator = allocator, .program = program, .options = options };
+                if (artifact.enabled) |predicate| {
+                    if (try predicate(context)) try appendArtifact(allocator, prepared, context, registered.name, artifact);
+                } else try appendArtifact(allocator, prepared, context, registered.name, artifact);
+            }
+        };
+    }
+}
+
+fn appendArtifact(allocator: std.mem.Allocator, prepared: *std.ArrayList(PreparedFile), context: plugin.ArtifactContext, owner: []const u8, artifact: plugin.Artifact) !void {
+    const path = try artifact.pathAlloc(context);
+    var body: std.Io.Writer.Allocating = .init(allocator);
+    defer body.deinit();
+    artifact.render(context, &body.writer) catch |err| switch (err) {
+        error.WriteFailed => return error.OutOfMemory,
+        else => return err,
+    };
+    try prepared.append(allocator, .{ .path = path, .contents = try body.toOwnedSlice(), .owner = owner, .verbatim = true });
 }
 
 /// The public-package emitters, the built-in files and the plugin files
@@ -292,6 +364,7 @@ fn appendPublicPackage(allocator: std.mem.Allocator, prepared: *std.ArrayList(Pr
     var package_options = options;
     package_options.helpers = &referenced;
     try appendPublicEmitters(allocator, prepared, program, package_options);
+    try appendArtifacts(allocator, prepared, program, package_options, .package);
     // The tagged-union files are not in the emitter table: how many there are
     // depends on the bindings, so they are rendered per union.
     for (try emit.unionFilesAlloc(allocator, program, package_options)) |file| {

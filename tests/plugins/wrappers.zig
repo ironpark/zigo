@@ -8,7 +8,7 @@ pub const plugin: api.Plugin = .{
     .name = "WRAPTEST",
     .targets = &.{.function},
     .method_hook = methodHook,
-    .files = &.{.{ .pathAlloc = path, .render = helpers }},
+    .go_files = &.{.{ .pathAlloc = path, .render = helpers }},
 };
 
 fn methodHook(context: api.Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
