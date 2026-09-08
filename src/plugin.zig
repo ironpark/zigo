@@ -103,7 +103,7 @@ pub const TransformContext = struct {
     pub fn diagnose(self: TransformContext, issue: diagnostic.Diagnostic) !void {
         try self.diagnostics.append(self.allocator, issue);
     }
-    pub fn optionsOf(self: TransformContext, comptime P: Plugin, comptime attachment: enum { function, type }, ext: ?semantic.Extensions) !?(if (attachment == .function) P.FunctionOptions else P.TypeOptions) {
+    pub fn optionsOf(self: TransformContext, comptime P: Plugin, comptime attachment: Attachment, ext: ?semantic.Extensions) !?(if (attachment == .function) P.FunctionOptions else P.TypeOptions) {
         return readOptions(P, attachment, self.allocator, ext);
     }
 
@@ -134,6 +134,8 @@ pub const TypeUse = union(enum) {
     result: semantic.SemanticFn,
 };
 
+pub const Attachment = enum { function, type };
+
 pub const ValidateContext = struct {
     allocator: std.mem.Allocator,
     document: semantic.Semantic,
@@ -149,7 +151,7 @@ pub const ValidateContext = struct {
         return readConfig(P, self.allocator, self.configurations);
     }
 
-    pub fn optionsOf(self: ValidateContext, comptime P: Plugin, comptime attachment: enum { function, type }, ext: ?semantic.Extensions) !?(if (attachment == .function) P.FunctionOptions else P.TypeOptions) {
+    pub fn optionsOf(self: ValidateContext, comptime P: Plugin, comptime attachment: Attachment, ext: ?semantic.Extensions) !?(if (attachment == .function) P.FunctionOptions else P.TypeOptions) {
         return readOptions(P, attachment, self.allocator, ext);
     }
 };
@@ -504,7 +506,7 @@ pub fn optionsCode(comptime P: anytype) []const u8 {
 /// `P`'s options on a declaration, or null when the declaration did not
 /// extend `P`. The result is allocated from `allocator` and never freed
 /// individually: the generator backs it with the arena that owns the run.
-pub fn readOptions(comptime P: anytype, comptime attachment: enum { function, type }, allocator: std.mem.Allocator, ext: ?semantic.Extensions) !?(if (attachment == .function) P.FunctionOptions else P.TypeOptions) {
+pub fn readOptions(comptime P: anytype, comptime attachment: Attachment, allocator: std.mem.Allocator, ext: ?semantic.Extensions) !?(if (attachment == .function) P.FunctionOptions else P.TypeOptions) {
     const attached = (ext orelse return null).get(P.name) orelse return null;
     return std.json.parseFromValueLeaky(if (attachment == .function) P.FunctionOptions else P.TypeOptions, allocator, attached, .{}) catch return error.InvalidPluginOptions;
 }
@@ -702,3 +704,20 @@ pub const FileInfo = struct {
     owner: []const u8 = "generator",
     kind: enum { api, enums, structs, handles, runtime, errors, tagged_union, plugin, package },
 };
+
+test "validation and transformation contexts read both declaration option types" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const p: Plugin = .{ .name = "LOOKUP", .FunctionOptions = struct { enabled: bool }, .TypeOptions = struct { enabled: bool } };
+    const options = try std.json.parseFromSliceLeaky(std.json.Value, allocator, "{\"enabled\":true}", .{});
+    const value: semantic.Extensions = .{ .entries = &.{.{ .plugin = "LOOKUP", .options = options }} };
+    var issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
+    var facts: Facts = .{};
+    const validate: ValidateContext = .{ .allocator = allocator, .document = .{ .package = "test", .prefix = "test", .zig_version = "0.16.0", .types = &.{}, .functions = &.{} }, .diagnostics = &issues, .facts = &facts };
+    const transform: TransformContext = .{ .allocator = allocator, .document = validate.document, .diagnostics = &issues };
+    inline for (.{ Attachment.function, Attachment.type }) |attachment| {
+        try std.testing.expect((try validate.optionsOf(p, attachment, value)).?.enabled);
+        try std.testing.expect((try transform.optionsOf(p, attachment, value)).?.enabled);
+    }
+}
