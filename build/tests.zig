@@ -615,6 +615,16 @@ fn addProcessContractTests(b: *std.Build, test_step: *std.Build.Step, generator:
     purego_doctor.expectStdOutMatch("is missing; run `zig build go-lib`");
     test_step.dependOn(&purego_doctor.step);
 
+    // Exercise addGoBindings' declaration graph, not only the generator graph:
+    // taking an external emitter's function pointer analyzes its helper imports.
+    const plugin_path = b.addSystemCommand(&.{ b.graph.zig_exe, "build", "report", "--summary", "none" });
+    plugin_path.setName("external plugin path helper survives reflection");
+    plugin_path.setCwd(b.path("tests/fixtures/plugin-path"));
+    plugin_path.has_side_effects = true;
+    plugin_path.expectExitCode(0);
+    plugin_path.expectStdOutMatch("ping -> Ping");
+    test_step.dependOn(&plugin_path.step);
+
     const invalid_project = b.addSystemCommand(&.{ b.graph.zig_exe, "build", "go", "--summary", "none" });
     invalid_project.setName("invalid project contract (ZIGO036)");
     invalid_project.setCwd(b.path("tests/fixtures/invalid-project"));

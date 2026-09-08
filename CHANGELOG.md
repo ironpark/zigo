@@ -4,6 +4,13 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Fixed
+
+- 외부 플러그인이 `publicFilePathAlloc`을 참조하면 reflect 단계에서 `naming` 모듈을
+  찾지 못하던 문제를 수정했습니다. 선언 측 플러그인 모듈에도 해당 의존성을 연결합니다.
+
 ## [0.19.4] - 2026-09-08
 
 ### Added

@@ -420,6 +420,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
             .{ .name = "abi", .module = abi_declaration_module },
             .{ .name = "semantic", .module = semantic_module },
             .{ .name = "diagnostic", .module = diagnostic_declaration_module },
+            .{ .name = "naming", .module = naming_module },
         },
     });
     // The reflected module is the caller's, retargeted to the host. Its
