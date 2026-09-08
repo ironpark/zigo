@@ -259,7 +259,7 @@ fn typeOffense(allocator: std.mem.Allocator, node: semantic.TypeNode, promotable
         .optional => |value| {
             if (!promotable) return Offense{ .node = node };
             return switch (value.child.*) {
-                .bool, .@"enum", .value_struct => null,
+                .bool, .@"enum", .value_struct, .materialized => null,
                 .int => |integer| if (integerSupported(integer) or promotableInteger(integer))
                     null
                 else

@@ -449,12 +449,26 @@ pub const bindings = zigo.define(.{
 | 중첩 materialized struct, `*const T` | 값 또는 `*T` |
 | `?scalar`, `?[]const u8`, `?ExternStruct`, `?Node`, `?*const Node` | `*T`; nil이 없음 |
 
-optional slice(`?[]T`)와 optional 원소(`[]?T`), 순환, 일반 struct, opaque pointer, callback,
+트리 내부 필드의 optional slice(`?[]T`)와 optional 원소(`[]?T`), 순환, 일반 struct, opaque pointer, callback,
 union은 `ZIGO048`과 해당 field path로 거부됩니다. 버퍼 형식은 [Materialized 버퍼 ABI](abi.md)에
 있습니다.
 
 위 예제는 `probeMany`가 `Result`를 반환하고 `release`가 버퍼를 해제하는 라이브러리를
 가정합니다. 실행 가능한 전체 구현은 [12-materialized](../examples/12-materialized)에 있습니다.
+
+최상위 `?T`·`!?T` materialized 반환과 `?[]T`·`!?[]T`도 지원합니다.
+Go에는 값·존재 여부·필요한 경우 오류가 반환됩니다. handle의 next 메서드에는
+기존 iterator 기능을 그대로 붙일 수 있습니다.
+
+```zig
+Cursor.func("next", .{
+    .returns = zigo.result.releasedBy(api.ref("release")),
+}).use(zigo.features.iterator, .{ .name = "Values" }),
+```
+
+`next`가 `?Event` 또는 `!?Event`를 반환하면 `Next() (Event, bool, error)`와
+`Values() iter.Seq2[Event, error]`가 생성됩니다. 값 없음은 순회를 끝내고,
+오류는 한 번 yield한 뒤 끝냅니다. 중간에 `break`해도 이미 반환된 전송 버퍼는 해제되어 있습니다.
 
 `.contract = .{ .buffer = .{ .output = .{} } }`인 `[]T` 파라미터는 `.written = .result`와 함께 사용할 수 있습니다.
 Go slice의 capacity만 native에 전달하고 Zig 임시 slice에 결과를 만든 뒤 작성된 prefix 전체를

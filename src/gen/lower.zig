@@ -341,7 +341,7 @@ pub fn semanticDocumentForBackend(
         const caller_owned_c_string = function.ownership == .caller and function.release != null and
             returnContainsCStringSlice(function.@"return", function.return_semantic);
         const return_scalar = if (materialized_return) |materialized| result: {
-            try appendMaterializedReturnOuts(allocator, &params);
+            try appendMaterializedReturnOuts(allocator, &params, materialized.optional);
             if (materialized.fallible) {
                 function_errors = try codesFor(allocator, function.@"return".error_union.error_set, error_codes);
                 break :result abi.AbiScalar{ .signed_int = 32 };
@@ -357,7 +357,7 @@ pub fn semanticDocumentForBackend(
                     .scalar = .{ .pointer = .{ .child = count, .is_const = false } },
                 });
             }
-            try appendMaterializedReturnOuts(allocator, &params);
+            try appendMaterializedReturnOuts(allocator, &params, false);
             if (output.fallible) {
                 function_errors = try codesFor(allocator, function.@"return".error_union.error_set, error_codes);
                 break :result abi.AbiScalar{ .signed_int = 32 };
@@ -490,7 +490,7 @@ pub fn semanticDocumentForBackend(
                 null,
             // A slice optional carries absence in its own pointer, so it
             // takes none of the presence machinery a scalar one needs.
-            .ret_optional = function.@"return" == .optional and function.@"return".optional.child.* != .slice,
+            .ret_optional = materialized_return == null and function.@"return" == .optional and function.@"return".optional.child.* != .slice,
             .payload_struct = if (function.@"return" == .error_union and
                 function.@"return".error_union.payload.* == .value_struct and
                 !semantic.isPackedValue(document.types, function.@"return".error_union.payload.*))
@@ -2880,4 +2880,40 @@ test "lowering pairs a named userdata parameter with its callback" {
     try std.testing.expectEqual(@as(?usize, 1), reduce.userdataFor(0));
     try std.testing.expectEqual(@as(?usize, null), reduce.userdataFor(1));
     try std.testing.expectEqual(@as(?usize, null), reduce.userdataFor(2));
+}
+
+test "optional materialized returns use nullable buffer outputs rather than scalar presence" {
+    var node: semantic.TypeNode = .{ .materialized = .{ .ref = "Node" } };
+    var slice: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &node } };
+    var byte: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
+    for ([_]*semantic.TypeNode{ &node, &slice }) |child| {
+        var optional: semantic.TypeNode = .{ .optional = .{ .child = child } };
+        for ([_]bool{ false, true }) |fallible| {
+            var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+            defer arena.deinit();
+            const document: semantic.Semantic = .{
+                .allocator = "std.heap.smp_allocator",
+                .package = "tree",
+                .prefix = "zg",
+                .zig_version = "0.16.0",
+                .functions = &.{
+                    .{ .name = "next", .ownership = .caller, .release = "free", .params = &.{}, .@"return" = if (fallible) .{ .error_union = .{ .payload = &optional, .error_set = &.{"Failed"} } } else optional, .symbol = "zg_next" },
+                    .{ .name = "free", .params = &.{.{ .name = "buffer", .type = .{ .slice = .{ .@"const" = false, .element = &byte } } }}, .@"return" = .{ .void = {} }, .symbol = "zg_free" },
+                },
+                .types = &.{.{ .name = "Node", .zig_path = "Node", .kind = .materialized, .materialized_version = 1, .fields = &.{.{ .name = "value", .type = byte }} }},
+            };
+            const codes = try provisionalErrorCodesAlloc(arena.allocator(), document);
+            const program = try semanticDocument(arena.allocator(), document, "tree", "zg", codes);
+            const function = program.functions[0];
+            try std.testing.expect(function.materialized_return.?.optional);
+            try std.testing.expectEqual(fallible, function.materialized_return.?.fallible);
+            try std.testing.expectEqual(child == &slice, function.materialized_return.?.is_slice);
+            try std.testing.expect(!function.ret_optional);
+            try std.testing.expect(function.ownership.buffer.absent);
+            try std.testing.expectEqual(@as(usize, 2), function.params.len);
+            try std.testing.expectEqual(abi.AbiParam.Role.return_slice_pointer, function.params[0].role);
+            try std.testing.expect(function.params[0].scalar.pointer.child.pointer.is_optional);
+            try std.testing.expectEqual(abi.AbiParam.Role.return_slice_length, function.params[1].role);
+        }
+    }
 }

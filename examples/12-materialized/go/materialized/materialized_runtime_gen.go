@@ -15,3 +15,10 @@ func zigoCheckedPointer(operation string, value zigoHandle) (unsafe.Pointer, err
 func zigoPoisonAfterPanic(err error, handles ...zigoHandle) error {
 	return lifecycle.PoisonAfterPanic(err, handles...)
 }
+
+func zigoBoolToUint8(value bool) uint8 {
+	if value {
+		return 1
+	}
+	return 0
+}

@@ -145,6 +145,16 @@ fn writePublicMaterializedRelease(
     try writer.print("{s}({s}{s})\n", .{ release_name, if (release.receiver != null) "ptr, " else "", buffer_name });
 }
 
+fn writePublicMaterializedAbsent(scope: public_writers.PublicScope, writer: *std.Io.Writer, function: abi.AbiFn, needs_check: bool) !void {
+    const materialized = function.materialized_return orelse return;
+    if (!materialized.optional) return;
+    try writer.writeAll("\tif !zigoHas {\n\t\treturn ");
+    try public_writers.writeGoZeroValue(scope, writer, function.origin.@"return".errorPayload().optional.child.*);
+    try writer.writeAll(", false");
+    if (materialized.fallible or needs_check) try writer.writeAll(", nil");
+    try writer.writeAll("\n\t}\n");
+}
+
 fn writePublicCapturedReturn(scope: public_writers.PublicScope, writer: *std.Io.Writer, program: abi.Program, function: semantic.SemanticFn, needs_handle_check: bool) !void {
     try writer.writeAll("\treturn ");
     if (function.return_go_adapter) |adapter| try writer.print("{s}(", .{adapter.from_raw});
@@ -476,7 +486,7 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
         // A callback panic is rethrown after the call, so a call that can reach
         // one cannot be the return expression itself.
         const needs_rethrow = public_writers.functionReachesCallbacks(program, function.origin.*);
-        const captures_return = !returns_error and !borrowed_direct and !owned_direct and
+        const captures_return = !returns_error and !borrowed_direct and !owned_direct and function.origin.@"return" != .optional and
             (hasOutValueStructSlice(function.origin.*) or function.materialized_out != null or function.materialized_return != null or needs_rethrow) and function.origin.@"return" != .void;
         if (returns_error) {
             if (function.materialized_out != null)
@@ -667,7 +677,8 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
         if (!returns_error and hasOutValueStructSlice(function.origin.*)) {
             try writePublicValueStructSliceCopyBacks(writer, program, function.origin.*, go_names);
         }
-        if (!returns_error) try writePublicMaterializedRelease(allocator, writer, program, options, function, if (function.materialized_out != null) "zigoBuffer" else "result");
+        if (!returns_error) try writePublicMaterializedAbsent(scope, writer, function, needs_check);
+        if (!returns_error) try writePublicMaterializedRelease(allocator, writer, program, options, function, if (function.materialized_out != null) "zigoBuffer" else if (function.origin.@"return" == .optional) "zigoResult" else "result");
         if (!returns_error and function.materialized_out != null)
             try writePublicMaterializedOutCopy(writer, function, go_names);
         if (!returns_error and function.origin.@"return" == .optional) {
@@ -732,6 +743,7 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
             if (hasOutValueStructSlice(function.origin.*)) {
                 try writePublicValueStructSliceCopyBacks(writer, program, function.origin.*, go_names);
             }
+            try writePublicMaterializedAbsent(scope, writer, function, needs_check);
             try writePublicMaterializedRelease(allocator, writer, program, options, function, if (function.materialized_out != null) "zigoBuffer" else "result");
             if (function.materialized_out != null)
                 try writePublicMaterializedOutCopy(writer, function, go_names);

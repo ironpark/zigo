@@ -63,13 +63,22 @@ var ErrLibraryLoad = raw.ErrLibraryLoad
 // ErrInvalid represents Zig error.Invalid.
 var ErrInvalid = &Error{Code: 1, Name: "Invalid"}
 
+// ErrOutOfMemory represents Zig error.OutOfMemory.
+var ErrOutOfMemory = &Error{Code: 2, Name: "OutOfMemory"}
+
+var zigoErrorNames = [2]string{
+	0: "Invalid",
+	1: "OutOfMemory",
+}
+
 func zigoErrorForCode(operation string, code int32) error {
 	if code <= -256 {
 		return &NativePanicError{Operation: operation, Message: raw.PanicMessage(code)}
 	}
-	switch code {
-	case 1:
-		return &Error{Code: code, Name: "Invalid", Operation: operation}
+	if code >= 1 && code <= 2 {
+		if name := zigoErrorNames[code-1]; name != "" {
+			return &Error{Code: code, Name: name, Operation: operation}
+		}
 	}
 	return &Error{Code: code, Name: "Unknown(" + strconv.Itoa(int(code)) + ")", Operation: operation}
 }

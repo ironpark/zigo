@@ -5,6 +5,11 @@
       "deinit": "deinit",
       "init": "create",
       "type": "LegacyProbe"
+    },
+    {
+      "deinit": "deinit",
+      "init": "create",
+      "type": "Cursor"
     }
   ],
   "functions": [
@@ -21,7 +26,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 88,
+        "line": 95,
         "column": 12
       },
       "symbol": "zg_legacy_leaf_value"
@@ -37,7 +42,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 97,
+            "line": 104,
             "column": 19
           },
           "type": {
@@ -62,7 +67,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 97,
+        "line": 104,
         "column": 12
       },
       "symbol": "zg_legacy_probe_create"
@@ -80,7 +85,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 104,
+        "line": 111,
         "column": 12
       },
       "symbol": "zg_legacy_probe_id"
@@ -95,7 +100,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 108,
+        "line": 115,
         "column": 12
       },
       "symbol": "zg_legacy_probe_active"
@@ -114,7 +119,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 112,
+        "line": 119,
         "column": 12
       },
       "symbol": "zg_legacy_probe_child"
@@ -129,10 +134,321 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 116,
+        "line": 123,
         "column": 12
       },
       "symbol": "zg_legacy_probe_deinit"
+    },
+    {
+      "name": "create",
+      "namespace": "Cursor",
+      "ownership": "caller",
+      "params": [
+        {
+          "direction": "in",
+          "name": "limit",
+          "name_source": "ast",
+          "retention": "borrowed",
+          "source": {
+            "line": 147,
+            "column": 19
+          },
+          "type": {
+            "bits": 32,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        },
+        {
+          "direction": "in",
+          "name": "fail_at",
+          "name_source": "ast",
+          "retention": "borrowed",
+          "source": {
+            "line": 147,
+            "column": 31
+          },
+          "type": {
+            "bits": 32,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "return": {
+        "error_set": [
+          "OutOfMemory"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "const": false,
+          "kind": "opaque_ptr",
+          "nullable": false,
+          "ref": "Cursor"
+        }
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 147,
+        "column": 12
+      },
+      "symbol": "zg_cursor_create"
+    },
+    {
+      "iterator": {
+        "name": "All"
+      },
+      "name": "next",
+      "ownership": "caller",
+      "params": [],
+      "receiver": "Cursor",
+      "release": "release",
+      "return": {
+        "child": {
+          "kind": "materialized",
+          "ref": "Probe"
+        },
+        "kind": "optional"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 153,
+        "column": 12
+      },
+      "symbol": "zg_cursor_next"
+    },
+    {
+      "iterator": {
+        "name": "Checked"
+      },
+      "name": "nextChecked",
+      "ownership": "caller",
+      "params": [],
+      "receiver": "Cursor",
+      "release": "release",
+      "return": {
+        "error_set": [
+          "Invalid"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "child": {
+            "kind": "materialized",
+            "ref": "Probe"
+          },
+          "kind": "optional"
+        }
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 159,
+        "column": 12
+      },
+      "symbol": "zg_cursor_next_checked"
+    },
+    {
+      "name": "count",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Cursor",
+      "return": {
+        "bits": 32,
+        "is_usize": false,
+        "kind": "int",
+        "signed": false
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 164,
+        "column": 12
+      },
+      "symbol": "zg_cursor_count"
+    },
+    {
+      "name": "deinit",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Cursor",
+      "return": {
+        "kind": "void"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 168,
+        "column": 12
+      },
+      "symbol": "zg_cursor_deinit"
+    },
+    {
+      "name": "optionalSnapshot",
+      "ownership": "caller",
+      "params": [
+        {
+          "direction": "in",
+          "name": "present",
+          "name_source": "ast",
+          "retention": "borrowed",
+          "source": {
+            "line": 173,
+            "column": 25
+          },
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "release": "release",
+      "return": {
+        "child": {
+          "kind": "materialized",
+          "ref": "Probe"
+        },
+        "kind": "optional"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 173,
+        "column": 8
+      },
+      "symbol": "zg_optional_snapshot"
+    },
+    {
+      "name": "optionalBatch",
+      "ownership": "caller",
+      "params": [
+        {
+          "direction": "in",
+          "name": "present",
+          "name_source": "ast",
+          "retention": "borrowed",
+          "source": {
+            "line": 177,
+            "column": 22
+          },
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "direction": "in",
+          "name": "empty",
+          "name_source": "ast",
+          "retention": "borrowed",
+          "source": {
+            "line": 177,
+            "column": 37
+          },
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "release": "release",
+      "return": {
+        "child": {
+          "const": true,
+          "element": {
+            "kind": "materialized",
+            "ref": "Probe"
+          },
+          "kind": "slice"
+        },
+        "kind": "optional"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 177,
+        "column": 8
+      },
+      "symbol": "zg_optional_batch"
+    },
+    {
+      "name": "optionalBatchChecked",
+      "ownership": "caller",
+      "params": [
+        {
+          "direction": "in",
+          "name": "present",
+          "name_source": "ast",
+          "retention": "borrowed",
+          "source": {
+            "line": 181,
+            "column": 29
+          },
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "direction": "in",
+          "name": "empty",
+          "name_source": "ast",
+          "retention": "borrowed",
+          "source": {
+            "line": 181,
+            "column": 44
+          },
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "direction": "in",
+          "name": "fail",
+          "name_source": "ast",
+          "retention": "borrowed",
+          "source": {
+            "line": 181,
+            "column": 57
+          },
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "release": "release",
+      "return": {
+        "error_set": [
+          "Invalid"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "child": {
+            "const": true,
+            "element": {
+              "kind": "materialized",
+              "ref": "Probe"
+            },
+            "kind": "slice"
+          },
+          "kind": "optional"
+        }
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 181,
+        "column": 8
+      },
+      "symbol": "zg_optional_batch_checked"
+    },
+    {
+      "name": "releasedBuffers",
+      "ownership": "borrowed",
+      "params": [],
+      "return": {
+        "bits": 32,
+        "is_usize": false,
+        "kind": "int",
+        "signed": false
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 83,
+        "column": 8
+      },
+      "symbol": "zg_released_buffers"
     },
     {
       "name": "snapshot",
@@ -228,7 +544,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 130,
+        "line": 137,
         "column": 8
       },
       "symbol": "zg_wire_version"
@@ -243,7 +559,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 81,
+            "line": 87,
             "column": 16
           },
           "type": {
@@ -263,7 +579,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 81,
+        "line": 87,
         "column": 8
       },
       "symbol": "zg_release"
@@ -598,6 +914,13 @@
       "kind": "opaque",
       "name": "LegacyProbe",
       "zig_path": "root.LegacyProbe"
+    },
+    {
+      "exhaustive": true,
+      "fields": [],
+      "kind": "opaque",
+      "name": "Cursor",
+      "zig_path": "root.Cursor"
     }
   ],
   "zig_version": "0.16.0"

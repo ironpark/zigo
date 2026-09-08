@@ -116,6 +116,7 @@ pub fn ownershipOf(
             .release_function = &source_functions[release.index],
             .release_receiver_c_name = receiver_c_name,
             .materialized = value.layout,
+            .absent = payload == .optional,
             .fallible = value.fallible,
         } };
         const element = releasableSliceReturnElement(function) orelse return .none;

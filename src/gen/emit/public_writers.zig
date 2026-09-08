@@ -372,8 +372,10 @@ fn writeRawResultType(writer: *std.Io.Writer, program: abi.Program, node: semant
 pub fn writeRawReturnType(writer: *std.Io.Writer, program: abi.Program, function: abi.AbiFn) !void {
     if ((function.ret_string == .c_string)) return writer.writeAll(" string");
     const text = rawReturnsUtf8String(function);
-    if (function.materialized_return) |materialized|
+    if (function.materialized_return) |materialized| {
+        if (materialized.optional) return writer.writeAll(if (materialized.fallible) " ([]byte, bool, int32)" else " ([]byte, bool)");
         return writer.writeAll(if (materialized.fallible) " ([]byte, int32)" else " []byte");
+    }
     if (function.materialized_out) |output| {
         try writer.writeAll(" ([]byte, ");
         try writeRawGoType(writer, program, function.origin.@"return".errorPayload());

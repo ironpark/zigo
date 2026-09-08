@@ -78,7 +78,14 @@ pub fn fill(output: []Probe) usize {
     return count;
 }
 
+var released_buffers: u32 = 0;
+
+pub fn releasedBuffers() u32 {
+    return released_buffers;
+}
+
 pub fn release(buffer: []u8) void {
+    released_buffers += 1;
     std.heap.c_allocator.free(buffer);
 }
 
@@ -129,4 +136,49 @@ test "materialized sources expose the same tree in every position" {
 /// Reports the materialized wire format used by this example.
 pub fn wireVersion() u32 {
     return 1;
+}
+
+/// A bounded source used to demonstrate optional materialized iteration.
+pub const Cursor = struct {
+    position: u32 = 0,
+    limit: u32,
+    fail_at: u32,
+
+    pub fn create(limit: u32, fail_at: u32) error{OutOfMemory}!*Cursor {
+        const self = try std.heap.c_allocator.create(Cursor);
+        self.* = .{ .limit = limit, .fail_at = fail_at };
+        return self;
+    }
+
+    pub fn next(self: *Cursor) ?Probe {
+        if (self.position == self.limit) return null;
+        self.position += 1;
+        return probe;
+    }
+
+    pub fn nextChecked(self: *Cursor) error{Invalid}!?Probe {
+        if (self.position == self.fail_at) return error.Invalid;
+        return self.next();
+    }
+
+    pub fn count(self: *const Cursor) u32 {
+        return self.position;
+    }
+
+    pub fn deinit(self: *Cursor) void {
+        std.heap.c_allocator.destroy(self);
+    }
+};
+
+pub fn optionalSnapshot(present: bool) ?Probe {
+    return if (present) probe else null;
+}
+
+pub fn optionalBatch(present: bool, empty: bool) ?[]const Probe {
+    return if (!present) null else if (empty) corpus[0..0] else &corpus;
+}
+
+pub fn optionalBatchChecked(present: bool, empty: bool, fail: bool) error{Invalid}!?[]const Probe {
+    if (fail) return error.Invalid;
+    return optionalBatch(present, empty);
 }

@@ -54,3 +54,6 @@ type Error = lifecycle.Error
 
 // ErrInvalid represents Zig error.Invalid.
 var ErrInvalid = &Error{Code: 1, Name: "Invalid"}
+
+// ErrOutOfMemory represents Zig error.OutOfMemory.
+var ErrOutOfMemory = &Error{Code: 2, Name: "OutOfMemory"}

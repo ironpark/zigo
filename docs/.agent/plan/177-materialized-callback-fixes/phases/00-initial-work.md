@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-08T04:14:19Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Tests verify exact release targets, invalid release diagnostics, and callback registration lifecycle on both backends; full tests pass and changes are committed.
 > NEXT: none

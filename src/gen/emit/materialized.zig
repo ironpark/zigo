@@ -21,9 +21,13 @@ pub fn writeMaterializedReturn(
     try writer.writeAll("const result = ");
     try shim.writeTargetCall(allocator, writer, program, function);
     if (materialized.fallible) try shim.writeShimErrorCatch(writer, function) else try writer.writeAll(";\n");
+    if (materialized.optional) try writer.print(
+        "    if (result == null) {{\n        out_result_ptr.* = null;\n        out_result_len.* = 0;\n        return{s};\n    }}\n",
+        .{if (materialized.fallible) " 0" else ""},
+    );
     const encoder = try materializedEncoderNameAlloc(allocator, materialized.root);
     defer allocator.free(encoder);
-    try writer.print("    const buffer = {s}Buffer({s}, result, {}) " ++ materialize_oom ++ ";\n", .{ encoder, common.heapAllocator(program), materialized.is_slice });
+    try writer.print("    const buffer = {s}Buffer({s}, {s}, {}) " ++ materialize_oom ++ ";\n", .{ encoder, common.heapAllocator(program), if (materialized.optional) "result.?" else "result", materialized.is_slice });
     try writer.writeAll("    out_result_ptr.* = buffer.ptr;\n    out_result_len.* = buffer.len;\n");
     if (materialized.fallible) try writer.writeAll("    return 0;\n");
     try writer.writeAll("}\n");

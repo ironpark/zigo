@@ -49,19 +49,28 @@ func (err *LibraryError) Is(target error) bool { return target == ErrLibraryLoad
 func (err *LibraryError) Unwrap() error { return err.Cause }
 
 type nativeBindings struct {
-	lastError           func() unsafe.Pointer
-	panicMessage        func(int32) unsafe.Pointer
-	fnLegacyLeafValue   func(unsafe.Pointer, *int32) int32
-	fnLegacyProbeCreate func(uintptr, *unsafe.Pointer) int32
-	fnLegacyProbeID     func(unsafe.Pointer, *uint64) int32
-	fnLegacyProbeActive func(unsafe.Pointer, *uint8) int32
-	fnLegacyProbeChild  func(unsafe.Pointer, *unsafe.Pointer) int32
-	fnLegacyProbeDeinit func(unsafe.Pointer) int32
-	fnSnapshot          func(*unsafe.Pointer, *uintptr)
-	fnProbeMany         func(*unsafe.Pointer, *uintptr) int32
-	fnFill              func(uintptr, *unsafe.Pointer, *uintptr) uintptr
-	fnWireVersion       func() uint32
-	fnRelease           func(unsafe.Pointer, uintptr)
+	lastError              func() unsafe.Pointer
+	panicMessage           func(int32) unsafe.Pointer
+	fnLegacyLeafValue      func(unsafe.Pointer, *int32) int32
+	fnLegacyProbeCreate    func(uintptr, *unsafe.Pointer) int32
+	fnLegacyProbeID        func(unsafe.Pointer, *uint64) int32
+	fnLegacyProbeActive    func(unsafe.Pointer, *uint8) int32
+	fnLegacyProbeChild     func(unsafe.Pointer, *unsafe.Pointer) int32
+	fnLegacyProbeDeinit    func(unsafe.Pointer) int32
+	fnCursorCreate         func(uint32, uint32, *unsafe.Pointer) int32
+	fnCursorNext           func(unsafe.Pointer, *unsafe.Pointer, *uintptr) int32
+	fnCursorNextChecked    func(unsafe.Pointer, *unsafe.Pointer, *uintptr) int32
+	fnCursorCount          func(unsafe.Pointer, *uint32) int32
+	fnCursorDeinit         func(unsafe.Pointer) int32
+	fnOptionalSnapshot     func(uint8, *unsafe.Pointer, *uintptr)
+	fnOptionalBatch        func(uint8, uint8, *unsafe.Pointer, *uintptr)
+	fnOptionalBatchChecked func(uint8, uint8, uint8, *unsafe.Pointer, *uintptr) int32
+	fnReleasedBuffers      func() uint32
+	fnSnapshot             func(*unsafe.Pointer, *uintptr)
+	fnProbeMany            func(*unsafe.Pointer, *uintptr) int32
+	fnFill                 func(uintptr, *unsafe.Pointer, *uintptr) uintptr
+	fnWireVersion          func() uint32
+	fnRelease              func(unsafe.Pointer, uintptr)
 }
 
 var loadedBindings atomic.Pointer[nativeBindings]
@@ -171,6 +180,42 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_legacy_probe_deinit", err)
 	}
+	addrCursorCreate, err := resolveSymbol(handle, "zg_cursor_create")
+	if err != nil {
+		return fail("zg_cursor_create", err)
+	}
+	addrCursorNext, err := resolveSymbol(handle, "zg_cursor_next")
+	if err != nil {
+		return fail("zg_cursor_next", err)
+	}
+	addrCursorNextChecked, err := resolveSymbol(handle, "zg_cursor_next_checked")
+	if err != nil {
+		return fail("zg_cursor_next_checked", err)
+	}
+	addrCursorCount, err := resolveSymbol(handle, "zg_cursor_count")
+	if err != nil {
+		return fail("zg_cursor_count", err)
+	}
+	addrCursorDeinit, err := resolveSymbol(handle, "zg_cursor_deinit")
+	if err != nil {
+		return fail("zg_cursor_deinit", err)
+	}
+	addrOptionalSnapshot, err := resolveSymbol(handle, "zg_optional_snapshot")
+	if err != nil {
+		return fail("zg_optional_snapshot", err)
+	}
+	addrOptionalBatch, err := resolveSymbol(handle, "zg_optional_batch")
+	if err != nil {
+		return fail("zg_optional_batch", err)
+	}
+	addrOptionalBatchChecked, err := resolveSymbol(handle, "zg_optional_batch_checked")
+	if err != nil {
+		return fail("zg_optional_batch_checked", err)
+	}
+	addrReleasedBuffers, err := resolveSymbol(handle, "zg_released_buffers")
+	if err != nil {
+		return fail("zg_released_buffers", err)
+	}
 	addrSnapshot, err := resolveSymbol(handle, "zg_snapshot")
 	if err != nil {
 		return fail("zg_snapshot", err)
@@ -200,6 +245,15 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnLegacyProbeActive, addrLegacyProbeActive)
 	purego.RegisterFunc(&next.fnLegacyProbeChild, addrLegacyProbeChild)
 	purego.RegisterFunc(&next.fnLegacyProbeDeinit, addrLegacyProbeDeinit)
+	purego.RegisterFunc(&next.fnCursorCreate, addrCursorCreate)
+	purego.RegisterFunc(&next.fnCursorNext, addrCursorNext)
+	purego.RegisterFunc(&next.fnCursorNextChecked, addrCursorNextChecked)
+	purego.RegisterFunc(&next.fnCursorCount, addrCursorCount)
+	purego.RegisterFunc(&next.fnCursorDeinit, addrCursorDeinit)
+	purego.RegisterFunc(&next.fnOptionalSnapshot, addrOptionalSnapshot)
+	purego.RegisterFunc(&next.fnOptionalBatch, addrOptionalBatch)
+	purego.RegisterFunc(&next.fnOptionalBatchChecked, addrOptionalBatchChecked)
+	purego.RegisterFunc(&next.fnReleasedBuffers, addrReleasedBuffers)
 	purego.RegisterFunc(&next.fnSnapshot, addrSnapshot)
 	purego.RegisterFunc(&next.fnProbeMany, addrProbeMany)
 	purego.RegisterFunc(&next.fnFill, addrFill)
@@ -288,6 +342,116 @@ func LegacyProbeChild(self unsafe.Pointer) (unsafe.Pointer, int32) {
 func LegacyProbeDeinit(self unsafe.Pointer) int32 {
 	code := bindings().fnLegacyProbeDeinit(self)
 	return code
+}
+
+// CursorCreate calls the generated purego ABI wrapper for zg_cursor_create.
+func CursorCreate(limit uint32, failAt uint32) (unsafe.Pointer, int32) {
+	var outResult unsafe.Pointer
+	code := bindings().fnCursorCreate(limit, failAt, &outResult)
+	return outResult, code
+}
+
+// CursorNext calls the generated purego ABI wrapper for zg_cursor_next.
+func CursorNext(self unsafe.Pointer) ([]byte, bool, int32) {
+	var outResultPtr unsafe.Pointer
+	var outResultLen uintptr
+	code := bindings().fnCursorNext(self, &outResultPtr, &outResultLen)
+	if code != 0 {
+		return nil, false, code
+	}
+	if outResultPtr == nil {
+		return nil, false, code
+	}
+	var result []uint8
+	if outResultLen != 0 {
+		result = unsafe.Slice((*uint8)(outResultPtr), int(outResultLen))
+	}
+	return result, true, code
+}
+
+// CursorNextChecked calls the generated purego ABI wrapper for zg_cursor_next_checked.
+func CursorNextChecked(self unsafe.Pointer) ([]byte, bool, int32) {
+	var outResultPtr unsafe.Pointer
+	var outResultLen uintptr
+	code := bindings().fnCursorNextChecked(self, &outResultPtr, &outResultLen)
+	if code != 0 {
+		return nil, false, code
+	}
+	if outResultPtr == nil {
+		return nil, false, code
+	}
+	var result []uint8
+	if outResultLen != 0 {
+		result = unsafe.Slice((*uint8)(outResultPtr), int(outResultLen))
+	}
+	return result, true, code
+}
+
+// CursorCount calls the generated purego ABI wrapper for zg_cursor_count.
+func CursorCount(self unsafe.Pointer) (uint32, int32) {
+	var outResult uint32
+	code := bindings().fnCursorCount(self, &outResult)
+	return outResult, code
+}
+
+// CursorDeinit calls the generated purego ABI wrapper for zg_cursor_deinit.
+func CursorDeinit(self unsafe.Pointer) int32 {
+	code := bindings().fnCursorDeinit(self)
+	return code
+}
+
+// OptionalSnapshot calls the generated purego ABI wrapper for zg_optional_snapshot.
+func OptionalSnapshot(present uint8) ([]byte, bool) {
+	var outResultPtr unsafe.Pointer
+	var outResultLen uintptr
+	bindings().fnOptionalSnapshot(present, &outResultPtr, &outResultLen)
+	if outResultPtr == nil {
+		return nil, false
+	}
+	var result []uint8
+	if outResultLen != 0 {
+		result = unsafe.Slice((*uint8)(outResultPtr), int(outResultLen))
+	}
+	return result, true
+}
+
+// OptionalBatch calls the generated purego ABI wrapper for zg_optional_batch.
+func OptionalBatch(present uint8, empty uint8) ([]byte, bool) {
+	var outResultPtr unsafe.Pointer
+	var outResultLen uintptr
+	bindings().fnOptionalBatch(present, empty, &outResultPtr, &outResultLen)
+	if outResultPtr == nil {
+		return nil, false
+	}
+	var result []uint8
+	if outResultLen != 0 {
+		result = unsafe.Slice((*uint8)(outResultPtr), int(outResultLen))
+	}
+	return result, true
+}
+
+// OptionalBatchChecked calls the generated purego ABI wrapper for zg_optional_batch_checked.
+func OptionalBatchChecked(present uint8, empty uint8, fail uint8) ([]byte, bool, int32) {
+	var outResultPtr unsafe.Pointer
+	var outResultLen uintptr
+	code := bindings().fnOptionalBatchChecked(present, empty, fail, &outResultPtr, &outResultLen)
+	if code != 0 {
+		return nil, false, code
+	}
+	if outResultPtr == nil {
+		return nil, false, code
+	}
+	var result []uint8
+	if outResultLen != 0 {
+		result = unsafe.Slice((*uint8)(outResultPtr), int(outResultLen))
+	}
+	return result, true, code
+}
+
+// ReleasedBuffers calls the generated purego ABI wrapper for zg_released_buffers.
+func ReleasedBuffers() uint32 {
+	result := bindings().fnReleasedBuffers()
+	return uint32(result)
 }
 
 // Snapshot calls the generated purego ABI wrapper for zg_snapshot.

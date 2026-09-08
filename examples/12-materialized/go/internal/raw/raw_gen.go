@@ -72,6 +72,115 @@ func LegacyProbeDeinit(self unsafe.Pointer) int32 {
 	return code
 }
 
+// CursorCreate calls the generated C ABI wrapper for zg_cursor_create.
+func CursorCreate(limit uint32, failAt uint32) (unsafe.Pointer, int32) {
+	var outResult *C.zg_cursor
+	code := int32(C.zg_cursor_create(C.uint32_t(limit), C.uint32_t(failAt), &outResult))
+	return unsafe.Pointer(outResult), code
+}
+
+// CursorNext calls the generated C ABI wrapper for zg_cursor_next.
+func CursorNext(self unsafe.Pointer) ([]byte, bool, int32) {
+	var outResultPtr *C.uint8_t
+	var outResultLen C.size_t
+	code := int32(C.zg_cursor_next((*C.zg_cursor)(self), &outResultPtr, &outResultLen))
+	if code != 0 {
+		return nil, false, code
+	}
+	if outResultPtr == nil {
+		return nil, false, code
+	}
+	var result []uint8
+	if outResultLen != 0 {
+		result = unsafe.Slice((*uint8)(unsafe.Pointer(outResultPtr)), int(outResultLen))
+	}
+	return result, true, code
+}
+
+// CursorNextChecked calls the generated C ABI wrapper for zg_cursor_next_checked.
+func CursorNextChecked(self unsafe.Pointer) ([]byte, bool, int32) {
+	var outResultPtr *C.uint8_t
+	var outResultLen C.size_t
+	code := int32(C.zg_cursor_next_checked((*C.zg_cursor)(self), &outResultPtr, &outResultLen))
+	if code != 0 {
+		return nil, false, code
+	}
+	if outResultPtr == nil {
+		return nil, false, code
+	}
+	var result []uint8
+	if outResultLen != 0 {
+		result = unsafe.Slice((*uint8)(unsafe.Pointer(outResultPtr)), int(outResultLen))
+	}
+	return result, true, code
+}
+
+// CursorCount calls the generated C ABI wrapper for zg_cursor_count.
+func CursorCount(self unsafe.Pointer) (uint32, int32) {
+	var outResult C.uint32_t
+	code := int32(C.zg_cursor_count((*C.zg_cursor)(self), &outResult))
+	return uint32(outResult), code
+}
+
+// CursorDeinit calls the generated C ABI wrapper for zg_cursor_deinit.
+func CursorDeinit(self unsafe.Pointer) int32 {
+	code := int32(C.zg_cursor_deinit((*C.zg_cursor)(self)))
+	return code
+}
+
+// OptionalSnapshot calls the generated C ABI wrapper for zg_optional_snapshot.
+func OptionalSnapshot(present uint8) ([]byte, bool) {
+	var outResultPtr *C.uint8_t
+	var outResultLen C.size_t
+	C.zg_optional_snapshot(C.uint8_t(present), &outResultPtr, &outResultLen)
+	if outResultPtr == nil {
+		return nil, false
+	}
+	var result []uint8
+	if outResultLen != 0 {
+		result = unsafe.Slice((*uint8)(unsafe.Pointer(outResultPtr)), int(outResultLen))
+	}
+	return result, true
+}
+
+// OptionalBatch calls the generated C ABI wrapper for zg_optional_batch.
+func OptionalBatch(present uint8, empty uint8) ([]byte, bool) {
+	var outResultPtr *C.uint8_t
+	var outResultLen C.size_t
+	C.zg_optional_batch(C.uint8_t(present), C.uint8_t(empty), &outResultPtr, &outResultLen)
+	if outResultPtr == nil {
+		return nil, false
+	}
+	var result []uint8
+	if outResultLen != 0 {
+		result = unsafe.Slice((*uint8)(unsafe.Pointer(outResultPtr)), int(outResultLen))
+	}
+	return result, true
+}
+
+// OptionalBatchChecked calls the generated C ABI wrapper for zg_optional_batch_checked.
+func OptionalBatchChecked(present uint8, empty uint8, fail uint8) ([]byte, bool, int32) {
+	var outResultPtr *C.uint8_t
+	var outResultLen C.size_t
+	code := int32(C.zg_optional_batch_checked(C.uint8_t(present), C.uint8_t(empty), C.uint8_t(fail), &outResultPtr, &outResultLen))
+	if code != 0 {
+		return nil, false, code
+	}
+	if outResultPtr == nil {
+		return nil, false, code
+	}
+	var result []uint8
+	if outResultLen != 0 {
+		result = unsafe.Slice((*uint8)(unsafe.Pointer(outResultPtr)), int(outResultLen))
+	}
+	return result, true, code
+}
+
+// ReleasedBuffers calls the generated C ABI wrapper for zg_released_buffers.
+func ReleasedBuffers() uint32 {
+	return uint32(C.zg_released_buffers())
+}
+
 // Snapshot calls the generated C ABI wrapper for zg_snapshot.
 func Snapshot() []byte {
 	var outResultPtr *C.uint8_t

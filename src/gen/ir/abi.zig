@@ -34,11 +34,19 @@ pub fn materializedReturn(node: semantic.TypeNode) ?AbiFn.MaterializedReturn {
     if (node == .materialized) return .{ .root = node.materialized.ref, .is_slice = false };
     if (node == .slice and node.slice.element.* == .materialized)
         return .{ .root = node.slice.element.materialized.ref, .is_slice = true };
+    if (node == .optional) {
+        if (materializedReturn(node.optional.child.*)) |result| return .{
+            .root = result.root,
+            .is_slice = result.is_slice,
+            .optional = true,
+        };
+    }
     if (node == .error_union) {
         if (materializedReturn(node.error_union.payload.*)) |result| return .{
             .root = result.root,
             .is_slice = result.is_slice,
             .fallible = true,
+            .optional = result.optional,
         };
     }
     return null;
@@ -508,7 +516,7 @@ pub const AbiFn = struct {
 
     /// `layout` indexes `Program.materialized_layouts`; lowering fills it
     /// once the layouts exist, so no emitter looks a layout up by name.
-    pub const MaterializedReturn = struct { root: []const u8, is_slice: bool, fallible: bool = false, layout: usize = 0 };
+    pub const MaterializedReturn = struct { root: []const u8, is_slice: bool, fallible: bool = false, optional: bool = false, layout: usize = 0 };
     pub const MaterializedOut = struct { source_index: usize, root: []const u8, fallible: bool = false, layout: usize = 0 };
 
     /// How a parameter or return carries text.

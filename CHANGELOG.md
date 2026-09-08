@@ -6,6 +6,13 @@
 
 ## [Unreleased]
 
+### Added
+
+- 최상위 optional materialized 반환(`?T`, `!?T`, `?[]T`, `!?[]T`)을 cgo·purego에서
+  지원합니다. 공개 Go 함수는 존재 여부를 `bool`로 반환하며, handle의 next 메서드는
+  기존 iterator 기능과 결합할 수 있습니다. 값 없음·오류는 버퍼 해제를 하지 않고,
+  정상 반환은 디코딩 후 해제합니다. 빈 slice와 값 없음도 구분합니다.
+
 ### Fixed
 
 - Go 패키지별 함수 필터링 후 materialized 반환·출력 버퍼의 해제 함수 참조가

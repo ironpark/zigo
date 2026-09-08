@@ -20,6 +20,15 @@ native 포인터 자체는 기록하지 않습니다.
 | 24 | 8 | root record offset; slice 결과라면 root offset table의 offset |
 | 32 | 8 | 전체 버퍼 길이 |
 
+## 최상위 optional 반환
+
+`?T`, `!?T`, `?[]T`, `!?[]T`의 `T`가 materialized 값이면 같은 포인터·길이
+출력 인자를 사용합니다. null 포인터와 길이 0은 값 없음을 뜻하며 버퍼를 할당하지
+않습니다. 존재하는 빈 slice도 헤더가 있는 버퍼로 전달하므로 값 없음과 구분됩니다.
+Go raw 반환에는 `bool`이 추가되고, 공개 반환은 `(T, bool)` 또는 `(T, bool, error)`입니다.
+Zig 오류는 기존 status로 전달하며, 오류·값 없음 경로는 디코딩하거나 해제하지 않습니다.
+존재하는 버퍼는 공개 함수가 디코딩 후 정확히 한 번 해제합니다.
+
 ## 필드 표현
 
 각 materialized struct의 `MaterializedLayout`은 lowering에서 결정합니다. 필드는 선언 순서를
@@ -55,7 +64,7 @@ Go raw 계층은 native 버퍼의 view를 그대로 넘기고, 공개 래퍼가 
 scalar, bool, 등록 enum, `extern struct`·packed 값, string과 `[]byte`
 (`.fields = &.{.{ .name = "name", .semantic = .opaque_bytes }}`), optional scalar·string·struct·node,
 내장 materialized struct, 필수·optional materialized 포인터, 그리고 scalar·string·struct·
-materialized struct의 slice와 배열(중첩 가능)을 지원합니다. optional slice(`?[]T`)와 optional
+materialized struct의 slice와 배열(중첩 가능)을 지원합니다. **트리 내부 필드**의 optional slice(`?[]T`)와 optional
 원소(`[]?T`)는 presence를 실을 자리가 없어 거부됩니다.
 순환 참조, opaque 포인터, callback과 union은 lowering 전에 `ZIGO048`로 거부하며
 진단에 전체 필드 경로를 표시합니다.

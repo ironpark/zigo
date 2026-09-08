@@ -4,11 +4,11 @@ const std = @import("std");
 const abi = @import("abi");
 const semantic = @import("semantic");
 
-pub fn appendMaterializedReturnOuts(allocator: std.mem.Allocator, params: *std.ArrayList(abi.AbiParam)) !void {
+pub fn appendMaterializedReturnOuts(allocator: std.mem.Allocator, params: *std.ArrayList(abi.AbiParam), optional: bool) !void {
     const byte = try allocator.create(abi.AbiScalar);
     byte.* = .{ .unsigned_int = 8 };
     const many = try allocator.create(abi.AbiScalar);
-    many.* = .{ .pointer = .{ .child = byte, .is_const = false, .is_many = true } };
+    many.* = .{ .pointer = .{ .child = byte, .is_const = false, .is_many = true, .is_optional = optional } };
     try params.append(allocator, .{
         .name = "out_result_ptr",
         .role = .return_slice_pointer,
