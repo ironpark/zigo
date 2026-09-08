@@ -1,13 +1,14 @@
 ---
+completed_at: "2026-09-08T07:08:06Z"
 description: Publish 0.21.0 with the plugin contract 2.0 rewrite and the plugin_config migration
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-08T06:38:56Z"
 ---
 > NEXT: Write the changelog section and run the release checks for 0.21.0. ([Phase 0](phases/00-release.md))
 
 # Phases
 
-- [ ] [Phase 00: Release 0.21.0](phases/00-release.md)
+- [x] [Phase 00: Release 0.21.0](phases/00-release.md)
 
 # Shared Verification
 
