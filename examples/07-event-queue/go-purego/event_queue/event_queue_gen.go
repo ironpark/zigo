@@ -9,9 +9,10 @@ package event_queue
 import (
 	"unsafe"
 
-	zigo_pkg_types "example.com/zigo/event-queue-purego/event_queue/types"
 	lifecycle "example.com/zigo/event-queue-purego/internal/lifecycle"
 	raw "example.com/zigo/event-queue-purego/internal/native"
+
+	zigo_pkg_types "example.com/zigo/event-queue-purego/event_queue/types"
 )
 
 // LibraryError reports a native shared-library loading failure.

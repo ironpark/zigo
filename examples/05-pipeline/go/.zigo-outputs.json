@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "files": [
+    {
+      "path": "shim.zig",
+      "kind": "native"
+    },
+    {
+      "path": "panic.c",
+      "kind": "native"
+    },
+    {
+      "path": "zigo_pipeline.h",
+      "kind": "native"
+    },
+    {
+      "path": "internal/raw/raw_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "pipeline/pipeline_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "pipeline/pipeline_enums_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "pipeline/pipeline_handles_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "pipeline/pipeline_runtime_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "pipeline/pipeline_errors_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "pipeline/pipeline_interfaces_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "errors.lock.json",
+      "kind": "native"
+    }
+  ]
+}

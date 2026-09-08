@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "files": [
+    {
+      "path": "shim.zig",
+      "kind": "native"
+    },
+    {
+      "path": "panic.c",
+      "kind": "native"
+    },
+    {
+      "path": "zigo_opaque.h",
+      "kind": "native"
+    },
+    {
+      "path": "internal/raw/raw_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "internal/raw/raw_load_posix_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "internal/raw/raw_load_windows_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "opaque/opaque_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "opaque/opaque_handles_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "opaque/opaque_runtime_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "opaque/opaque_errors_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "errors.lock.json",
+      "kind": "native"
+    }
+  ]
+}

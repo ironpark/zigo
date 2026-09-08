@@ -1,0 +1,85 @@
+{
+  "version": 1,
+  "files": [
+    {
+      "path": "shim.zig",
+      "kind": "native"
+    },
+    {
+      "path": "panic.c",
+      "kind": "native"
+    },
+    {
+      "path": "zigo_event_queue.h",
+      "kind": "native"
+    },
+    {
+      "path": "internal/native/native_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "internal/native/native_load_posix_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "internal/native/native_load_windows_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "internal/lifecycle/lifecycle_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "event_queue/event_queue_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "event_queue/event_queue_enums_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "event_queue/event_queue_structs_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "event_queue/event_queue_handles_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "event_queue/event_queue_runtime_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "event_queue/event_queue_errors_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "event_queue/types/types_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "event_queue/types/types_enums_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "event_queue/types/types_structs_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "event_queue/types/types_handles_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "event_queue/types/types_runtime_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "event_queue/types/types_errors_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "errors.lock.json",
+      "kind": "native"
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "files": [
+    {
+      "path": "shim.zig",
+      "kind": "native"
+    },
+    {
+      "path": "panic.c",
+      "kind": "native"
+    },
+    {
+      "path": "zigo_callback.h",
+      "kind": "native"
+    },
+    {
+      "path": "internal/raw/raw_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "internal/raw/raw_load_posix_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "internal/raw/raw_load_windows_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "callback_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "callback_enums_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "callback_handles_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "callback_runtime_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "callback_errors_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "errors.lock.json",
+      "kind": "native"
+    }
+  ]
+}

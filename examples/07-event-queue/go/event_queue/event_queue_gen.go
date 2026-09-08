@@ -10,8 +10,9 @@ import (
 	"unsafe"
 
 	raw "example.com/zigo/event-queue/bridge/cgo"
-	zigo_pkg_types "example.com/zigo/event-queue/event_queue/types"
 	lifecycle "example.com/zigo/event-queue/internal/lifecycle"
+
+	zigo_pkg_types "example.com/zigo/event-queue/event_queue/types"
 )
 
 // NewEventQueue creates a caller-owned EventQueue.

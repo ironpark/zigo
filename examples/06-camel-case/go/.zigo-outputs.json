@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "files": [
+    {
+      "path": "shim.zig",
+      "kind": "native"
+    },
+    {
+      "path": "panic.c",
+      "kind": "native"
+    },
+    {
+      "path": "zigo_http_client.h",
+      "kind": "native"
+    },
+    {
+      "path": "http_client/http_client_cgo_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "http_client/http_client_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "errors.lock.json",
+      "kind": "native"
+    }
+  ]
+}

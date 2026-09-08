@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "files": [
+    {
+      "path": "shim.zig",
+      "kind": "native"
+    },
+    {
+      "path": "panic.c",
+      "kind": "native"
+    },
+    {
+      "path": "zigo_errors.h",
+      "kind": "native"
+    },
+    {
+      "path": "support/ffi/ffi_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "errors/errors_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "errors/errors_enums_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "errors/errors_errors_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "errors.lock.json",
+      "kind": "native"
+    }
+  ]
+}

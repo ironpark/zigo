@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "files": [
+    {
+      "path": "shim.zig",
+      "kind": "native"
+    },
+    {
+      "path": "panic.c",
+      "kind": "native"
+    },
+    {
+      "path": "zigo_type_relations.h",
+      "kind": "native"
+    },
+    {
+      "path": "internal/raw/raw_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "type_relations/type_relations_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "type_relations/type_relations_enums_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "type_relations/type_relations_structs_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "type_relations/type_relations_handles_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "type_relations/type_relations_runtime_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "type_relations/type_relations_errors_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "errors.lock.json",
+      "kind": "native"
+    }
+  ]
+}

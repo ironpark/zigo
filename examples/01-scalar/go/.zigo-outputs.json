@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "files": [
+    {
+      "path": "shim.zig",
+      "kind": "native"
+    },
+    {
+      "path": "panic.c",
+      "kind": "native"
+    },
+    {
+      "path": "zigo_scalar.h",
+      "kind": "native"
+    },
+    {
+      "path": "scalar/scalar_cgo_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "scalar/scalar_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "errors.lock.json",
+      "kind": "native"
+    }
+  ]
+}

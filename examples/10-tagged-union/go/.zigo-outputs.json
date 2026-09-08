@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "files": [
+    {
+      "path": "shim.zig",
+      "kind": "native"
+    },
+    {
+      "path": "panic.c",
+      "kind": "native"
+    },
+    {
+      "path": "zigo_tagged_union.h",
+      "kind": "native"
+    },
+    {
+      "path": "internal/raw/raw_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "tagged_union/tagged_union_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "tagged_union/tagged_union_enums_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "tagged_union/tagged_union_structs_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "tagged_union/tagged_union_handles_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "tagged_union/tagged_union_runtime_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "tagged_union/tagged_union_errors_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "tagged_union/tagged_union_union_value_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "tagged_union/tagged_union_union_signal_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "errors.lock.json",
+      "kind": "native"
+    }
+  ]
+}

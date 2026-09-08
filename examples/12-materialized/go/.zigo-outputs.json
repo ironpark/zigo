@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "files": [
+    {
+      "path": "shim.zig",
+      "kind": "native"
+    },
+    {
+      "path": "panic.c",
+      "kind": "native"
+    },
+    {
+      "path": "zigo_materialized.h",
+      "kind": "native"
+    },
+    {
+      "path": "internal/raw/raw_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "internal/lifecycle/lifecycle_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "materialized/materialized_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "materialized/materialized_enums_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "materialized/materialized_structs_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "materialized/materialized_handles_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "materialized/materialized_runtime_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "materialized/materialized_errors_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "materialized/metadata/metadata_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "materialized/metadata/metadata_runtime_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "materialized/metadata/metadata_errors_gen.go",
+      "kind": "go"
+    },
+    {
+      "path": "errors.lock.json",
+      "kind": "native"
+    }
+  ]
+}
