@@ -1,13 +1,14 @@
 ---
+completed_at: "2026-09-08T06:19:01Z"
 description: Separate framed Go files from exact-byte artifacts with explicit package targets and emission scopes.
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-08T05:49:42Z"
 ---
 > NEXT: Implement and verify separate framed Go files and exact-byte artifacts. ([Phase 0](phases/00-output-contracts.md))
 
 # Phases
 
-- [ ] [Phase 00: Output contracts](phases/00-output-contracts.md)
+- [x] [Phase 00: Output contracts](phases/00-output-contracts.md)
 
 # Shared Verification
 

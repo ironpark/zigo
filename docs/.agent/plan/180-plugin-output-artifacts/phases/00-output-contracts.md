@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-08T06:19:01Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Both backends compile generated public and external tests and raw additions.
 > NEXT: none
