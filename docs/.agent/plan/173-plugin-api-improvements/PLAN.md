@@ -7,7 +7,7 @@ registered_at: "2026-09-08T01:57:11Z"
 
 # Phases
 
-- [ ] [Phase 00: Initial Work](phases/00-initial-work.md)
+- [x] [Phase 00: Initial Work](phases/00-initial-work.md)
 - [ ] [Phase 01: Validation and assertions](phases/01-validation-and-assertions.md)
 
 # Shared Verification

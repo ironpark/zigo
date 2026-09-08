@@ -70,7 +70,11 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
 
     var parsed = try semantic.Semantic.parse(scratch_allocator, semantic_bytes);
     defer parsed.deinit();
-    try validate.semanticDocumentWithPlugins(scratch_allocator, parsed.value, options.plugins);
+    const validation_issues = try validate.findIssuesWithPlugins(scratch_allocator, parsed.value, options.plugins);
+    if (validation_issues.len != 0) {
+        if (options.diagnostics) |issues| for (validation_issues) |issue| try issues.append(allocator, try issue.clone(allocator));
+        return error.InvalidSemantic;
+    }
     if (options.backend == .purego) try validate.puregoCallbacks(parsed.value);
     // Validation judged the Zig surface the document records; everything below
     // works on the expansion, where a stream-returning method has become the
@@ -246,7 +250,7 @@ fn appendEmitters(allocator: std.mem.Allocator, prepared: *std.ArrayList(Prepare
         try prepared.append(allocator, .{
             .path = relative_path,
             .contents = try rendered.toOwnedSlice(),
-            .owner = try std.fmt.allocPrint(allocator, "{s} (package {s})", .{ emitter.owner, options.go_package }),
+            .owner = try std.fmt.allocPrint(allocator, "{s} (package {s})", .{ emitter.owner, if (options.go_package.len != 0) options.go_package else program.package }),
         });
     }
 }
@@ -1355,4 +1359,30 @@ test "output collision leaves existing generated files untouched" {
     const actual = try temporary.dir.readFileAlloc(std.testing.io, "shim.zig", arena.allocator(), .limited(64));
     try std.testing.expectEqualStrings("keep original", actual);
     try std.testing.expectError(error.FileNotFound, temporary.dir.access(std.testing.io, "errors.lock.json", .{}));
+}
+
+test "library caller receives all diagnostics without mutating output" {
+    const testing_plugin = @import("plugins/testing.zig");
+    testing_plugin.validation_enabled = true;
+    defer testing_plugin.validation_enabled = false;
+    const fixture =
+        \\{"package":"sample","prefix":"zg","zig_version":"0.16.0"}
+    ;
+    var temporary = std.testing.tmpDir(.{ .iterate = true });
+    defer temporary.cleanup();
+    try temporary.dir.writeFile(std.testing.io, .{ .sub_path = "shim.zig", .data = "unchanged" });
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
+    try std.testing.expectError(error.InvalidSemantic, generate(arena.allocator(), std.testing.io, fixture, temporary.dir, .{
+        .package = "sample",
+        .prefix = "zg",
+        .go_module = "example.com/sample",
+        .diagnostics = &issues,
+    }));
+    try std.testing.expectEqual(@as(usize, 2), issues.items.len);
+    try std.testing.expectEqualStrings("TEST002", issues.items[0].code);
+    try std.testing.expectEqualStrings("TEST003", issues.items[1].code);
+    const actual = try temporary.dir.readFileAlloc(std.testing.io, "shim.zig", arena.allocator(), .limited(64));
+    try std.testing.expectEqualStrings("unchanged", actual);
 }

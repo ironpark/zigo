@@ -1,0 +1,17 @@
+{
+  "codes": {
+    "Cancelled": 2,
+    "Empty": 3,
+    "Failure": 1,
+    "OutOfMemory": 4
+  },
+  "ir_version": 1,
+  "next_code": 5,
+  "reserved": {
+    "-1": "Unknown",
+    "-2": "PanicCaught",
+    "-3": "CallbackPanic",
+    "-4": "InvalidHandle",
+    "0": "OK"
+  }
+}

@@ -330,6 +330,10 @@ pub const Plugin = struct {
     /// Options that will not parse are reported as `<NAME>001` without the
     /// plugin writing a rule for it.
     validate: ?*const fn (std.mem.Allocator, semantic.Semantic) anyerror!?diagnostic.Diagnostic = null,
+    /// Multiple independent diagnostics, in presentation order. Preferred over
+    /// validate when both are set. Allocate the slice and text in the supplied
+    /// arena; malformed plugin options skip this callback.
+    validateAll: ?*const fn (std.mem.Allocator, semantic.Semantic) anyerror![]const diagnostic.Diagnostic = null,
     /// Written after each public method, into the file that owns it.
     method_hook: ?*const fn (Context, *std.Io.Writer, abi.AbiFn) anyerror!void = null,
     /// Written after each handle, value struct and enum, into the file that

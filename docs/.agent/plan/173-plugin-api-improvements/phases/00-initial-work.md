@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-08T02:02:25Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Existing generation stays compatible; focused path atomicity and signature tests pass; changes committed.
 > NEXT: none

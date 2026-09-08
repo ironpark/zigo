@@ -5,9 +5,11 @@ const std = @import("std");
 const abi = @import("abi");
 const plugin_api = @import("plugin");
 const semantic = @import("semantic");
+const diagnostic = @import("diagnostic");
 
 /// Set by the test that wants the hooks to write, cleared by the same test.
 pub var enabled = false;
+pub var validation_enabled = false;
 pub var path_override: ?[]const u8 = null;
 
 /// What the test plugin can be told to do. It exists so a test can prove that
@@ -19,6 +21,7 @@ pub const Options = struct {
 
 pub const plugin: plugin_api.Plugin = .{
     .name = "TEST",
+    .validateAll = validateAll,
     .FunctionOptions = Options,
     .method_hook = methodHook,
     .type_hook = typeHook,
@@ -55,4 +58,17 @@ fn renderFile(_: std.mem.Allocator, writer: *std.Io.Writer, _: abi.Program, _: p
     try writer.writeAll(
         "// ZigoTestPluginName is what the test plugin calls itself.\nconst ZigoTestPluginName = \"TEST\"\n",
     );
+}
+
+fn validateAll(allocator: std.mem.Allocator, _: semantic.Semantic) ![]const diagnostic.Diagnostic {
+    if (!validation_enabled) return &.{};
+    const issues = try allocator.alloc(diagnostic.Diagnostic, 2);
+    for (issues, 0..) |*issue, index| issue.* = .{
+        .severity = .@"error",
+        .code = if (index == 0) "TEST002" else "TEST003",
+        .message = "test plugin diagnostic",
+        .site = .{ .path = "semantic.json", .declaration = "sample" },
+        .hint = "test hint",
+    };
+    return issues;
 }

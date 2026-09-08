@@ -4,6 +4,24 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Added
+
+- 플러그인에 `publicFilePathAlloc`, `Context.writeParameters`, `writeResultType`,
+  `writeCallArguments`를 제공합니다. 외부 wrapper 플러그인이 생성 시그니처를 파싱하거나
+  공개 패키지 경로와 호출 인자 규칙을 복제할 필요가 없습니다.
+- 플러그인 `validateAll`과 다중 진단 수집을 추가했습니다. 기존 `validate`도 지원하며,
+  둘 다 설정하면 `validateAll`을 사용합니다. CLI는 독립적인 플러그인 진단을 모두 출력합니다.
+- `satisfies`에 `.form = .value`를 추가했습니다. 기본 `.pointer`는 기존 동작을 유지하며,
+  값 단언은 enum을 포함한 값 타입의 인터페이스 구현을 검사합니다.
+
+### Fixed
+
+- 서로 다른 플러그인·패키지가 같은 출력 경로를 반환하면 뒤의 파일이 앞의 파일을
+  덮어쓰던 문제를 고쳤습니다. 출력 전에 경로를 정규화하고 중복·출력 경로 이탈을
+  `ZIGO059`로 거부하여 기존 생성물을 보존합니다.
+
 ## [0.19.3] - 2026-09-08
 
 ### Changed

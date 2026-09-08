@@ -1,0 +1,30 @@
+{
+  "package": "bad",
+  "prefix": "zg",
+  "zig_version": "0.16.0",
+  "types": [
+    {
+      "kind": "enum",
+      "name": "Mode",
+      "tag_type": {
+        "kind": "int",
+        "bits": 8,
+        "signed": false
+      },
+      "fields": [
+        {
+          "name": "off",
+          "value": 0
+        }
+      ],
+      "ext": {
+        "SATIS": {
+          "interfaces": [
+            "NoPackage",
+            "fmt."
+          ]
+        }
+      }
+    }
+  ]
+}

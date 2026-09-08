@@ -1,0 +1,11 @@
+{
+  "package": "wrappers",
+  "prefix": "zg",
+  "go_module": "example.com/zigo/wrappers",
+  "backend": "purego",
+  "go_package_path": ".",
+  "plugins": [
+    "WRAPTEST",
+    "SATIS"
+  ]
+}

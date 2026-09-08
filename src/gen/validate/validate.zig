@@ -175,11 +175,46 @@ pub fn findIssueWithPlugins(allocator: std.mem.Allocator, document: semantic.Sem
 fn pluginIssue(allocator: std.mem.Allocator, document: semantic.Semantic, selected: ?[]const []const u8) !?diagnostic.Diagnostic {
     inline for (registry.plugins, 0..) |registered, index| {
         if (registry.runs(index, selected)) {
-            if (try pluginOptionsIssue(registered, allocator, document)) |issue| return issue;
-            if (registered.validate) |check| if (try check(allocator, document)) |issue| return issue;
+            var issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
+            defer issues.deinit(allocator);
+            try appendPluginIssues(registered, allocator, document, &issues);
+            if (issues.items.len != 0) return issues.items[0];
         }
     }
     return null;
+}
+
+/// Collect independent plugin diagnostics in registration/callback order.
+/// Core structural rules remain a gate: plugins never see a malformed core
+/// document. Returned data belongs to allocator and the input document; use
+/// an arena that outlives rendering, or clone diagnostics for longer storage.
+pub fn findIssuesWithPlugins(allocator: std.mem.Allocator, document: semantic.Semantic, selected: ?[]const []const u8) ![]const diagnostic.Diagnostic {
+    var issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
+    errdefer issues.deinit(allocator);
+    for (rules) |check| if (try check(allocator, document)) |issue| {
+        try issues.append(allocator, issue);
+        return issues.toOwnedSlice(allocator);
+    };
+    inline for (registry.plugins, 0..) |registered, index| {
+        if (registry.runs(index, selected)) try appendPluginIssues(registered, allocator, document, &issues);
+    }
+    return issues.toOwnedSlice(allocator);
+}
+
+pub fn findIssues(allocator: std.mem.Allocator, document: semantic.Semantic) ![]const diagnostic.Diagnostic {
+    return findIssuesWithPlugins(allocator, document, null);
+}
+
+fn appendPluginIssues(comptime registered: plugin.Plugin, allocator: std.mem.Allocator, document: semantic.Semantic, issues: *std.ArrayList(diagnostic.Diagnostic)) !void {
+    if (try pluginOptionsIssue(registered, allocator, document)) |issue| {
+        try issues.append(allocator, issue);
+        return;
+    }
+    if (registered.validateAll) |check| {
+        try issues.appendSlice(allocator, try check(allocator, document));
+    } else if (registered.validate) |check| {
+        if (try check(allocator, document)) |issue| try issues.append(allocator, issue);
+    }
 }
 
 /// A hand-written `semantic.json` can carry anything under a plugin's key.
@@ -369,4 +404,66 @@ test {
     _ = site;
     _ = ownership;
     _ = @import("snapshot_tests.zig");
+}
+
+test "multi-diagnostic validators prefer validateAll and skip unreadable options" {
+    const fake = struct {
+        fn legacy(_: std.mem.Allocator, _: semantic.Semantic) !?diagnostic.Diagnostic {
+            return .{ .severity = .@"error", .code = "MULTI099", .message = "legacy", .site = .{ .path = "semantic.json", .declaration = "sample" }, .hint = "fix" };
+        }
+        fn all(allocator: std.mem.Allocator, _: semantic.Semantic) ![]const diagnostic.Diagnostic {
+            const result = try allocator.alloc(diagnostic.Diagnostic, 2);
+            result[0] = (try legacy(allocator, undefined)).?;
+            result[0].code = "MULTI002";
+            result[1] = result[0];
+            result[1].code = "MULTI003";
+            return result;
+        }
+    };
+    const p: plugin.Plugin = .{ .name = "MULTI", .FunctionOptions = struct { enabled: bool }, .validate = fake.legacy, .validateAll = fake.all };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const document: semantic.Semantic = .{ .package = "sample", .prefix = "zg", .zig_version = "0.16.0" };
+    var issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
+    try appendPluginIssues(p, allocator, document, &issues);
+    try std.testing.expectEqual(@as(usize, 2), issues.items.len);
+    try std.testing.expectEqualStrings("MULTI002", issues.items[0].code);
+    try std.testing.expectEqualStrings("MULTI003", issues.items[1].code);
+    const legacy: plugin.Plugin = .{ .name = "LEGACY", .validate = fake.legacy };
+    try appendPluginIssues(legacy, allocator, document, &issues);
+    try std.testing.expectEqualStrings("MULTI099", issues.items[2].code);
+    const invalid =
+        \\{"package":"sample","prefix":"zg","zig_version":"0.16.0","functions":[{"name":"run","params":[],"return":{"kind":"void"},"symbol":"zg_run","ext":{"MULTI":{"enabled":"bad"}}}]}
+    ;
+    var parsed = try semantic.Semantic.parse(allocator, invalid);
+    defer parsed.deinit();
+    issues.clearRetainingCapacity();
+    try appendPluginIssues(p, allocator, parsed.value, &issues);
+    try std.testing.expectEqual(@as(usize, 1), issues.items.len);
+    try std.testing.expectEqualStrings("MULTI001", issues.items[0].code);
+}
+
+test "driver collects plugin diagnostics but gates them behind core validation" {
+    const testing_plugin = @import("../plugins/testing.zig");
+    testing_plugin.validation_enabled = true;
+    defer testing_plugin.validation_enabled = false;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const valid: semantic.Semantic = .{ .package = "sample", .prefix = "zg", .zig_version = "0.16.0" };
+    const issues = try findIssues(allocator, valid);
+    try std.testing.expectEqual(@as(usize, 2), issues.len);
+    try std.testing.expectEqualStrings("TEST002", issues[0].code);
+    try std.testing.expectEqualStrings("TEST003", issues[1].code);
+    try std.testing.expectEqualStrings("TEST002", (try findIssue(allocator, valid)).?.code);
+    try std.testing.expectEqual(@as(usize, 0), (try findIssuesWithPlugins(allocator, valid, &.{})).len);
+    const invalid =
+        \\{"package":"sample","prefix":"zg","zig_version":"0.16.0","functions":[{"name":"run","params":[],"return":{"kind":"enum","ref":"Missing"},"symbol":"zg_run"}]}
+    ;
+    var parsed = try semantic.Semantic.parse(allocator, invalid);
+    defer parsed.deinit();
+    const structural = try findIssues(allocator, parsed.value);
+    try std.testing.expectEqual(@as(usize, 1), structural.len);
+    try std.testing.expect(std.mem.startsWith(u8, structural[0].code, "ZIGO"));
 }

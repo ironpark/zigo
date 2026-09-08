@@ -332,7 +332,40 @@ pub fn addRepositorySteps(
     const showcase_modules = modules.createGeneratorModules(b, b.path("src"), target, optimize, &.{
         b.path("plugins/satisfies/src/plugin.zig"),
         b.path("plugins/json/src/plugin.zig"),
+        b.path("tests/plugins/wrappers.zig"),
     });
+    // Compile the complete external-plugin surface, including a foreign
+    // optional result, callbacks, flattened arguments and cancellation.
+    for ([_]bool{ false, true }) |pointer_only| {
+        const fixture = b.addWriteFiles();
+        _ = fixture.add("go.mod", "module example.com/zigo/wrappers\n\ngo 1.26\n\nrequire github.com/ebitengine/purego v0.10.2\n");
+        _ = fixture.addCopyFile(b.path("examples/10-tagged-union/go-purego/go.sum"), "go.sum");
+        _ = fixture.addCopyDirectory(b.path("tests/generator_cases/plugin_api_purego/expected"), ".", .{ .include_extensions = &.{".go"} });
+        _ = fixture.add("model/stringer.go", if (pointer_only)
+            "package model\nfunc (*Point) String() string { return \"point\" }\n"
+        else
+            "package model\nfunc (Point) String() string { return \"point\" }\n");
+        const run = b.addSystemCommand(&.{ "go", "test", "./..." });
+        run.setCwd(fixture.getDirectory());
+        run.setName(if (pointer_only) "value assertion rejects pointer-only methods" else "external plugin writers compile with value assertions");
+        if (pointer_only) {
+            run.expectExitCode(1);
+            run.expectStdErrMatch("method String has pointer receiver");
+        }
+        test_step.dependOn(&run.step);
+    }
+    const plugin_generator = modules.addGeneratorWithModules(b, b.path("src/main.zig"), target, optimize, showcase_modules);
+    const multi_diagnostics = b.addRunArtifact(plugin_generator);
+    multi_diagnostics.setName("CLI reports every plugin diagnostic");
+    multi_diagnostics.addArgs(&.{ "generate", "--semantic" });
+    multi_diagnostics.addFileArg(b.path("tests/fixtures/plugin-multiple-diagnostics.json"));
+    multi_diagnostics.addArg("--output");
+    _ = multi_diagnostics.addOutputDirectoryArg("plugin-diagnostics-output");
+    multi_diagnostics.addArgs(&.{ "--package", "bad" });
+    multi_diagnostics.expectExitCode(1);
+    multi_diagnostics.expectStdErrMatch("interface `NoPackage`");
+    multi_diagnostics.expectStdErrMatch("interface `fmt.`");
+    test_step.dependOn(&multi_diagnostics.step);
     const enumkit_tests = b.addTest(.{ .root_module = b.createModule(.{
         .root_source_file = b.path("plugins/enumkit/src/plugin.zig"),
         .target = target,

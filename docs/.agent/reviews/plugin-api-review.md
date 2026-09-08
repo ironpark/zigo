@@ -48,3 +48,7 @@ Add form = .pointer | .value, retaining .pointer as default. Value assertions mu
 4. Multi-diagnostic driver/API: useful, but requires coordinated compatibility and validation changes.
 
 Enable gostty ABI checks independently. Treat Cancel and Stream/OSC union adoption as consumer API changes. No new accessor field_hook is justified by the supplied getter/setter use case.
+
+## Implementation follow-up
+
+Plan 173 implements the path helper with pre-write normalized collision diagnostics (ZIGO059), Context parameter/result/argument writers, additive validateAll aggregation and satisfies.form. Legacy validate and default pointer assertions remain supported. External-module fixtures cover split packages, constructor/optional results, callbacks, flattening and cancellation; Go compilation verifies value assertions and rejects pointer-only implementations. See docs/plugins.md for the current API. gostty and its ABI baseline were not modified.

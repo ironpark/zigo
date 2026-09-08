@@ -2,7 +2,7 @@
 depends_on:
 - "173-plugin-api-improvements#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Legacy plugins remain supported; diagnostic ordering and malformed-option behavior are tested; value and pointer assertions compile correctly; full tests pass; documentation and changes committed.
 > NEXT: none

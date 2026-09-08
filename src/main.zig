@@ -49,7 +49,15 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
     // that outlives the render and nothing else.
     var scratch = std.heap.ArenaAllocator.init(allocator);
     defer scratch.deinit();
-    var issue = try validate.findIssue(scratch.allocator(), parsed.value);
+    const issues = try validate.findIssues(scratch.allocator(), parsed.value);
+    if (issues.len != 0) {
+        var buffer: [2048]u8 = undefined;
+        var stderr = std.Io.File.Writer.init(.stderr(), io, &buffer);
+        for (issues) |found| try found.render(&stderr.interface);
+        try stderr.interface.flush();
+        std.process.exit(1);
+    }
+    var issue: ?diagnostic.Diagnostic = null;
     if (issue == null and options.go_must_variants) {
         const expanded = try stream_return.expand(scratch.allocator(), parsed.value);
         issue = try validate.findMustVariantIssue(scratch.allocator(), expanded);
@@ -231,11 +239,15 @@ fn runAbiDiff(allocator: std.mem.Allocator, io: std.Io, options: cli.AbiDiff) !v
 fn rejectInvalidAbiInput(allocator: std.mem.Allocator, io: std.Io, document: semantic.Semantic, path: []const u8) !void {
     var scratch = std.heap.ArenaAllocator.init(allocator);
     defer scratch.deinit();
-    var issue = try validate.findIssue(scratch.allocator(), document) orelse return;
-    if (issue.site.line == null) issue.site.path = path;
+    const issues = try validate.findIssues(scratch.allocator(), document);
+    if (issues.len == 0) return;
     var buffer: [1024]u8 = undefined;
     var stderr = std.Io.File.Writer.init(.stderr(), io, &buffer);
-    try issue.render(&stderr.interface);
+    for (issues) |found| {
+        var issue = found;
+        if (issue.site.line == null) issue.site.path = path;
+        try issue.render(&stderr.interface);
+    }
     try stderr.interface.flush();
     std.process.exit(1);
 }
@@ -244,7 +256,7 @@ fn runReport(allocator: std.mem.Allocator, io: std.Io, options: cli.Report) !voi
     const semantic_bytes = try std.Io.Dir.cwd().readFileAlloc(io, options.semantic_path, allocator, .limited(64 * 1024 * 1024));
     var parsed = try semantic.Semantic.parse(allocator, semantic_bytes);
     defer parsed.deinit();
-    try validate.semanticDocument(allocator, parsed.value);
+    try rejectInvalidAbiInput(allocator, io, parsed.value, options.semantic_path);
     var buffer: [4096]u8 = undefined;
     var stdout = std.Io.File.Writer.init(.stdout(), io, &buffer);
     try binding_report.render(allocator, &stdout.interface, parsed.value, .{
