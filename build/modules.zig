@@ -4,12 +4,14 @@ const std = @import("std");
 const build_options = @import("../src/build_options.zig");
 const naming = @import("../src/gen/naming.zig");
 
+pub const PluginSource = struct { path: std.Build.LazyPath, config: []const u8 = "{}" };
+
 pub fn addGenerator(
     b: *std.Build,
     root_source_file: std.Build.LazyPath,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
-    plugins: []const std.Build.LazyPath,
+    plugins: []const PluginSource,
 ) *std.Build.Step.Compile {
     const modules = createGeneratorModules(b, root_source_file.dirname(), target, optimize, plugins);
     return addGeneratorWithModules(b, root_source_file, target, optimize, modules);
@@ -37,7 +39,7 @@ pub fn createGeneratorModules(
     source_root: std.Build.LazyPath,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
-    plugins: []const std.Build.LazyPath,
+    plugins: []const PluginSource,
 ) GeneratorModules {
     const build_options_module = b.createModule(.{
         .root_source_file = source_root.path(b, "build_options.zig"),
@@ -93,7 +95,7 @@ pub fn createGeneratorModules(
     const plugin_modules = b.allocator.alloc(*std.Build.Module, plugins.len) catch @panic("OOM");
     for (plugins, plugin_modules) |root, *module| {
         module.* = b.createModule(.{
-            .root_source_file = root,
+            .root_source_file = root.path,
             .target = target,
             .optimize = optimize,
             .imports = &.{
@@ -105,7 +107,7 @@ pub fn createGeneratorModules(
             },
         });
     }
-    const plugin_registry_module = createPluginRegistry(b, target, optimize, plugin_module, plugin_modules);
+    const plugin_registry_module = createPluginRegistry(b, target, optimize, plugin_module, plugin_modules, plugins);
     const errors_lock_module = b.createModule(.{
         .root_source_file = source_root.path(b, "gen/ir/errors_lock.zig"),
         .target = target,
@@ -188,6 +190,7 @@ fn createPluginRegistry(
     optimize: std.builtin.OptimizeMode,
     plugin_module: *std.Build.Module,
     plugins: []const *std.Build.Module,
+    sources: []const PluginSource,
 ) *std.Build.Module {
     var source: std.ArrayList(u8) = .empty;
     source.appendSlice(b.allocator,
@@ -201,6 +204,12 @@ fn createPluginRegistry(
     ) catch @panic("OOM");
     for (plugins, 0..) |_, index| {
         source.appendSlice(b.allocator, b.fmt("    @import(\"p{d}\").plugin,\n", .{index})) catch @panic("OOM");
+    }
+    source.appendSlice(b.allocator, "};\n") catch @panic("OOM");
+    source.appendSlice(b.allocator, "pub const configurations: []const plugin.Configuration = &.{\n") catch @panic("OOM");
+    for (sources, 0..) |entry, index| {
+        const encoded = b.fmt("\"{f}\"", .{std.zig.fmtString(entry.config)});
+        source.appendSlice(b.allocator, b.fmt("    .{{ .name = @import(\"p{d}\").plugin.name, .json = {s} }},\n", .{ index, encoded })) catch @panic("OOM");
     }
     source.appendSlice(b.allocator, "};\n") catch @panic("OOM");
     const written = b.addWriteFiles().add("plugin_registry.zig", source.items);

@@ -14,12 +14,7 @@ const testing_plugin = @import("testing.zig");
 
 /// The features zigo ships with, migrated onto the plugin frame.
 pub const builtins: []const plugin.Plugin = &.{
-    // `Must` writes first, so a method that has both a `Must` variant and an
-    // iterator wrapper keeps the order the generated file has always had.
     must.plugin,
-    // `.implements` judges before `.iterator`: a method that claims both is
-    // an `.implements` fault, and the order the two validators ran in when
-    // they lived in `functions.zig` is what decides which code it gets.
     implements.plugin,
     iterator.plugin,
     interfaces.plugin,
@@ -33,11 +28,15 @@ pub const external: []const plugin.Plugin = @import("plugin_registry").plugins;
 /// The plugins in force. Unit tests see one more: a plugin that stays inert
 /// until a test switches it on, so the frame itself has something to exercise
 /// without any golden moving.
-pub const plugins: []const plugin.Plugin = builtins ++ external ++
-    if (builtin.is_test) &[_]plugin.Plugin{testing_plugin.plugin} else &[_]plugin.Plugin{};
+const sorted = plugin.ordered(builtins ++ external ++
+    if (builtin.is_test) &[_]plugin.Plugin{testing_plugin.plugin} else &[_]plugin.Plugin{});
+pub const plugins: []const plugin.Plugin = &sorted;
+pub const configurations = @import("plugin_registry").configurations;
 
 /// Validation and emission share the same selection; built-ins always run.
 pub fn runs(comptime index: usize, selected: ?[]const []const u8) bool {
-    if (index < builtins.len) return true;
+    inline for (builtins) |entry| {
+        if (@import("std").mem.eql(u8, entry.name, plugins[index].name)) return true;
+    }
     return (plugin.Options{ .go_module = "", .plugins = selected }).runsPlugin(plugins[index].name);
 }

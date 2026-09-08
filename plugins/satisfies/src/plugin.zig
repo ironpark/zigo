@@ -30,7 +30,7 @@ pub const plugin: plugin_api.Plugin = .{
     .name = name,
     .TypeOptions = Options,
     .targets = &.{ .handle, .value, .enumeration, .tagged_union },
-    .validateAll = validateDocument,
+    .validate = validateDocument,
     .type_hook = typeHook,
 };
 
@@ -50,7 +50,9 @@ fn typeHook(context: plugin_api.Context, writer: *std.Io.Writer, declaration: se
 
 /// A name Go cannot resolve would reach the user as a compile error in
 /// generated code, which is exactly the report a plugin exists to replace.
-fn validateDocument(allocator: std.mem.Allocator, document: semantic.Semantic) ![]const diagnostic.Diagnostic {
+fn validateDocument(context: plugin_api.ValidateContext) !void {
+    const allocator = context.allocator;
+    const document = context.document;
     var issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
     errdefer issues.deinit(allocator);
     for (document.types) |declaration| {
@@ -69,5 +71,5 @@ fn validateDocument(allocator: std.mem.Allocator, document: semantic.Semantic) !
             });
         }
     }
-    return issues.toOwnedSlice(allocator);
+    for (issues.items) |issue| try context.diagnose(issue);
 }

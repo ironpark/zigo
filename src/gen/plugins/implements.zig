@@ -9,7 +9,7 @@ const abi = @import("abi");
 const diagnostic = @import("diagnostic");
 const plugin_api = @import("plugin");
 const semantic = @import("semantic");
-const site = @import("../validate/site.zig");
+const site = plugin_api.site;
 
 pub const plugin: plugin_api.Plugin = .{
     .name = "IMPLEMENTS",
@@ -23,11 +23,12 @@ fn methodHook(context: plugin_api.Context, writer: *std.Io.Writer, function: abi
     try renderImplementsWrapper(writer, function, method.receiver_name.?, method.go_name, method.needs_check);
 }
 
-fn validateDocument(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
+fn validateDocument(context: plugin_api.ValidateContext) !void {
+    const allocator = context.allocator;
+    const document = context.document;
     for (document.functions) |function| {
-        if (try implementsIssue(allocator, function)) |issue| return issue;
+        if (try implementsIssue(allocator, function)) |issue| try context.diagnose(issue);
     }
-    return null;
 }
 
 /// The wrapper after its method. It calls the public method, so every handle

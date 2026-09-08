@@ -177,7 +177,7 @@ fn pluginIssue(allocator: std.mem.Allocator, document: semantic.Semantic, select
         if (registry.runs(index, selected)) {
             var issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
             defer issues.deinit(allocator);
-            try appendPluginIssues(registered, allocator, document, &issues);
+            try appendPluginIssues(registered, allocator, document, registry.configurations, &issues);
             if (issues.items.len != 0) return issues.items[0];
         }
     }
@@ -189,14 +189,35 @@ fn pluginIssue(allocator: std.mem.Allocator, document: semantic.Semantic, select
 /// document. Returned data belongs to allocator and the input document; use
 /// an arena that outlives rendering, or clone diagnostics for longer storage.
 pub fn findIssuesWithPlugins(allocator: std.mem.Allocator, document: semantic.Semantic, selected: ?[]const []const u8) ![]const diagnostic.Diagnostic {
+    return findIssuesConfigured(allocator, document, selected, registry.configurations);
+}
+
+pub fn findIssuesConfigured(allocator: std.mem.Allocator, document: semantic.Semantic, selected: ?[]const []const u8, configurations: []const plugin.Configuration) ![]const diagnostic.Diagnostic {
     var issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
     errdefer issues.deinit(allocator);
     for (rules) |check| if (try check(allocator, document)) |issue| {
         try issues.append(allocator, issue);
         return issues.toOwnedSlice(allocator);
     };
+    for (configurations, 0..) |entry, i| {
+        var known = false;
+        inline for (registry.plugins) |registered| {
+            if (std.mem.eql(u8, registered.name, entry.name)) known = true;
+        }
+        for (configurations[0..i]) |previous| if (std.mem.eql(u8, previous.name, entry.name)) return error.DuplicatePluginConfig;
+        if (!known) return error.UnknownPluginConfig;
+    }
     inline for (registry.plugins, 0..) |registered, index| {
-        if (registry.runs(index, selected)) try appendPluginIssues(registered, allocator, document, &issues);
+        if (registry.runs(index, selected)) {
+            inline for (registered.requires) |required| {
+                inline for (registry.plugins, 0..) |dependency, dependency_index| {
+                    if (comptime std.mem.eql(u8, dependency.name, required)) {
+                        if (!registry.runs(dependency_index, selected)) return error.DisabledPluginDependency;
+                    }
+                }
+            }
+            try appendPluginIssues(registered, allocator, document, configurations, &issues);
+        }
     }
     return issues.toOwnedSlice(allocator);
 }
@@ -205,16 +226,19 @@ pub fn findIssues(allocator: std.mem.Allocator, document: semantic.Semantic) ![]
     return findIssuesWithPlugins(allocator, document, null);
 }
 
-fn appendPluginIssues(comptime registered: plugin.Plugin, allocator: std.mem.Allocator, document: semantic.Semantic, issues: *std.ArrayList(diagnostic.Diagnostic)) !void {
+fn appendPluginIssues(comptime registered: plugin.Plugin, allocator: std.mem.Allocator, document: semantic.Semantic, configurations: []const plugin.Configuration, issues: *std.ArrayList(diagnostic.Diagnostic)) !void {
     if (try pluginOptionsIssue(registered, allocator, document)) |issue| {
         try issues.append(allocator, issue);
         return;
     }
-    if (registered.validateAll) |check| {
-        try issues.appendSlice(allocator, try check(allocator, document));
-    } else if (registered.validate) |check| {
-        if (try check(allocator, document)) |issue| try issues.append(allocator, issue);
-    }
+    _ = plugin.readConfig(registered, allocator, configurations) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => {
+            try issues.append(allocator, .{ .severity = .@"error", .code = registered.name ++ "001", .message = "invalid plugin build configuration", .site = .{ .path = "build.zig", .declaration = registered.name }, .hint = "provide fields matching the plugin Config type" });
+            return;
+        },
+    };
+    if (registered.validate) |check| try check(.{ .allocator = allocator, .document = document, .configurations = configurations, .diagnostics = issues });
 }
 
 /// A hand-written `semantic.json` can carry anything under a plugin's key.
@@ -406,40 +430,29 @@ test {
     _ = @import("snapshot_tests.zig");
 }
 
-test "multi-diagnostic validators prefer validateAll and skip unreadable options" {
+test "context validators collect independent issues and skip unreadable options" {
     const fake = struct {
-        fn legacy(_: std.mem.Allocator, _: semantic.Semantic) !?diagnostic.Diagnostic {
-            return .{ .severity = .@"error", .code = "MULTI099", .message = "legacy", .site = .{ .path = "semantic.json", .declaration = "sample" }, .hint = "fix" };
-        }
-        fn all(allocator: std.mem.Allocator, _: semantic.Semantic) ![]const diagnostic.Diagnostic {
-            const result = try allocator.alloc(diagnostic.Diagnostic, 2);
-            result[0] = (try legacy(allocator, undefined)).?;
-            result[0].code = "MULTI002";
-            result[1] = result[0];
-            result[1].code = "MULTI003";
-            return result;
+        fn all(context: plugin.ValidateContext) !void {
+            for ([_][]const u8{ "MULTI002", "MULTI003" }) |code| try context.diagnose(.{ .severity = .@"error", .code = code, .message = "invalid", .site = .{ .path = "semantic.json", .declaration = "sample" }, .hint = "fix" });
         }
     };
-    const p: plugin.Plugin = .{ .name = "MULTI", .FunctionOptions = struct { enabled: bool }, .validate = fake.legacy, .validateAll = fake.all };
+    const p: plugin.Plugin = .{ .name = "MULTI", .FunctionOptions = struct { enabled: bool }, .validate = fake.all };
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
     const document: semantic.Semantic = .{ .package = "sample", .prefix = "zg", .zig_version = "0.16.0" };
     var issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
-    try appendPluginIssues(p, allocator, document, &issues);
+    try appendPluginIssues(p, allocator, document, &.{}, &issues);
     try std.testing.expectEqual(@as(usize, 2), issues.items.len);
     try std.testing.expectEqualStrings("MULTI002", issues.items[0].code);
     try std.testing.expectEqualStrings("MULTI003", issues.items[1].code);
-    const legacy: plugin.Plugin = .{ .name = "LEGACY", .validate = fake.legacy };
-    try appendPluginIssues(legacy, allocator, document, &issues);
-    try std.testing.expectEqualStrings("MULTI099", issues.items[2].code);
     const invalid =
         \\{"package":"sample","prefix":"zg","zig_version":"0.16.0","functions":[{"name":"run","params":[],"return":{"kind":"void"},"symbol":"zg_run","ext":{"MULTI":{"enabled":"bad"}}}]}
     ;
     var parsed = try semantic.Semantic.parse(allocator, invalid);
     defer parsed.deinit();
     issues.clearRetainingCapacity();
-    try appendPluginIssues(p, allocator, parsed.value, &issues);
+    try appendPluginIssues(p, allocator, parsed.value, &.{}, &issues);
     try std.testing.expectEqual(@as(usize, 1), issues.items.len);
     try std.testing.expectEqualStrings("MULTI001", issues.items[0].code);
 }
@@ -466,4 +479,23 @@ test "driver collects plugin diagnostics but gates them behind core validation" 
     const structural = try findIssues(allocator, parsed.value);
     try std.testing.expectEqual(@as(usize, 1), structural.len);
     try std.testing.expect(std.mem.startsWith(u8, structural[0].code, "ZIGO"));
+}
+
+test "plugin configuration reaches validation and malformed config skips callback" {
+    const fake = struct {
+        const p: plugin.Plugin = .{ .name = "CONFIG", .Config = struct { enabled: bool = false }, .validate = check };
+        fn check(context: plugin.ValidateContext) !void {
+            if ((try context.config(p)).enabled) try context.diagnose(.{ .severity = .@"error", .code = "CONFIG002", .message = "enabled", .site = .{ .path = "build.zig", .declaration = "CONFIG" }, .hint = "test" });
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
+    const document: semantic.Semantic = .{ .package = "sample", .prefix = "zg", .zig_version = "0.16.0" };
+    try appendPluginIssues(fake.p, arena.allocator(), document, &.{.{ .name = "CONFIG", .json = "{\"enabled\":true}" }}, &issues);
+    try std.testing.expectEqualStrings("CONFIG002", issues.items[0].code);
+    issues.clearRetainingCapacity();
+    try appendPluginIssues(fake.p, arena.allocator(), document, &.{.{ .name = "CONFIG", .json = "{\"enabled\":7}" }}, &issues);
+    try std.testing.expectEqual(@as(usize, 1), issues.items.len);
+    try std.testing.expectEqualStrings("CONFIG001", issues.items[0].code);
 }

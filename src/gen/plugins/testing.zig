@@ -21,7 +21,7 @@ pub const Options = struct {
 
 pub const plugin: plugin_api.Plugin = .{
     .name = "TEST",
-    .validateAll = validateAll,
+    .validate = validateAll,
     .FunctionOptions = Options,
     .method_hook = methodHook,
     .type_hook = typeHook,
@@ -60,8 +60,9 @@ fn renderFile(_: std.mem.Allocator, writer: *std.Io.Writer, _: abi.Program, _: p
     );
 }
 
-fn validateAll(allocator: std.mem.Allocator, _: semantic.Semantic) ![]const diagnostic.Diagnostic {
-    if (!validation_enabled) return &.{};
+fn validateAll(context: plugin_api.ValidateContext) !void {
+    const allocator = context.allocator;
+    if (!validation_enabled) return;
     const issues = try allocator.alloc(diagnostic.Diagnostic, 2);
     for (issues, 0..) |*issue, index| issue.* = .{
         .severity = .@"error",
@@ -70,5 +71,5 @@ fn validateAll(allocator: std.mem.Allocator, _: semantic.Semantic) ![]const diag
         .site = .{ .path = "semantic.json", .declaration = "sample" },
         .hint = "test hint",
     };
-    return issues;
+    for (issues) |issue| try context.diagnose(issue);
 }

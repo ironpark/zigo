@@ -10,6 +10,49 @@ const semantic = @import("semantic");
 const diagnostic = @import("diagnostic");
 const naming = @import("naming");
 
+/// Major versions are incompatible; minor versions add capabilities.
+pub const ContractVersion = struct { major: u16, minor: u16 };
+pub const contract_version: ContractVersion = .{ .major = 1, .minor = 0 };
+
+/// Serialized build configuration; decoded as the registered plugin's Config.
+pub const Configuration = struct { name: []const u8, json: []const u8 };
+
+pub fn readConfig(comptime P: Plugin, allocator: std.mem.Allocator, configurations: []const Configuration) !P.Config {
+    var json: []const u8 = "{}";
+    for (configurations) |entry| {
+        if (std.mem.eql(u8, entry.name, P.name)) {
+            json = entry.json;
+            break;
+        }
+    }
+    return std.json.parseFromSliceLeaky(P.Config, allocator, json, .{}) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return error.InvalidPluginConfig,
+    };
+}
+
+pub const site = @import("plugin/site.zig");
+
+/// Runs before lowering. All allocations and diagnostics belong to the run arena.
+pub const ValidateContext = struct {
+    allocator: std.mem.Allocator,
+    document: semantic.Semantic,
+    configurations: []const Configuration = &.{},
+    diagnostics: *std.ArrayList(diagnostic.Diagnostic),
+
+    pub fn diagnose(self: ValidateContext, issue: diagnostic.Diagnostic) !void {
+        try self.diagnostics.append(self.allocator, issue);
+    }
+
+    pub fn config(self: ValidateContext, comptime P: Plugin) !P.Config {
+        return readConfig(P, self.allocator, self.configurations);
+    }
+
+    pub fn optionsOf(self: ValidateContext, comptime P: Plugin, comptime attachment: enum { function, type }, ext: ?semantic.Extensions) !?(if (attachment == .function) P.FunctionOptions else P.TypeOptions) {
+        return readOptions(P, attachment, self.allocator, ext);
+    }
+};
+
 /// The identifiers a rendering of the public package used. Selectors
 /// (`x.Name`) are not identifiers of this package and are skipped. It lives
 /// here rather than next to the scanner because `Options` carries it.
@@ -111,6 +154,7 @@ pub const Options = struct {
     /// is how one binary can hold several plugins and a golden case still pin
     /// exactly one.
     plugins: ?[]const []const u8 = null,
+    configurations: []const Configuration = &.{},
     /// The generated helpers the public package references, decided by
     /// rendering it (`emit.references.referencedHelpersAlloc`). Null emits every
     /// gated helper, which only the discovery rendering itself relies on
@@ -198,10 +242,9 @@ pub const Writers = struct {
     /// The parameter list and result of a public function, parentheses
     /// included, exactly as the method being hooked spells them.
     writeSignature: *const fn (Context, *std.Io.Writer, abi.AbiFn) anyerror!void,
-    // Optional slots keep manually constructed legacy writer tables valid.
-    writeParameters: ?*const fn (Context, *std.Io.Writer, abi.AbiFn) anyerror!void = null,
-    writeResultType: ?*const fn (Context, *std.Io.Writer, abi.AbiFn, ResultOptions) anyerror!usize = null,
-    writeCallArguments: ?*const fn (Context, *std.Io.Writer, abi.AbiFn) anyerror!void = null,
+    writeParameters: *const fn (Context, *std.Io.Writer, abi.AbiFn) anyerror!void,
+    writeResultType: *const fn (Context, *std.Io.Writer, abi.AbiFn, ResultOptions) anyerror!usize,
+    writeCallArguments: *const fn (Context, *std.Io.Writer, abi.AbiFn) anyerror!void,
 };
 
 /// What a `method_hook` is adjacent to: the method the generator just wrote.
@@ -233,6 +276,10 @@ pub const Context = struct {
     /// Set for `method_hook`, null for `type_hook` and for `validate`.
     method: ?Method = null,
 
+    pub fn config(self: Context, comptime P: Plugin) !P.Config {
+        return readConfig(P, self.allocator, self.options.configurations);
+    }
+
     pub fn writeTypeName(self: Context, writer: *std.Io.Writer, name: []const u8) !void {
         return self.writers.writeTypeName(self, writer, name);
     }
@@ -251,7 +298,7 @@ pub const Context = struct {
 
     /// Public parameter list including parentheses. Requires method context.
     pub fn writeParameters(self: Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
-        const write = self.writers.writeParameters orelse return error.UnsupportedPluginWriter;
+        const write = self.writers.writeParameters;
         return write(self, writer, function);
     }
 
@@ -259,13 +306,13 @@ pub const Context = struct {
     /// Returns the number of emitted results, allowing wrappers to choose a
     /// forwarding helper without parsing Go source. Zero results write nothing.
     pub fn writeResultType(self: Context, writer: *std.Io.Writer, function: abi.AbiFn, options: ResultOptions) !usize {
-        const write = self.writers.writeResultType orelse return error.UnsupportedPluginWriter;
+        const write = self.writers.writeResultType;
         return write(self, writer, function, options);
     }
 
     /// Arguments in public parameter order, without parentheses.
     pub fn writeCallArguments(self: Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
-        const write = self.writers.writeCallArguments orelse return error.UnsupportedPluginWriter;
+        const write = self.writers.writeCallArguments;
         return write(self, writer, function);
     }
 
@@ -315,6 +362,12 @@ pub fn typeTarget(kind: semantic.TypeKind) ?Target {
 }
 
 pub const Plugin = struct {
+    min_contract: ContractVersion = contract_version,
+    Config: type = struct {},
+    /// Ordering only: absent plugins in after are ignored.
+    after: []const []const u8 = &.{},
+    /// Required registered and enabled plugins; also run before this plugin.
+    requires: []const []const u8 = &.{},
     /// The plugin's identity: the `ext` key its options travel under, the
     /// prefix of its diagnostic codes, and the suffix of the files it writes.
     /// Spelled in upper case, since the diagnostic codes are.
@@ -324,16 +377,8 @@ pub const Plugin = struct {
     FunctionOptions: type = struct {},
     TypeOptions: type = struct {},
     targets: []const Target = &.{ .function, .handle, .value, .enumeration, .tagged_union },
-    /// Rules the plugin enforces over the document, run after the core rules.
-    /// It takes the document rather than a `Context`: validation happens
-    /// before lowering, so there is no program and no writers to hand over.
-    /// Options that will not parse are reported as `<NAME>001` without the
-    /// plugin writing a rule for it.
-    validate: ?*const fn (std.mem.Allocator, semantic.Semantic) anyerror!?diagnostic.Diagnostic = null,
-    /// Multiple independent diagnostics, in presentation order. Preferred over
-    /// validate when both are set. Allocate the slice and text in the supplied
-    /// arena; malformed plugin options skip this callback.
-    validateAll: ?*const fn (std.mem.Allocator, semantic.Semantic) anyerror![]const diagnostic.Diagnostic = null,
+    /// Runs after core and option validation; report any number of diagnostics.
+    validate: ?*const fn (ValidateContext) anyerror!void = null,
     /// Written after each public method, into the file that owns it.
     method_hook: ?*const fn (Context, *std.Io.Writer, abi.AbiFn) anyerror!void = null,
     /// Written after each handle, value struct and enum, into the file that
@@ -352,3 +397,60 @@ pub const Plugin = struct {
         return false;
     }
 };
+
+/// Stable topological order. Registration errors are compile-time errors.
+pub fn ordered(comptime entries: []const Plugin) [entries.len]Plugin {
+    comptime {
+        @setEvalBranchQuota(100000);
+        for (entries, 0..) |entry, i| {
+            if (entry.min_contract.major != contract_version.major or entry.min_contract.minor > contract_version.minor)
+                @compileError("incompatible plugin contract: " ++ entry.name);
+            for (entries[0..i]) |previous| if (std.mem.eql(u8, previous.name, entry.name))
+                @compileError("duplicate plugin: " ++ entry.name);
+            for (entry.requires) |name| {
+                var found = false;
+                for (entries) |candidate| {
+                    if (std.mem.eql(u8, candidate.name, name)) found = true;
+                }
+                if (!found) @compileError("missing plugin dependency: " ++ entry.name ++ " requires " ++ name);
+            }
+        }
+        var result: [entries.len]Plugin = undefined;
+        var used = [_]bool{false} ** entries.len;
+        for (0..entries.len) |slot| {
+            var found = false;
+            for (entries, 0..) |entry, index| {
+                if (used[index]) continue;
+                var ready = true;
+                for (entry.after ++ entry.requires) |dependency| {
+                    for (entries, 0..) |candidate, dependency_index| {
+                        if (std.mem.eql(u8, candidate.name, dependency) and !used[dependency_index]) ready = false;
+                    }
+                }
+                if (!ready) continue;
+                result[slot] = entry;
+                used[index] = true;
+                found = true;
+                break;
+            }
+            if (!found) @compileError("cycle in plugin ordering");
+        }
+        return result;
+    }
+}
+
+test "plugin ordering is stable and respects dependencies" {
+    const entries = ordered(&.{ .{ .name = "C", .requires = &.{"B"} }, .{ .name = "A" }, .{ .name = "B", .after = &.{ "A", "ABSENT" } } });
+    try std.testing.expectEqualStrings("A", entries[0].name);
+    try std.testing.expectEqualStrings("B", entries[1].name);
+    try std.testing.expectEqualStrings("C", entries[2].name);
+}
+
+test "plugin config decodes defaults and rejects unknown fields" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const p: Plugin = .{ .name = "CONFIG", .Config = struct { enabled: bool = false } };
+    try std.testing.expect(!(try readConfig(p, arena.allocator(), &.{})).enabled);
+    try std.testing.expect((try readConfig(p, arena.allocator(), &.{.{ .name = "CONFIG", .json = "{\"enabled\":true}" }})).enabled);
+    try std.testing.expectError(error.InvalidPluginConfig, readConfig(p, arena.allocator(), &.{.{ .name = "CONFIG", .json = "{\"typo\":true}" }}));
+}

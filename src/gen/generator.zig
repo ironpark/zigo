@@ -42,6 +42,7 @@ pub const Options = struct {
     /// was built with; naming a subset is how a golden case pins one plugin
     /// out of a binary that holds several.
     plugins: ?[]const []const u8 = null,
+    configurations: []const @import("plugin").Configuration = @import("plugins/registry.zig").configurations,
     errors_lock_bytes: ?[]const u8 = null,
     backend: emit.Options.Backend = .cgo,
     link_mode: emit.Options.LinkMode = .static,
@@ -70,7 +71,7 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
 
     var parsed = try semantic.Semantic.parse(scratch_allocator, semantic_bytes);
     defer parsed.deinit();
-    const validation_issues = try validate.findIssuesWithPlugins(scratch_allocator, parsed.value, options.plugins);
+    const validation_issues = try validate.findIssuesConfigured(scratch_allocator, parsed.value, options.plugins, options.configurations);
     if (validation_issues.len != 0) {
         if (options.diagnostics) |issues| for (validation_issues) |issue| try issues.append(allocator, try issue.clone(allocator));
         return error.InvalidSemantic;
@@ -124,6 +125,7 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
         .go_package_doc = options.go_package_doc,
         .go_must_variants = options.go_must_variants,
         .plugins = options.plugins,
+        .configurations = options.configurations,
         .backend = options.backend,
         .link_mode = options.link_mode,
         .cgo_targets = options.cgo_targets,

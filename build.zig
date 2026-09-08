@@ -78,7 +78,13 @@ pub const PluginModule = struct {
     /// `plugin`, `abi` and `semantic`, since two modules built from the same
     /// files are different types in Zig.
     root_source_file: std.Build.LazyPath,
+    /// JSON encoded Config. Use configJson to serialize a Zig struct.
+    config: []const u8 = "{}",
 };
+
+pub fn configJson(b: *std.Build, value: anytype) []const u8 {
+    return std.json.Stringify.valueAlloc(b.allocator, value, .{}) catch @panic("OOM");
+}
 
 pub const Options = struct {
     name: []const u8,
@@ -378,8 +384,8 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     };
     const native_targets = resolveNativeTargets(b, options, backend, install);
     const zigo_dependency = b.dependencyFromBuildZig(@This(), .{});
-    const plugin_sources = b.allocator.alloc(std.Build.LazyPath, options.plugins.len) catch @panic("OOM");
-    for (options.plugins, plugin_sources) |entry, *source| source.* = entry.root_source_file;
+    const plugin_sources = b.allocator.alloc(modules.PluginSource, options.plugins.len) catch @panic("OOM");
+    for (options.plugins, plugin_sources) |entry, *source| source.* = .{ .path = entry.root_source_file, .config = entry.config };
     const generator = modules.addGenerator(b, zigo_dependency.path("src/main.zig"), b.graph.host, .Debug, plugin_sources);
     // Reflection runs the bindings module as an executable on the host, so the
     // whole reflection pipeline builds for `b.graph.host` even when the library

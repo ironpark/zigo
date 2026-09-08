@@ -301,6 +301,7 @@ pub fn addRepositorySteps(
     error_bench.setCwd(error_fixture.getDirectory());
     error_bench.has_side_effects = true;
     lookup_bench.dependOn(&error_bench.step);
+    test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = generator_modules.plugin, .filters = test_filters })).step);
     test_step.dependOn(&run_tests.step);
     test_step.dependOn(&run_generator_tests.step);
     test_step.dependOn(&run_reflect_walk_tests.step);
@@ -330,9 +331,9 @@ pub fn addRepositorySteps(
     // plugin modules compiled in. Each case names the plugins its golden
     // expects, so one binary serves the plugin cases and the plain ones.
     const showcase_modules = modules.createGeneratorModules(b, b.path("src"), target, optimize, &.{
-        b.path("plugins/satisfies/src/plugin.zig"),
-        b.path("plugins/json/src/plugin.zig"),
-        b.path("tests/plugins/wrappers.zig"),
+        .{ .path = b.path("plugins/satisfies/src/plugin.zig") },
+        .{ .path = b.path("plugins/json/src/plugin.zig") },
+        .{ .path = b.path("tests/plugins/wrappers.zig") },
     });
     // Compile the complete external-plugin surface, including a foreign
     // optional result, callbacks, flattened arguments and cancellation.

@@ -13,10 +13,11 @@ const must = @import("must.zig");
 const plugin_api = @import("plugin");
 const public_writers = @import("../emit/public_writers.zig");
 const semantic = @import("semantic");
-const site = @import("../validate/site.zig");
+const site = plugin_api.site;
 
 pub const plugin: plugin_api.Plugin = .{
     .name = "ITERATOR",
+    .after = &.{ "MUST", "IMPLEMENTS" },
     .validate = validateDocument,
     .method_hook = methodHook,
 };
@@ -41,11 +42,12 @@ fn methodHook(context: plugin_api.Context, writer: *std.Io.Writer, function: abi
 /// The shape rule for `.iterator`, run over the whole document. The name
 /// clash between the wrapper and another method of the same type is not here:
 /// it belongs with every other public-name collision, in `names.zig`.
-fn validateDocument(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
+fn validateDocument(context: plugin_api.ValidateContext) !void {
+    const allocator = context.allocator;
+    const document = context.document;
     for (document.functions) |function| {
-        if (try iteratorIssue(allocator, function)) |issue| return issue;
+        if (try iteratorIssue(allocator, function)) |issue| try context.diagnose(issue);
     }
-    return null;
 }
 
 /// The wrapper after its method. It calls the public method, so every

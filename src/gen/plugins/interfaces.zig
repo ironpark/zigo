@@ -26,8 +26,10 @@ pub const plugin: plugin_api.Plugin = .{
 
 /// The declaration rules live with the other validation rules; the plugin is
 /// what runs them, so `.interfaces` has one owner.
-fn validateDocument(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
-    return interface_rules.interfaceIssue(allocator, document);
+fn validateDocument(context: plugin_api.ValidateContext) !void {
+    const allocator = context.allocator;
+    const document = context.document;
+    if (try interface_rules.interfaceIssue(allocator, document)) |issue| try context.diagnose(issue);
 }
 
 /// The first method whose implementations disagree on their Go signature.

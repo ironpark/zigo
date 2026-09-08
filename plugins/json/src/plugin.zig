@@ -123,11 +123,13 @@ fn renderValueStruct(
 
 /// The hook writes nothing for a type it cannot encode, which would leave the
 /// binding author wondering. Saying so is the whole point of a plugin rule.
-fn validateDocument(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
+fn validateDocument(context: plugin_api.ValidateContext) !void {
+    const allocator = context.allocator;
+    const document = context.document;
     for (document.types) |declaration| {
         _ = try plugin_api.readOptions(plugin, .type, allocator, declaration.ext) orelse continue;
         if (declaration.kind == .@"enum" or declaration.kind == .value_struct) continue;
-        return .{
+        try context.diagnose(.{
             .severity = .@"error",
             .code = name ++ "002",
             .message = try std.fmt.allocPrint(
@@ -137,7 +139,6 @@ fn validateDocument(allocator: std.mem.Allocator, document: semantic.Semantic) !
             ),
             .site = .{ .path = "semantic.json", .declaration = declaration.name },
             .hint = "extend a value struct or an enum; a handle is a pointer into native memory and has no fields to encode",
-        };
+        });
     }
-    return null;
 }

@@ -55,19 +55,20 @@ fn render(allocator: std.mem.Allocator, writer: *std.Io.Writer, type_name: []con
     }
 }
 
-fn validateDocument(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
+fn validateDocument(context: plugin_api.ValidateContext) !void {
+    const allocator = context.allocator;
+    const document = context.document;
     for (document.types) |declaration| {
         _ = try plugin_api.readOptions(plugin, .type, allocator, declaration.ext) orelse continue;
         if (declaration.kind == .@"enum" and declaration.go_adapter == null) continue;
-        return .{
+        try context.diagnose(.{
             .severity = .@"error",
             .code = name ++ "002",
             .message = try std.fmt.allocPrint(allocator, "`{s}` requires a generated enum type for enumkit helpers", .{declaration.name}),
             .site = .{ .path = "semantic.json", .declaration = declaration.name },
             .hint = "attach enumkit to an enum without a Go adapter",
-        };
+        });
     }
-    return null;
 }
 
 test "options independently disable helpers and empty enums stay valid" {
