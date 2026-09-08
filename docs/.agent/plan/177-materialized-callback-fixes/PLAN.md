@@ -8,7 +8,7 @@ registered_at: "2026-09-08T04:03:14Z"
 # Phases
 
 - [x] [Phase 00: Initial Work](phases/00-initial-work.md)
-- [ ] [Phase 01: optional-materialized-iterator](phases/01-optional-materialized-iterator.md)
+- [x] [Phase 01: optional-materialized-iterator](phases/01-optional-materialized-iterator.md)
 - [ ] [Phase 02: release](phases/02-release.md)
 
 # Shared Verification

@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-08T04:22:44Z"
 depends_on:
 - "177-materialized-callback-fixes#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: cgo and purego cover present/absent/error returns and iterator exhaustion/early stop; all checks pass and changes are committed.
 > NEXT: none
