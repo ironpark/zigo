@@ -80,7 +80,7 @@ ABI-safe payload만 가진 tagged union은 함수 parameter나 결과에서 값�
 이 경우 생성 Go struct가 tag와 payload를 소유하며 accessor는 native 호출 없이 동작합니다.
 
 pointer, slice, handle 또는 중첩 struct payload가 있으면 자동으로 값 ABI라고 가정하지 마세요.
-[지원 범위](../limitations.md)와 생성 진단을 확인해야 합니다.
+[지원 범위](../reference/support-matrix.md)와 생성 진단을 확인해야 합니다.
 
 ## variant 제외
 

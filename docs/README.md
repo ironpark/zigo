@@ -25,11 +25,15 @@
 
 | 하고 싶은 일 | 문서 |
 |---|---|
-| cgo·purego 백엔드와 빌드 옵션 선택 | [빌드 설정](configuration.md) |
-| 생성 파일 갱신, 검사와 CI 구성 | [생성물과 CI](generated-code.md) |
-| 공유 라이브러리 로딩과 배포 | [purego](purego.md) |
-| 플랫폼, 타입과 수명 제약 확인 | [지원 범위](limitations.md) |
-| 생성 실패 원인과 해결 방법 찾기 | [진단](diagnostics.md) |
+| cgo·purego 백엔드와 빌드 옵션 선택 | [설정과 백엔드](build-and-ship/configuration-and-backends.md) |
+| 생성 파일 갱신, 검사와 CI 구성 | [생성물과 CI](build-and-ship/generated-files-and-ci.md) |
+| native library와 Go module 배포 | [패키징과 배포](build-and-ship/packaging-and-distribution.md) |
+| `addGoBindings` option 확인 | [Build option 참조](reference/build-options.md) |
+| binding entry와 helper 확인 | [Binding API 참조](reference/binding-api.md) |
+| Zig와 Go type 대응 확인 | [타입 대응](reference/type-mapping.md) |
+| 생성되는 Go API pattern 확인 | [생성 Go API](reference/generated-go-api.md) |
+| 플랫폼, 타입과 수명 제약 확인 | [지원 범위](reference/support-matrix.md) |
+| 생성 실패 원인과 해결 방법 찾기 | [진단](reference/diagnostics.md) |
 
 ## 확장과 내부 계약
 

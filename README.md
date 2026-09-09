@@ -57,7 +57,7 @@ zig build go
 - purego: macOS, Linux와 Windows의 amd64·arm64
 
 처음에는 기본값인 `.cgo_static`을 사용하세요. 전체 조건과 크로스 컴파일 범위는
-[지원 범위](docs/limitations.md)에서 확인할 수 있습니다.
+[지원 범위](docs/reference/support-matrix.md)에서 확인할 수 있습니다.
 
 ## 문서
 
@@ -65,8 +65,8 @@ zig build go
 - [zigo의 작동 방식](docs/how-zigo-works.md) — 선언에서 생성 패키지까지의 구조
 - [예제](docs/examples.md) — 기능별 실행 가능한 프로젝트
 - [바인딩 작성](docs/authoring/README.md) — 함수와 타입을 공개하는 방법
-- [빌드 설정](docs/configuration.md) — 백엔드, 패키지와 설치 옵션
-- [생성물과 CI](docs/generated-code.md) — 생성, 검사와 커밋 정책
+- [빌드와 배포](docs/build-and-ship/README.md) — 백엔드, 생성, CI와 패키징
+- [참조](docs/reference/build-options.md) — build option, 타입, 진단과 지원 범위
 - [전체 사용자 문서](docs/README.md) — 목적별 문서 탐색
 - [기여 안내](CONTRIBUTING.md) — zigo 자체의 개발과 검증
 

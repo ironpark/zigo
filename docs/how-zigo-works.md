@@ -102,5 +102,5 @@ artifact, 로딩 시점과 배포 방식입니다.
 - 첫 프로젝트 연결: [시작 가이드](getting-started.md)
 - 선언 문법: [바인딩 작성](authoring/README.md)
 - 실행 가능한 기능 예제: [예제](examples.md)
-- 생성과 배포: [생성물과 CI](generated-code.md), [빌드 설정](configuration.md)
+- 생성과 배포: [빌드와 배포](build-and-ship/README.md)
 - 세부 ABI 검토: [생성 ABI](generated-abi.md)

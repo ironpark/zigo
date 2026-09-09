@@ -15,7 +15,8 @@
 - cgo에서 사용할 C compiler
 
 Windows에서는 별도 mingw-w64 대신 `CC="zig cc"`를 사용할 수 있습니다. 처음에는 현재
-호스트용 빌드부터 완료하고 다른 백엔드와 타깃은 [빌드 설정](configuration.md)에서
+호스트용 빌드부터 완료하고 다른 백엔드와 타깃은
+[설정과 백엔드](build-and-ship/configuration-and-backends.md)에서
 선택하세요.
 
 ## 1. 프로젝트 만들기
@@ -180,12 +181,13 @@ zig build go-doctor
 - `go-check`: 커밋한 생성물이 현재 선언과 같은지 검사합니다.
 
 생성된 Go 소스와 `zigo/semantic.json`, `zigo/errors.lock.json`은 일반적으로 커밋합니다.
-정확한 파일 범위와 CI 구성은 [생성물과 CI](generated-code.md)를 참고하세요.
+정확한 파일 범위와 CI 구성은 [생성물과 CI](build-and-ship/generated-files-and-ci.md)를
+참고하세요.
 
 ## 다음 단계
 
 - 함수와 타입을 더 공개하려면 [바인딩 작성](authoring/README.md)
 - 자신의 API와 가까운 코드를 찾으려면 [예제](examples.md)
-- cgo 동적 링크나 purego가 필요하면 [빌드 설정](configuration.md)
-- 지원하지 않는 타입이나 플랫폼을 확인하려면 [지원 범위](limitations.md)
-- 생성이 실패했다면 [진단](diagnostics.md)
+- cgo 동적 링크나 purego가 필요하면 [설정과 백엔드](build-and-ship/configuration-and-backends.md)
+- 지원하지 않는 타입이나 플랫폼을 확인하려면 [지원 범위](reference/support-matrix.md)
+- 생성이 실패했다면 [진단](reference/diagnostics.md)

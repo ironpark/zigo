@@ -8,7 +8,7 @@ registered_at: "2026-09-08T17:03:09Z"
 # Phases
 
 - [x] [Phase 00: Foundation and onboarding](phases/00-foundation-and-onboarding.md)
-- [ ] [Phase 01: Binding authoring guides](phases/01-binding-authoring-guides.md)
+- [x] [Phase 01: Binding authoring guides](phases/01-binding-authoring-guides.md)
 - [ ] [Phase 02: Build, distribution, and reference](phases/02-build-distribution-and-reference.md)
 - [ ] [Phase 03: Plugins and internal contracts](phases/03-plugins-and-internal-contracts.md)
 - [ ] [Phase 04: Examples and repository-wide verification](phases/04-examples-and-verification.md)

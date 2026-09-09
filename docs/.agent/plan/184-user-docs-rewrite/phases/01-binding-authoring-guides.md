@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-08T17:23:06Z"
 depends_on:
 - "184-user-docs-rewrite#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 지원되는 주요 바인딩 기능이 `docs/authoring/`에서 중복 없이 설명되고 각 문서가 실행 예제 또는 정본 참조로 연결된다.
 > NEXT: none

@@ -2,7 +2,7 @@
 depends_on:
 - "184-user-docs-rewrite#1"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: 빌드와 배포 작업 문서가 API 정본과 분리되어 있고 각 공개 옵션, 타입 범위, 생성 스텝과 진단이 한 정본에서 검색된다.
 > NEXT: none
