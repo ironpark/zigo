@@ -238,7 +238,7 @@ pub fn renderRangeChecks(
 fn writePublicZeroValue(scope: PublicScope, writer: *std.Io.Writer, function: semantic.SemanticFn, payload: semantic.TypeNode) !void {
     // `*new(T)` is the zero of any type, which is all that is known about an
     // adapted one.
-    if (function.return_go_adapter) |adapter| return writer.print("*new({s})", .{adapter.type});
+    if (function.returnGoAdapter()) |adapter| return writer.print("*new({s})", .{adapter.type});
     if (semantic.isStringSlice(payload, function.return_semantic)) return writer.writeAll("\"\"");
     // A `?T` payload returns the zero of `T` beside a false presence flag:
     // there is no zero value of the optional itself to write.
@@ -276,7 +276,7 @@ pub fn writeCheckedFunctionReturnType(scope: PublicScope, writer: *std.Io.Writer
         try writer.print("*{s}", .{function.@"return".opaque_ptr.ref});
     } else if (docs.returnsBorrowedOpaque(function)) {
         try writer.print("*{s}Ref", .{function.@"return".opaque_ptr.ref});
-    } else if (function.return_go_adapter) |adapter| {
+    } else if (function.returnGoAdapter()) |adapter| {
         try writer.writeAll(adapter.type);
     } else if (codepointTypeName(function.@"return", function.return_semantic)) |name| {
         try writer.writeAll(name);
@@ -316,7 +316,7 @@ pub fn writePublicFunctionReturnType(scope: PublicScope, writer: *std.Io.Writer,
         try writer.print(" (*{s}Ref, error)", .{function.@"return".error_union.payload.opaque_ptr.ref});
         return;
     }
-    try writePublicReturnType(scope, writer, function.@"return", function.return_semantic, function.return_go_adapter);
+    try writePublicReturnType(scope, writer, function.@"return", function.return_semantic, function.returnGoAdapter());
 }
 
 pub fn writeBorrowedResult(
@@ -549,7 +549,7 @@ pub fn writePublicResultConversion(scope: PublicScope, writer: *std.Io.Writer, p
 /// The type-level `.go` adapter of a registered enum, if any.
 pub fn enumAdapter(program: abi.Program, ref: []const u8) ?semantic.GoAdapter {
     const declaration = semantic.typeDecl(program.types, ref) orelse return null;
-    return if (declaration.kind == .@"enum") declaration.go_adapter else null;
+    return if (declaration.kind == .@"enum") declaration.goAdapter() else null;
 }
 
 /// `expression` as the raw integer an enum crosses as: through the adapter's
@@ -615,7 +615,7 @@ pub const PublicScope = struct {
         // An adapted type is spelled the way the user wrote it, in every
         // package: the qualifier it carries is an import, not a sub-package.
         if (semantic.typeDecl(self.program.types, name)) |declaration| {
-            if (declaration.go_adapter) |adapter| return writer.writeAll(adapter.type);
+            if (declaration.goAdapter()) |adapter| return writer.writeAll(adapter.type);
         }
         const active = self.options.active_package orelse return writer.writeAll(name);
         for (self.program.types) |declaration| {
@@ -677,7 +677,7 @@ pub fn writePublicGoType(scope: PublicScope, writer: *std.Io.Writer, node: seman
 }
 
 pub fn writePublicParameterType(scope: PublicScope, writer: *std.Io.Writer, parameter: semantic.Parameter) !void {
-    if (parameter.go_adapter) |adapter| return writer.writeAll(adapter.type);
+    if (parameter.goAdapter()) |adapter| return writer.writeAll(adapter.type);
     if (semantic.isCodepoint(parameter.type, parameter.semantic)) return writer.writeAll("rune");
     if (semantic.isCodepointSlice(parameter.type, parameter.semantic)) return writer.writeAll("[]rune");
     if (semantic.isStringSliceParameter(parameter)) return writer.writeAll("[]string");
@@ -856,7 +856,7 @@ pub fn functionReachesCallbacks(program: abi.Program, function: semantic.Semanti
 pub fn writeGoZeroValue(scope: PublicScope, writer: *std.Io.Writer, node: semantic.TypeNode) !void {
     if (node == .@"enum") if (enumAdapter(scope.program, node.@"enum".ref)) |adapter| return writer.print("*new({s})", .{adapter.type});
     if (node == .value_struct) if (semantic.typeDecl(scope.program.types, node.value_struct.ref)) |declaration| {
-        if (declaration.go_adapter) |adapter| return writer.print("*new({s})", .{adapter.type});
+        if (declaration.goAdapter()) |adapter| return writer.print("*new({s})", .{adapter.type});
     };
     if (node == .value_struct or (node == .materialized and !node.materialized.pointer)) {
         try scope.writeTypeName(writer, if (node == .value_struct) node.value_struct.ref else node.materialized.ref);

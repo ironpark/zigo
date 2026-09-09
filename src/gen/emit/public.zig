@@ -156,7 +156,7 @@ fn writePublicMaterializedAbsent(scope: public_writers.PublicScope, writer: *std
 
 fn writePublicCapturedReturn(scope: public_writers.PublicScope, writer: *std.Io.Writer, program: abi.Program, function: semantic.SemanticFn, needs_handle_check: bool) !void {
     try writer.writeAll("\treturn ");
-    if (function.return_go_adapter) |adapter| try writer.print("{s}(", .{adapter.from_raw});
+    if (function.returnGoAdapter()) |adapter| try writer.print("{s}(", .{adapter.from_raw});
     switch (function.@"return") {
         .materialized => |value| try writer.print("zigoDecode{s}Buffer(result)", .{value.ref}),
         .value_struct => |value| if (type_spelling.isPackedValue(program, function.@"return"))
@@ -174,7 +174,7 @@ fn writePublicCapturedReturn(scope: public_writers.PublicScope, writer: *std.Io.
         else => if (!try public_writers.writeCodepointResult(writer, function.@"return", function.return_semantic, "result"))
             try writer.writeAll("result"),
     }
-    if (function.return_go_adapter != null) try writer.writeByte(')');
+    if (function.returnGoAdapter() != null) try writer.writeByte(')');
     if (needs_handle_check) try writer.writeAll(", nil");
     try writer.writeByte('\n');
 }
@@ -427,7 +427,7 @@ fn renderPublicBody(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
                     try writer.writeByte('(');
                 }
                 try public_writers.writeRawReferencePrefix(writer, options);
-            } else if (function.origin.return_go_adapter) |adapter| {
+            } else if (function.origin.returnGoAdapter()) |adapter| {
                 try writer.print("return {s}(", .{adapter.from_raw});
                 try public_writers.writeRawReferencePrefix(writer, options);
             } else if (function.origin.@"return" == .value_struct) {
@@ -527,7 +527,7 @@ fn renderPublicBody(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
                 .atomic_ptr => try writer.print("unsafe.Pointer({s})", .{go_names[parameter_index]}),
                 // A per-site adapter converts the scalar first; the raw
                 // conversion (if any) wraps the converted value.
-                .bool => if (parameter.go_adapter) |adapter|
+                .bool => if (parameter.goAdapter()) |adapter|
                     try writer.print("zigoBoolToUint8({s}({s}))", .{ adapter.to_raw, go_names[parameter_index] })
                 else
                     try writer.print("zigoBoolToUint8({s})", .{go_names[parameter_index]}),
@@ -553,7 +553,7 @@ fn renderPublicBody(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
                     try writer.print("zigo{s}SliceToRaw({s})", .{ parameter.type.slice.element.@"enum".ref, go_names[parameter_index] })
                 else if (!try public_writers.writeCodepointArgument(writer, parameter, go_names[parameter_index]))
                     try writer.writeAll(go_names[parameter_index]),
-                else => if (parameter.go_adapter) |adapter|
+                else => if (parameter.goAdapter()) |adapter|
                     try writer.print("{s}({s})", .{ adapter.to_raw, go_names[parameter_index] })
                 else if (!try public_writers.writeCodepointArgument(writer, parameter, go_names[parameter_index]))
                     try writer.writeAll(go_names[parameter_index]),
@@ -568,7 +568,7 @@ fn renderPublicBody(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
         if (!returns_error and !captures_return and function.origin.@"return" == .materialized) try writer.writeByte(')');
         if (!returns_error and !captures_return and function.origin.@"return" == .slice and function.origin.@"return".slice.element.* == .materialized) try writer.writeByte(')');
         if (!returns_error and !captures_return and function.origin.@"return" == .bool) try writer.writeAll(" != 0");
-        if (!returns_error and !captures_return and function.origin.return_go_adapter != null) try writer.writeByte(')');
+        if (!returns_error and !captures_return and function.origin.returnGoAdapter() != null) try writer.writeByte(')');
         if (!returns_error and !captures_return and public_writers.codepointTypeName(function.origin.@"return", function.origin.return_semantic) != null) try writer.writeByte(')');
         if (!returns_error and !captures_return and !borrowed_direct and !owned_direct and needs_check and
             function.origin.@"return" != .void and function.origin.@"return" != .optional) try writer.writeAll(", nil");
@@ -680,7 +680,7 @@ fn renderPublicBody(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
                         try writer.writeAll(", zigoHas");
                     } else if (semantic.isStringSlice(error_payload, function.origin.return_semantic)) {
                         try writer.writeAll("result");
-                    } else if (function.origin.return_go_adapter) |adapter| {
+                    } else if (function.origin.returnGoAdapter()) |adapter| {
                         try writer.print("{s}(", .{adapter.from_raw});
                         try public_writers.writePublicResultConversion(scope, writer, program, error_payload, "result");
                         try writer.writeByte(')');
@@ -1005,12 +1005,12 @@ pub fn writePublicImports(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
     var adapters: std.ArrayList(semantic.GoAdapter) = .empty;
     defer adapters.deinit(allocator);
     for (program.types) |declaration| {
-        const adapter = declaration.go_adapter orelse continue;
+        const adapter = declaration.goAdapter() orelse continue;
         try appendAdapterImportIfUsed(allocator, &adapters, std_group.items, adapter, body);
     }
     for (program.functions) |function| {
-        if (function.origin.return_go_adapter) |adapter| try appendAdapterImportIfUsed(allocator, &adapters, std_group.items, adapter, body);
-        for (function.origin.params) |parameter| if (parameter.go_adapter) |adapter| try appendAdapterImportIfUsed(allocator, &adapters, std_group.items, adapter, body);
+        if (function.origin.returnGoAdapter()) |adapter| try appendAdapterImportIfUsed(allocator, &adapters, std_group.items, adapter, body);
+        for (function.origin.params) |parameter| if (parameter.goAdapter()) |adapter| try appendAdapterImportIfUsed(allocator, &adapters, std_group.items, adapter, body);
     }
     if (count == 0 and !uses_raw and !lifecycle and !default_foreign and foreign.items.len == 0 and adapters.items.len == 0) return writer.writeByte('\n');
     if (count + @as(usize, @intFromBool(uses_raw)) + @as(usize, @intFromBool(lifecycle)) + @as(usize, @intFromBool(default_foreign)) + foreign.items.len + adapters.items.len == 1) {

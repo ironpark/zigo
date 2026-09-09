@@ -19,7 +19,7 @@ pub const plugin: plugin_api.Plugin = .{
 };
 
 fn methodHook(context: plugin_api.Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
-    if (function.origin.implements == null) return;
+    if (function.origin.goImplements() == null) return;
     const method = context.method.?;
     try renderImplementsWrapper(writer, function, method.receiver_name.?, method.go_name, method.needs_check);
 }
@@ -43,7 +43,7 @@ pub fn renderImplementsWrapper(
     go_name: []const u8,
     needs_check: bool,
 ) !void {
-    const implements = function.origin.implements.?;
+    const implements = function.origin.goImplements().?;
     const receiver = function.origin.receiver.?;
     const result = function.origin.@"return".errorPayload();
     const counts = result == .int;
@@ -153,7 +153,7 @@ pub fn renderCountingStreams(writer: *std.Io.Writer, program: abi.Program) !void
 
 fn programNeedsCountingStream(program: abi.Program, kind: semantic.Implements) bool {
     for (program.functions) |function| {
-        if (function.origin.implements == kind and function.origin.@"return".errorPayload() == .void) return true;
+        if (function.origin.goImplements() == kind and function.origin.@"return".errorPayload() == .void) return true;
     }
     return false;
 }
@@ -162,7 +162,7 @@ fn programNeedsCountingStream(program: abi.Program, kind: semantic.Implements) b
 /// whose Go shape is one step from the interface: the single parameter the
 /// interface passes, and a `void` or integer result.
 pub fn implementsIssue(allocator: std.mem.Allocator, function: semantic.SemanticFn) !?diagnostic.Diagnostic {
-    const implements = function.implements orelse return null;
+    const implements = function.goImplements() orelse return null;
     const interface = implements.interfaceName();
     if (function.receiver == null) return .{
         .severity = .@"error",
@@ -172,10 +172,10 @@ pub fn implementsIssue(allocator: std.mem.Allocator, function: semantic.Semantic
         .hint = try std.fmt.allocPrint(allocator, "`{s}` is satisfied by a method; move `.implements` to a method of a registered opaque type", .{interface}),
     };
     const receiver = function.receiver.?;
-    if (function.iterator != null or function.cancel != null) return .{
+    if (function.goIterator() != null or function.cancel != null) return .{
         .severity = .@"error",
         .code = "ZIGO058",
-        .message = try std.fmt.allocPrint(allocator, "`.implements = .{s}` on `{s}.{s}`, which also has `{s}`", .{ @tagName(implements), receiver, function.name, if (function.iterator != null) "`.iterator`" else "`.cancel`" }),
+        .message = try std.fmt.allocPrint(allocator, "`.implements = .{s}` on `{s}.{s}`, which also has `{s}`", .{ @tagName(implements), receiver, function.name, if (function.goIterator() != null) "`.iterator`" else "`.cancel`" }),
         .site = site.functionSite(function),
         .hint = try std.fmt.allocPrint(allocator, "`{s}` has no place for a `ctx` or a sequence; bind a plain method for the interface", .{interface}),
     };

@@ -136,7 +136,7 @@ pub fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Wr
         if (record.owner.kind == .tagged_union) continue;
         if (!public_writers.typeBelongsToPackage(program, record.name, options.active_package)) continue;
         // An adapted struct is the user's own Go type; nothing to mirror.
-        if (record.owner.go_adapter != null) continue;
+        if (record.owner.goAdapter() != null) continue;
         if (record.owner.doc) |doc|
             try docs.writeGoDoc(writer, record.name, record.name, doc)
         else
@@ -170,7 +170,7 @@ pub fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Wr
         // comments; only the type references take the qualified form.
         const public_name = try scope.typeNameAlloc(allocator, record.name);
         defer allocator.free(public_name);
-        if (record.owner.go_adapter) |adapter| {
+        if (record.owner.goAdapter()) |adapter| {
             // The user's two functions are the whole conversion; the generated
             // names stay so every call site is the same as for a mirror.
             if (options.emitsHelperFmt("zigo{s}ToRaw", .{record.name})) {
@@ -214,7 +214,7 @@ pub fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Wr
             try writer.writeAll("\t}\n}\n\n");
         }
 
-        if (record.owner.go_adapter == null and options.emitsHelperFmt("zigo{s}FromRaw", .{record.name})) {
+        if (record.owner.goAdapter() == null and options.emitsHelperFmt("zigo{s}FromRaw", .{record.name})) {
             try writer.print("func zigo{s}FromRaw(value ", .{record.name});
             try public_writers.writeRawTypeReferencePrefix(writer, options);
             try writer.print("{s}) {s} {{\n\treturn {s}{{\n", .{ raw_type, public_name, public_name });
@@ -514,7 +514,7 @@ fn publicIdentifiersAlloc(allocator: std.mem.Allocator, program: abi.Program) ![
                 try names.append(allocator, try std.fmt.allocPrint(allocator, "{s}Snapshot", .{declaration.name}));
                 try names.append(allocator, try std.fmt.allocPrint(allocator, "{s}Variant", .{declaration.name}));
             },
-            .@"enum" => if (declaration.go_adapter == null) for (declaration.fields) |field| {
+            .@"enum" => if (declaration.goAdapter() == null) for (declaration.fields) |field| {
                 const constant = try naming.pascalAlloc(allocator, field.name);
                 defer allocator.free(constant);
                 try names.append(allocator, try std.fmt.allocPrint(allocator, "{s}{s}", .{ declaration.name, constant }));
@@ -872,7 +872,7 @@ pub fn renderGoEnums(allocator: std.mem.Allocator, writer: *std.Io.Writer, progr
     for (program.types) |declaration| {
         if (!emit.packageMatches(declaration.package, options.active_package)) continue;
         if (declaration.kind != .@"enum") continue;
-        if (declaration.go_adapter) |adapter| {
+        if (declaration.goAdapter()) |adapter| {
             try renderGoEnumAdapter(writer, program, options, declaration, adapter);
             continue;
         }

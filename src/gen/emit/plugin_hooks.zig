@@ -147,7 +147,7 @@ fn writeValueType(value: plugin.Context, writer: *std.Io.Writer, function: abi.A
     if (node == .opaque_ptr and docs.returnsBorrowedOpaque(origin)) return writer.print("*{s}Ref", .{node.opaque_ptr.ref});
     if (semantic.isStringSlice(node, origin.return_semantic)) return writer.writeAll("string");
     if (public_writers.codepointTypeName(node, origin.return_semantic)) |name| return writer.writeAll(name);
-    if (origin.return_go_adapter) |adapter| return writer.writeAll(adapter.type);
+    if (origin.returnGoAdapter()) |adapter| return writer.writeAll(adapter.type);
     return public_writers.writePublicGoType(scopeOf(value), writer, node);
 }
 

@@ -88,7 +88,7 @@ pub fn publicNameCollisionIssue(allocator: std.mem.Allocator, document: semantic
     // An iterator wrapper is one more method on its receiver, so it must not
     // share a name with a bound method or another wrapper of that type.
     for (document.functions, 0..) |function, index| {
-        const iterator = function.iterator orelse continue;
+        const iterator = function.goIterator() orelse continue;
         const receiver = function.receiver orelse continue;
         for (document.functions, 0..) |other, other_index| {
             if (!std.mem.eql(u8, other.receiver orelse "", receiver)) continue;
@@ -96,7 +96,7 @@ pub fn publicNameCollisionIssue(allocator: std.mem.Allocator, document: semantic
             const other_name = try semantic.publicFunctionNameAlloc(allocator, document, other);
             defer allocator.free(other_name);
             const clashes_method = std.mem.eql(u8, iterator.name, other_name);
-            const clashes_wrapper = other_index < index and other.iterator != null and std.mem.eql(u8, iterator.name, other.iterator.?.name);
+            const clashes_wrapper = other_index < index and other.goIterator() != null and std.mem.eql(u8, iterator.name, other.goIterator().?.name);
             if (!clashes_method and !clashes_wrapper) continue;
             const function_path = try site.functionDeclarationAlloc(allocator, function);
             const other_path = try site.functionDeclarationAlloc(allocator, other);
@@ -118,7 +118,7 @@ pub fn publicNameCollisionIssue(allocator: std.mem.Allocator, document: semantic
     // the interface, so a receiver carries each interface once and no bound
     // method may already own that name.
     for (document.functions, 0..) |function, index| {
-        const implements = function.implements orelse continue;
+        const implements = function.goImplements() orelse continue;
         const receiver = function.receiver orelse continue;
         const wrapper = implements.methodName();
         for (document.functions, 0..) |other, other_index| {
@@ -127,8 +127,8 @@ pub fn publicNameCollisionIssue(allocator: std.mem.Allocator, document: semantic
             const other_name = try semantic.publicFunctionNameAlloc(allocator, document, other);
             defer allocator.free(other_name);
             const clashes_method = std.mem.eql(u8, wrapper, other_name);
-            const clashes_iterator = other.iterator != null and std.mem.eql(u8, wrapper, other.iterator.?.name);
-            const clashes_wrapper = other_index < index and other.implements != null and std.mem.eql(u8, wrapper, other.implements.?.methodName());
+            const clashes_iterator = other.goIterator() != null and std.mem.eql(u8, wrapper, other.goIterator().?.name);
+            const clashes_wrapper = other_index < index and other.goImplements() != null and std.mem.eql(u8, wrapper, other.goImplements().?.methodName());
             if (!clashes_method and !clashes_iterator and !clashes_wrapper) continue;
             const function_path = try site.functionDeclarationAlloc(allocator, function);
             const other_path = try site.functionDeclarationAlloc(allocator, other);
@@ -254,8 +254,8 @@ pub fn identifierIssue(allocator: std.mem.Allocator, document: semantic.Semantic
         if (function.name.len == 0) continue;
         if (try nameIssue(allocator, .{
             .label = "function name",
-            .spelling = function.go_name orelse function.name,
-            .convert = function.go_name == null,
+            .spelling = function.goName() orelse function.name,
+            .convert = function.goName() == null,
             .declaration = function.name,
             .source = function.source,
             .hint = "give the entry a `.name` that converts to a Go identifier",

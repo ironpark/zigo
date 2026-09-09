@@ -23,7 +23,7 @@ pub const plugin: plugin_api.Plugin = .{
 /// The wrapper is written after the method it drives, in the file that owns
 /// the method: a plugin's method hook is exactly where the direct call was.
 fn methodHook(context: plugin_api.Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
-    if (function.origin.iterator == null) return;
+    if (function.origin.goIterator() == null) return;
     try renderIteratorWrapper(context, writer, function);
 }
 
@@ -50,7 +50,7 @@ pub fn renderIteratorWrapper(context: plugin_api.Context, writer: *std.Io.Writer
     const receiver_name = method.receiver_name.?;
     const go_name = method.go_name;
     const needs_check = method.needs_check;
-    const iterator = function.origin.iterator.?;
+    const iterator = function.origin.goIterator().?;
     const receiver = function.origin.receiver.?;
     const with_error = needs_check or function.origin.@"return" == .error_union;
     var payload: std.Io.Writer.Allocating = .init(allocator);
@@ -88,7 +88,7 @@ pub fn renderIteratorWrapper(context: plugin_api.Context, writer: *std.Io.Writer
 /// be one Go can call with nothing but the receiver (and its `ctx`), and it
 /// has to say when it is finished: `?T` or `!?T`.
 pub fn iteratorIssue(allocator: std.mem.Allocator, function: semantic.SemanticFn) !?diagnostic.Diagnostic {
-    const iterator = function.iterator orelse return null;
+    const iterator = function.goIterator() orelse return null;
     if (function.receiver == null) return .{
         .severity = .@"error",
         .code = "ZIGO050",

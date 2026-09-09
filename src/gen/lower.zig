@@ -1083,7 +1083,7 @@ fn lowerValueStructs(allocator: std.mem.Allocator, document: semantic.Semantic, 
 fn structCastable(records: []const abi.AbiStruct, record: abi.AbiStruct) bool {
     // A user-adapted type has whatever layout the user chose; only the two
     // conversion functions relate it to the mirror.
-    if (record.owner.go_adapter != null) return false;
+    if (record.owner.goAdapter() != null) return false;
     for (record.fields) |field| {
         if (field.atomic) return false;
         if (field.node == .bool) return false;

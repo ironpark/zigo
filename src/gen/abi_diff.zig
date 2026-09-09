@@ -125,7 +125,7 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
             try add(allocator, &report, .breaking, identity, "return ownership or semantics changed");
         if (!retentionEqual(old.params, new.params))
             try add(allocator, &report, .breaking, identity, "parameter retention changed");
-        if (!paramAdaptersEqual(old.params, new.params) or !goAdapterEqual(old.return_go_adapter, new.return_go_adapter))
+        if (!paramAdaptersEqual(old.params, new.params) or !goAdapterEqual(old.returnGoAdapter(), new.returnGoAdapter()))
             try add(allocator, &report, .breaking, identity, "Go adapter changed");
         // The C signature does not move, but the Go callback type does: it
         // gains or loses a second result, and every caller's function literal
@@ -144,9 +144,9 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
             try add(allocator, &report, .breaking, identity, "Go package assignment changed");
         // The wrapper is a Go method callers range over; losing or renaming
         // it breaks them, gaining it does not.
-        if (old.iterator != null and (new.iterator == null or !std.mem.eql(u8, old.iterator.?.name, new.iterator.?.name)))
+        if (old.goIterator() != null and (new.goIterator() == null or !std.mem.eql(u8, old.goIterator().?.name, new.goIterator().?.name)))
             try add(allocator, &report, .breaking, identity, "iterator wrapper removed or renamed")
-        else if (old.iterator == null and new.iterator != null)
+        else if (old.goIterator() == null and new.goIterator() != null)
             try add(allocator, &report, .compatible, identity, "iterator wrapper added");
         // The native signature is unchanged, but generated Go gains or loses
         // the parent/child Close ordering contract.
@@ -174,7 +174,7 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
             try add(allocator, &report, .compatible, old.name, "callback failure result changed");
         // The text encoding is Go surface only: `Parse<Enum>` and the
         // `encoding.Text*` methods come and go without touching C.
-        if (!goAdapterEqual(old.go_adapter, new.go_adapter))
+        if (!goAdapterEqual(old.goAdapter(), new.goAdapter()))
             try add(allocator, &report, .breaking, old.name, "Go adapter changed");
         if (old.text == true and new.text != true)
             try add(allocator, &report, .breaking, old.name, "enum text encoding removed")
@@ -606,7 +606,7 @@ fn callbackFailureEqual(lhs: []const semantic.Parameter, rhs: []const semantic.P
 fn paramAdaptersEqual(lhs: []const semantic.Parameter, rhs: []const semantic.Parameter) bool {
     return exposedParamsMatch(lhs, rhs, struct {
         fn matches(a: semantic.Parameter, b: semantic.Parameter) bool {
-            return goAdapterEqual(a.go_adapter, b.go_adapter);
+            return goAdapterEqual(a.goAdapter(), b.goAdapter());
         }
     }.matches);
 }

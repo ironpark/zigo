@@ -59,7 +59,7 @@ pub fn typeIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             .site = .{ .path = "semantic.json", .declaration = declaration.name },
             .hint = "remove `.exhaustive = false`, or make the Zig enum non-exhaustive",
         };
-        if (declaration.go_adapter) |adapter| {
+        if (declaration.goAdapter()) |adapter| {
             const is_extern_struct = declaration.kind == .value_struct and declaration.layout == .@"extern";
             const is_enum = declaration.kind == .@"enum";
             const wrong_kind = !is_extern_struct and !is_enum;

@@ -542,6 +542,13 @@ pub const Parameter = struct {
         return self.go_error orelse false;
     }
 
+    /// The Go type a parameter's scalar is spelled as, with the conversions
+    /// either side of the raw call. Reads go through here so the Go
+    /// projection can move without touching every caller.
+    pub fn goAdapter(self: Parameter) ?GoAdapter {
+        return self.go_adapter;
+    }
+
     /// The written hint a parameter was declared with. Parameters that keep
     /// the default never carry the field.
     pub fn writtenHint(self: Parameter) Written {
@@ -858,6 +865,35 @@ pub const SemanticFn = struct {
         return self.go_owner orelse self.namespace;
     }
 
+    /// The `.constructs` grouping override alone, without the `namespace`
+    /// fallback `goOwner` applies. Only a caller asking whether the binding
+    /// stated an owner wants this one.
+    pub fn goOwnerOverride(self: SemanticFn) ?[]const u8 {
+        return self.go_owner;
+    }
+
+    /// The exact public Go spelling a binding asked for, if it asked. Callers
+    /// wanting the name a function is actually published under want
+    /// `publicFunctionNameAlloc`, which resolves constructors too.
+    pub fn goName(self: SemanticFn) ?[]const u8 {
+        return self.go_name;
+    }
+
+    /// The Go type the scalar result is spelled as, with its conversion.
+    pub fn returnGoAdapter(self: SemanticFn) ?GoAdapter {
+        return self.return_go_adapter;
+    }
+
+    /// The range-over-func wrapper this method also gets, if any.
+    pub fn goIterator(self: SemanticFn) ?Iterator {
+        return self.iterator;
+    }
+
+    /// The Go standard interface this method also satisfies, if any.
+    pub fn goImplements(self: SemanticFn) ?Implements {
+        return self.implements;
+    }
+
     pub fn childOfReceiver(self: SemanticFn) bool {
         return self.child_of_receiver orelse false;
     }
@@ -971,6 +1007,12 @@ pub const TypeDecl = struct {
         return self.access orelse .projection;
     }
 
+    /// The Go type this declaration's public surface is spelled as, replacing
+    /// the generated mirror, when the binding registered one.
+    pub fn goAdapter(self: TypeDecl) ?GoAdapter {
+        return self.go_adapter;
+    }
+
     /// C only ever holds a pointer to these, so a tagged union is a handle too.
     pub fn isHandle(self: TypeDecl) bool {
         return self.kind == .@"opaque" or self.kind == .tagged_union;
@@ -1055,7 +1097,7 @@ pub fn publicFunctionNameAlloc(
     document: Semantic,
     function: SemanticFn,
 ) ![]u8 {
-    if (function.go_name) |name| return allocator.dupe(u8, name);
+    if (function.goName()) |name| return allocator.dupe(u8, name);
     if (constructorForInit(document.constructors, function)) |constructor| {
         if (constructor.name) |name| return naming.pascalAlloc(allocator, name);
         return std.fmt.allocPrint(allocator, "New{s}", .{constructor.type});

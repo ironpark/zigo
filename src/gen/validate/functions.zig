@@ -408,7 +408,7 @@ fn adaptableScalar(node: semantic.TypeNode) bool {
 
 fn scalarAdapterIssue(allocator: std.mem.Allocator, function: semantic.SemanticFn) !?diagnostic.Diagnostic {
     for (function.params) |parameter| {
-        const adapter = parameter.go_adapter orelse continue;
+        const adapter = parameter.goAdapter() orelse continue;
         if (parameter.injected == null and parameter.flatten == null and parameter.direction == .in and adaptableScalar(parameter.type) and
             adapter.type.len != 0 and isGoIdentifierName(adapter.to_raw) and isGoIdentifierName(adapter.from_raw)) continue;
         return .{
@@ -419,7 +419,7 @@ fn scalarAdapterIssue(allocator: std.mem.Allocator, function: semantic.SemanticF
             .hint = "a parameter adapter needs a bool, float, or integer of 8/16/32/64 bits (or usize) passed in; register a type-level `.go` for structs and enums",
         };
     }
-    if (function.return_go_adapter) |adapter| {
+    if (function.returnGoAdapter()) |adapter| {
         const payload = function.@"return".errorPayload();
         if (!adaptableScalar(payload) or adapter.type.len == 0 or !isGoIdentifierName(adapter.to_raw) or !isGoIdentifierName(adapter.from_raw)) return .{
             .severity = .@"error",
@@ -518,7 +518,7 @@ fn valueReceiverIssue(
     const receiver = function.receiver.?;
     const declaration = semantic.typeDecl(document.types, receiver);
     if (declaration) |entry| {
-        if (entry.go_adapter != null) return .{
+        if (entry.goAdapter() != null) return .{
             .severity = .@"error",
             .code = "ZIGO056",
             .message = try std.fmt.allocPrint(allocator, "`{s}` is spelled as a Go type from another package, which cannot carry methods", .{receiver}),
@@ -529,14 +529,14 @@ fn valueReceiverIssue(
     const offender: ?[]const u8 = blk: {
         if (function.childOfReceiver()) break :blk "`.child_of_receiver`";
         if (function.returnsBorrowedHandle()) break :blk "`.returns.ownership = .borrowed`";
-        if (function.iterator != null) break :blk "`.iterator`";
-        if (function.implements != null) break :blk "`.implements`";
+        if (function.goIterator() != null) break :blk "`.iterator`";
+        if (function.goImplements() != null) break :blk "`.implements`";
         if (function.boxed != null) break :blk "a boxed constructor";
         // `.destroys` already needs the destroyed type as its receiver, so
         // only the constructor side can reach a value receiver.
         for (document.constructors) |pair| {
             if (std.mem.eql(u8, pair.init, function.name) and
-                std.mem.eql(u8, function.go_owner orelse "", pair.type)) break :blk "`.constructs`";
+                std.mem.eql(u8, function.goOwnerOverride() orelse "", pair.type)) break :blk "`.constructs`";
         }
         for (function.params) |parameter| {
             if (parameter.type == .io_stream) break :blk "an `std.Io` stream parameter";
