@@ -37,11 +37,10 @@
 
 ## 확장과 내부 계약
 
-생성되는 Go API를 확장하려면 [plugin 문서](plugins.md)를 참고하세요. ABI나 생성기 출력
-자체를 검토할 때만 [생성 ABI](generated-abi.md), [materialized 결과 ABI](abi.md)와
-[생성 runtime](generated-runtime.md)을 읽으면 됩니다.
-
-이 영역은 이후 `docs/plugins/`와 `docs/internals/`로 분리됩니다. 사용자 성공 경로에는
+생성되는 Go API를 확장하려면 별도 영역인 [plugin 문서](plugins/README.md)를 참고하세요.
+ABI나 생성기 출력 자체를 검토할 때만 [내부 구조](internals/README.md)의
+[ABI](internals/abi.md), [materialized 형식](internals/materialized-format.md)과
+[생성 runtime](internals/generated-runtime.md)을 읽으면 됩니다. 일반적인 사용자 성공 경로는
 내부 계약을 전제로 하지 않습니다.
 
 ## 문서 규칙

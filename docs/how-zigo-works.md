@@ -103,4 +103,4 @@ artifact, 로딩 시점과 배포 방식입니다.
 - 선언 문법: [바인딩 작성](authoring/README.md)
 - 실행 가능한 기능 예제: [예제](examples.md)
 - 생성과 배포: [빌드와 배포](build-and-ship/README.md)
-- 세부 ABI 검토: [생성 ABI](generated-abi.md)
+- 세부 ABI 검토: [내부 ABI](internals/abi.md)

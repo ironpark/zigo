@@ -2,7 +2,7 @@
 depends_on:
 - "184-user-docs-rewrite#2"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: 일반 사용자 동선과 플러그인 작성자 동선이 분리되고 내부 계약 문서가 구현 검토 목적과 안정성 범위를 명시한다.
 > NEXT: none

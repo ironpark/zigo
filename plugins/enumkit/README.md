@@ -32,6 +32,8 @@ const enumkit: zigo.PluginModule = .{
 ```
 
 `build.zig.zon`에 이 패키지를 `zigo_enumkit` 의존성으로 추가하세요.
-[실제 연결 예제](../../examples/10-tagged-union/build.zig) · [플러그인 계약](../../docs/plugins.md)
+[실제 연결 예제](../../examples/10-tagged-union/build.zig) ·
+[플러그인 사용](../../docs/plugins/README.md) ·
+[플러그인 API](../../docs/plugins/api-reference.md)
 
 Go 코드만 추가하므로 C ABI는 변경되지 않고 cgo·purego에서 동일하게 동작합니다.
