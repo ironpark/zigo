@@ -1,12 +1,8 @@
 # Zig 오류를 Go에서 처리하기
 
-`Divide`의 성공값을 받고, 0으로 나눈 오류를 `errors.Is`로 구분합니다.
-[실행 가능한 Go 사용 예제](go/errors/example_test.go)는 외부 패키지에서의 import와
-정상·실패 경로를 함께 보여 줍니다.
+Zig error union의 성공값을 받고 실패를 Go `error`와 `errors.Is`로 구분하는 예제입니다.
 
 ## 실행
-
-이 디렉터리에서 실행합니다.
 
 ```sh
 zig build go
@@ -14,12 +10,22 @@ zig build go
 (cd go && go test ./...)
 ```
 
-`ExampleDivide`는 `4`, `true`를 순서대로 출력합니다. 사용 예제의 예상하지 않은 오류는
-테스트 실패를 위해 panic으로 처리합니다. 실제 애플리케이션에서는 호출자에게 반환하거나
-해당 작업을 중단하세요.
+`ExampleDivide`는 정상 결과 `4`와 0으로 나눈 오류의 판별 결과 `true`를 출력합니다.
 
-먼저 [src/root.zig](src/root.zig)의 error union과 [src/bindings.zig](src/bindings.zig)를
-읽으세요. 추가 테스트는 slice 합계, enum과 `u21` 범위 오류를 다룹니다.
-`go/support/ffi`는 사용자 지정 raw 경로이며 일반 소비자는 공개 `errors` 패키지만 import합니다.
+## 핵심 파일
 
-[오류 처리 가이드](../../docs/bindings-callbacks.md) · [전체 예제](../../docs/examples.md)
+- [src/root.zig](src/root.zig) — `Divide` error union과 추가 타입
+- [src/bindings.zig](src/bindings.zig) — 공개 함수와 오류 선언
+- [Go 사용 예제](go/errors/example_test.go) — 성공·실패 경로
+- `go/support/ffi` — 이 예제에서 지정한 raw package
+
+## 생성되는 동작
+
+Zig error set은 Go에서 `errors.Is`로 비교할 수 있는 오류 값이 됩니다. 공개 사용자는 raw
+package가 아니라 `errors` package만 import합니다. 예상하지 않은 오류를 예제 테스트에서는
+panic으로 드러내지만 실제 application에서는 반환하거나 해당 작업을 중단해야 합니다.
+
+## 다음 문서
+
+[콜백과 오류](../../docs/authoring/callbacks-and-errors.md) ·
+[타입 대응](../../docs/reference/type-mapping.md) · [예제 선택](../../docs/examples.md)

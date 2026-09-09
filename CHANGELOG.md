@@ -193,7 +193,6 @@
   `.use()`는 중복 attachment를 거부하며 `.replacePlugin()`으로 교체합니다. iterator·io interface·
   enum text 기능도 `.use(zigo.features.*, options)`로 연결합니다.
 - 13개 예제와 fixture·작성 문서를 새 API로 옮겼습니다.
-  [마이그레이션 안내](docs/migration-authoring.md)에 대응표와 지원 범위를 정리했습니다.
 
 ### Added
 
@@ -215,7 +214,7 @@
   코드를 더합니다. 메서드 옆에 메서드(`method_hook`), 타입 뒤에 코드(`type_hook`), 공개
   파일 하나(`files`)를 추가할 수 있습니다. Zig shim·C 헤더·raw 패키지에는 손댈 수 없으므로
   플러그인 때문에 ABI가 움직이는 일은 없고, cgo와 purego에서 똑같이 동작합니다. 계약은
-  `src/plugin.zig` 하나이며 사용자 문서는 [플러그인](docs/plugins.md)입니다.
+  `src/plugin.zig` 하나이며 사용자 문서는 [플러그인](docs/plugins/README.md)입니다.
 - `addGoBindings`의 `.plugins`. 나열한 순서가 실행 순서이고, 각 항목은 `bindings.zig`가
   import할 이름과 플러그인의 루트 소스 파일입니다. 생성기는 소비하는 프로젝트마다 새로
   컴파일되므로 플러그인은 빌드 시점에 정적으로 링크됩니다. 별도 프로세스도, 런타임
@@ -318,8 +317,7 @@
 - 공개 선언 스키마(`zigo.Binding`, `zigo.Type`, `zigo.Function`, `zigo.Param`, `zigo.Returns` 등)를
   추가했습니다. 모르는 키와 잘못된 위치의 키를 Zig 컴파일러가 선언 자리에서 검사합니다.
 - 타입과 함수의 `.doc`이 생성 GoDoc을 덮어씁니다.
-- 0.14 선언을 새 스키마로 옮기는 `scripts/migrate-bindings.py`와
-  [마이그레이션 가이드](docs/migration-0.15.md)를 추가했습니다.
+- 0.14 선언을 새 스키마로 옮기는 `scripts/migrate-bindings.py`를 추가했습니다.
 
 ## [0.14.4] - 2026-09-07
 
@@ -511,7 +509,7 @@
 - 공개 패키지의 비공개 생성 식별자가 모두 `zigo` 접두사를 갖습니다(`zigoNewContext`,
   `zigoErrorForCode`, `zigoBoolToUint8`, `zigoDeleteCallbackHandle`,
   `zigo<T>CleanupState` 등). 사용자가 같은 패키지에 파일을 추가할 때 이름이 충돌하지 않도록
-  예약 규칙을 [생성물과 CI 관리](docs/generated-code.md#생성-패키지-확장하기)에 적었습니다.
+  예약 규칙을 [생성물과 CI 관리](docs/build-and-ship/generated-files-and-ci.md)에 적었습니다.
   생성 패키지 안에서 이전 이름을 직접 참조하던 테스트 코드는 바꿔야 합니다.
 
 ## [0.11.0] - 2026-09-06
@@ -1126,8 +1124,8 @@
 - 범위를 벗어난 승격 정수 인자는 shim이 검사해 기존 패닉 브리지를 통해 Go
   `NativePanicError`로 돌아옵니다. extern struct 필드, 슬라이스 원소, callback 시그니처의
   비 2의 거듭제곱 폭은 이유를 담은 `ZIGO018`로 계속 거부됩니다. (계획 67)
-- `LockOSThread` 비용 벤치마크가 07-event-queue에 추가됐고 결과가 `docs/limitations.md`에
-  기록됐습니다. 가벼운 error union 호출에서 약 2%라 패닉 메시지 ABI는 바꾸지 않았습니다.
+- `LockOSThread` 비용 벤치마크가 07-event-queue에 추가됐습니다. 가벼운 error union 호출에서
+  약 2%라 패닉 메시지 ABI는 바꾸지 않았습니다.
   (계획 68)
 
 ### Changed

@@ -1,18 +1,9 @@
 # 여러 기능을 조합한 Pipeline
 
-상태를 가진 라이브러리에서 바인딩 기능을 함께 사용하는 예제입니다.
-
-- opaque `Pipeline`이 복사한 UTF-8 이름과 retained Go 콜백을 소유합니다.
-- enum·bool 상태, 입력 slice, typed error와 콜백 panic 처리를 조합합니다.
-- `IntBatch`·`FloatBatch`는 generic 타입을 구체화해 등록합니다.
-- `Close`, 수명 카운터와 동시 생성 테스트로 자원 정리를 확인합니다.
-- `CompressionBound`는 zlib 링크 설정의 전파를 확인합니다.
-
-[바인딩 선언](src/bindings.zig)은 `Pipeline`·`IntBatch`·`FloatBatch`를 `.context()`로 묶습니다. 두 generic 구체화는 같은 `batch_members`를 `.select()`에 전달하고, `Batch` 인터페이스는 각 Context의 `.typeRef()`를 참조합니다.
+상태 객체, retained callback, enum, slice, typed error와 generic 구체화를 하나의 library에서
+조합하는 예제입니다.
 
 ## 실행
-
-이 디렉터리에서 실행합니다.
 
 ```sh
 zig build test go-check abi-check
@@ -21,6 +12,21 @@ zig build go
 (cd go && go test -run '^$' -bench BenchmarkPipelineProcess -benchmem ./pipeline)
 ```
 
-먼저 `go-check`로 커밋된 생성물을 검사한 뒤 `go`로 갱신합니다.
-선언 방법은 [바인딩 가이드](../../docs/bindings.md),
-다른 예제는 [예제 선택 가이드](../../docs/examples.md)를 참고하세요.
+## 핵심 파일
+
+- [src/root.zig](src/root.zig) — `Pipeline`과 generic batch 구현
+- [src/bindings.zig](src/bindings.zig) — Context 기반 type별 선언
+- [build.zig](build.zig) — zlib link 입력과 생성 step
+- `go/pipeline` — 생성 API와 수명·동시성 테스트
+
+## 생성되는 동작
+
+`Pipeline`은 복사한 UTF-8 이름과 retained callback을 소유합니다. `IntBatch`와 `FloatBatch`는
+같은 generic member 목록을 서로 다른 Zig type으로 구체화하며 `Batch` interface가 두 Context의
+type reference를 사용합니다. `Close`와 수명 counter로 정리를 검증합니다.
+
+## 다음 문서
+
+[바인딩 작성](../../docs/authoring/README.md) ·
+[객체와 수명](../../docs/authoring/objects-and-lifetimes.md) ·
+[예제 선택](../../docs/examples.md)

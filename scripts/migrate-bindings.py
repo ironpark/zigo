@@ -3,7 +3,7 @@
 to the 0.15 typed schema.
 
 Historical intermediate migration only. For the current declaration-tree API,
-continue with docs/migration-authoring.md.
+continue with docs/authoring/README.md.
 
 Usage: scripts/migrate-bindings.py <file.zig>...
 

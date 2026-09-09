@@ -1,37 +1,37 @@
 # 객체 생성·사용·Close
 
-상태를 가진 Zig 객체를 Go handle로 사용합니다. [실행 가능한 사용 예제](go/opaque/example_test.go)에서
-생성 오류 확인, 메서드 호출, optional 결과의 존재 여부, `defer Close`를 순서대로 확인하세요.
-
-이 예제는 `api.in()`과 `Entry.members()`를 직접 조합하는 기본 작성 방식을 유지합니다. 타입 선언과 scope를 함께 묶는 Context 방식은 [Pipeline](../05-pipeline/src/bindings.zig)과 비교하세요.
+상태를 가진 Zig 객체를 Go handle로 사용하며 생성자, method, optional 결과와 수명 종료를
+확인하는 예제입니다.
 
 ## 실행
-
-이 디렉터리에서 실행합니다.
 
 ```sh
 zig build go
 (cd go && go test -run '^Example' -v ./...)
 (cd go && go test ./...)
-```
 
-출력은 `3`, `0 false`입니다. 0이라는 값과 결과가 없다는 상태는 서로 다릅니다.
-예제에서는 정리를 예약하고 `Close`의 반환값은 생략합니다. 실제 종료 오류를 다뤄야 하는
-객체는 반환값도 확인하세요.
-
-## 추가로 확인할 동작
-
-- [바인딩 선언](src/bindings.zig): opaque 타입과 생성자·소멸자
-- `generated_test.go`: borrowed view, 값으로 복사하는 handle 인자, 문자열
-- `poison_test.go`: native panic 이후 재사용 거부
-- `go-purego`: 같은 객체 API의 purego 검증
-
-purego는 별도로 생성·로드합니다.
-
-```sh
 zig build purego-go purego-go-verify
 (cd go-purego && CGO_ENABLED=0 go test ./...)
 ```
 
-객체의 동시 호출 안전성은 Zig 구현에 달려 있습니다. GC에 의한 정리 대신 명시적으로
-`Close`하세요. [객체 수명 가이드](../../docs/bindings-handles.md) · [전체 예제](../../docs/examples.md)
+예제 출력은 `3`, `0 false`입니다. 값이 0인 경우와 결과가 없는 경우를 구분합니다.
+
+## 핵심 파일
+
+- [src/root.zig](src/root.zig) — 상태 객체 구현
+- [src/bindings.zig](src/bindings.zig) — opaque type, constructor와 destructor
+- [Go 사용 예제](go/opaque/example_test.go) — 생성, 호출과 `defer Close`
+- `go/generated_test.go` — borrowed view, handle 인자와 문자열
+- `go/poison_test.go` — native panic 뒤 handle 재사용 거부
+
+## 생성되는 동작
+
+소유한 handle은 명시적으로 `Close`해야 합니다. GC cleanup은 안전망일 뿐 실행 시점을
+보장하지 않습니다. 객체의 동시 호출 안전성은 원래 Zig 구현에 달려 있습니다. 이 예제는
+직접 `api.in()`과 `Entry.members()`를 조합하며 Context 방식은
+[05-pipeline](../05-pipeline/src/bindings.zig)에서 비교할 수 있습니다.
+
+## 다음 문서
+
+[객체와 수명](../../docs/authoring/objects-and-lifetimes.md) ·
+[지원 범위](../../docs/reference/support-matrix.md) · [예제 선택](../../docs/examples.md)

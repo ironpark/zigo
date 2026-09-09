@@ -2,7 +2,7 @@
 depends_on:
 - "184-user-docs-rewrite#3"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: 사용자 문서의 로컬 링크가 모두 유효하고 과거 API·마이그레이션 참조가 없으며 문서화한 대표 명령과 저장소 검증이 통과한다.
 > NEXT: none

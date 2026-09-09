@@ -1,28 +1,9 @@
 # 큰 API의 자동 발견
 
-하나의 opaque `TelemetryHub`에 여러 API를 모아 자동 발견과 생성기의 처리 범위를
-검증합니다. 작은 기능 하나를 배우려면 [예제 선택 가이드](../../docs/examples.md)에서
-더 단순한 예제를 먼저 선택하세요.
-
-[바인딩 선언](src/bindings.zig)의 `TelemetryHub` Context는 문자열·콜백·취소 계약이 필요한 네 함수만 보강합니다. 나머지는 `.discovery.public`으로 발견하므로 Context의 멤버 목록이 전체 export 목록을 제한하지 않습니다.
-
-## 확인할 기능
-
-- 여러 enum과 typed error set
-- 소유한 UTF-8 설정과 retained Go observer
-- scalar·slice 입력과 두 가지 overflow 정책
-- 처리 모드, 필터, 카운터, 통계, 조회와 제자리 변환
-- 생성 실패 정리, batch 거부, 콜백 panic과 독립 객체의 동시 사용
-- `go/internal/native`의 사용자 지정 raw 패키지
-- purego 자동 내부 로더와 사용자 지정 설치 경로
-
-`bindings.zig`는 일반 함수를 자동 발견하고 문자열·콜백 등 별도 계약이 필요한 선언만
-보강합니다. 함수 개수와 생성 줄 수는 변경될 수 있으므로 `go-coverage`와 `go-report`로
-현재 결과를 확인하세요.
+하나의 opaque `TelemetryHub`에 많은 함수를 모아 public 함수 자동 발견과 필요한 선언만
+보강하는 방식을 보여 주는 통합 예제입니다.
 
 ## 실행
-
-이 디렉터리에서 실행합니다.
 
 ```sh
 zig build test go-check abi-check go-coverage go-report
@@ -33,5 +14,22 @@ zig build purego-go purego-go-verify
 (cd go-purego && CGO_ENABLED=0 go test -count=1 ./...)
 ```
 
-Hub 자체는 동시 호출에 안전하지 않습니다. 동시성 테스트는 goroutine마다 다른 Hub를
-사용합니다. 자동 발견 설정은 [함수와 패키지](../../docs/bindings-functions.md)를 참고하세요.
+## 핵심 파일
+
+- [src/root.zig](src/root.zig) — 큰 공개 API와 상태 객체
+- [src/bindings.zig](src/bindings.zig) — `.discovery.public`과 명시적 보강
+- [build.zig](build.zig) — custom raw package와 purego 설치 경로
+- `go/internal/native` — 이 예제의 raw package
+
+## 생성되는 동작
+
+일반 함수는 자동 발견하고 문자열, callback과 취소처럼 별도 계약이 필요한 네 함수만 Context에서
+보강합니다. enum, typed error, retained observer, slice, 통계와 제자리 변환을 한 package에
+조합합니다. 함수 수와 생성 줄 수 대신 `go-coverage`로 누락을, `go-report`로 최종 결정을
+검사하세요. `TelemetryHub` 자체는 thread-safe하지 않습니다.
+
+## 다음 문서
+
+[함수와 패키지](../../docs/authoring/functions-and-packages.md) ·
+[생성물과 CI](../../docs/build-and-ship/generated-files-and-ci.md) ·
+[예제 선택](../../docs/examples.md)

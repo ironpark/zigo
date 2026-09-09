@@ -1,20 +1,29 @@
-# Zig·Go·C 이름의 대응
+# Zig·C·Go 이름의 대응
 
-`HTTPClient` 모듈과 `statusCode` 함수를 노출해 패키지·함수 이름이 어떻게 생성되는지
-확인하는 작은 회귀 예제입니다. 실제 HTTP 요청을 보내는 클라이언트는 아닙니다.
+`HTTPClient` module과 `statusCode` 함수를 노출해 package와 함수 이름이 각 계층에서 어떻게
+변환되는지 확인하는 작은 회귀 예제입니다. 실제 HTTP client는 아닙니다.
 
 ## 실행
 
-이 디렉터리에서 실행합니다.
-
 ```sh
 zig build go
-(cd go && go test -v ./...)
+(cd go && go test ./...)
 zig build go-report
 ```
 
-[build.zig](build.zig)의 모듈 이름, [src/bindings.zig](src/bindings.zig)의 함수 선택,
-`go/http_client`의 `StatusCode`를 비교하세요. 이름 관련 설정을 바꾸는 경우에 유용하며,
-기본 학습 순서에서는 건너뛰어도 됩니다.
+## 핵심 파일
 
-[이름 설정 가이드](../../docs/bindings-functions.md) · [전체 예제](../../docs/examples.md)
+- [build.zig](build.zig) — Zig module과 Go module 이름
+- [src/bindings.zig](src/bindings.zig) — 함수 선택과 이름 정책
+- `go/http_client` — 생성된 `StatusCode`
+
+## 생성되는 동작
+
+Zig identifier, C symbol과 exported Go name은 각 계층의 규칙에 맞춰 생성됩니다. 이름 설정을
+바꿨다면 `go-report`로 최종 binding 결정을 확인하세요. 일반적인 기능 학습 순서에서는 이
+예제를 건너뛰어도 됩니다.
+
+## 다음 문서
+
+[함수와 패키지](../../docs/authoring/functions-and-packages.md) ·
+[Binding API](../../docs/reference/binding-api.md) · [예제 선택](../../docs/examples.md)

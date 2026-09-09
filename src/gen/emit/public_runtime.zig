@@ -418,7 +418,7 @@ fn writeCallbackErrorHelper(writer: *std.Io.Writer, program: abi.Program, option
 /// keeps the trampoline path.
 ///
 /// A reader taking this path is NOT advanced: the ABI reports no consumed
-/// count, so there is nothing to advance it by. See docs/limitations.md.
+/// count, so there is nothing to advance it by. See docs/reference/support-matrix.md.
 fn writeReaderBytesHelper(writer: *std.Io.Writer, program: abi.Program) !void {
     if (!common.programHasReaderStream(program)) return;
     try writer.writeAll(

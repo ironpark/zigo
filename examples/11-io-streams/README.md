@@ -1,99 +1,40 @@
-# Go I/O를 Zig 함수에 연결하기
+# Go I/O를 Zig에 연결하기
 
-파일·메모리·stdin/stdout을 `io.Reader`와 `io.Writer`로 받아 Zig가 처리하게 합니다.
-반대로 native 객체를 Go의 `io.Reader`·`io.Writer`로 사용하는 흐름도 포함합니다.
+Go `io.Reader`와 `io.Writer`를 Zig 함수에 전달하고 반대로 native 객체가 Go I/O interface를
+구현하도록 생성하는 예제입니다.
 
-[바인딩 선언](src/bindings.zig)에서 옵션이 없는 `Sink`·`Source` 멤버는 `.select()`로 선택하고, 함수별 계약과 플러그인이 다른 `Document`는 `.define()`으로 구성합니다. `fillCodepoints`는 helper와 비교할 수 있도록 전체 출력 버퍼 스키마를 남겼습니다.
-
-## 먼저 실행할 예제
-
-이 디렉터리에서 실행합니다. 명령은 Bash·zsh 기준입니다.
+## 실행
 
 ```sh
 zig build go
 (cd go && go test -run '^Example' -v ./...)
 printf 'hello from Go\n' | (cd go && go run ./cmd/stream-copy)
-```
 
-마지막 명령은 입력을 Zig `tee` 함수로 전달하고 같은 바이트를 stdout에 출력합니다.
-[CLI 소스](go/cmd/stream-copy/main.go)는 실제 파일·표준 스트림을 사용하며,
-실패는 stderr와 0이 아닌 종료 코드로 알립니다. 입력 전체를 Go 버퍼에 모으지 않습니다.
-이름과 달리 이 예제의 `Tee`는 두 출력으로 분기하지 않고 하나의 reader를 하나의 writer로 복사합니다.
-
-Zig의 `streamRemaining`으로 reader와 writer adapter를 직접 연결합니다. writer 버퍼가
-차면 adapter가 버퍼를 비워 다음 읽기의 공간을 확보하므로 대용량 입력도 계속 진행합니다.
-별도의 복사 루프나 입력 전체를 담는 버퍼는 필요하지 않습니다.
-
-[실행 가능한 Go 사용 예제](go/streams/example_test.go)는 메모리 스트림 복사와
-`io.ReadAll`로 native `Source` 읽기를 보여 줍니다.
-
-## API 선택
-
-| 필요한 동작 | 이 예제의 API |
-|---|---|
-| 기존 Go reader → Zig → 기존 Go writer | `Tee` |
-| Zig 객체의 내용을 Go writer로 출력 | `Document.Dump` |
-| Go reader에서 줄 단위 데이터를 객체에 추가 | `Document.Load` |
-| native 객체에 Go의 `io.Copy`로 쓰기 | `Sink.Write`, `Sink.Flush` |
-| native 객체에서 Go의 `io.ReadAll`로 읽기 | `Source.Read` |
-| 평범한 메서드로 handle이 `io` 인터페이스를 구현 | `Document.Write`·`Read`·`WriteTo`·`ReadFrom` (`features.implements`) |
-
-`Document`는 스트림을 내주지 않지만 `append`·`readInto`·`dump`·`load`에 `features.implements`를 붙여
-`io.Writer`·`io.Reader`·`io.WriterTo`·`io.ReaderFrom`이 됩니다. 원래 메서드는 그대로 남고,
-`fmt.Fprintf(doc, ...)`와 `io.ReadAll(doc)`이 됩니다.
-[테스트](go/streams/implements_test.go)가 네 wrapper와 닫힌 handle의 오류를 확인합니다.
-
-`Document.Load`는 newline으로 끝나는 줄을 추가합니다. 마지막 줄의 newline이 없으면 그
-조각은 버립니다. 임의 파일의 바이트를 보존하려면 `Tee`나 CLI를 사용하세요.
-`Bytes() []byte`가 있는 reader는 빠른 경로에서 읽기 위치가 전진하지 않습니다.
-위 예제는 `strings.Reader`를 사용해 이 차이를 피합니다.
-
-## 생성기 플러그인
-
-이 예제는 [`plugins/satisfies`](../../plugins/satisfies)를 `.plugins`로 붙입니다.
-플러그인은 저장소 밖의 평범한 Zig 패키지이고, 생성되는 Go 표면에만 코드를 더합니다.
-
-```zig
-// build.zig
-const satisfies: zigo.PluginModule = .{
-    .name = "zigo_satisfies",
-    .root_source_file = b.dependency("zigo_satisfies", .{}).path("src/plugin.zig"),
-};
-```
-
-```zig
-// src/bindings.zig
-const api = zigo.scope(library);
-const Document = api.handle("Document", .{}).use(satisfies.plugin, .{
-    .interfaces = &.{"io.ReadWriteCloser"},
-}).context();
-```
-
-`Document`는 `features.implements`로 `Write`·`Read`·`WriteTo`·`ReadFrom`을, 생성자 쌍으로
-`Close`를 얻으므로 `io.ReadWriteCloser`입니다. Go에는 그 사실을 선언하는 문법이 없어
-어서션을 손으로 두는 것이 관례인데, 플러그인이 그 줄을 타입 옆(생성된 handle 파일)에
-써 줍니다. 메서드 모양이 바뀌면 그 자리에서 컴파일이 멈춥니다.
-
-```go
-// go/streams/streams_handles_gen.go
-var _ io.ReadWriteCloser = (*Document)(nil)
-```
-
-옵션은 선언 시점에 comptime으로 검사되므로 오타는 `bindings.zig`에서 Zig 컴파일
-오류가 됩니다. 자세한 내용은 [생성기 플러그인](../../docs/plugins.md)을 참고하세요.
-
-## 검증과 추가 기능
-
-```sh
 zig build test go-check abi-check
 (cd go && go test ./...)
 zig build purego-go purego-go-verify
 (cd go-purego && CGO_ENABLED=0 go test ./...)
 ```
 
-CLI 테스트는 빈 입력, newline 없는 입력, UTF-8, 큰 입력과 reader·writer 오류 보존을
-검증합니다. 기존 테스트는 staging 버퍼, short write, EOF, panic, native 객체 수명과
-narrow 정수 slice를 추가로 다룹니다. CLI는 cgo 모듈에만 두고 두 백엔드의 공통 동작은
-각 모듈의 통합 테스트로 확인합니다.
+CLI는 stdin을 Zig `Tee`에 전달해 같은 bytes를 stdout으로 쓰며 전체 입력을 Go buffer에 모으지
+않습니다.
 
-[스트림 선언 가이드](../../docs/bindings-streams.md) · [전체 예제](../../docs/examples.md)
+## 핵심 파일
+
+- [src/root.zig](src/root.zig) — stream 함수와 native `Source`·`Sink`
+- [src/bindings.zig](src/bindings.zig) — stream 계약과 plugin attachment
+- [CLI](go/cmd/stream-copy/main.go) — 실제 stdin/stdout 사용
+- [Go 사용 예제](go/streams/example_test.go) — memory stream과 `io.ReadAll`
+- `go/streams/implements_test.go` — 생성 wrapper와 닫힌 handle 검증
+
+## 생성되는 동작
+
+`Tee`는 Go reader를 Zig가 읽어 Go writer로 전달합니다. `Source`와 `Sink`는 native 객체를 Go I/O로
+사용하게 합니다. `Document`에는 `features.implements`가 `Read`, `Write`, `ReadFrom`, `WriteTo`를
+만들고 satisfies plugin이 `io.ReadWriteCloser` compile-time assertion을 추가합니다. 마지막 줄의
+newline까지 보존해야 하는 복사에는 줄 단위인 `Document.Load` 대신 `Tee`를 사용하세요.
+
+## 다음 문서
+
+[스트림과 취소](../../docs/authoring/streams-and-cancellation.md) ·
+[Plugin](../../docs/plugins/README.md) · [예제 선택](../../docs/examples.md)

@@ -159,6 +159,6 @@ plugin package에서는 최소한 다음을 검사하세요.
 - 반복 실행의 byte-identical output
 - cgo와 purego에서 public Go code compile
 
-zigo 저장소의 [plugin API test](../../tests/plugin_api.zig),
+zigo 저장소의 [plugin contract test](../../tests/plugin_contract.zig),
 [plugin output test](../../tests/plugin_outputs.zig)와 bundled
 [enumkit](../../plugins/enumkit/src/plugin.zig)을 참고할 수 있습니다.
