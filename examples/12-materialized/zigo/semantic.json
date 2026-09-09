@@ -197,8 +197,10 @@
       "symbol": "zg_cursor_create"
     },
     {
-      "iterator": {
-        "name": "All"
+      "go": {
+        "iterator": {
+          "name": "All"
+        }
       },
       "name": "next",
       "ownership": "caller",
@@ -220,8 +222,10 @@
       "symbol": "zg_cursor_next"
     },
     {
-      "iterator": {
-        "name": "Checked"
+      "go": {
+        "iterator": {
+          "name": "Checked"
+        }
       },
       "name": "nextChecked",
       "ownership": "caller",

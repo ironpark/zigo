@@ -1067,10 +1067,10 @@ fn appendFunction(
     // `.iterator = .{}` names the wrapper `All`; `.iterator = .{ .name = "Rows" }`
     // picks another. The shape (a receiver, no data parameters, `?T`) is
     // checked by validation, where the whole signature is in hand.
-    if (metadata.iterator) |iterator| reflected_function.iterator = .{ .name = iterator.name };
+    if (metadata.iterator) |iterator| reflected_function.setGoIterator(.{ .name = iterator.name });
     // `.implements` names a Go standard interface; the shape the interface
     // needs is checked by validation, where the whole signature is in hand.
-    if (metadata.implements) |implements| reflected_function.implements = ir(semantic.Implements, implements);
+    if (metadata.implements) |implements| reflected_function.setGoImplements(ir(semantic.Implements, implements));
     // `extend` captured each plugin's options at the declaration; here they
     // become the `ext` object the generator hands back to that plugin.
     if (metadata.ext.len != 0) reflected_function.ext = try extensionsAlloc(allocator, metadata.ext);
@@ -3502,8 +3502,8 @@ test "an iterator opt-in records the wrapper name" {
         },
     }, "terminal", "zg");
 
-    try std.testing.expectEqualStrings("All", document.functions[0].iterator.?.name);
-    try std.testing.expectEqualStrings("Named", document.functions[1].iterator.?.name);
+    try std.testing.expectEqualStrings("All", document.functions[0].goIterator().?.name);
+    try std.testing.expectEqualStrings("Named", document.functions[1].goIterator().?.name);
     const bytes = try document.serialize(std.testing.allocator);
     defer std.testing.allocator.free(bytes);
     try std.testing.expect(std.mem.indexOf(u8, bytes, "\"iterator\": {") != null);
@@ -3525,7 +3525,7 @@ test "an implements opt-in records the interface" {
         .functions = &.{.{ .path = "Stream.feed", .params = &.{.{ .name = "bytes" }}, .implements = .writer }},
     }, "terminal", "zg");
 
-    try std.testing.expectEqual(semantic.Implements.writer, document.functions[0].implements.?);
+    try std.testing.expectEqual(semantic.Implements.writer, document.functions[0].goImplements().?);
     const bytes = try document.serialize(std.testing.allocator);
     defer std.testing.allocator.free(bytes);
     try std.testing.expect(std.mem.indexOf(u8, bytes, "\"implements\": \"writer\"") != null);

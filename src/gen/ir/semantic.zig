@@ -720,9 +720,16 @@ pub const FnGo = struct {
     /// Function-level `.go`: the scalar result is converted with `from_raw`
     /// and the public signature spells the user's Go type.
     return_adapter: ?GoAdapter = null,
+    /// Set by `.iterator`: the method is a `next()` and Go also gets an
+    /// `iter.Seq` wrapper. Go surface only; the C symbol is unchanged.
+    iterator: ?Iterator = null,
+    /// Set by `.implements`: Go also gets the named `io` interface's method,
+    /// calling this one. Go surface only; the C symbol is unchanged.
+    implements: ?Implements = null,
 
     fn compact(self: FnGo) ?FnGo {
-        return if (self.name == null and self.owner == null and self.return_adapter == null) null else self;
+        return if (self.name == null and self.owner == null and self.return_adapter == null and
+            self.iterator == null and self.implements == null) null else self;
     }
 };
 
@@ -853,12 +860,6 @@ pub const SemanticFn = struct {
     /// this function, so a document without plugins is unchanged.
     ext: ?Extensions = null,
     has_comptime_params: ?bool = null,
-    /// Set by `.iterator`: the method is a `next()` and Go also gets an
-    /// `iter.Seq` wrapper. Go surface only; the C symbol is unchanged.
-    iterator: ?Iterator = null,
-    /// Set by `.implements`: Go also gets the named `io` interface's method,
-    /// calling this one. Go surface only; the C symbol is unchanged.
-    implements: ?Implements = null,
     /// What only the Go backend reads about this function.
     go: ?FnGo = null,
     name: []const u8,
@@ -965,12 +966,26 @@ pub const SemanticFn = struct {
 
     /// The range-over-func wrapper this method also gets, if any.
     pub fn goIterator(self: SemanticFn) ?Iterator {
-        return self.iterator;
+        return (self.go orelse FnGo{}).iterator;
+    }
+
+    /// Record the range-over-func wrapper this method also gets.
+    pub fn setGoIterator(self: *SemanticFn, value: ?Iterator) void {
+        var go = self.go orelse FnGo{};
+        go.iterator = value;
+        self.go = go.compact();
     }
 
     /// The Go standard interface this method also satisfies, if any.
     pub fn goImplements(self: SemanticFn) ?Implements {
-        return self.implements;
+        return (self.go orelse FnGo{}).implements;
+    }
+
+    /// Record the Go standard interface this method also satisfies.
+    pub fn setGoImplements(self: *SemanticFn, value: ?Implements) void {
+        var go = self.go orelse FnGo{};
+        go.implements = value;
+        self.go = go.compact();
     }
 
     pub fn childOfReceiver(self: SemanticFn) bool {
@@ -1187,18 +1202,27 @@ pub fn publicFunctionNameAlloc(
 /// The document shape `serialize` writes.
 pub const current_ir_version: u32 = 2;
 
-/// Lift a document written at an older `ir_version` into the current shape,
-/// in place, before it is parsed into `Semantic`. Version 1 spelled the
-/// Go-specific fields as siblings; each moves into the `go` object its owner
-/// now carries. A document already at the current version is left alone.
+/// Lift an older document into the current shape, in place, before it is
+/// parsed into `Semantic`. Version 1 spelled the Go-specific fields as
+/// siblings of the language-neutral ones; each moves into the `go` object its
+/// owner now carries.
+///
+/// The move is keyed on the old spellings being present rather than on the
+/// version number. Two things follow. It is idempotent, so a document already
+/// in the current shape passes through untouched. And it does not care which
+/// version a document claims, which matters because the fields moved across
+/// two commits: a document written between them says version 2 while still
+/// spelling `iterator` and `implements` at the top level, and gating on the
+/// version would leave exactly those unreadable. `ir_version` is still
+/// advanced, but only upward, so a document from a future version keeps its
+/// own number and is refused by the `ZIGO020` check rather than quietly
+/// rewritten.
 ///
 /// The generator cases check in their `semantic.json` inputs at version 1, so
 /// this path is exercised by the ordinary test run rather than by a fixture
 /// alone.
 fn migrate(allocator: std.mem.Allocator, root: *std.json.Value) !void {
     if (root.* != .object) return;
-    const declared = root.object.get("ir_version") orelse std.json.Value{ .integer = 1 };
-    if (declared == .integer and declared.integer >= 2) return;
 
     if (root.object.getPtr("functions")) |functions| if (functions.* == .array) {
         for (functions.array.items) |*function| {
@@ -1207,6 +1231,8 @@ fn migrate(allocator: std.mem.Allocator, root: *std.json.Value) !void {
                 .{ "go_name", "name" },
                 .{ "go_owner", "owner" },
                 .{ "return_go_adapter", "return_adapter" },
+                .{ "iterator", "iterator" },
+                .{ "implements", "implements" },
             });
             if (function.object.getPtr("params")) |params| if (params.* == .array) {
                 for (params.array.items) |*param| {
@@ -1225,19 +1251,30 @@ fn migrate(allocator: std.mem.Allocator, root: *std.json.Value) !void {
             try nestGo(allocator, &declaration.object, &.{.{ "go_adapter", "adapter" }});
         }
     };
-    try root.object.put(allocator, "ir_version", .{ .integer = current_ir_version });
+    const declared = root.object.get("ir_version") orelse std.json.Value{ .integer = 1 };
+    if (declared != .integer or declared.integer < current_ir_version)
+        try root.object.put(allocator, "ir_version", .{ .integer = current_ir_version });
 }
 
-/// Move each present `from` key of `object` into a `go` object under `to`.
+/// Move each present `from` key of `object` into its `go` object under `to`.
 /// Nothing is added when the owner carried none of them, which is what keeps
 /// a migrated document identical to one the current generator would write.
+///
+/// An existing `go` object is added to, not replaced: a document written
+/// between the two commits that moved these fields carries both spellings at
+/// once, and overwriting would drop whichever fields had already moved.
 fn nestGo(allocator: std.mem.Allocator, object: *std.json.ObjectMap, mapping: []const [2][]const u8) !void {
-    var go: std.json.ObjectMap = .{};
+    var go: std.json.ObjectMap = if (object.get("go")) |existing|
+        (if (existing == .object) existing.object else return)
+    else
+        .{};
+    var moved = false;
     for (mapping) |pair| {
         const entry = object.fetchOrderedRemove(pair[0]) orelse continue;
         try go.put(allocator, pair[1], entry.value);
+        moved = true;
     }
-    if (go.count() == 0) return;
+    if (!moved) return;
     try object.put(allocator, "go", .{ .object = go });
 }
 
@@ -1682,7 +1719,7 @@ test "implements is omitted by default and round trips when present" {
     try std.testing.expect(std.mem.indexOf(u8, plain_bytes, "\"implements\"") == null);
 
     const declared: Semantic = .{
-        .functions = &.{.{ .implements = .writer_to, .name = "dump", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_dump" }},
+        .functions = &.{.{ .go = .{ .implements = .writer_to }, .name = "dump", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_dump" }},
         .package = "sample",
         .prefix = "zg",
         .zig_version = "0.16.0",
@@ -1692,7 +1729,7 @@ test "implements is omitted by default and round trips when present" {
     try std.testing.expect(std.mem.indexOf(u8, bytes, "\"implements\": \"writer_to\"") != null);
     var parsed = try Semantic.parse(std.testing.allocator, bytes);
     defer parsed.deinit();
-    try std.testing.expectEqual(Implements.writer_to, parsed.value.functions[0].implements.?);
+    try std.testing.expectEqual(Implements.writer_to, parsed.value.functions[0].goImplements().?);
 }
 
 test "package metadata is omitted by default and round trips when present" {

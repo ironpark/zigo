@@ -100,6 +100,41 @@ test "a version 1 document parses as its version 2 spelling" {
     try std.testing.expect(std.mem.indexOf(u8, plain_bytes, "\"go\"") == null);
 }
 
+// The Go fields moved across two commits, so a document written between them
+// claims version 2 while still spelling `iterator` and `implements` at the top
+// level. Migration is keyed on the old spellings rather than on the version
+// number precisely so that one still loads: `abi-check` reads its baseline
+// with `git show <ref>:zigo/semantic.json`, which can be any commit.
+test "migration is idempotent and does not depend on the declared version" {
+    const intermediate =
+        \\{"functions":[{"go":{"owner":"Cursor"},"implements":"writer","iterator":{"name":"All"},"name":"next","params":[],"return":{"kind":"void"},"symbol":"zg_next"}],"ir_version":2,"package":"sample","prefix":"zg","types":[],"zig_version":"0.16.0"}
+    ;
+    var parsed = try semantic.Semantic.parse(std.testing.allocator, intermediate);
+    defer parsed.deinit();
+    const function = parsed.value.functions[0];
+    try std.testing.expectEqualStrings("All", function.goIterator().?.name);
+    try std.testing.expectEqual(semantic.Implements.writer, function.goImplements().?);
+    try std.testing.expectEqualStrings("Cursor", function.goOwnerOverride().?);
+
+    // Parsing what it serializes has to give the same document back.
+    const once = try parsed.value.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(once);
+    var reparsed = try semantic.Semantic.parse(std.testing.allocator, once);
+    defer reparsed.deinit();
+    const twice = try reparsed.value.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(twice);
+    try std.testing.expectEqualStrings(once, twice);
+
+    // A version this build does not know keeps its own number, so the ZIGO020
+    // check refuses it instead of a silent rewrite hiding the mismatch.
+    const future =
+        \\{"functions":[],"ir_version":99,"package":"sample","prefix":"zg","types":[],"zig_version":"0.16.0"}
+    ;
+    var parsed_future = try semantic.Semantic.parse(std.testing.allocator, future);
+    defer parsed_future.deinit();
+    try std.testing.expectEqual(@as(u32, 99), parsed_future.value.ir_version);
+}
+
 test "semantic parser rejects malformed unknown and incomplete documents" {
     try expectSemanticParseFailure("{");
     try expectSemanticParseFailure(

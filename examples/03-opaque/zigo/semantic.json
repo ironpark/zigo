@@ -136,8 +136,10 @@
     },
     {
       "doc": "next counts from 1 up to the total, then reports the end with null.\nBound with `.iterator`, so Go ranges over it as `All()`.",
-      "iterator": {
-        "name": "All"
+      "go": {
+        "iterator": {
+          "name": "All"
+        }
       },
       "name": "next",
       "ownership": "borrowed",
@@ -161,8 +163,10 @@
     },
     {
       "doc": "nextChecked is `next` with a failure path: a negative total is an\nerror the sequence surfaces, rather than an empty sequence.",
-      "iterator": {
-        "name": "Checked"
+      "go": {
+        "iterator": {
+          "name": "Checked"
+        }
       },
       "name": "nextChecked",
       "ownership": "borrowed",

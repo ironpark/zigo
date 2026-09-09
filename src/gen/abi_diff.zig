@@ -995,7 +995,7 @@ test "iterator wrapper is compatible to add and breaking to remove" {
     const wrapped: semantic.Semantic = .{
         .package = "cursor",
         .prefix = "zg",
-        .functions = &.{.{ .iterator = .{ .name = "All" }, .name = "next", .params = &.{}, .receiver = "Cursor", .@"return" = optional, .symbol = "zg_cursor_next" }},
+        .functions = &.{.{ .go = .{ .iterator = .{ .name = "All" } }, .name = "next", .params = &.{}, .receiver = "Cursor", .@"return" = optional, .symbol = "zg_cursor_next" }},
         .types = &.{.{ .kind = .@"opaque", .name = "Cursor" }},
         .zig_version = "0.16.0",
     };

@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-09T09:58:06Z"
 depends_on:
 - "185-ir-target-namespacing#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Written documents carry `"ir_version": 2` and nest the moved fields under `go`.
 > NEXT: none

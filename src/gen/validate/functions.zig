@@ -1105,16 +1105,16 @@ test "implements accepts one-step shapes and rejects the rest" {
     const base: semantic.SemanticFn = .{ .name = "feed", .params = &.{bytes_in}, .receiver = "Stream", .@"return" = void_node, .symbol = "zg_stream_feed" };
 
     var writer = base;
-    writer.implements = .writer;
+    writer.setGoImplements(.writer);
     var reader = base;
-    reader.implements = .reader;
+    reader.setGoImplements(.reader);
     reader.params = &.{buffer_out};
     reader.@"return" = count_node;
     var writer_to = base;
-    writer_to.implements = .writer_to;
+    writer_to.setGoImplements(.writer_to);
     writer_to.params = &.{writer_in};
     var reader_from = base;
-    reader_from.implements = .reader_from;
+    reader_from.setGoImplements(.reader_from);
     reader_from.params = &.{reader_in};
     reader_from.@"return" = count_node;
     for ([_]semantic.SemanticFn{ writer, reader, writer_to, reader_from }) |function| {
@@ -1127,7 +1127,7 @@ test "implements accepts one-step shapes and rejects the rest" {
     var free_function = writer;
     free_function.receiver = null;
     var iterating = writer;
-    iterating.iterator = .{ .name = "All" };
+    iterating.setGoIterator(.{ .name = "All" });
     var cancelling = writer;
     cancelling.cancel = "flag";
     var bool_result = writer;
@@ -1190,7 +1190,7 @@ test "a value receiver rejects the metadata that needs a handle" {
     var borrowed = accepted;
     borrowed.borrowed_return = true;
     var iterating = accepted;
-    iterating.iterator = .{ .name = "All" };
+    iterating.setGoIterator(.{ .name = "All" });
     iterating.@"return" = .{ .optional = .{ .child = &optional_bool } };
     var child = accepted;
     child.child_of_receiver = true;

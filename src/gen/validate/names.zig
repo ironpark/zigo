@@ -622,9 +622,9 @@ test "an implements wrapper collides with a same-named method or a second implem
     const handle: semantic.TypeDecl = .{ .kind = .@"opaque", .name = "Stream" };
     var byte: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
     const bytes_in: semantic.Parameter = .{ .name = "bytes", .type = .{ .slice = .{ .@"const" = true, .element = &byte } } };
-    const feed: semantic.SemanticFn = .{ .implements = .writer, .name = "feed", .params = &.{bytes_in}, .receiver = "Stream", .@"return" = .{ .void = {} }, .symbol = "zg_stream_feed" };
+    const feed: semantic.SemanticFn = .{ .go = .{ .implements = .writer }, .name = "feed", .params = &.{bytes_in}, .receiver = "Stream", .@"return" = .{ .void = {} }, .symbol = "zg_stream_feed" };
     var write = feed;
-    write.implements = null;
+    write.setGoImplements(null);
     write.name = "write";
     write.symbol = "zg_stream_write";
     var push = feed;

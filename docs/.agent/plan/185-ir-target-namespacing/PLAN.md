@@ -8,7 +8,7 @@ registered_at: "2026-09-09T09:41:31Z"
 # Phases
 
 - [x] [Phase 00: Route Go field reads through accessors](phases/00-read-through-accessors.md)
-- [ ] [Phase 01: Nest the fields and migrate the document](phases/01-nest-and-migrate.md)
+- [x] [Phase 01: Nest the fields and migrate the document](phases/01-nest-and-migrate.md)
 - [ ] [Phase 02: Move the Go standard-library features](phases/02-move-plugin-go-features.md)
 
 # Shared Verification
