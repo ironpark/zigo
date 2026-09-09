@@ -158,7 +158,7 @@
       "symbol": "zg_codepoint_width"
     }
   ],
-  "ir_version": 1,
+  "ir_version": 2,
   "package": "errors",
   "prefix": "zg",
   "types": [

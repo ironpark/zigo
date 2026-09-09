@@ -60,7 +60,7 @@ fn validateDocument(context: plugin_api.ValidateContext) !void {
     const document = context.document;
     for (document.types) |declaration| {
         _ = try plugin_api.readOptions(plugin, .type, allocator, declaration.ext) orelse continue;
-        if (declaration.kind == .@"enum" and declaration.go_adapter == null) continue;
+        if (declaration.kind == .@"enum" and declaration.goAdapter() == null) continue;
         try context.diagnose(.{
             .severity = .@"error",
             .code = name ++ "002",

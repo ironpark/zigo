@@ -629,7 +629,7 @@
       "symbol": "zg_free_codepoints"
     }
   ],
-  "ir_version": 1,
+  "ir_version": 2,
   "package": "streams",
   "prefix": "zg",
   "types": [

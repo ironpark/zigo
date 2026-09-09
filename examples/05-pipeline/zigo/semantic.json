@@ -557,7 +557,7 @@
       ]
     }
   ],
-  "ir_version": 1,
+  "ir_version": 2,
   "package": "pipeline",
   "prefix": "zg",
   "types": [

@@ -20,10 +20,22 @@ with `emit_null_optional_fields = false`, so the Zig struct shape *is* the wire
 format. Renaming or nesting a field changes `semantic.json`, and there are 104 of
 those snapshots plus 74 generator cases whose expected trees include them.
 
-Two levers already exist. `Semantic.ir_version: u32 = 1` is declared but never
-read, so nothing consumes it yet and it is free to bump. `Extensions` shows the
-shape a namespace takes here: one object per owner, absent when empty, so a
-document that never uses it serializes exactly as before.
+Two levers already exist. `Semantic.ir_version: u32 = 1` is a real gate, not a
+spare field: `documentHeaderIssue` in `src/gen/validate/validate.zig` refuses
+any other value as `ZIGO020`, and `src/gen/abi_diff.zig` reports a change to it
+as breaking. Bumping it therefore means moving that check and the tests that
+assert against it in the same step. `Extensions` shows the shape a namespace
+takes here: one object per owner, absent when empty, so a document that never
+uses it serializes exactly as before.
+
+The 74 checked-in `tests/generator_cases/*/semantic.json` files are generator
+*inputs*, not goldens; the goldens are the `expected/` trees beside them, which
+hold generated Go, shim and header files and no document. Seventy of those
+inputs are version 1. Leaving them at version 1 therefore turns the ordinary
+test run into the migration's regression suite: 70 old documents are parsed on
+every run, and their `expected/` trees have to come out byte-identical. The
+generated documents that do move are the 13 `examples/*/zigo/semantic.json`
+outputs, which `go-check` compares against a fresh generation.
 
 The Go fields are read in many places but written in only five:
 `src/reflect/walk.zig` (comptime reflection of the binding), `src/normalize.zig`

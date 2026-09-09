@@ -235,6 +235,13 @@
       "symbol": "zg_deccolm_mode_columns"
     },
     {
+      "go": {
+        "return_adapter": {
+          "from_raw": "objectCountFromRaw",
+          "to_raw": "objectCountToRaw",
+          "type": "ObjectCount"
+        }
+      },
       "name": "liveObjects",
       "ownership": "borrowed",
       "params": [],
@@ -243,11 +250,6 @@
         "is_usize": true,
         "kind": "int",
         "signed": false
-      },
-      "return_go_adapter": {
-        "from_raw": "objectCountFromRaw",
-        "to_raw": "objectCountToRaw",
-        "type": "ObjectCount"
       },
       "source": {
         "path": "root.zig",
@@ -911,7 +913,7 @@
       "symbol": "zg_cursor_style_blinks"
     }
   ],
-  "ir_version": 1,
+  "ir_version": 2,
   "package": "type_relations",
   "prefix": "zg",
   "types": [
@@ -1048,11 +1050,13 @@
           }
         }
       ],
-      "go_adapter": {
-        "from_raw": "pointFromRaw",
-        "import": "image",
-        "to_raw": "pointToRaw",
-        "type": "image.Point"
+      "go": {
+        "adapter": {
+          "from_raw": "pointFromRaw",
+          "import": "image",
+          "to_raw": "pointToRaw",
+          "type": "image.Point"
+        }
       },
       "kind": "value_struct",
       "layout": "extern",

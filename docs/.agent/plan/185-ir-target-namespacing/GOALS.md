@@ -33,7 +33,10 @@ adding a target means adding a namespace rather than more sibling fields.
 ## Supported scope and non-goals
 
 In scope: the `Parameter`, `SemanticFn` and `TypeDecl` Go fields, their accessors,
-the `Semantic.parse` migration, and the regenerated `semantic.json` snapshots.
+the `Semantic.parse` migration, the `ir_version` gate that guards it, the
+regenerated `semantic.json` outputs, and the readers outside `src` that name the
+moved fields directly -- `plugins/enumkit` and the test plugins under
+`tests/plugins/`.
 
 Non-goals, each deliberately left for a later plan:
 

@@ -1167,7 +1167,7 @@ test "a value receiver rejects the metadata that needs a handle" {
         .name = "Mode",
         .fields = &.{.{ .name = "a", .value = 0 }},
         .tag_type = tag,
-        .go_adapter = .{ .type = "image.Point", .import = "image", .to_raw = "toRaw", .from_raw = "fromRaw" },
+        .go = .{ .adapter = .{ .type = "image.Point", .import = "image", .to_raw = "toRaw", .from_raw = "fromRaw" } },
     };
     const bool_node: semantic.TypeNode = .{ .bool = {} };
     var optional_bool: semantic.TypeNode = bool_node;

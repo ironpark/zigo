@@ -965,13 +965,13 @@ fn appendFunction(
                 .result => .@"return",
             };
             if (spec.buffer) |value| reflected.buffer = value;
-            if (spec.go_error) reflected.go_error = true;
+            if (spec.go_error) reflected.setGoError(true);
             if (spec.on_callback_failure) |failure| reflected.on_callback_failure = .{ .result = failure.result };
             if (spec.reentrancy) |value| reflected.reentrancy = ir(semantic.CallbackReentrancy, value);
             if (spec.thread) |value| reflected.thread = ir(semantic.CallbackThread, value);
             if (spec.userdata) |userdata| reflected.userdata = userdata.param;
             if (spec.flatten.len != 0) reflected.flatten = flattened_fields;
-            if (spec.go) |adapter| reflected.go_adapter = comptime goAdapterValue(adapter);
+            if (spec.go) |adapter| reflected.setGoAdapter(comptime goAdapterValue(adapter));
         }
         // A cancel parameter whose spelling did not match keeps the `void`
         // above, and validation names it. One that did becomes its own node.
@@ -1052,7 +1052,7 @@ fn appendFunction(
     if (metadata.returns.semantic) |value| reflected_function.return_semantic = ir(semantic.SemanticHint, value);
     reflected_function.return_semantic = resolveCodepointHint(declaration, reflected_function.return_semantic, reflected_function.@"return".errorPayload());
     reflected_function.return_semantic = resolveStringHint(declaration, reflected_function.return_semantic, reflected_function.@"return".errorPayload(), .result);
-    if (metadata.returns.go) |adapter| reflected_function.return_go_adapter = comptime goAdapterValue(adapter);
+    if (metadata.returns.go) |adapter| reflected_function.setReturnGoAdapter(comptime goAdapterValue(adapter));
     if (metadata.returns.ownership) |ownership| {
         reflected_function.ownership = ir(semantic.Ownership, ownership);
         if (ownership == .borrowed) reflected_function.borrowed_return = true;
@@ -2441,7 +2441,7 @@ fn appendEnum(
         .doc = doc,
         .exhaustive = info.is_exhaustive,
         .fields = fields,
-        .go_adapter = go_adapter,
+        .go = semantic.TypeGo.withAdapter(go_adapter),
         .kind = .@"enum",
         .name = name,
         .open = if (open) true else null,
@@ -2489,7 +2489,7 @@ fn appendValueStruct(
         else
             null,
         .doc = doc,
-        .go_adapter = go_adapter,
+        .go = semantic.TypeGo.withAdapter(go_adapter),
         .kind = .value_struct,
         .layout = switch (info.layout) {
             .@"extern" => .@"extern",
@@ -2746,7 +2746,7 @@ test "scalar reflection matches the semantic JSON golden" {
         \\      "symbol": "zg_add"
         \\    }
         \\  ],
-        \\  "ir_version": 1,
+        \\  "ir_version": 2,
         \\  "package": "scalar",
         \\  "prefix": "zg",
         \\  "types": [],
@@ -3587,14 +3587,15 @@ test "a value struct records its Go adapter" {
         .functions = &.{.{ .path = "root.translate", .params = &.{ .{ .name = "origin" }, .{ .name = "dx" } } }},
     }, "geometry", "zg");
 
-    const adapter = document.types[0].go_adapter.?;
+    const adapter = document.types[0].goAdapter().?;
     try std.testing.expectEqualStrings("image.Point", adapter.type);
     try std.testing.expectEqualStrings("image", adapter.import.?);
     try std.testing.expectEqualStrings("image", adapter.qualifier().?);
     try std.testing.expectEqualStrings("pointToRaw", adapter.to_raw);
     const bytes = try document.serialize(std.testing.allocator);
     defer std.testing.allocator.free(bytes);
-    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"go_adapter\": {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"go\": {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"adapter\": {") != null);
 }
 
 test "enum and scalar adapters are recorded where they were declared" {
@@ -3619,11 +3620,11 @@ test "enum and scalar adapters are recorded where they were declared" {
         },
     }, "geometry", "zg");
 
-    try std.testing.expectEqualStrings("Mode", document.types[0].go_adapter.?.type);
-    try std.testing.expectEqual(@as(?[]const u8, null), document.types[0].go_adapter.?.import);
-    try std.testing.expectEqualStrings("time.Duration", document.functions[1].return_go_adapter.?.type);
-    try std.testing.expectEqualStrings("durationToRaw", document.functions[1].params[0].go_adapter.?.to_raw);
-    try std.testing.expectEqual(@as(?semantic.GoAdapter, null), document.functions[0].return_go_adapter);
+    try std.testing.expectEqualStrings("Mode", document.types[0].goAdapter().?.type);
+    try std.testing.expectEqual(@as(?[]const u8, null), document.types[0].goAdapter().?.import);
+    try std.testing.expectEqualStrings("time.Duration", document.functions[1].returnGoAdapter().?.type);
+    try std.testing.expectEqualStrings("durationToRaw", document.functions[1].params[0].goAdapter().?.to_raw);
+    try std.testing.expectEqual(@as(?semantic.GoAdapter, null), document.functions[0].returnGoAdapter());
 }
 
 test "codepoint hints are recorded on parameters and returns" {

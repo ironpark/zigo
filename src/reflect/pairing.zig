@@ -33,7 +33,7 @@ pub fn pair(
     // Go groups the constructor under the type it makes; the Zig call path
     // stays where the function is actually declared, so a root-level
     // `newTerminal` is still called as `target.newTerminal`.
-    if (!std.mem.eql(u8, constructor.namespace orelse "", type_name)) constructor.go_owner = type_name;
+    if (!std.mem.eql(u8, constructor.namespace orelse "", type_name)) constructor.setGoOwner(type_name);
     constructor.ownership = .caller;
     // The storage the shim allocated is the shim's to free, so the paired
     // destructor runs the Zig `deinit` and then destroys it.

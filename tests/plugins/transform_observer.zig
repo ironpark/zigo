@@ -18,7 +18,7 @@ fn transform(context: api.TransformContext) !semantic.Semantic {
             for (context.document.functions) |candidate| if (std.mem.eql(u8, candidate.name, "derived")) {
                 derived = true;
             };
-            if (!derived or function.go_name != null) return error.IncorrectTransformOrder;
+            if (!derived or function.goName() != null) return error.IncorrectTransformOrder;
         }
     }
     return context.document;
@@ -26,7 +26,7 @@ fn transform(context: api.TransformContext) !semantic.Semantic {
 fn nameFunction(_: api.TransformContext, function: semantic.SemanticFn) !?[]const u8 {
     if (std.mem.eql(u8, function.name, "derived")) {
         policies += 1;
-        if (function.go_name == null or function.return_go_adapter == null) return error.IncorrectPolicyOrder;
+        if (function.goName() == null or function.returnGoAdapter() == null) return error.IncorrectPolicyOrder;
     }
     return null;
 }

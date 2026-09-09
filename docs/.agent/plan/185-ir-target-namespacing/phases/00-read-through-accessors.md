@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-09T09:44:56Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Grepping `src` for `go_adapter`, `go_error`, `go_name`, `go_owner`,
 > NEXT: none

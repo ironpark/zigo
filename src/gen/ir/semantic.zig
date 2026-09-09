@@ -492,15 +492,8 @@ pub const Parameter = struct {
     /// this says the binding asked for it, so a mismatch can be reported
     /// against the parameter the author meant rather than passed over.
     cancel: ?bool = null,
-    /// Opt-in from `Param.go_error`: the Go callback type behind
-    /// this parameter returns `(i32, error)` rather than `i32`, and an error
-    /// it returns is stored and handed back by the public wrapper. Optional
-    /// rather than a plain `bool` so a binding that never asks for it keeps
-    /// the field out of `semantic.json` entirely.
-    go_error: ?bool = null,
-    /// `Param.go`: the public parameter is spelled as the user's
-    /// Go type and converted with `to_raw` before the raw call. Scalars only.
-    go_adapter: ?GoAdapter = null,
+    /// What only the Go backend reads about this parameter.
+    go: ?ParamGo = null,
     /// Parameter-level override for the result a failed callback returns.
     /// Absent preserves the historical in-band sentinel behavior.
     on_callback_failure: ?CallbackFailure = null,
@@ -539,14 +532,28 @@ pub const Parameter = struct {
     /// Whether the Go callback behind this parameter may return an `error`.
     /// Parameters that never asked never carry the field.
     pub fn goError(self: Parameter) bool {
-        return self.go_error orelse false;
+        return (self.go orelse ParamGo{}).callback_error orelse false;
+    }
+
+    /// Record whether the Go callback behind this parameter returns an error.
+    pub fn setGoError(self: *Parameter, value: bool) void {
+        var go = self.go orelse ParamGo{};
+        go.callback_error = if (value) true else null;
+        self.go = go.compact();
     }
 
     /// The Go type a parameter's scalar is spelled as, with the conversions
     /// either side of the raw call. Reads go through here so the Go
     /// projection can move without touching every caller.
     pub fn goAdapter(self: Parameter) ?GoAdapter {
-        return self.go_adapter;
+        return (self.go orelse ParamGo{}).adapter;
+    }
+
+    /// Record the Go type this parameter's scalar is spelled as.
+    pub fn setGoAdapter(self: *Parameter, value: ?GoAdapter) void {
+        var go = self.go orelse ParamGo{};
+        go.adapter = value;
+        self.go = go.compact();
     }
 
     /// The written hint a parameter was declared with. Parameters that keep
@@ -676,6 +683,65 @@ pub const GoAdapter = struct {
     }
 };
 
+/// What only the Go backend reads about a parameter. The IR describes the
+/// bound Zig API; anything that describes the projection instead lives in a
+/// namespace, so a second output language adds a sibling rather than more
+/// fields next to the language-neutral ones.
+///
+/// Absent whenever every member is, so a binding that asks for no Go-specific
+/// knob writes no `go` object at all and its document is as small as before
+/// the namespace existed. Reads and writes go through `Parameter`'s accessors.
+pub const ParamGo = struct {
+    /// `Param.go`: the public parameter is spelled as the user's Go type and
+    /// converted with `to_raw` before the raw call. Scalars only.
+    adapter: ?GoAdapter = null,
+    /// Opt-in from `Param.go_error`: the Go callback type behind this
+    /// parameter returns `(i32, error)` rather than `i32`, and an error it
+    /// returns is stored and handed back by the public wrapper. Optional
+    /// rather than a plain `bool` so a binding that never asks for it keeps
+    /// the field out of `semantic.json` entirely.
+    callback_error: ?bool = null,
+
+    fn compact(self: ParamGo) ?ParamGo {
+        return if (self.adapter == null and self.callback_error == null) null else self;
+    }
+};
+
+/// What only the Go backend reads about a function. See `ParamGo`.
+pub const FnGo = struct {
+    /// Exact public Go spelling, independent of native and raw identities.
+    name: ?[]const u8 = null,
+    /// The type a paired constructor is grouped under in Go, when that is not
+    /// where the function is declared. `SemanticFn.namespace` stays the Zig
+    /// container the shim calls through, so a root-level `newTerminal` can be
+    /// `Terminal`'s constructor in Go and still be called as
+    /// `target.newTerminal(...)`.
+    owner: ?[]const u8 = null,
+    /// Function-level `.go`: the scalar result is converted with `from_raw`
+    /// and the public signature spells the user's Go type.
+    return_adapter: ?GoAdapter = null,
+
+    fn compact(self: FnGo) ?FnGo {
+        return if (self.name == null and self.owner == null and self.return_adapter == null) null else self;
+    }
+};
+
+/// What only the Go backend reads about a registered type. See `ParamGo`.
+pub const TypeGo = struct {
+    /// Present only when the binding registered the type with `.go`.
+    adapter: ?GoAdapter = null,
+
+    fn compact(self: TypeGo) ?TypeGo {
+        return if (self.adapter == null) null else self;
+    }
+
+    /// The namespace a declaration needs when an adapter is the only
+    /// Go-specific thing about it, which is every registration site today.
+    pub fn withAdapter(value: ?GoAdapter) ?TypeGo {
+        return (TypeGo{ .adapter = value }).compact();
+    }
+};
+
 /// Plugin options as they travel through the document: one JSON object per
 /// plugin, kept verbatim so the generator can hand each plugin exactly what
 /// its own declaration wrote. The generator never reads inside an entry; the
@@ -793,13 +859,8 @@ pub const SemanticFn = struct {
     /// Set by `.implements`: Go also gets the named `io` interface's method,
     /// calling this one. Go surface only; the C symbol is unchanged.
     implements: ?Implements = null,
-    /// The type a paired constructor is grouped under in Go, when that is not
-    /// where the function is declared. `namespace` stays the Zig container the
-    /// shim calls through, so a root-level `newTerminal` can be `Terminal`'s
-    /// constructor in Go and still be called as `target.newTerminal(...)`.
-    go_owner: ?[]const u8 = null,
-    /// Exact public Go spelling, independent of native and raw identities.
-    go_name: ?[]const u8 = null,
+    /// What only the Go backend reads about this function.
+    go: ?FnGo = null,
     name: []const u8,
     /// Public sub-package name. Absent means the binding's default package.
     package: ?[]const u8 = null,
@@ -839,9 +900,6 @@ pub const SemanticFn = struct {
     @"return": TypeNode,
     /// The Zig result is `std.atomic.Value(T)` while Go and C receive T.
     return_atomic: ?bool = null,
-    /// Function-level `.go`: the scalar result is converted with `from_raw`
-    /// and the public signature spells the user's Go type.
-    return_go_adapter: ?GoAdapter = null,
     return_semantic: ?SemanticHint = null,
     /// The function declaration's source location, from `names.zig`. Purely
     /// diagnostic: it has no bearing on the generated ABI, so `abi_diff`
@@ -862,26 +920,47 @@ pub const SemanticFn = struct {
     /// The type Go groups this function under: the one a binding paired it
     /// with, or the container it was declared in.
     pub fn goOwner(self: SemanticFn) ?[]const u8 {
-        return self.go_owner orelse self.namespace;
+        return self.goOwnerOverride() orelse self.namespace;
     }
 
     /// The `.constructs` grouping override alone, without the `namespace`
     /// fallback `goOwner` applies. Only a caller asking whether the binding
     /// stated an owner wants this one.
     pub fn goOwnerOverride(self: SemanticFn) ?[]const u8 {
-        return self.go_owner;
+        return (self.go orelse FnGo{}).owner;
+    }
+
+    /// Record the type Go groups this function under.
+    pub fn setGoOwner(self: *SemanticFn, value: ?[]const u8) void {
+        var go = self.go orelse FnGo{};
+        go.owner = value;
+        self.go = go.compact();
     }
 
     /// The exact public Go spelling a binding asked for, if it asked. Callers
     /// wanting the name a function is actually published under want
     /// `publicFunctionNameAlloc`, which resolves constructors too.
     pub fn goName(self: SemanticFn) ?[]const u8 {
-        return self.go_name;
+        return (self.go orelse FnGo{}).name;
+    }
+
+    /// Record the exact public Go spelling.
+    pub fn setGoName(self: *SemanticFn, value: ?[]const u8) void {
+        var go = self.go orelse FnGo{};
+        go.name = value;
+        self.go = go.compact();
     }
 
     /// The Go type the scalar result is spelled as, with its conversion.
     pub fn returnGoAdapter(self: SemanticFn) ?GoAdapter {
-        return self.return_go_adapter;
+        return (self.go orelse FnGo{}).return_adapter;
+    }
+
+    /// Record the Go type the scalar result is spelled as.
+    pub fn setReturnGoAdapter(self: *SemanticFn, value: ?GoAdapter) void {
+        var go = self.go orelse FnGo{};
+        go.return_adapter = value;
+        self.go = go.compact();
     }
 
     /// The range-over-func wrapper this method also gets, if any.
@@ -976,8 +1055,8 @@ pub const TypeDecl = struct {
     /// this type.
     ext: ?Extensions = null,
     fields: []const TypeField = &.{},
-    /// Present only when the binding registered the value struct with `.go`.
-    go_adapter: ?GoAdapter = null,
+    /// What only the Go backend reads about this declaration.
+    go: ?TypeGo = null,
     kind: TypeKind,
     layout: ?Layout = null,
     /// Serialized tree layout version. Present only for materialized structs.
@@ -1010,7 +1089,7 @@ pub const TypeDecl = struct {
     /// The Go type this declaration's public surface is spelled as, replacing
     /// the generated mirror, when the binding registered one.
     pub fn goAdapter(self: TypeDecl) ?GoAdapter {
-        return self.go_adapter;
+        return (self.go orelse TypeGo{}).adapter;
     }
 
     /// C only ever holds a pointer to these, so a tagged union is a handle too.
@@ -1105,6 +1184,63 @@ pub fn publicFunctionNameAlloc(
     return naming.pascalAlloc(allocator, function.name);
 }
 
+/// The document shape `serialize` writes.
+pub const current_ir_version: u32 = 2;
+
+/// Lift a document written at an older `ir_version` into the current shape,
+/// in place, before it is parsed into `Semantic`. Version 1 spelled the
+/// Go-specific fields as siblings; each moves into the `go` object its owner
+/// now carries. A document already at the current version is left alone.
+///
+/// The generator cases check in their `semantic.json` inputs at version 1, so
+/// this path is exercised by the ordinary test run rather than by a fixture
+/// alone.
+fn migrate(allocator: std.mem.Allocator, root: *std.json.Value) !void {
+    if (root.* != .object) return;
+    const declared = root.object.get("ir_version") orelse std.json.Value{ .integer = 1 };
+    if (declared == .integer and declared.integer >= 2) return;
+
+    if (root.object.getPtr("functions")) |functions| if (functions.* == .array) {
+        for (functions.array.items) |*function| {
+            if (function.* != .object) continue;
+            try nestGo(allocator, &function.object, &.{
+                .{ "go_name", "name" },
+                .{ "go_owner", "owner" },
+                .{ "return_go_adapter", "return_adapter" },
+            });
+            if (function.object.getPtr("params")) |params| if (params.* == .array) {
+                for (params.array.items) |*param| {
+                    if (param.* != .object) continue;
+                    try nestGo(allocator, &param.object, &.{
+                        .{ "go_adapter", "adapter" },
+                        .{ "go_error", "callback_error" },
+                    });
+                }
+            };
+        }
+    };
+    if (root.object.getPtr("types")) |types| if (types.* == .array) {
+        for (types.array.items) |*declaration| {
+            if (declaration.* != .object) continue;
+            try nestGo(allocator, &declaration.object, &.{.{ "go_adapter", "adapter" }});
+        }
+    };
+    try root.object.put(allocator, "ir_version", .{ .integer = current_ir_version });
+}
+
+/// Move each present `from` key of `object` into a `go` object under `to`.
+/// Nothing is added when the owner carried none of them, which is what keeps
+/// a migrated document identical to one the current generator would write.
+fn nestGo(allocator: std.mem.Allocator, object: *std.json.ObjectMap, mapping: []const [2][]const u8) !void {
+    var go: std.json.ObjectMap = .{};
+    for (mapping) |pair| {
+        const entry = object.fetchOrderedRemove(pair[0]) orelse continue;
+        try go.put(allocator, pair[1], entry.value);
+    }
+    if (go.count() == 0) return;
+    try object.put(allocator, "go", .{ .object = go });
+}
+
 pub const Package = struct {
     doc: ?[]const u8 = null,
     name: []const u8,
@@ -1146,7 +1282,11 @@ pub const Semantic = struct {
     /// The Zig expression the shim passes for `std.Io` parameters, from the
     /// binding's `.io`.
     io: ?[]const u8 = null,
-    ir_version: u32 = 1,
+    /// 1 spelled the Go-specific fields as siblings of the language-neutral
+    /// ones; 2 nests them under `go`. `parse` accepts both and `serialize`
+    /// only ever writes the current one, so a checked-in document written
+    /// before the move still loads without being regenerated.
+    ir_version: u32 = current_ir_version,
     package: []const u8,
     /// Declared public sub-packages. Empty is omitted so legacy documents are unchanged.
     packages: ?[]const Package = null,
@@ -1166,6 +1306,7 @@ pub const Semantic = struct {
     pub fn parse(allocator: std.mem.Allocator, bytes: []const u8) !std.json.Parsed(Semantic) {
         var dynamic = try std.json.parseFromSlice(std.json.Value, allocator, bytes, .{});
         defer dynamic.deinit();
+        try migrate(dynamic.arena.allocator(), &dynamic.value);
         return std.json.parseFromValue(Semantic, allocator, dynamic.value, .{});
     }
 

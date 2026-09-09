@@ -36,7 +36,7 @@
       "symbol": "zg_status_code"
     }
   ],
-  "ir_version": 1,
+  "ir_version": 2,
   "package": "HTTPClient",
   "prefix": "zg",
   "types": [],

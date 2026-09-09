@@ -72,7 +72,9 @@
       "params": [
         {
           "direction": "in",
-          "go_error": true,
+          "go": {
+            "callback_error": true
+          },
           "name": "callback",
           "name_source": "ast",
           "retention": "retained",
@@ -545,7 +547,9 @@
         },
         {
           "direction": "in",
-          "go_error": true,
+          "go": {
+            "callback_error": true
+          },
           "name": "callback",
           "name_source": "ast",
           "retention": "borrowed",
@@ -634,7 +638,9 @@
         },
         {
           "direction": "in",
-          "go_error": true,
+          "go": {
+            "callback_error": true
+          },
           "name": "callback",
           "name_source": "ast",
           "retention": "borrowed",
@@ -1424,7 +1430,7 @@
       "symbol": "zg_visit_codepoints"
     }
   ],
-  "ir_version": 1,
+  "ir_version": 2,
   "package": "callback",
   "prefix": "zg",
   "types": [

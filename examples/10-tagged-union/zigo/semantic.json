@@ -1120,7 +1120,7 @@
       "symbol": "zg_panic_error"
     }
   ],
-  "ir_version": 1,
+  "ir_version": 2,
   "package": "tagged_union",
   "prefix": "zg",
   "types": [

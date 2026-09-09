@@ -1543,7 +1543,7 @@
       "symbol": "zg_live_hubs"
     }
   ],
-  "ir_version": 1,
+  "ir_version": 2,
   "package": "telemetry_hub",
   "prefix": "zg",
   "types": [

@@ -33,7 +33,7 @@ test "semantic fixture round trips byte-identically" {
         \\      "symbol": "zg_add"
         \\    }
         \\  ],
-        \\  "ir_version": 1,
+        \\  "ir_version": 2,
         \\  "package": "scalar",
         \\  "prefix": "zg",
         \\  "types": [],
@@ -52,6 +52,52 @@ test "semantic fixture round trips byte-identically" {
     const second = try reparsed.value.serialize(std.testing.allocator);
     defer std.testing.allocator.free(second);
     try std.testing.expectEqualStrings(serialized, second);
+}
+
+// Version 1 spelled the Go-specific fields as siblings of the language-neutral
+// ones. Documents written then -- including the generator cases' checked-in
+// inputs -- still have to load, so parsing one has to produce exactly what
+// parsing its version-2 spelling produces.
+test "a version 1 document parses as its version 2 spelling" {
+    const v1 =
+        \\{"functions":[{"go_name":"Translate","go_owner":"Canvas","name":"translate","params":[{"go_adapter":{"from_raw":"pointFromRaw","import":"image","to_raw":"pointToRaw","type":"image.Point"},"name":"origin","type":{"kind":"int","bits":32,"signed":true}},{"go_error":true,"name":"observer","type":{"kind":"int","bits":32,"signed":true}}],"return_go_adapter":{"from_raw":"durationFromRaw","import":"time","to_raw":"durationToRaw","type":"time.Duration"},"return":{"kind":"void"},"symbol":"zg_translate"}],"ir_version":1,"package":"geometry","prefix":"zg","types":[{"go_adapter":{"from_raw":"modeFromRaw","to_raw":"modeToRaw","type":"Mode"},"kind":"opaque","name":"Canvas"}],"zig_version":"0.16.0"}
+    ;
+    const v2 =
+        \\{"functions":[{"go":{"name":"Translate","owner":"Canvas","return_adapter":{"from_raw":"durationFromRaw","import":"time","to_raw":"durationToRaw","type":"time.Duration"}},"name":"translate","params":[{"go":{"adapter":{"from_raw":"pointFromRaw","import":"image","to_raw":"pointToRaw","type":"image.Point"}},"name":"origin","type":{"kind":"int","bits":32,"signed":true}},{"go":{"callback_error":true},"name":"observer","type":{"kind":"int","bits":32,"signed":true}}],"return":{"kind":"void"},"symbol":"zg_translate"}],"ir_version":2,"package":"geometry","prefix":"zg","types":[{"go":{"adapter":{"from_raw":"modeFromRaw","to_raw":"modeToRaw","type":"Mode"}},"kind":"opaque","name":"Canvas"}],"zig_version":"0.16.0"}
+    ;
+
+    var from_v1 = try semantic.Semantic.parse(std.testing.allocator, v1);
+    defer from_v1.deinit();
+    var from_v2 = try semantic.Semantic.parse(std.testing.allocator, v2);
+    defer from_v2.deinit();
+
+    const migrated = try from_v1.value.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(migrated);
+    const current = try from_v2.value.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(current);
+    try std.testing.expectEqualStrings(current, migrated);
+
+    // The fields are readable through the accessors either way, which is what
+    // every consumer of the document actually calls.
+    const function = from_v1.value.functions[0];
+    try std.testing.expectEqualStrings("Translate", function.goName().?);
+    try std.testing.expectEqualStrings("Canvas", function.goOwnerOverride().?);
+    try std.testing.expectEqualStrings("time.Duration", function.returnGoAdapter().?.type);
+    try std.testing.expectEqualStrings("image.Point", function.params[0].goAdapter().?.type);
+    try std.testing.expect(function.params[1].goError());
+    try std.testing.expectEqualStrings("Mode", from_v1.value.types[0].goAdapter().?.type);
+
+    // A version-1 document with no Go-specific field at all gains no `go`
+    // object: migration must not make a document larger than the generator
+    // would write for the same binding.
+    const plain =
+        \\{"functions":[{"name":"add","params":[],"return":{"kind":"void"},"symbol":"zg_add"}],"ir_version":1,"package":"plain","prefix":"zg","types":[],"zig_version":"0.16.0"}
+    ;
+    var parsed_plain = try semantic.Semantic.parse(std.testing.allocator, plain);
+    defer parsed_plain.deinit();
+    const plain_bytes = try parsed_plain.value.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(plain_bytes);
+    try std.testing.expect(std.mem.indexOf(u8, plain_bytes, "\"go\"") == null);
 }
 
 test "semantic parser rejects malformed unknown and incomplete documents" {
@@ -81,7 +127,7 @@ test "semantic parser applies defaults and preserves nested type nodes" {
     ;
     var parsed_minimal = try semantic.Semantic.parse(std.testing.allocator, minimal);
     defer parsed_minimal.deinit();
-    try std.testing.expectEqual(@as(u32, 1), parsed_minimal.value.ir_version);
+    try std.testing.expectEqual(semantic.current_ir_version, parsed_minimal.value.ir_version);
     try std.testing.expectEqual(@as(usize, 0), parsed_minimal.value.functions.len);
     try std.testing.expectEqual(@as(usize, 0), parsed_minimal.value.types.len);
     try std.testing.expectEqual(@as(usize, 0), parsed_minimal.value.constructors.len);

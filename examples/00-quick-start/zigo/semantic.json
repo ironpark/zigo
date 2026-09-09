@@ -53,7 +53,7 @@
       "symbol": "zg_add"
     }
   ],
-  "ir_version": 1,
+  "ir_version": 2,
   "package": "calculator",
   "prefix": "zg",
   "types": [],

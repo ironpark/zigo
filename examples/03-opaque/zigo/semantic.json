@@ -506,7 +506,7 @@
       "symbol": "zg_fallback"
     }
   ],
-  "ir_version": 1,
+  "ir_version": 2,
   "package": "opaque",
   "prefix": "zg",
   "types": [

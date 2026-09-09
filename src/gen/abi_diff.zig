@@ -1298,7 +1298,7 @@ test "an injected argument moves nothing while the Go owner moves the surface" {
     try std.testing.expectEqual(@as(usize, 0), report.changes.items.len);
 
     var owned = free;
-    owned.go_owner = "Terminal";
+    owned.setGoOwner("Terminal");
     const grouped: semantic.Semantic = .{ .package = "demo", .prefix = "zg", .zig_version = "0.16.0", .functions = &.{owned} };
     var owner_report = try diff(std.testing.allocator, base, grouped);
     defer owner_report.deinit(std.testing.allocator);
@@ -1320,7 +1320,7 @@ test "document identity and exported symbol changes are breaking" {
         }},
     };
     const current: semantic.Semantic = .{
-        .ir_version = 2,
+        .ir_version = semantic.current_ir_version + 1,
         .package = "renamed",
         .prefix = "acme",
         .zig_version = "0.16.0",
@@ -1515,7 +1515,7 @@ test "diff cleans up every partial allocation failure" {
 fn expectExpandedBreakingReport(allocator: std.mem.Allocator) !void {
     const base: semantic.Semantic = .{ .package = "demo", .prefix = "zg", .zig_version = "0.16.0" };
     const current: semantic.Semantic = .{
-        .ir_version = 2,
+        .ir_version = semantic.current_ir_version + 1,
         .package = "renamed",
         .prefix = "acme",
         .zig_version = "0.16.0",
@@ -1918,7 +1918,7 @@ test "adding or removing cancellation is a Go signature break" {
 test "changing an explicit constructor name is a Go signature break" {
     const result: semantic.TypeNode = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "AudioBuffer" } };
     const base_functions = [_]semantic.SemanticFn{.{
-        .go_owner = "AudioBuffer",
+        .go = .{ .owner = "AudioBuffer" },
         .name = "makeBuffer",
         .ownership = .caller,
         .params = &.{},
@@ -1926,7 +1926,7 @@ test "changing an explicit constructor name is a Go signature break" {
         .symbol = "zg_make_buffer",
     }};
     const current_functions = [_]semantic.SemanticFn{.{
-        .go_owner = "AudioBuffer",
+        .go = .{ .owner = "AudioBuffer" },
         .name = "extractAudio",
         .ownership = .caller,
         .params = &.{},
@@ -2109,7 +2109,7 @@ test "exact public names and native parameter permutations are contract changes"
     const integer: semantic.TypeNode = .{ .int = .{ .bits = 64, .signed = false } };
     const original: semantic.SemanticFn = .{ .name = "combine", .params = &.{ .{ .name = "a", .type = integer }, .{ .name = "b", .type = integer } }, .@"return" = integer, .symbol = "zg_combine" };
     var modified = original;
-    modified.go_name = "HTTPCombine";
+    modified.setGoName("HTTPCombine");
     modified.params = &.{ .{ .name = "b", .type = integer, .native_index = 1 }, .{ .name = "a", .type = integer, .native_index = 0 } };
     const base: semantic.Semantic = .{ .package = "x", .prefix = "zg", .zig_version = "0.16.0", .functions = &.{original} };
     var current = base;

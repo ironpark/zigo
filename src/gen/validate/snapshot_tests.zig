@@ -391,7 +391,7 @@ test "implemented diagnostic snapshots are stable" {
             .zig_version = "0.16.0",
         }, .snapshot = "error[ZIGO019]: unsupported optional in parameter `value`\n  --> semantic.json (Thing.maybe)\n  hint: zigo carries an optional only as a whole parameter, return value, or error payload, and only over a bool, integer, float, enum, extern struct, or pointer to a declared opaque type\n" },
         .{ .document = .{
-            .ir_version = 2,
+            .ir_version = semantic.current_ir_version + 1,
             .package = "bad",
             .prefix = "zg",
             .zig_version = "0.16.0",
@@ -499,7 +499,7 @@ test "child-of-receiver metadata on a non-receiver constructor has a stable diag
         .functions = &.{
             .{
                 .child_of_receiver = true,
-                .go_owner = "Child",
+                .go = .{ .owner = "Child" },
                 .name = "newChild",
                 .ownership = .caller,
                 .params = &.{},

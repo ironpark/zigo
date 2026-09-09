@@ -136,7 +136,7 @@ test "a callback signature flagged go_error elsewhere gives a free function a Mu
             .{
                 .name = "watch",
                 .params = &.{
-                    .{ .go_error = true, .name = "observer", .type = observer },
+                    .{ .go = .{ .callback_error = true }, .name = "observer", .type = observer },
                     .{ .name = "userdata", .type = usize_node },
                 },
                 .@"return" = .{ .void = {} },

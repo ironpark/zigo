@@ -26,7 +26,7 @@ pub fn types(allocator: std.mem.Allocator, input: semantic.Semantic, changes: []
         function.zig_path = try semantic.zigCallPathAlloc(allocator, function.*);
         function.receiver = rewriter.optionalName(function.receiver);
         function.namespace = rewriter.optionalName(function.namespace);
-        function.go_owner = rewriter.optionalName(function.go_owner);
+        function.setGoOwner(rewriter.optionalName(function.goOwnerOverride()));
         function.@"return" = try rewriter.node(function.@"return");
         const params = try allocator.dupe(semantic.Parameter, function.params);
         for (params) |*param| {

@@ -328,7 +328,7 @@ test "a Go error on a callback is refused unless the Zig result is i32" {
             .functions = &.{.{
                 .name = "watch",
                 .params = &.{
-                    .{ .go_error = true, .name = "observer", .type = case.type },
+                    .{ .go = .{ .callback_error = true }, .name = "observer", .type = case.type },
                     .{ .name = "userdata", .type = usize_node },
                 },
                 .@"return" = .{ .void = {} },
@@ -351,7 +351,7 @@ test "a Go error on a callback is refused unless the Zig result is i32" {
         .functions = &.{.{
             .name = "watch",
             .params = &.{
-                .{ .go_error = true, .name = "observer", .type = accepted },
+                .{ .go = .{ .callback_error = true }, .name = "observer", .type = accepted },
                 .{ .name = "userdata", .type = usize_node },
             },
             .@"return" = .{ .void = {} },

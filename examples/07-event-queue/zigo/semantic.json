@@ -256,7 +256,9 @@
     {
       "child_of_receiver": true,
       "doc": "Opens a stream owned by the caller. The allocator is injected before\nthe receiver, matching APIs where one handle constructs another.",
-      "go_owner": "Stream",
+      "go": {
+        "owner": "Stream"
+      },
       "name": "newStream",
       "ownership": "caller",
       "params": [
@@ -1593,7 +1595,9 @@
     },
     {
       "child_of_receiver": true,
-      "go_owner": "BorrowChild",
+      "go": {
+        "owner": "BorrowChild"
+      },
       "name": "newChild",
       "ownership": "caller",
       "params": [],
@@ -2018,7 +2022,9 @@
     },
     {
       "doc": "Opens a ticker the caller owns.",
-      "go_owner": "Ticker",
+      "go": {
+        "owner": "Ticker"
+      },
       "name": "newTicker",
       "package": "types",
       "ownership": "caller",
@@ -2157,7 +2163,7 @@
       "symbol": "zg_live_tickers"
     }
   ],
-  "ir_version": 1,
+  "ir_version": 2,
   "package": "event_queue",
   "packages": [
     {

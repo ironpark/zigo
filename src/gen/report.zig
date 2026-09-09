@@ -244,7 +244,7 @@ test "report names a method constructor the way the generator publishes it" {
     const document: semantic.Semantic = .{
         .constructors = &.{.{ .type = "Child", .init = "newChild", .deinit = "freeChild" }},
         .functions = &.{
-            .{ .name = "newChild", .receiver = "View", .go_owner = "Child", .ownership = .caller, .params = &.{}, .@"return" = .{ .error_union = .{ .payload = &child, .error_set = &.{} } }, .symbol = "ignored" },
+            .{ .name = "newChild", .receiver = "View", .go = .{ .owner = "Child" }, .ownership = .caller, .params = &.{}, .@"return" = .{ .error_union = .{ .payload = &child, .error_set = &.{} } }, .symbol = "ignored" },
             .{ .name = "freeChild", .receiver = "Child", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "ignored" },
         },
         .package = "sample",

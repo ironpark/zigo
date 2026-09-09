@@ -191,21 +191,21 @@ pub fn transformDocument(allocator: std.mem.Allocator, input: semantic.Semantic,
             if (registered.map_type) |hook| {
                 for (types_copy) |*declaration| {
                     if (registered.supports(plugin.typeTarget(declaration.kind))) {
-                        if (try hook(context, .{ .declaration = declaration.* })) |adapter| declaration.go_adapter = adapter;
+                        if (try hook(context, .{ .declaration = declaration.* })) |adapter| declaration.go = semantic.TypeGo.withAdapter(adapter);
                     }
                 }
                 if (registered.supports(.function)) for (functions_copy) |*function| {
                     const params = try allocator.dupe(semantic.Parameter, function.params);
                     for (params, 0..) |*param, param_index| {
-                        if (try hook(context, .{ .parameter = .{ .function = function.*, .index = param_index } })) |adapter| param.go_adapter = adapter;
+                        if (try hook(context, .{ .parameter = .{ .function = function.*, .index = param_index } })) |adapter| param.setGoAdapter(adapter);
                     }
-                    if (try hook(context, .{ .result = function.* })) |adapter| function.return_go_adapter = adapter;
+                    if (try hook(context, .{ .result = function.* })) |adapter| function.setReturnGoAdapter(adapter);
                     function.params = params;
                 };
             }
             if (registered.name_function) |hook| {
                 if (registered.supports(.function)) for (functions_copy) |*function| {
-                    if (try hook(context, function.*)) |name| function.go_name = name;
+                    if (try hook(context, function.*)) |name| function.setGoName(name);
                 };
             }
             document.functions = functions_copy;
@@ -340,7 +340,7 @@ fn pluginOptionsDiagnostic(
 /// The document itself: an IR version this generator reads and the names it
 /// cannot do without.
 fn documentHeaderIssue(_: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
-    if (document.ir_version != 1) return .{
+    if (document.ir_version != semantic.current_ir_version) return .{
         .severity = .@"error",
         .code = "ZIGO020",
         .message = "semantic document uses an unsupported IR version",
