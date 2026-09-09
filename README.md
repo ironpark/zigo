@@ -16,12 +16,12 @@ Zig API + bindings.zig
           └── ABI·semantic metadata
 ```
 
-생성된 공개 패키지는 scalar와 slice뿐 아니라 typed error, 객체 수명, callback, stream,
+생성된 공개 패키지는 스칼라와 슬라이스뿐 아니라 typed error, 객체 수명, 콜백, 스트림,
 tagged union과 중첩 결과도 Go다운 API로 노출합니다.
 
 ## 바로 실행하기
 
-저장소의 최소 예제는 외부 native 라이브러리 없이 생성부터 Go 호출까지 실행됩니다.
+저장소의 최소 예제는 외부 네이티브 라이브러리 없이 생성부터 Go 호출까지 실행됩니다.
 
 ```bash
 git clone https://github.com/ironpark/zigo.git
@@ -40,14 +40,14 @@ zig build go
 
 ## 주요 기능
 
-- 함수, error union, enum, struct와 slice의 타입 안전한 변환
-- 생성자, 메서드와 `Close`를 갖는 opaque handle
-- Go callback과 Zig `std.Io`의 `io.Reader`·`io.Writer` 연결
+- 함수, 오류 유니온, 열거형, 구조체와 슬라이스의 타입 안전한 변환
+- 생성자, 메서드와 `Close`를 갖는 opaque 핸들
+- Go 콜백과 Zig `std.Io`의 `io.Reader`·`io.Writer` 연결
 - `context.Context` 기반 취소
-- tagged union projection, snapshot과 sealed variant
+- tagged union projection, 스냅샷과 sealed variant
 - cgo 정적·동적 링크와 `CGO_ENABLED=0` purego
 - 생성물 최신 상태, API coverage와 ABI 호환성 검사
-- 생성기 plugin을 통한 Go API 확장
+- 생성기 플러그인을 통한 Go API 확장
 
 ## 지원 환경
 
@@ -66,7 +66,8 @@ zig build go
 - [예제](docs/examples.md) — 기능별 실행 가능한 프로젝트
 - [바인딩 작성](docs/authoring/README.md) — 함수와 타입을 공개하는 방법
 - [빌드와 배포](docs/build-and-ship/README.md) — 백엔드, 생성, CI와 패키징
-- [참조](docs/reference/build-options.md) — build option, 타입, 진단과 지원 범위
+- [참조](docs/reference/README.md) — 빌드 옵션, 타입, 진단과 지원 범위
+- [문제 해결](docs/troubleshooting.md) — 생성·링크·로드 실패 확인
 - [전체 사용자 문서](docs/README.md) — 목적별 문서 탐색
 - [기여 안내](CONTRIBUTING.md) — zigo 자체의 개발과 검증
 

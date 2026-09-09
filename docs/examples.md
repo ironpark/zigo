@@ -10,29 +10,29 @@
 
 ```bash
 cd examples/00-quick-start
-zig build test go-check
 zig build go
 (cd go && go test ./...)
 ```
 
-`go-check`는 커밋된 생성물이 최신인지 검사하고 `go`는 실제로 갱신합니다. 각 README에는
-해당 예제에 추가로 필요한 명령이 적혀 있습니다.
+개발 중에는 `go`로 갱신한 뒤 테스트합니다. 커밋된 생성물의 최신 상태를 검사하는 CI에서는
+갱신 전에 `zig build go-verify`를 실행합니다. 각 README에는 필요한 추가 명령과 전제 조건이
+적혀 있습니다. 접두사나 `-Dpurego`는 예제의 `build.zig`에 정의된 설정입니다.
 
 ## 목적별 선택
 
 | 목적 | 예제 |
 |---|---|
 | 가장 작은 생성과 Go 호출 | [00-quick-start](../examples/00-quick-start/README.md) |
-| C++ 링크 입력과 cgo 동적 링크 | [01-scalar](../examples/01-scalar/README.md) |
-| Zig error union을 Go `error`로 사용 | [02-errors](../examples/02-errors/README.md) |
+| C++ 링크 입력과 cgo 동적 링크 | [01-스칼라](../examples/01-scalar/README.md) |
+| Zig 오류 유니온을 Go `error`로 사용 | [02-errors](../examples/02-errors/README.md) |
 | 객체 생성, 메서드와 `Close` | [03-opaque](../examples/03-opaque/README.md) |
-| Go callback, panic 경계와 generic 타입 | [04-callback](../examples/04-callback/README.md) |
-| 여러 타입과 callback을 조합 | [05-pipeline](../examples/05-pipeline/README.md) |
+| Go 콜백, panic 경계와 제네릭 타입 | [04-콜백](../examples/04-callback/README.md) |
+| 여러 타입과 콜백을 조합 | [05-pipeline](../examples/05-pipeline/README.md) |
 | Zig·C·Go 이름 변환 | [06-camel-case](../examples/06-camel-case/README.md) |
 | 상태를 가진 애플리케이션과 수명 관리 | [07-event-queue](../examples/07-event-queue/README.md) |
 | 큰 API 자동 발견 | [08-telemetry-hub](../examples/08-telemetry-hub/README.md) |
-| 여러 opaque 타입 사이의 관계 | [09-type-relations](../examples/09-type-relations/README.md) |
-| tagged union과 JSON plugin | [10-tagged-union](../examples/10-tagged-union/README.md) |
+| 여러 opaque 타입 사이의 관계 | [09-타입-relations](../examples/09-type-relations/README.md) |
+| tagged union과 JSON 플러그인 | [10-tagged-union](../examples/10-tagged-union/README.md) |
 | `io.Reader`, `io.Writer`와 취소 | [11-io-streams](../examples/11-io-streams/README.md) |
 | 중첩 결과를 한 Go 값으로 materialize | [12-materialized](../examples/12-materialized/README.md) |
 
@@ -48,14 +48,14 @@ zig build go
 
 ## purego 예제
 
-`03`, `04`, `07`, `08`, `11`, `12`는 별도 `go-purego` module을 생성합니다.
+`03`, `04`, `07`, `08`, `11`, `12`는 별도 `go-purego` 모듈을 생성합니다.
 
 ```bash
 zig build purego-go purego-go-verify
 (cd go-purego && CGO_ENABLED=0 go test ./...)
 ```
 
-`10-tagged-union`은 같은 step에 `-Dpurego`를 전달합니다.
+`10-tagged-union`은 같은 단계에 `-Dpurego`를 전달합니다.
 
 ```bash
 zig build go go-verify -Dpurego
