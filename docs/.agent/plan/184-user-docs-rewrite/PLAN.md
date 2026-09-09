@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-09T01:10:53Z"
 description: 사용자 문서를 독자 여정별 구조로 전면 재작성하고 마이그레이션과 플러그인 문서를 분리한다
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-08T17:03:09Z"
 ---
 > NEXT: 새 정보 구조와 온보딩 문서를 구현하고 마이그레이션 문서를 제거한다. ([Phase 0](phases/00-foundation-and-onboarding.md))
@@ -11,7 +12,7 @@ registered_at: "2026-09-08T17:03:09Z"
 - [x] [Phase 01: Binding authoring guides](phases/01-binding-authoring-guides.md)
 - [x] [Phase 02: Build, distribution, and reference](phases/02-build-distribution-and-reference.md)
 - [x] [Phase 03: Plugins and internal contracts](phases/03-plugins-and-internal-contracts.md)
-- [ ] [Phase 04: Examples and repository-wide verification](phases/04-examples-and-verification.md)
+- [x] [Phase 04: Examples and repository-wide verification](phases/04-examples-and-verification.md)
 
 # Shared Verification
 
