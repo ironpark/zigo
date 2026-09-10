@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-10T03:32:13Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `grep -rn 'Target' src/plugin.zig` matches only `targets.Target`, the output
 > NEXT: none

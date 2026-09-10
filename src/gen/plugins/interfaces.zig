@@ -26,7 +26,7 @@ pub const plugin: plugin_api.Plugin = .{
 fn validateDocument(context: plugin_api.ValidateContext) !void {
     const allocator = context.allocator;
     const document = context.document;
-    if (try interface_rules.interfaceIssue(allocator, document)) |issue| try context.diagnose(issue);
+    if (try interface_rules.interfaceIssue(allocator, document, context.target)) |issue| try context.diagnose(issue);
 }
 
 /// The first method whose implementations disagree on their Go signature.

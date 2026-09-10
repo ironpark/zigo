@@ -12,6 +12,7 @@ pub const target: target_api.Target = .{
     .display_name = "Go",
     .source_extension = ".go",
     .generated_suffix = "_gen",
+    .test_file_suffix = "_test.go",
     .formatter = .{
         .default_executable = "gofmt",
         .leading_args = &.{"-w"},

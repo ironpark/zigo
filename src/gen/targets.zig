@@ -79,6 +79,12 @@ pub const Target = struct {
     /// Stem suffix marking a source file this generator owns, so a
     /// hand-written file beside it is never mistaken for one to rewrite.
     generated_suffix: []const u8,
+    /// Filename suffix that makes a source file a test file, including the
+    /// extension: `_test.go` for Go. Null for a language whose tests are not
+    /// a filename convention -- Rust puts them behind `#[cfg(test)]` in the
+    /// file they test -- so such a target answers "none" rather than being
+    /// pushed into Go's shape.
+    test_file_suffix: ?[]const u8,
     formatter: ?Formatter,
     vtable: *const VTable,
 
@@ -164,6 +170,22 @@ pub const Target = struct {
     /// classifies it.
     pub fn isSource(self: Target, path: []const u8) bool {
         return std.mem.endsWith(u8, path, self.source_extension);
+    }
+
+    /// Whether a path names a test file. A language with no test-file naming
+    /// convention has no such path, so every file is an ordinary source file.
+    pub fn isTestFile(self: Target, path: []const u8) bool {
+        const suffix = self.test_file_suffix orelse return false;
+        return std.mem.endsWith(u8, path, suffix);
+    }
+
+    /// Whether `path` has the shape a file of `kind` must have in this
+    /// language. A target with no test-file convention cannot express the
+    /// distinction, so it accepts any source file for either kind.
+    pub fn fileNameMatchesKind(self: Target, path: []const u8, is_test: bool) bool {
+        if (!self.isSource(path)) return false;
+        if (self.test_file_suffix == null) return true;
+        return self.isTestFile(path) == is_test;
     }
 };
 

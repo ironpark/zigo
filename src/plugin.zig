@@ -8,10 +8,11 @@ const abi = @import("abi");
 const semantic = @import("semantic");
 const diagnostic = @import("diagnostic");
 const naming = @import("naming");
+const targets = @import("targets");
 
 /// Major versions are incompatible; minor versions add capabilities.
 pub const ContractVersion = struct { major: u16, minor: u16 };
-pub const contract_version: ContractVersion = .{ .major = 2, .minor = 0 };
+pub const contract_version: ContractVersion = .{ .major = 3, .minor = 0 };
 
 /// Serialized build configuration; decoded as the registered plugin's Config.
 pub const Configuration = struct { name: []const u8, json: []const u8 };
@@ -96,6 +97,8 @@ pub const TransformContext = struct {
     document: semantic.Semantic,
     configurations: []const Configuration = &.{},
     diagnostics: *std.ArrayList(diagnostic.Diagnostic),
+    /// The output language this run generates for.
+    target: targets.Target = targets.default,
 
     pub fn config(self: TransformContext, comptime P: Plugin) !P.Config {
         return readConfig(P, self.allocator, self.configurations);
@@ -142,6 +145,8 @@ pub const ValidateContext = struct {
     configurations: []const Configuration = &.{},
     diagnostics: *std.ArrayList(diagnostic.Diagnostic),
     facts: *Facts,
+    /// The output language this run generates for.
+    target: targets.Target = targets.default,
 
     pub fn diagnose(self: ValidateContext, issue: diagnostic.Diagnostic) !void {
         try self.diagnostics.append(self.allocator, issue);
@@ -192,6 +197,11 @@ pub const Options = struct {
         constraint: []const u8,
         flags: []const u8,
     };
+    /// The output language this run generates for. Every context exposes it,
+    /// so a plugin and the generator read one resolved value instead of both
+    /// reaching for `targets.default`. The emitters do not read it: they are
+    /// Go's, which is what `Plugin.output_targets` records.
+    target: targets.Target = targets.default,
     go_module: []const u8,
     cflags_override: ?[]const u8 = null,
     ldflags_override: ?[]const u8 = null,
@@ -323,6 +333,11 @@ pub const ArtifactContext = struct {
     allocator: std.mem.Allocator,
     program: abi.Program,
     options: Options,
+
+    /// The output language this run generates for.
+    pub fn target(self: ArtifactContext) targets.Target {
+        return self.options.target;
+    }
     pub fn config(self: ArtifactContext, comptime P: Plugin) !P.Config {
         return readConfig(P, self.allocator, self.options.configurations);
     }
@@ -346,7 +361,7 @@ pub fn publicFilePathAlloc(allocator: std.mem.Allocator, program: abi.Program, o
     else if (options.go_package.len != 0)
         try allocator.dupe(u8, options.go_package)
     else
-        try naming.snakeAlloc(allocator, program.package);
+        try options.target.packageNameAlloc(allocator, program.package);
     defer allocator.free(directory);
     if (std.mem.eql(u8, directory, ".")) return allocator.dupe(u8, filename);
     return std.fmt.allocPrint(allocator, "{s}/{s}", .{ directory, filename });
@@ -421,6 +436,10 @@ pub const Context = struct {
     /// Set for method_hook, null in other rendering contexts.
     method: ?Method = null,
 
+    /// The output language this run generates for.
+    pub fn target(self: Context) targets.Target {
+        return self.options.target;
+    }
     pub fn config(self: Context, comptime P: Plugin) !P.Config {
         return readConfig(P, self.allocator, self.options.configurations);
     }
@@ -476,8 +495,8 @@ pub const Context = struct {
 
     /// Path in this GoFile's selected package, or the public package in other hooks.
     pub fn goFilePathAlloc(self: Context, filename: []const u8) ![]u8 {
-        const target = if (self.options.file) |file| if (file.go_file) |go| go.package else .public else .public;
-        return goFilePathAllocImpl(self.allocator, self.program, self.options, target, filename);
+        const selected_package = if (self.options.file) |file| if (file.go_file) |go| go.package else .public else .public;
+        return goFilePathAllocImpl(self.allocator, self.program, self.options, selected_package, filename);
     }
 
     pub fn publicFilePathAlloc(self: Context, filename: []const u8) ![]u8 {
@@ -561,6 +580,13 @@ pub const Plugin = struct {
     /// The declaration kinds this plugin attaches to. A plugin left at the
     /// default attaches to all of them.
     subjects: []const Subject = &.{ .function, .handle, .value, .enumeration, .tagged_union, .callback, .materialized, .error_set },
+    /// The output languages this plugin can render for, by `targets.Target`
+    /// name. The default is Go alone, because the rendering surface a plugin
+    /// writes through -- `Context.writeGoType` and its siblings -- writes Go.
+    /// A plugin whose list excludes the resolved target contributes nothing:
+    /// no transform, no diagnostic, no output file. That is what lets those
+    /// writers stay Go's without the contract pretending otherwise.
+    output_targets: []const []const u8 = &.{"go"},
     /// Runs after core and option validation; report any number of diagnostics.
     validate: ?*const fn (ValidateContext) anyerror!void = null,
     /// Written after each public method, into the file that owns it.
@@ -578,6 +604,12 @@ pub const Plugin = struct {
 
     /// Non-standard imports the hooks may write, added where they are used.
     imports: []const Import = &.{},
+
+    /// Whether this plugin runs at all for `target`.
+    pub fn rendersFor(comptime self: Plugin, target: targets.Target) bool {
+        inline for (self.output_targets) |candidate| if (std.mem.eql(u8, candidate, target.name)) return true;
+        return false;
+    }
 
     pub fn supports(comptime self: Plugin, subject: ?Subject) bool {
         const requested = subject orelse return false;
@@ -657,6 +689,12 @@ pub const AnalyzeContext = struct {
     render: Context,
     facts: *Facts,
     diagnostics: *std.ArrayList(diagnostic.Diagnostic),
+
+    /// The output language this run generates for.
+    pub fn target(self: AnalyzeContext) targets.Target {
+        return self.render.target();
+    }
+
     pub fn diagnose(self: AnalyzeContext, issue: diagnostic.Diagnostic) !void {
         try self.diagnostics.append(self.render.allocator, issue);
     }

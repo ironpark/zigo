@@ -125,6 +125,7 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
         .purego => .purego,
     });
     var emitter_options: emit.Options = .{
+        .target = options.output_target,
         .go_module = options.go_module,
         .cflags_override = options.cflags_override,
         .ldflags_override = options.ldflags_override,
@@ -196,7 +197,7 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
 
     // Reserve metadata before validation so a plugin cannot overwrite it.
     if (options.write_manifest) try prepared.append(scratch_allocator, .{ .path = output_manifest.filename, .contents = "", .verbatim = true });
-    if (try outputPathIssue(scratch_allocator, prepared.items)) |issue| {
+    if (try outputPathIssue(scratch_allocator, prepared.items, options.output_target)) |issue| {
         if (options.diagnostics) |issues| try issues.append(allocator, try issue.clone(allocator));
         return error.InvalidOutputPath;
     }
@@ -250,7 +251,7 @@ fn normalizeOutputPath(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
     return std.mem.join(allocator, "/", parts.items);
 }
 
-fn outputPathIssue(allocator: std.mem.Allocator, files: []PreparedFile) !?diagnostic.Diagnostic {
+fn outputPathIssue(allocator: std.mem.Allocator, files: []PreparedFile, target: targets.Target) !?diagnostic.Diagnostic {
     var paths: std.StringHashMapUnmanaged(usize) = .empty;
     defer paths.deinit(allocator);
     for (files, 0..) |*file, index| {
@@ -279,17 +280,16 @@ fn outputPathIssue(allocator: std.mem.Allocator, files: []PreparedFile) !?diagno
         if (file.go_kind) |kind| {
             const expected_directory = file.go_directory.?;
             // Normalize a sentinel path so the root directory remains representable.
-            const probe = try normalizeOutputPath(allocator, try std.fmt.allocPrint(allocator, "{s}/_.go", .{expected_directory}));
+            const probe = try normalizeOutputPath(allocator, try std.fmt.allocPrint(allocator, "{s}/_{s}", .{ expected_directory, target.source_extension }));
             const directory = std.fs.path.dirname(probe) orelse ".";
             const actual_directory = std.fs.path.dirname(normalized) orelse ".";
-            if (!std.mem.endsWith(u8, normalized, ".go") or
-                (std.mem.endsWith(u8, normalized, "_test.go") != (kind == .test_file)) or
+            if (!target.fileNameMatchesKind(normalized, kind == .test_file) or
                 !std.mem.eql(u8, directory, actual_directory)) return .{
                 .severity = .@"error",
                 .code = "ZIGO059",
-                .message = try std.fmt.allocPrint(allocator, "Go file `{s}` does not match its package directory or source/test kind", .{normalized}),
+                .message = try std.fmt.allocPrint(allocator, "{s} file `{s}` does not match its package directory or source/test kind", .{ target.display_name, normalized }),
                 .site = .{ .path = normalized, .declaration = file.owner },
-                .hint = "use context.goFilePathAlloc and a .go filename (_test.go only for test_file); use artifacts for other formats",
+                .hint = try std.fmt.allocPrint(allocator, "use context.goFilePathAlloc and a {s} filename ({s} only for test_file); use artifacts for other formats", .{ target.source_extension, target.test_file_suffix orelse target.source_extension }),
             };
         }
         entry.value_ptr.* = index;
@@ -328,7 +328,7 @@ fn appendEmitters(allocator: std.mem.Allocator, prepared: *std.ArrayList(Prepare
 fn appendArtifacts(allocator: std.mem.Allocator, prepared: *std.ArrayList(PreparedFile), program: abi.Program, options: emit.Options, scope: plugin.OutputScope) !void {
     const registry = @import("plugins/registry.zig");
     inline for (registry.plugins, 0..) |registered, index| {
-        if (registry.runs(index, options.plugins)) inline for (registered.artifacts) |artifact| {
+        if (registry.runs(index, options.plugins, options.target)) inline for (registered.artifacts) |artifact| {
             if (artifact.scope == scope) {
                 const context: plugin.ArtifactContext = .{ .allocator = allocator, .program = program, .options = options };
                 if (artifact.enabled) |predicate| {
@@ -1408,7 +1408,7 @@ test "normalized output collisions report both owners before mutation" {
         .{ .path = "input/../shared.go", .contents = "first", .owner = "FIRST (package input)" },
         .{ .path = "./shared.go", .contents = "last", .owner = "SECOND (package root)" },
     };
-    const issue = (try outputPathIssue(allocator, &files)).?;
+    const issue = (try outputPathIssue(allocator, &files, targets.default)).?;
     try std.testing.expectEqualStrings("ZIGO059", issue.code);
     try std.testing.expect(std.mem.indexOf(u8, issue.message, "FIRST") != null);
     try std.testing.expect(std.mem.indexOf(u8, issue.message, "SECOND") != null);

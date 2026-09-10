@@ -70,7 +70,7 @@ pub fn runTypeHooks(value: plugin.Context, writer: *std.Io.Writer, declaration: 
 /// always do -- they are the generator's own surface, not an opt-in -- and
 /// anything the build added runs unless the options name a subset.
 pub fn runs(comptime index: usize, options: emit.Options) bool {
-    return registry.runs(index, options.plugins);
+    return registry.runs(index, options.plugins, options.target);
 }
 
 /// Whether any registered plugin declares this import. The caller still only

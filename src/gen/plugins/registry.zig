@@ -10,6 +10,7 @@ const interfaces = @import("builtin_plugins").interfaces;
 const iterator = @import("builtin_plugins").iterator;
 const must = @import("builtin_plugins").must;
 const plugin = @import("plugin");
+const targets = @import("targets");
 const testing_plugin = @import("testing.zig");
 
 /// The features zigo ships with, migrated onto the plugin frame.
@@ -34,7 +35,10 @@ pub const plugins: []const plugin.Plugin = &sorted;
 pub const configurations = @import("plugin_registry").configurations;
 
 /// Validation and emission share the same selection; built-ins always run.
-pub fn runs(comptime index: usize, selected: ?[]const []const u8) bool {
+pub fn runs(comptime index: usize, selected: ?[]const []const u8, target: targets.Target) bool {
+    // The output language gates first, and gates the built-ins too: a
+    // built-in that renders Go has nothing to contribute to another language.
+    if (!plugins[index].rendersFor(target)) return false;
     inline for (builtins) |entry| {
         if (@import("std").mem.eql(u8, entry.name, plugins[index].name)) return true;
     }

@@ -4,15 +4,17 @@ const naming = @import("naming");
 const semantic = @import("semantic");
 const targets = @import("targets");
 
-/// `targets.default`, not a threaded target: the plugin contract still
-/// declares its interfaces in Go's terms (`GoFile`, `GoPackage`,
-/// `writeGoType`), so parameterizing this check would promise something the
-/// contract cannot keep. Making the contract target-generic is its own plan.
-pub fn interfaceIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
+pub fn interfaceIssue(allocator: std.mem.Allocator, document: semantic.Semantic, target: targets.Target) !?diagnostic.Diagnostic {
     const interfaces = document.interfaces orelse return null;
     for (interfaces, 0..) |interface, index| {
-        if (!targets.default.isIdentifier(interface.name)) return issue(interface, "interface name is not a Go identifier", "give the interface a `.name` that is a valid exported Go identifier");
-        if (try collisionIssue(allocator, document, interfaces[0..index], interface)) |found| return found;
+        if (!target.isIdentifier(interface.name)) return try issueFmt(
+            allocator,
+            interface,
+            "interface name is not a {s} identifier",
+            .{target.display_name},
+            try std.fmt.allocPrint(allocator, "give the interface a `.name` that is a valid exported {s} identifier", .{target.display_name}),
+        );
+        if (try collisionIssue(allocator, document, interfaces[0..index], interface, target)) |found| return found;
         if (interface.types.len == 0) return issue(interface, "interface lists no types", "list at least one registered opaque type in `.types`");
         if (interface.methods.len == 0) return issue(interface, "interface lists no methods", "list at least one Zig method name in `.methods`");
         for (interface.types, 0..) |type_name, type_index| {
@@ -57,7 +59,7 @@ pub fn methodOf(document: semantic.Semantic, type_name: []const u8, name: []cons
 
 /// An interface name reaches Go as a `type` declaration in its package, so
 /// it collides with the same things a registered type name does.
-fn collisionIssue(allocator: std.mem.Allocator, document: semantic.Semantic, previous: []const semantic.Interface, interface: semantic.Interface) !?diagnostic.Diagnostic {
+fn collisionIssue(allocator: std.mem.Allocator, document: semantic.Semantic, previous: []const semantic.Interface, interface: semantic.Interface, target: targets.Target) !?diagnostic.Diagnostic {
     for (previous) |other| {
         if (!std.mem.eql(u8, other.name, interface.name) or !semantic.optionalStringEqual(other.package, interface.package)) continue;
         return try collision(allocator, interface, "two interfaces");
@@ -68,7 +70,7 @@ fn collisionIssue(allocator: std.mem.Allocator, document: semantic.Semantic, pre
     }
     for (document.functions) |function| {
         if (function.receiver != null or !semantic.optionalStringEqual(function.package, interface.package)) continue;
-        const function_name = try targets.default.publicFunctionNameAlloc(allocator, document, function);
+        const function_name = try target.publicFunctionNameAlloc(allocator, document, function);
         defer allocator.free(function_name);
         if (!std.mem.eql(u8, function_name, interface.name)) continue;
         return try collision(allocator, interface, try std.fmt.allocPrint(allocator, "interface `{s}` and function `{s}`", .{ interface.name, function.name }));

@@ -2,7 +2,7 @@
 depends_on:
 - "187-plugin-contract-targets#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: No `targets.default` reference remains in `src/plugin/**` or
 > NEXT: none
@@ -11,9 +11,13 @@ status: planned
 
 ## Planned Work
 
-- Give `plugin.Options` the resolved `targets.Target` and expose it on
-  `Context`, `ArtifactContext`, `ValidateContext`, `TransformContext` and
-  `AnalyzeContext`, so a plugin reads the same value the generator resolved.
+- Give `plugin.Options` the resolved `targets.Target`. `Context` and
+  `ArtifactContext` carry `options`, so they expose it as a method for free;
+  `ValidateContext` and `TransformContext` carry no options, so they take the
+  value as a field; `AnalyzeContext` delegates to the `Context` it wraps.
+  `emit.Options` is an alias of `plugin.Options`, so the field is reachable
+  from emit -- it is carried there, not read there, and what keeps that honest
+  is `Plugin.output_targets` rather than a comment.
 - Add the file-shape members `ZIGO059` needs to `targets.Target`: the source
   extension is already there, so this is the test-file rule. Shape it as an
   optional, so a language whose tests are not a filename convention answers
@@ -31,10 +35,15 @@ status: planned
 
 ## Done When
 
-- No `targets.default` reference remains in `src/plugin/**` or
-  `src/gen/generator.zig`.
+- No site in `src/plugin/**` or `src/gen/generator.zig` *reaches for*
+  `targets.default` in place of a threaded value. The name still appears as the
+  default of the new `target` fields and as an argument in unit tests, which is
+  what a default is for; what goes away is the interface-name check and the
+  package-directory fallback resolving the language behind the caller's back.
 - `ZIGO059`'s file-shape branch contains no Go literal, and its existing
-  diagnostic tests still fail the same inputs.
+  diagnostic tests still fail the same inputs. Its message and the
+  interface-name diagnostic interpolate `display_name`, so their Go text stays
+  byte-identical and only a non-Go target changes it.
 - A test shows a plugin with a non-matching `output_targets` contributing
   nothing: no diagnostic, no output file.
 - `zig build test --summary all` passes, generator cases regenerate clean, and
