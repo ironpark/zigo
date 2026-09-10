@@ -244,9 +244,16 @@ report·generator 어느 caller도 Rust 때문에 바뀌지 않았습니다.
 
 우선순위 순:
 
-1. **등록된 enum → Rust enum** (`#[repr(u8)]` + tag). 위 버그 3의 정식 해결이고,
-   Go case 74개 중 거부되는 것 상당수가 이것 하나입니다.
+1. **등록된 enum → Rust enum** (`#[repr(u8)]` + tag). 위 버그 3의 정식 해결입니다.
+
+   규모를 정확히 세어 두면: Go case 74개 중 **31개가 enum을 등록**하고,
+   거부된 67개 중 **12개가 진단에 enum을 언급**하며, enum이 **유일한/첫
+   걸림돌인 것은 6개**입니다(거부는 함수별 첫 이유만 보고하고 단축 평가합니다).
+   그러니 enum만 고쳐서 곧바로 통과하는 문서는 6개뿐이고, 나머지는 다른
+   걸림돌도 함께 가지고 있습니다 — enum은 "많은 문서가 추가로 필요한 전제"이지
+   "혼자서 대다수를 여는 열쇠"가 아닙니다.
 2. **Zig 네임스페이스 → Rust 모듈**, sub-package → 크레이트 또는 모듈. 버그 4.
+   첫 걸림돌인 문서가 8개로 enum보다 많습니다.
 3. **tagged union → Rust enum.** 조사 문서가 예상한 세 번째 이득.
 4. **Rust plugin.** `validate.zig`가 이제 `target.setNameOverride`를 쓰므로
    (플랜 189) 남은 것은 `Context.writeGoType` 계열의 Rust 대응물입니다.
