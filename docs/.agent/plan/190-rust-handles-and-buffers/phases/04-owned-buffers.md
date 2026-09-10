@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-10T06:35:28Z"
 depends_on:
 - "190-rust-handles-and-buffers#3"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: The golden bodies for both buffer returns contain no `to_vec`, no
 > NEXT: none

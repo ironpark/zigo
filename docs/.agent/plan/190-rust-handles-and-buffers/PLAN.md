@@ -11,7 +11,7 @@ registered_at: "2026-09-10T05:36:17Z"
 - [x] [Phase 01: Move the constructor-name rule behind the target](phases/01-constructor-name-rule.md)
 - [x] [Phase 02: Opaque handles become owning structs with Drop](phases/02-handles-as-drop.md)
 - [x] [Phase 03: Borrowed views carry the lifetime they borrow](phases/03-borrowed-views.md)
-- [ ] [Phase 04: Caller-owned buffers are owned, not copied](phases/04-owned-buffers.md)
+- [x] [Phase 04: Caller-owned buffers are owned, not copied](phases/04-owned-buffers.md)
 - [ ] [Phase 05: Prove it in the example, and hand it on](phases/05-example-and-handoff.md)
 
 # Shared Verification

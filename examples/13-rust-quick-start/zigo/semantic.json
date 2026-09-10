@@ -1,5 +1,12 @@
 {
-  "constructors": [],
+  "constructors": [
+    {
+      "deinit": "deinit",
+      "init": "create",
+      "type": "Tally"
+    }
+  ],
+  "doc": "What the Rust backend covers, one declaration per shape.",
   "functions": [
     {
       "doc": "Adds two signed 32-bit integers. The sum must fit in i32.",
@@ -12,7 +19,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 2,
+            "line": 4,
             "column": 12
           },
           "type": {
@@ -28,7 +35,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 2,
+            "line": 4,
             "column": 20
           },
           "type": {
@@ -47,7 +54,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 2,
+        "line": 4,
         "column": 8
       },
       "symbol": "zg_add"
@@ -63,7 +70,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 8,
+            "line": 10,
             "column": 12
           },
           "type": {
@@ -86,7 +93,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 8,
+        "line": 10,
         "column": 8
       },
       "symbol": "zg_sum"
@@ -102,7 +109,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 17,
+            "line": 19,
             "column": 15
           },
           "type": {
@@ -118,7 +125,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 17,
+            "line": 19,
             "column": 31
           },
           "type": {
@@ -143,15 +150,272 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 17,
+        "line": 19,
         "column": 8
       },
       "symbol": "zg_divide"
+    },
+    {
+      "name": "create",
+      "namespace": "Tally",
+      "ownership": "caller",
+      "params": [],
+      "return": {
+        "error_set": [
+          "OutOfMemory"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "const": false,
+          "kind": "opaque_ptr",
+          "nullable": false,
+          "ref": "Tally"
+        }
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 41,
+        "column": 12
+      },
+      "symbol": "zg_tally_create"
+    },
+    {
+      "doc": "Adds to the total and reports it. Mutates, so Rust receives `&mut self`.",
+      "name": "add",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "value",
+          "name_source": "ast",
+          "retention": "borrowed",
+          "source": {
+            "line": 50,
+            "column": 30
+          },
+          "type": {
+            "bits": 64,
+            "is_usize": false,
+            "kind": "int",
+            "signed": true
+          }
+        }
+      ],
+      "receiver": "Tally",
+      "return": {
+        "bits": 64,
+        "is_usize": false,
+        "kind": "int",
+        "signed": true
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 50,
+        "column": 12
+      },
+      "symbol": "zg_tally_add"
+    },
+    {
+      "doc": "Reads the total from a copy of the handle's value. Rust receives\n`&self`, a distinction Go cannot express.",
+      "name": "peek",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Tally",
+      "receiver_by_value": true,
+      "return": {
+        "bits": 64,
+        "is_usize": false,
+        "kind": "int",
+        "signed": true
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 57,
+        "column": 12
+      },
+      "symbol": "zg_tally_peek"
+    },
+    {
+      "doc": "Fails when the total is negative, so Rust gets a `Result`.",
+      "name": "checkedHalf",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Tally",
+      "return": {
+        "error_set": [
+          "DivideByZero"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "bits": 64,
+          "is_usize": false,
+          "kind": "int",
+          "signed": true
+        }
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 62,
+        "column": 12
+      },
+      "symbol": "zg_tally_checked_half"
+    },
+    {
+      "borrowed_return": true,
+      "doc": "Borrows a reading out of the tally. Rust ties the reading's lifetime to\nthis borrow, so a reading cannot outlive the tally it came from.",
+      "name": "borrowReading",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Tally",
+      "return": {
+        "const": false,
+        "kind": "opaque_ptr",
+        "nullable": false,
+        "ref": "Reading"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 69,
+        "column": 12
+      },
+      "symbol": "zg_tally_borrow_reading"
+    },
+    {
+      "doc": "Renders the total into memory the caller owns. Rust takes ownership of\nthe allocation instead of copying it.",
+      "name": "render",
+      "ownership": "caller",
+      "params": [],
+      "receiver": "Tally",
+      "release": "freeRendered",
+      "return": {
+        "error_set": [
+          "OutOfMemory"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "const": true,
+          "element": {
+            "bits": 8,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          },
+          "kind": "slice"
+        }
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 75,
+        "column": 12
+      },
+      "symbol": "zg_tally_render"
+    },
+    {
+      "name": "deinit",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Tally",
+      "return": {
+        "kind": "void"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 80,
+        "column": 12
+      },
+      "symbol": "zg_tally_deinit"
+    },
+    {
+      "name": "total",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Reading",
+      "return": {
+        "bits": 64,
+        "is_usize": false,
+        "kind": "int",
+        "signed": true
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 96,
+        "column": 12
+      },
+      "symbol": "zg_reading_total"
+    },
+    {
+      "doc": "Releases what `Tally.render` handed over. A root-level function so the\nbinding can name it as this result's release target.",
+      "name": "freeRendered",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "text",
+          "name_source": "ast",
+          "retention": "borrowed",
+          "semantic": "utf8_string",
+          "source": {
+            "line": 88,
+            "column": 21
+          },
+          "type": {
+            "const": true,
+            "element": {
+              "bits": 8,
+              "is_usize": false,
+              "kind": "int",
+              "signed": false
+            },
+            "kind": "slice"
+          }
+        }
+      ],
+      "return": {
+        "kind": "void"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 88,
+        "column": 8
+      },
+      "symbol": "zg_free_rendered"
+    },
+    {
+      "name": "liveBytes",
+      "ownership": "borrowed",
+      "params": [],
+      "return": {
+        "bits": 64,
+        "is_usize": true,
+        "kind": "int",
+        "signed": false
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 28,
+        "column": 8
+      },
+      "symbol": "zg_live_bytes"
     }
   ],
   "ir_version": 2,
   "package": "calculator",
   "prefix": "zg",
-  "types": [],
+  "types": [
+    {
+      "exhaustive": true,
+      "fields": [],
+      "kind": "opaque",
+      "name": "Tally",
+      "zig_path": "root.Tally"
+    },
+    {
+      "exhaustive": true,
+      "fields": [],
+      "kind": "opaque",
+      "name": "Reading",
+      "zig_path": "root.Reading"
+    }
+  ],
   "zig_version": "0.16.0"
 }

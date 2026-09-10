@@ -28,7 +28,54 @@
   파일이 새 형태로 다시 쓰입니다. 바인딩 작성 API(`.go`, `.go_error`, `.name`)와 생성되는
   Go 코드는 그대로입니다.
 
+### Fixed
+
+- Rust 타겟이 **컴파일되지 않는 크레이트를 생성하던 버그**. 좁은 정수
+  파라미터(`u21` 등)가 있고 Zig 에러 집합을 선언하지 않은 함수가
+  `Result<T, Error>` 시그니처를 받으면서 `Error`를 정의하는 모듈은
+  생성되지 않았습니다. 원인은 "상태 코드 통로가 있다"와 "Zig 에러가 선언됐다"를
+  한 질문으로 취급한 것입니다 — `lower.promoteCheckedFunctions`가 핸들 수신자·
+  핸들 파라미터·좁은 정수 파라미터를 가진 모든 함수의 반환을 **빈** 에러 집합의
+  error union으로 바꾸기 때문에, 상태 통로는 Zig 에러보다 훨씬 자주 존재합니다.
+- Rust 타겟이 **콜백이 있는 바인딩에서 진단 대신 패닉**하던 버그
+  (`reached unreachable code`). cgo 콜백 규약에서는 콜백 파라미터가 ABI
+  파라미터가 아니라 `userdata` 토큰만 넘어가므로, ABI 스칼라를 보던 검사가
+  콜백을 한 번도 보지 못했습니다. 이제 거부는 **의미 타입 화이트리스트**라
+  처음 보는 모양은 패닉이 아니라 `ZIGO060`으로 거부됩니다.
+- Rust 타겟이 **등록된 enum을 tag 정수로, 네임스페이스를 평면 이름으로 조용히
+  바꿔치던 문제**. `echo(value: EraseDisplay) EraseDisplay`가
+  `pub fn echo(value: u8) -> u8`이 되어 호출자가 `0`이 `below`인지 알 방법이
+  없었고, `unicode.grapheme.breaks`는 네임스페이스를 잃어 같은 이름의 두 함수가
+  하나로 충돌했습니다. sub-package도 하나의 크레이트 루트로 병합됐습니다.
+  세 가지 모두 `ZIGO060`으로 거부됩니다.
+- Rust 타겟에서 **주입된 파라미터**(`std.mem.Allocator`, `std.Io`)가 공개
+  시그니처에 `()` 인자로 새던 문제.
+- `error{E}!bool`이 Rust에서 `Result<u8, Error>`로 오던 문제.
+- `src/gen/targets/rust.zig`가 `zig fmt --check`를 통과하지 못하던 문제.
+
 ### Added
+
+- **opaque 핸들 → `Drop`**. 핸들이 자기 수명 동안만 네이티브 포인터를 소유하는
+  구조체가 되고, destructor는 `Drop`에서 호출됩니다. 잊을 `Close()`도, 검사할
+  use-after-close도 없습니다 — 생성된 `handle.rs`에는 `close`도 `is_closed`도
+  유효성 플래그도 없습니다.
+- **수신자 가변성**. `*T` 수신자는 `&mut self`, 값 수신자는 `&self`가 됩니다.
+  Go는 모든 수신자가 `*T`라 이 구분을 표현하지 못합니다. Zig의 `*const T`와
+  `*T`는 구분하지 않습니다(IR이 수신자의 const를 기록하지 않습니다).
+- **Zig 에러 집합이 없는 호출은 값을 돌려주고 결함이면 panic합니다.** 도달
+  가능한 0 아닌 코드는 잘못된 핸들(Rust에서는 도달 불가)과 잡힌 Zig panic
+  뿐이며, 둘 다 호출자가 대응할 조건이 아니라 결함입니다. `raw::panic_native`가
+  네이티브 메시지와 함께 panic합니다.
+- **빌려온 view → 라이프타임**. view 타입은 `Drop`이 없고 라이프타임
+  파라미터를 가지며, 빌려준 메서드는 `-> View<'_>`를 돌려줍니다. view가 소유자보다
+  오래 사는 코드는 컴파일 오류이고, 빌드가 `compile_fail.rs`를 컴파일해
+  `E0515`가 나오는지 확인합니다.
+- **호출자 소유 버퍼 → `OwnedSlice<T>`, 복사 없음**. 포인터와 길이를 그대로
+  소유하고 `Drop`에서 release를 호출합니다. release 함수는 공개하지 않습니다
+  (이중 해제 방지). UTF-8 버퍼도 `OwnedSlice<u8>`이며 `to_str_lossy`가 유효한
+  입력에서는 빌려 씁니다.
+- `Target.constructorNameAlloc`. Go는 `New<Type>`, Rust는 `new`를 답합니다.
+  Rust 생성자는 `Type::new()`로 도달하므로 경로가 이미 타입을 말합니다.
 
 - **Rust 출력 타겟**(`--output-target rust`). 스칼라, `[]const T` 슬라이스,
   error union만 다루는 최소 백엔드입니다. C ABI shim·panic 소스·C 헤더는 Go

@@ -14,6 +14,8 @@ use crate::raw;
 pub enum ErrorKind {
     /// Zig `error.DivideByZero`, stable code 1.
     DivideByZero,
+    /// Zig `error.OutOfMemory`, stable code 2.
+    OutOfMemory,
     /// A Zig panic caught at the native boundary. `Error::message`
     /// carries the panic text when the shim recorded one.
     NativePanic,
@@ -54,6 +56,7 @@ impl Error {
         }
         let kind = match code {
             1 => ErrorKind::DivideByZero,
+            2 => ErrorKind::OutOfMemory,
             _ => ErrorKind::Unknown,
         };
         Self {
@@ -68,6 +71,7 @@ impl Error {
     pub fn name(&self) -> &'static str {
         match self.kind {
             ErrorKind::DivideByZero => "DivideByZero",
+            ErrorKind::OutOfMemory => "OutOfMemory",
             ErrorKind::NativePanic => "NativePanic",
             ErrorKind::Unknown => "Unknown",
         }

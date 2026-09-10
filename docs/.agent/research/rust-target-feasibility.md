@@ -185,14 +185,71 @@ report·generator 어느 caller도 Rust 때문에 바뀌지 않았습니다.
    하드코딩합니다.** Go 관용구입니다. 최소 범위에 constructor가 없어 도달하지
    않지만, handle을 지원하는 순간 타겟 규칙이 되어야 합니다.
 
+### 핸들과 버퍼 (플랜 `190-rust-handles-and-buffers`)
+
+위 "다음 사람에게" 1·2번이 완료됐습니다. 예상은 맞았습니다 — 이 둘이 Rust
+타겟의 가장 큰 이득입니다.
+
+| 항목 | 결과 |
+|---|---|
+| opaque handle | `Drop`으로 스스로 해제. `close`·`is_closed`·유효성 플래그 없음 |
+| 수신자 가변성 | `*T` → `&mut self`, 값 수신자 → `&self`. Go는 표현 불가 |
+| 상태 코드 | Zig 에러 집합이 없으면 값 반환 + 결함 시 panic. Go는 전부 `error` |
+| borrowed view | 라이프타임 래퍼, `Drop` 없음. 소유자보다 오래 살면 컴파일 오류 |
+| 호출자 소유 버퍼 | `OwnedSlice<T>`, 복사 0회. release 함수 비공개 |
+| 신규 코드 | `emit_rust` 957 → 2,096줄, `handles.zig`·`buffers.zig` 신규 |
+
+`Ownership`·`AbiOpaque.lifecycle`·`Buffer` 모두 이미 lowering이 채워둔 것을
+읽기만 했습니다. **IR 필드를 하나도 추가하지 않았고 `ir_version`도 그대로**입니다.
+
+#### 이 플랜이 닫은 창
+
+- 창 6(`New{s}` 하드코딩) → `Target.constructorNameAlloc`으로 이동. Go는
+  `New<Type>`, Rust는 `new`.
+
+#### 이 플랜이 찾은 버그 (모두 플랜 188/189 시점부터 존재)
+
+경험적 감사 — Go generator case 74개 문서를 전부 Rust 타겟에 넣고, 통과한
+결과를 `rustc -D warnings`로 컴파일 — 로 찾았습니다. 이 감사는 이제 플랜의
+상시 검증입니다.
+
+1. **좁은 정수 파라미터 + 에러 집합 없음 → 컴파일되지 않는 크레이트.**
+   상태 코드 통로와 선언된 에러 집합을 한 질문으로 취급한 결과.
+2. **콜백 있는 바인딩 → 패닉.** cgo 규약에서 콜백은 ABI 파라미터가 아니라
+   `userdata` 토큰만 넘어가므로 ABI 스칼라를 보던 검사가 못 봤습니다.
+3. **등록된 enum → tag 정수로 조용히 강등.** 컴파일은 되고 호출자는 `0`이
+   무엇인지 알 수 없습니다.
+4. **네임스페이스·sub-package → 평면화.** 같은 이름의 두 함수가 충돌합니다.
+5. **주입된 파라미터가 공개 시그니처에 `()`로 누출.**
+6. **`Buffer.release_function`은 `AbiFn.origin`과 절대 같지 않습니다.** 전자는
+   checked promotion **전** 테이블을, 후자는 후 테이블을 가리킵니다. 이 비교로
+   쓰인 코드 둘은 각각 `unreachable`에 도달하고, 모든 release 함수를 조용히
+   공개했습니다. `Buffer.release` 인덱스가 올바른 수단입니다.
+7. `error{E}!bool` → `Result<u8, Error>`.
+
+감사 결과: 74개 중 7개가 컴파일되는 크레이트를 만들고, 67개가 기능 이름을 대는
+`ZIGO060`으로 거부되고, **패닉하는 것은 없습니다.**
+
+#### 이 플랜이 남긴 창
+
+- **수신자의 const가 IR에 없습니다.** Zig `*const T` 수신자는 C 헤더에서
+  비-const `zg_context *`가 되므로 `receiver_by_value`만 남습니다. Rust는
+  포인터 수신자 전부에 `&mut self`를 주는데, 과하게 제한적이지만 unsound하지는
+  않습니다. IR에 기록하면 Rust가 더 정확한 답을 낼 수 있습니다.
+- **`constructorForInit`이 `goOwner()`를 읽습니다.** fallback(`namespace`)은
+  중립이고 `.constructs` override만 Go 네임스페이스에 있습니다. 중립 `owner` +
+  타겟별 override로 쪼개는 것이 정리입니다.
+
 ### 다음 사람에게
 
 우선순위 순:
 
-1. **opaque handle → `Drop`.** 조사 문서가 예상한 가장 큰 이득이고, 위 6번을
-   먼저 해결해야 합니다.
-2. **borrowed slice 반환.** 현재는 `Vec<T>`/`String`으로 복사합니다. 라이프타임
-   슬라이스나 `Drop` 래퍼가 더 얇습니다.
-3. **tagged union → Rust enum.**
-4. **Rust plugin.** 위 2번을 먼저 해결해야 합니다.
-5. **취소.** 여전히 별도 설계가 필요합니다. 걸림돌 #2는 그대로 남아 있습니다.
+1. **등록된 enum → Rust enum** (`#[repr(u8)]` + tag). 위 버그 3의 정식 해결이고,
+   Go case 74개 중 거부되는 것 상당수가 이것 하나입니다.
+2. **Zig 네임스페이스 → Rust 모듈**, sub-package → 크레이트 또는 모듈. 버그 4.
+3. **tagged union → Rust enum.** 조사 문서가 예상한 세 번째 이득.
+4. **Rust plugin.** `validate.zig`가 이제 `target.setNameOverride`를 쓰므로
+   (플랜 189) 남은 것은 `Context.writeGoType` 계열의 Rust 대응물입니다.
+5. **dependent handle** (부모보다 먼저 닫혀야 하는 자식). 자식 래퍼에 라이프타임
+   파라미터가 필요하고, borrowed view의 기계장치에 소유권을 더한 모양입니다.
+6. **취소.** 여전히 별도 설계가 필요합니다. 걸림돌 #2는 그대로 남아 있습니다.

@@ -137,6 +137,9 @@ jobs:
           # The demo is the acceptance check the README promises.
           (cd rust && cargo run --example demo) | tee demo.txt
           grep -qx '2 + 3 = 5' demo.txt
+          # The only evidence `Drop` reached the native destructor rather than
+          # merely compiling: the library counts its own live bytes.
+          grep -qx 'live bytes after drop = 0' demo.txt
           rm -f demo.txt
           cd ../..
           if [[ -n "$(git status --porcelain --untracked-files=all -- examples/13-rust-quick-start)" ]]; then

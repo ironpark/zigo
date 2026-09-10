@@ -14,4 +14,26 @@ fn main() {
         Ok(value) => println!("1 / 0 = {value}"),
         Err(error) => println!("1 / 0 failed: {error}"),
     }
+
+    // A handle Rust owns. No close call anywhere below: going out of scope
+    // runs the native destructor.
+    let mut tally = calculator::Tally::new().expect("the constructor succeeds");
+    println!("tally.add(40) = {}", tally.add(40));
+    println!("tally.add(2) = {}", tally.add(2));
+    println!("tally.peek() = {}", tally.peek());
+
+    // A view borrowed out of the tally, whose lifetime is that borrow.
+    {
+        let mut reading = tally.borrow_reading();
+        println!("reading.total() = {}", reading.total());
+    }
+
+    // A buffer the library allocated and Rust now owns. Nothing is copied,
+    // and it is released when it goes out of scope.
+    let rendered = tally.render().expect("rendering succeeds");
+    println!("tally.render() = {}", rendered.to_str_lossy());
+
+    drop(rendered);
+    drop(tally);
+    println!("live bytes after drop = {}", calculator::live_bytes());
 }

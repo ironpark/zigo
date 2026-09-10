@@ -22,6 +22,14 @@
       "kind": "go"
     },
     {
+      "path": "src/handle.rs",
+      "kind": "go"
+    },
+    {
+      "path": "src/buffer.rs",
+      "kind": "go"
+    },
+    {
       "path": "src/lib.rs",
       "kind": "go"
     },

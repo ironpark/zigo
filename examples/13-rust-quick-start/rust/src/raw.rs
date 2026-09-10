@@ -11,10 +11,37 @@
 
 use core::ffi::c_char;
 
+/// The native `Tally`. Incomplete on purpose: the Rust side only ever
+/// holds its address.
+#[repr(C)]
+pub struct zg_tally {
+    _private: [u8; 0],
+}
+
+/// The native `Reading`. Incomplete on purpose: the Rust side only ever
+/// holds its address.
+#[repr(C)]
+pub struct zg_reading {
+    _private: [u8; 0],
+}
 extern "C" {
     pub fn zg_add(a: i32, b: i32) -> i32;
     pub fn zg_sum(values_ptr: *const i32, values_len: usize) -> i64;
     pub fn zg_divide(numerator: i32, denominator: i32, out_result: *mut i32) -> i32;
+    pub fn zg_tally_create(out_result: *mut *mut zg_tally) -> i32;
+    pub fn zg_tally_add(self_: *mut zg_tally, value: i64, out_result: *mut i64) -> i32;
+    pub fn zg_tally_peek(self_: *const zg_tally, out_result: *mut i64) -> i32;
+    pub fn zg_tally_checked_half(self_: *mut zg_tally, out_result: *mut i64) -> i32;
+    pub fn zg_tally_borrow_reading(self_: *mut zg_tally, out_result: *mut *mut zg_reading) -> i32;
+    pub fn zg_tally_render(
+        self_: *mut zg_tally,
+        out_result_ptr: *mut *const u8,
+        out_result_len: *mut usize,
+    ) -> i32;
+    pub fn zg_tally_deinit(self_: *mut zg_tally) -> i32;
+    pub fn zg_reading_total(self_: *mut zg_reading, out_result: *mut i64) -> i32;
+    pub fn zg_free_rendered(text_ptr: *const u8, text_len: usize);
+    pub fn zg_live_bytes() -> usize;
     pub fn zg_last_error_message() -> *const c_char;
     pub fn zg_caught_panic_message(code: i32) -> *const c_char;
 }
@@ -82,4 +109,111 @@ pub fn divide(numerator: i32, denominator: i32) -> (i32, i32) {
     let mut out_result: i32 = 0;
     let code = unsafe { zg_divide(numerator, denominator, &mut out_result) };
     (out_result, code)
+}
+
+/// Calls the generated C ABI wrapper for `zg_tally_create`.
+pub fn tally_create() -> (*mut zg_tally, i32) {
+    let mut out_result: *mut zg_tally = core::ptr::null_mut();
+    let code = unsafe { zg_tally_create(&mut out_result) };
+    (out_result, code)
+}
+
+/// Calls the generated C ABI wrapper for `zg_tally_add`.
+///
+/// # Safety
+///
+/// Every handle argument must point at a live native object of its own
+/// type. The generated wrapper that owns the handle guarantees this; a
+/// hand-written caller has to.
+pub unsafe fn tally_add(receiver: *mut zg_tally, value: i64) -> (i64, i32) {
+    let mut out_result: i64 = 0;
+    let code = unsafe { zg_tally_add(receiver, value, &mut out_result) };
+    (out_result, code)
+}
+
+/// Calls the generated C ABI wrapper for `zg_tally_peek`.
+///
+/// # Safety
+///
+/// Every handle argument must point at a live native object of its own
+/// type. The generated wrapper that owns the handle guarantees this; a
+/// hand-written caller has to.
+pub unsafe fn tally_peek(receiver: *const zg_tally) -> (i64, i32) {
+    let mut out_result: i64 = 0;
+    let code = unsafe { zg_tally_peek(receiver, &mut out_result) };
+    (out_result, code)
+}
+
+/// Calls the generated C ABI wrapper for `zg_tally_checked_half`.
+///
+/// # Safety
+///
+/// Every handle argument must point at a live native object of its own
+/// type. The generated wrapper that owns the handle guarantees this; a
+/// hand-written caller has to.
+pub unsafe fn tally_checked_half(receiver: *mut zg_tally) -> (i64, i32) {
+    let mut out_result: i64 = 0;
+    let code = unsafe { zg_tally_checked_half(receiver, &mut out_result) };
+    (out_result, code)
+}
+
+/// Calls the generated C ABI wrapper for `zg_tally_borrow_reading`.
+///
+/// # Safety
+///
+/// Every handle argument must point at a live native object of its own
+/// type. The generated wrapper that owns the handle guarantees this; a
+/// hand-written caller has to.
+pub unsafe fn tally_borrow_reading(receiver: *mut zg_tally) -> (*mut zg_reading, i32) {
+    let mut out_result: *mut zg_reading = core::ptr::null_mut();
+    let code = unsafe { zg_tally_borrow_reading(receiver, &mut out_result) };
+    (out_result, code)
+}
+
+/// Calls the generated C ABI wrapper for `zg_tally_render`.
+///
+/// # Safety
+///
+/// Every handle argument must point at a live native object of its own
+/// type. The generated wrapper that owns the handle guarantees this; a
+/// hand-written caller has to.
+pub unsafe fn tally_render(receiver: *mut zg_tally) -> (*const u8, usize, i32) {
+    let mut out_result_ptr: *const u8 = core::ptr::null();
+    let mut out_result_len: usize = 0;
+    let code = unsafe { zg_tally_render(receiver, &mut out_result_ptr, &mut out_result_len) };
+    (out_result_ptr, out_result_len, code)
+}
+
+/// Calls the generated C ABI wrapper for `zg_tally_deinit`.
+///
+/// # Safety
+///
+/// Every handle argument must point at a live native object of its own
+/// type. The generated wrapper that owns the handle guarantees this; a
+/// hand-written caller has to.
+pub unsafe fn tally_deinit(receiver: *mut zg_tally) -> i32 {
+    unsafe { zg_tally_deinit(receiver) }
+}
+
+/// Calls the generated C ABI wrapper for `zg_reading_total`.
+///
+/// # Safety
+///
+/// Every handle argument must point at a live native object of its own
+/// type. The generated wrapper that owns the handle guarantees this; a
+/// hand-written caller has to.
+pub unsafe fn reading_total(receiver: *mut zg_reading) -> (i64, i32) {
+    let mut out_result: i64 = 0;
+    let code = unsafe { zg_reading_total(receiver, &mut out_result) };
+    (out_result, code)
+}
+
+/// Calls the generated C ABI wrapper for `zg_free_rendered`.
+pub fn free_rendered(text: &str) {
+    unsafe { zg_free_rendered(text.as_ptr(), text.len()) }
+}
+
+/// Calls the generated C ABI wrapper for `zg_live_bytes`.
+pub fn live_bytes() -> usize {
+    unsafe { zg_live_bytes() }
 }

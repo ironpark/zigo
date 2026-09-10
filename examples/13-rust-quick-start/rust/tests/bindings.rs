@@ -6,7 +6,26 @@
 //! `example_test.go`, which lives beside the generated package for the same
 //! reason.
 
-use calculator::{divide, sum, Error, ErrorKind};
+use calculator::{divide, sum, Error, ErrorKind, Tally};
+use std::sync::{Mutex, MutexGuard};
+
+/// Serializes the tests that hold a `Tally`.
+///
+/// `live_bytes` counts allocations for the whole process and cargo runs tests
+/// on several threads, so a test reading the counter has to know that no other
+/// test is holding a tally at the time. Without this the `Drop` test passed or
+/// failed depending on the scheduler -- which is precisely the kind of defect a
+/// test that is compiled but never run cannot reveal.
+static TALLY_LOCK: Mutex<()> = Mutex::new(());
+
+fn hold_tallies() -> MutexGuard<'static, ()> {
+    // A poisoned lock means another test panicked while holding it; the count
+    // is then already suspect, and recovering keeps the failure reported
+    // against that test rather than cascading into this one.
+    TALLY_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 
 #[test]
 fn scalars_cross_unchanged() {
@@ -55,4 +74,81 @@ fn the_result_type_makes_the_absent_payload_unrepresentable() {
         Ok(divide(10, 2)? + divide(10, 5)?)
     }
     assert_eq!(compute().unwrap(), 7);
+}
+
+#[test]
+fn a_handle_frees_itself_when_dropped() {
+    // The only evidence that `Drop` reached the native destructor rather than
+    // merely compiling: the library counts its own live bytes, so the count
+    // returning to where it started is the destructor's own report.
+    let _guard = hold_tallies();
+    let before = calculator::live_bytes();
+    {
+        let mut tally = Tally::new().expect("the constructor succeeds");
+        assert!(calculator::live_bytes() > before);
+        assert_eq!(tally.add(10), 10);
+    }
+    // No `close`, no `deinit`, nothing called here. Going out of scope did it.
+    assert_eq!(calculator::live_bytes(), before);
+}
+
+#[test]
+fn the_receiver_is_shared_or_mutable_as_zig_declared_it() {
+    let _guard = hold_tallies();
+    let mut tally = Tally::new().expect("the constructor succeeds");
+    assert_eq!(tally.add(7), 7);
+    // `peek` takes the value in Zig, so it borrows shared here and can be
+    // called through a shared reference. Go gives every receiver `*Tally`.
+    let shared: &Tally = &tally;
+    assert_eq!(shared.peek(), 7);
+}
+
+#[test]
+fn a_method_without_a_zig_error_set_returns_its_value() {
+    let _guard = hold_tallies();
+    let mut tally = Tally::new().expect("the constructor succeeds");
+    // `add` is infallible in Zig, so there is no `?` to write even though the
+    // C ABI gave it a status channel. Go returns `(int64, error)` here.
+    let total: i64 = tally.add(4);
+    assert_eq!(total, 4);
+    // `checkedHalf` declares one, so it is a `Result`.
+    assert_eq!(tally.checked_half(), Ok(2));
+    let empty = Tally::new().expect("the constructor succeeds");
+    let mut empty = empty;
+    let error = empty.checked_half().expect_err("a zero total fails");
+    assert_eq!(error.kind, ErrorKind::DivideByZero);
+}
+
+#[test]
+fn a_borrowed_reading_reads_through_to_its_owner() {
+    let _guard = hold_tallies();
+    let mut tally = Tally::new().expect("the constructor succeeds");
+    tally.add(21);
+    // The reading holds a mutable borrow of the tally for as long as it
+    // lives, so the tally cannot be touched until the borrow ends. A scope
+    // rather than `drop`: the view has no `Drop` -- that is the whole point
+    // of it -- so `drop` would only extend the lifetime, which is what
+    // `clippy::drop_non_drop` says.
+    {
+        let mut reading = tally.borrow_reading();
+        assert_eq!(reading.total(), 21);
+    }
+    // That the reading cannot *outlive* the tally is checked by the
+    // `compile_fail.rs` of the `rust_borrowed_view` generator case, which the
+    // build compiles and expects to fail with E0515.
+    assert_eq!(tally.add(0), 21);
+}
+
+#[test]
+fn a_caller_owned_buffer_is_owned_rather_than_copied() {
+    let _guard = hold_tallies();
+    let mut tally = Tally::new().expect("the constructor succeeds");
+    tally.add(42);
+    let rendered = tally.render().expect("rendering succeeds");
+    // Derefs to the native allocation; nothing was copied on the way out.
+    assert_eq!(&*rendered, b"total=42");
+    assert_eq!(rendered.to_str_lossy(), "total=42");
+    assert_eq!(rendered.len(), 8);
+    // Released by going out of scope. There is no `free_rendered` to call --
+    // the binding does not publish one, because `Drop` owns the release.
 }
