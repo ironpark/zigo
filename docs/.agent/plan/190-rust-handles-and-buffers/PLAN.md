@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-10T06:44:22Z"
 description: Map opaque handles to Drop, borrowed views to lifetimes, and caller-owned buffers to an owning slice with no copy
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-10T05:36:17Z"
 ---
 > NEXT: Separate the status channel from the declared error set, fixing the crate that ([Phase 0](phases/00-status-channel.md))
@@ -12,7 +13,7 @@ registered_at: "2026-09-10T05:36:17Z"
 - [x] [Phase 02: Opaque handles become owning structs with Drop](phases/02-handles-as-drop.md)
 - [x] [Phase 03: Borrowed views carry the lifetime they borrow](phases/03-borrowed-views.md)
 - [x] [Phase 04: Caller-owned buffers are owned, not copied](phases/04-owned-buffers.md)
-- [ ] [Phase 05: Prove it in the example, and hand it on](phases/05-example-and-handoff.md)
+- [x] [Phase 05: Prove it in the example, and hand it on](phases/05-example-and-handoff.md)
 
 # Shared Verification
 

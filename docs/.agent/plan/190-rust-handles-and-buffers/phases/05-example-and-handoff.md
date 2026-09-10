@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-10T06:44:22Z"
 depends_on:
 - "190-rust-handles-and-buffers#4"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: The live-bytes assertion passes, which is the only evidence that `Drop`
 > NEXT: none
