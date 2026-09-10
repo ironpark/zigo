@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-10T03:51:54Z"
 depends_on:
 - "187-plugin-contract-targets#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `src/plugin.zig` declares no public `Go`-named type, field or function outside
 > NEXT: none

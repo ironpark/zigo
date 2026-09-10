@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-10T03:51:54Z"
 description: Make the plugin contract name and carry the output language, so a second target does not have to reinterpret Go-typed contract surface
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-10T03:29:16Z"
 ---
 > NEXT: Rename the declaration-kind axis -- `plugin.Target` to `Subject`, ([Phase 0](phases/00-rename-subject-axis.md))
@@ -9,7 +10,7 @@ registered_at: "2026-09-10T03:29:16Z"
 
 - [x] [Phase 00: Free the word "target" inside the contract](phases/00-rename-subject-axis.md)
 - [x] [Phase 01: Thread the resolved target through the contract](phases/01-thread-target.md)
-- [ ] [Phase 02: Rename the neutral contract surface off Go](phases/02-neutral-contract-names.md)
+- [x] [Phase 02: Rename the neutral contract surface off Go](phases/02-neutral-contract-names.md)
 
 # Shared Verification
 
