@@ -2,7 +2,7 @@
 depends_on:
 - "189-rust-backend-cleanup#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `zig build test` passes.
 > NEXT: none

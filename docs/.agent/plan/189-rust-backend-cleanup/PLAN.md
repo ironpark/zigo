@@ -7,7 +7,7 @@ registered_at: "2026-09-10T05:10:40Z"
 
 # Phases
 
-- [ ] [Phase 00: Remove state and guards the Rust emitter does not need](phases/00-emitter-dead-weight.md)
+- [x] [Phase 00: Remove state and guards the Rust emitter does not need](phases/00-emitter-dead-weight.md)
 - [ ] [Phase 01: Give the shared rules one definition and drop the unused surface](phases/01-shared-rules.md)
 - [ ] [Phase 02: Cover the slice-return path and stop copying it twice](phases/02-slice-return.md)
 - [ ] [Phase 03: Make the backend a table and finish the name-override seam](phases/03-backend-table.md)

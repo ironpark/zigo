@@ -79,7 +79,7 @@ fn vtPackageNameAlloc(allocator: std.mem.Allocator, input: []const u8) anyerror!
 }
 
 fn vtLibraryPathEnvironmentAlloc(allocator: std.mem.Allocator, package: []const u8) anyerror![]u8 {
-    return libraryPathEnvironmentAlloc(allocator, package);
+    return naming.libraryPathEnvironmentAlloc(allocator, package);
 }
 
 /// Rust's word-level rules live in `rust_words.zig`, which imports only `std`
@@ -108,22 +108,6 @@ fn nameOverride(function: semantic.SemanticFn) ?[]const u8 {
     return function.rustName();
 }
 
-/// `Target.generatedFileNameAlloc` for callers already inside the Rust
-/// emitter, which is behind the target seam and has no `Target` to hand.
-pub fn generatedFileNameAlloc(allocator: std.mem.Allocator, stem: []const u8) ![]u8 {
-    return target.generatedFileNameAlloc(allocator, stem);
-}
-
-/// `Target.publicFunctionNameAlloc` for callers already inside the Rust
-/// emitter.
-pub fn publicFunctionNameAlloc(
-    allocator: std.mem.Allocator,
-    document: semantic.Semantic,
-    function: semantic.SemanticFn,
-) ![]u8 {
-    return target.publicFunctionNameAlloc(allocator, document, function);
-}
-
 /// Names the generated Rust bodies introduce, which a parameter must not
 /// shadow. A different table from Go's, not a translation of it: the Rust
 /// bodies bind `code`, the out-parameter pair and `result`, and they never
@@ -131,7 +115,7 @@ pub fn publicFunctionNameAlloc(
 /// with a named parameter) or Go's `callbackHandle`.
 const reserved_locals = [_][]const u8{
     "code",           "result",         "out_result",
-    "out_result_ptr", "out_result_len", "handle",
+    "out_result_ptr", "out_result_len",
 };
 
 /// Public Rust names for one signature's parameters. Zig already spells
@@ -180,26 +164,6 @@ pub fn paramNamesAlloc(allocator: std.mem.Allocator, zig_names: []const []const 
 fn isReservedLocal(value: []const u8) bool {
     for (reserved_locals) |reserved| if (std.mem.eql(u8, value, reserved)) return true;
     return false;
-}
-
-/// Environment variable a generated dynamic-loading crate would read before
-/// the shared `ZIGO_LIBRARY_PATH`. Byte-for-byte Go's rule, reused rather
-/// than reinvented: the variable names a deployment artifact, not a language
-/// construct, so two targets binding the same library must agree on it.
-///
-/// Nothing reads it in the minimal backend, which links statically. It is
-/// answered here because the seam asks, and answering it differently later
-/// would be an incompatible change to a user-visible name.
-pub fn libraryPathEnvironmentAlloc(allocator: std.mem.Allocator, crate: []const u8) ![]u8 {
-    var name: std.ArrayList(u8) = .empty;
-    errdefer name.deinit(allocator);
-    try name.appendSlice(allocator, "ZIGO_");
-    for (crate) |character| try name.append(allocator, if (std.ascii.isAlphanumeric(character))
-        std.ascii.toUpper(character)
-    else
-        '_');
-    try name.appendSlice(allocator, "_LIBRARY_PATH");
-    return name.toOwnedSlice(allocator);
 }
 
 test "Rust splits the exported-name rule where Go does not" {
@@ -282,7 +246,7 @@ test "the Rust name override reads its own namespace" {
 }
 
 test "Rust generated file names carry no stem suffix" {
-    const name = try generatedFileNameAlloc(std.testing.allocator, "raw");
+    const name = try target.generatedFileNameAlloc(std.testing.allocator, "raw");
     defer std.testing.allocator.free(name);
     try std.testing.expectEqualStrings("raw.rs", name);
     try std.testing.expect(target.isSource("src/lib.rs"));
@@ -294,11 +258,3 @@ test "Rust generated file names carry no stem suffix" {
     try std.testing.expect(target.fileNameMatchesKind("src/lib.rs", false));
 }
 
-test "library path environment names match Go's, deliberately" {
-    const name = try libraryPathEnvironmentAlloc(std.testing.allocator, "event_queue");
-    defer std.testing.allocator.free(name);
-    try std.testing.expectEqualStrings("ZIGO_EVENT_QUEUE_LIBRARY_PATH", name);
-    const go_name = try @import("go.zig").libraryPathEnvironmentAlloc(std.testing.allocator, "event_queue");
-    defer std.testing.allocator.free(go_name);
-    try std.testing.expectEqualStrings(go_name, name);
-}

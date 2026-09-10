@@ -56,7 +56,7 @@ fn vtPackageNameAlloc(allocator: std.mem.Allocator, input: []const u8) anyerror!
 }
 
 fn vtLibraryPathEnvironmentAlloc(allocator: std.mem.Allocator, package: []const u8) anyerror![]u8 {
-    return libraryPathEnvironmentAlloc(allocator, package);
+    return naming.libraryPathEnvironmentAlloc(allocator, package);
 }
 
 /// Go's word-level rules live in `go_words.zig`, which imports only `std` so
@@ -124,20 +124,6 @@ pub fn paramNamesAlloc(allocator: std.mem.Allocator, zig_names: []const []const 
 fn isReservedLocal(value: []const u8) bool {
     for (reserved_locals) |reserved| if (std.mem.eql(u8, value, reserved)) return true;
     return false;
-}
-
-/// Environment variable a generated purego package reads before the shared
-/// `ZIGO_LIBRARY_PATH`, so two zigo packages in one process stay independent.
-pub fn libraryPathEnvironmentAlloc(allocator: std.mem.Allocator, go_package: []const u8) ![]u8 {
-    var name: std.ArrayList(u8) = .empty;
-    errdefer name.deinit(allocator);
-    try name.appendSlice(allocator, "ZIGO_");
-    for (go_package) |character| try name.append(allocator, if (std.ascii.isAlphanumeric(character))
-        std.ascii.toUpper(character)
-    else
-        '_');
-    try name.appendSlice(allocator, "_LIBRARY_PATH");
-    return name.toOwnedSlice(allocator);
 }
 
 /// The Go type name for one tagged-union variant: `<Union><PascalVariant>`.
@@ -214,12 +200,6 @@ test "Go identifier and keyword checks cover boundaries" {
 test "adapter conversion names accept what Go itself will judge" {
     for ([_][]const u8{ "ToRaw", "from_raw", "_x", "type" }) |name| try std.testing.expect(isConversionFunctionName(name));
     for ([_][]const u8{ "", "9raw", "pkg.ToRaw", "to-raw" }) |name| try std.testing.expect(!isConversionFunctionName(name));
-}
-
-test "library path environment names are derived from the Go package" {
-    const name = try libraryPathEnvironmentAlloc(std.testing.allocator, "event_queue");
-    defer std.testing.allocator.free(name);
-    try std.testing.expectEqualStrings("ZIGO_EVENT_QUEUE_LIBRARY_PATH", name);
 }
 
 test "variant type names derive from the union and resolve clashes deterministically" {

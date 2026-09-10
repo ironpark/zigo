@@ -84,7 +84,7 @@ fn libraryEnvNamesAlloc(allocator: std.mem.Allocator, program: abi.Program, opti
     if (options.library_env_vars) |names| return allocator.dupe(u8, names);
     const package = try naming.snakeAlloc(allocator, program.package);
     defer allocator.free(package);
-    const specific = try targets.go.libraryPathEnvironmentAlloc(allocator, package);
+    const specific = try naming.libraryPathEnvironmentAlloc(allocator, package);
     defer allocator.free(specific);
     return std.fmt.allocPrint(allocator, "{s},ZIGO_LIBRARY_PATH", .{specific});
 }

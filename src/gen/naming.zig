@@ -139,6 +139,31 @@ pub fn optionalPathSegment(base: []const u8) PathSegment {
     return .{ .separator = "/", .value = base };
 }
 
+/// Environment variable a generated binding reads before the shared
+/// `ZIGO_LIBRARY_PATH`, so two zigo bindings in one process stay independent.
+///
+/// One definition, not one per target: the variable names a deployment
+/// artifact rather than a language construct, so two targets binding the same
+/// library have to agree on it. Agreement is structural here; two copies with
+/// a test hoping they match would drift on the next edit to either.
+pub fn libraryPathEnvironmentAlloc(allocator: std.mem.Allocator, package: []const u8) ![]u8 {
+    var name: std.ArrayList(u8) = .empty;
+    errdefer name.deinit(allocator);
+    try name.appendSlice(allocator, "ZIGO_");
+    for (package) |character| try name.append(allocator, if (std.ascii.isAlphanumeric(character))
+        std.ascii.toUpper(character)
+    else
+        '_');
+    try name.appendSlice(allocator, "_LIBRARY_PATH");
+    return name.toOwnedSlice(allocator);
+}
+
+test "library path environment names are derived from the package" {
+    const name = try libraryPathEnvironmentAlloc(std.testing.allocator, "event_queue");
+    defer std.testing.allocator.free(name);
+    try std.testing.expectEqualStrings("ZIGO_EVENT_QUEUE_LIBRARY_PATH", name);
+}
+
 pub fn cTypeNameAlloc(allocator: std.mem.Allocator, prefix: []const u8, type_name: []const u8) ![]u8 {
     const owner = try snakeAlloc(allocator, type_name);
     defer allocator.free(owner);
@@ -154,15 +179,6 @@ pub fn projectionSymbolAlloc(allocator: std.mem.Allocator, prefix: []const u8, t
 }
 
 pub fn camelAlloc(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
-    return camelWithInitialismsAlloc(allocator, input, go_initialisms);
-}
-
-/// `camelAlloc` with the initialism table named by the caller.
-pub fn camelWithInitialismsAlloc(
-    allocator: std.mem.Allocator,
-    input: []const u8,
-    initialisms: []const Initialism,
-) ![]u8 {
     const snake = try snakeAlloc(allocator, input);
     defer allocator.free(snake);
     var output: std.ArrayList(u8) = .empty;
@@ -174,7 +190,7 @@ pub fn camelWithInitialismsAlloc(
         if (first) {
             try output.appendSlice(allocator, word);
             first = false;
-        } else if (initialism(word, initialisms)) |canonical| {
+        } else if (initialism(word, go_initialisms)) |canonical| {
             try output.appendSlice(allocator, canonical);
         } else {
             try output.append(allocator, std.ascii.toUpper(word[0]));
@@ -201,21 +217,20 @@ fn initialism(word: []const u8, table: []const Initialism) ?[]const u8 {
 }
 
 test "an empty initialism table title-cases every word" {
-    // What a Rust target asks for: `Id`, not Go's `ID`.
-    const cases = [_]struct { input: []const u8, pascal: []const u8, camel: []const u8 }{
-        .{ .input = "lookupID", .pascal = "LookupId", .camel = "lookupId" },
-        .{ .input = "parseURL", .pascal = "ParseUrl", .camel = "parseUrl" },
-        .{ .input = "validateUTF8", .pascal = "ValidateUtf8", .camel = "validateUtf8" },
+    // What a Rust target asks for: `Id`, not Go's `ID`. Only the Pascal path
+    // takes a table -- Rust reaches it for error-variant names, and its
+    // function names take the snake_case path, which has no table at all.
+    const cases = [_]struct { input: []const u8, pascal: []const u8 }{
+        .{ .input = "lookupID", .pascal = "LookupId" },
+        .{ .input = "parseURL", .pascal = "ParseUrl" },
+        .{ .input = "validateUTF8", .pascal = "ValidateUtf8" },
         // A name with no initialism word in it is spelled the same either way.
-        .{ .input = "HTTPClient", .pascal = "HttpClient", .camel = "httpClient" },
+        .{ .input = "HTTPClient", .pascal = "HttpClient" },
     };
     for (cases) |case| {
         const pascal = try pascalWithInitialismsAlloc(std.testing.allocator, case.input, &.{});
         defer std.testing.allocator.free(pascal);
         try std.testing.expectEqualStrings(case.pascal, pascal);
-        const camel = try camelWithInitialismsAlloc(std.testing.allocator, case.input, &.{});
-        defer std.testing.allocator.free(camel);
-        try std.testing.expectEqualStrings(case.camel, camel);
     }
 }
 
