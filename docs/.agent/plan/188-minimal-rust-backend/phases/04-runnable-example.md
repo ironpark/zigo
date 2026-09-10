@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-10T04:53:50Z"
 depends_on:
 - "188-minimal-rust-backend#3"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `cd examples/13-rust-quick-start && zig build test rust-check rust-lib abi-check`
 > NEXT: none

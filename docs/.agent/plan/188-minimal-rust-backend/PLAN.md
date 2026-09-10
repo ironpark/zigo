@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-10T04:53:50Z"
 description: Add a minimal Rust target covering scalars, slices and error unions, mirroring examples/00-quick-start
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-10T04:02:52Z"
 ---
 > NEXT: Split `exportedNameAlloc` into a type rule and a function rule, with Go ([Phase 0](phases/00-split-exported-name-rule.md))
@@ -11,7 +12,7 @@ registered_at: "2026-09-10T04:02:52Z"
 - [x] [Phase 01: Give Rust a Target value and an IR namespace](phases/01-rust-target-value.md)
 - [x] [Phase 02: Name the neutral emitters and write the Rust emitter](phases/02-rust-emitter.md)
 - [x] [Phase 03: Select the target from the command line](phases/03-cli-target-flag.md)
-- [ ] [Phase 04: Build integration and a runnable example](phases/04-runnable-example.md)
+- [x] [Phase 04: Build integration and a runnable example](phases/04-runnable-example.md)
 
 # Shared Verification
 
