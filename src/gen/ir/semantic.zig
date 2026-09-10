@@ -733,6 +733,22 @@ pub const FnGo = struct {
     }
 };
 
+/// What only the Rust backend reads about this function.
+///
+/// A sibling of `FnGo`, not a subset of it: the two namespaces answer the same
+/// kind of question for different languages and neither reinterprets the
+/// other's fields. It holds one member today because a minimal Rust backend
+/// binds free functions and needs no more; the point is that the place to add
+/// the next one already exists and is not inside `FnGo`.
+pub const FnRust = struct {
+    /// Exact public Rust spelling, independent of native and raw identities.
+    name: ?[]const u8 = null,
+
+    fn compact(self: FnRust) ?FnRust {
+        return if (self.name == null) null else self;
+    }
+};
+
 /// What only the Go backend reads about a registered type. See `ParamGo`.
 pub const TypeGo = struct {
     /// Present only when the binding registered the type with `.go`.
@@ -862,6 +878,10 @@ pub const SemanticFn = struct {
     has_comptime_params: ?bool = null,
     /// What only the Go backend reads about this function.
     go: ?FnGo = null,
+    /// What only the Rust backend reads about this function. Optional and
+    /// omitted when empty, so a document that predates the namespace
+    /// round-trips byte-identically and no `ir_version` migration is needed.
+    rust: ?FnRust = null,
     name: []const u8,
     /// Public sub-package name. Absent means the binding's default package.
     package: ?[]const u8 = null,
@@ -951,6 +971,21 @@ pub const SemanticFn = struct {
         var go = self.go orelse FnGo{};
         go.name = value;
         self.go = go.compact();
+    }
+
+    /// The exact public Rust spelling a binding asked for, if it asked. This
+    /// is what the Rust target's `nameOverride` reads, exactly as Go's reads
+    /// `goName`. Callers wanting the name a function is actually published
+    /// under want `Target.publicFunctionNameAlloc`.
+    pub fn rustName(self: SemanticFn) ?[]const u8 {
+        return (self.rust orelse FnRust{}).name;
+    }
+
+    /// Record the exact public Rust spelling.
+    pub fn setRustName(self: *SemanticFn, value: ?[]const u8) void {
+        var rust = self.rust orelse FnRust{};
+        rust.name = value;
+        self.rust = rust.compact();
     }
 
     /// The Go type the scalar result is spelled as, with its conversion.
@@ -1732,6 +1767,56 @@ test "package metadata is omitted by default and round trips when present" {
     try std.testing.expectEqualStrings("text", parsed.value.packages.?[0].name);
     try std.testing.expectEqualStrings("text", parsed.value.types[0].package.?);
     try std.testing.expectEqualStrings("text", parsed.value.functions[0].package.?);
+}
+
+test "the rust namespace is a sibling of go, omitted when empty, and needs no migration" {
+    // A document that names no Rust override must serialize with no `rust`
+    // key at all. This is what makes the namespace an addition rather than an
+    // IR version change: every `semantic.json` on disk stays byte-identical,
+    // so `abi-check` reading a baseline through
+    // `git show <ref>:zigo/semantic.json` keeps parsing documents written
+    // before the namespace existed.
+    const plain: Semantic = .{
+        .functions = &.{.{ .name = "add", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_add" }},
+        .package = "sample",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    const plain_bytes = try plain.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(plain_bytes);
+    try std.testing.expect(std.mem.indexOf(u8, plain_bytes, "\"rust\"") == null);
+    try std.testing.expectEqual(@as(u32, current_ir_version), plain.ir_version);
+
+    // Both namespaces on one declaration, neither reading the other's field.
+    const both: Semantic = .{
+        .functions = &.{.{
+            .go = .{ .name = "Plus" },
+            .rust = .{ .name = "plus" },
+            .name = "add",
+            .params = &.{},
+            .@"return" = .{ .void = {} },
+            .symbol = "zg_add",
+        }},
+        .package = "sample",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    const bytes = try both.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(bytes);
+    var parsed = try Semantic.parse(std.testing.allocator, bytes);
+    defer parsed.deinit();
+    try std.testing.expectEqualStrings("Plus", parsed.value.functions[0].goName().?);
+    try std.testing.expectEqualStrings("plus", parsed.value.functions[0].rustName().?);
+
+    // A document carrying only the Rust namespace still reads back, and Go's
+    // reader answers null rather than borrowing Rust's spelling.
+    const rust_only =
+        \\{"functions":[{"name":"add","params":[],"return":{"kind":"void"},"rust":{"name":"plus"},"symbol":"zg_add"}],"ir_version":1,"package":"sample","prefix":"zg","types":[],"zig_version":"0.16.0"}
+    ;
+    var migrated = try Semantic.parse(std.testing.allocator, rust_only);
+    defer migrated.deinit();
+    try std.testing.expectEqualStrings("plus", migrated.value.functions[0].rustName().?);
+    try std.testing.expect(migrated.value.functions[0].goName() == null);
 }
 
 test "interfaces are omitted by default and round trip when present" {

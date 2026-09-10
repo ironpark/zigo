@@ -2,7 +2,7 @@
 depends_on:
 - "188-minimal-rust-backend#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `targets.byName("rust")` returns the value and `targets.default.name` is
 > NEXT: none
@@ -35,9 +35,25 @@ status: planned
   No `ir_version` bump and no migration -- an absent namespace serializes to
   nothing.
 - Judge during implementation whether to wire `.rust` through `src/declare.zig`
-  and `src/normalize.zig` so a binding can actually set the override. If the
-  wiring is more than incidental, leave the IR field readable-only and record
-  that decision instead of half-doing it.
+  and `src/normalize.zig` so a binding can actually set the override.
+  **Outcome: not wired, and the reason is a finding rather than a shortcut.**
+  Tracing the Go side showed that a binding's `.name = "..."` on a function
+  does *not* reach `FnGo.name` at all -- `src/reflect/walk.zig:825` puts it in
+  `SemanticFn.name` and records the Zig declaration in `zig_path`. The only
+  writer of `FnGo.name` is `src/gen/validate/validate.zig:218`, which calls
+  `function.setGoName(name)` for a plugin's `name_function` hook. So there is
+  nothing in the declaration DSL to mirror: the sibling of that call site is a
+  plugin, and a plugin's `output_targets` defaults to `&.{"go"}` (plan 187), so
+  no plugin runs for a Rust target in the first place.
+  `rustName()` is therefore readable and unreachable in the minimal backend,
+  which is correct: the seam asks a target for `nameOverride` and Rust answers
+  it, with the right shape, from its own namespace.
+  **The creak to hand on:** `validate.zig:218` hardcodes `setGoName` where it
+  should route through the resolved target. `Target` has no name-override
+  *setter* -- only a getter -- so a plugin that renames functions for a
+  non-Go target would need one added. Left alone deliberately: this plan's
+  acceptance says no `src/gen/validate/**` caller is edited to accommodate
+  Rust, and none is, because no Rust plugin exists to need it.
 - Register Rust in `targets.all`; leave `targets.default` as Go.
 - Unit tests: keyword and identifier boundaries, snake/Pascal splits including
   the `Id`/`Url`/`Utf8` difference from Go, parameter escaping, and

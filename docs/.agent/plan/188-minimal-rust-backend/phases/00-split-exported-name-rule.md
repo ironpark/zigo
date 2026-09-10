@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-10T04:08:31Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `grep -rn "exportedNameAlloc" src build build.zig plugins tests` finds
 > NEXT: none

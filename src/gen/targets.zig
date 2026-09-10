@@ -207,8 +207,13 @@ pub const Target = struct {
 /// directly, so they are reachable as `target.go.<rule>`.
 pub const go = @import("targets/go.zig");
 
+/// Rust's implementation, on the same terms as `go`: the namespace, because
+/// the Rust emitter under `src/gen/emit_rust/**` is behind this seam too and
+/// reaches its rules directly.
+pub const rust = @import("targets/rust.zig");
+
 /// Every target this build can generate for.
-pub const all: []const Target = &.{go.target};
+pub const all: []const Target = &.{ go.target, rust.target };
 
 /// The target a caller that names none gets. Selection belongs to the CLI and
 /// to the build integration; this is the answer for the layers that run before
@@ -247,8 +252,26 @@ test "Go answers the type rule and the function rule identically" {
 
 test "targets are addressable by name" {
     try std.testing.expectEqualStrings("go", byName("go").?.name);
-    try std.testing.expect(byName("rust") == null);
+    try std.testing.expectEqualStrings("rust", byName("rust").?.name);
+    try std.testing.expect(byName("zig") == null);
+    // Naming no target still gets Go, so nothing that ran before Rust existed
+    // changes behaviour by Rust existing.
     try std.testing.expectEqualStrings(default.name, go.target.name);
+}
+
+test "every target answers every rule" {
+    // A target added without an answer is a compile error, not a runtime
+    // surprise, because `VTable` has no defaults. This walk is here for the
+    // parts `Target` derives rather than dispatches: a target whose extension
+    // or display name were empty would produce unusable paths and diagnostics.
+    for (all) |candidate| {
+        try std.testing.expect(candidate.name.len != 0);
+        try std.testing.expect(candidate.display_name.len != 0);
+        try std.testing.expect(std.mem.startsWith(u8, candidate.source_extension, "."));
+        const file = try candidate.generatedFileNameAlloc(std.testing.allocator, "sample");
+        defer std.testing.allocator.free(file);
+        try std.testing.expect(candidate.isSource(file));
+    }
 }
 
 test "package names are rejected when they cannot be an identifier" {
@@ -259,4 +282,5 @@ test "package names are rejected when they cannot be an identifier" {
 
 test {
     std.testing.refAllDecls(go);
+    std.testing.refAllDecls(rust);
 }
