@@ -48,7 +48,7 @@ pub fn renderIteratorWrapper(context: plugin_api.Context, writer: *std.Io.Writer
     const allocator = context.allocator;
     const method = context.method.?;
     const receiver_name = method.receiver_name.?;
-    const go_name = method.go_name;
+    const go_name = method.public_name;
     const needs_check = method.needs_check;
     const iterator = function.origin.goIterator().?;
     const receiver = function.origin.receiver.?;

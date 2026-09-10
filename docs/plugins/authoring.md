@@ -169,12 +169,12 @@ fn validate(context: api.ValidateContext) !void {
 
 ## 별도 Go file
 
-기존 타입 바로 뒤에 코드를 붙일 필요가 없다면 `go_files`를 사용합니다.
+기존 타입 바로 뒤에 코드를 붙일 필요가 없다면 `source_files`를 사용합니다.
 
 ```zig
 pub const plugin: api.Plugin = .{
     .name = "KNOWN",
-    .go_files = &.{.{
+    .source_files = &.{.{
         .pathAlloc = path,
         .render = render,
     }},

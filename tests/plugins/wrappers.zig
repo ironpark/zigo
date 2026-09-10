@@ -8,22 +8,22 @@ pub const plugin: api.Plugin = .{
     .name = "WRAPTEST",
     .subjects = &.{.function},
     .method_hook = methodHook,
-    .go_files = &.{.{ .pathAlloc = path, .render = helpers }},
+    .source_files = &.{.{ .pathAlloc = path, .render = helpers }},
 };
 
 fn methodHook(context: api.Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
     _ = try context.functionOptions(plugin, function.origin.*) orelse return;
     const method = context.method.?;
-    try writer.print("// Wrap{0s} panics on failure.\nfunc ", .{method.go_name});
+    try writer.print("// Wrap{0s} panics on failure.\nfunc ", .{method.public_name});
     if (method.receiver) |receiver| try writer.print("({s} {s}{s}) ", .{ method.receiver_name.?, if (function.origin.receiverIsValue()) "" else "*", receiver });
-    try writer.print("Wrap{s}", .{method.go_name});
+    try writer.print("Wrap{s}", .{method.public_name});
     try context.writeParameters(writer, function);
     const count = try context.writeResultType(writer, function, .{ .omit_error = true });
     try writer.writeAll(" {\n\t");
     if (count != 0) try writer.writeAll("return ");
     try writer.print("zigoWrap{d}(", .{count});
     if (method.receiver_name) |receiver| try writer.print("{s}.", .{receiver});
-    try writer.print("{s}(", .{method.go_name});
+    try writer.print("{s}(", .{method.public_name});
     try context.writeCallArguments(writer, function);
     try writer.writeAll("))\n}\n");
 }

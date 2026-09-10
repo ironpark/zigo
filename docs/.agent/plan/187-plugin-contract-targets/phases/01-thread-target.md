@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-10T03:45:10Z"
 depends_on:
 - "187-plugin-contract-targets#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: No `targets.default` reference remains in `src/plugin/**` or
 > NEXT: none

@@ -25,7 +25,7 @@ pub const plugin: plugin_api.Plugin = .{
     .FunctionOptions = Options,
     .method_hook = methodHook,
     .type_hook = typeHook,
-    .go_files = &.{.{ .pathAlloc = filePath, .render = renderFile }},
+    .source_files = &.{.{ .pathAlloc = filePath, .render = renderFile }},
 };
 
 /// A method next to the bound one, spelled from the names the method used.
@@ -36,7 +36,7 @@ fn methodHook(context: plugin_api.Context, writer: *std.Io.Writer, function: abi
     const options = try context.functionOptions(plugin, function.origin.*) orelse Options{};
     try writer.print(
         "\n// {0s}TestHook reports the name of {0s}.\nfunc ({1s} *{2s}) {0s}TestHook() string {{ return \"{3s}\" }}\n",
-        .{ method.go_name, method.receiver_name.?, receiver, @tagName(options.mode) },
+        .{ method.public_name, method.receiver_name.?, receiver, @tagName(options.mode) },
     );
 }
 

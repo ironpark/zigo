@@ -26,10 +26,10 @@ fn analyze(context: plugin_api.AnalyzeContext) !void {
     const info = try allocator.alloc(plugin_api.FunctionInfo, functions.len);
     for (functions, info) |function, *entry| entry.* = try render.functionInfo(function);
     for (functions, info) |function, entry| {
-        const enabled = entry.is_public and entry.has_error and !std.mem.eql(u8, entry.go_name, "Close");
+        const enabled = entry.is_public and entry.has_error and !std.mem.eql(u8, entry.public_name, "Close");
         try context.facts.put(allocator, plugin, .function(function.origin.*), .{ .enabled = enabled });
         if (!enabled) continue;
-        const must_name = try std.fmt.allocPrint(allocator, "Must{s}", .{entry.go_name});
+        const must_name = try std.fmt.allocPrint(allocator, "Must{s}", .{entry.public_name});
         const origin = function.origin.*;
         const path = try plugin_api.site.functionDeclarationAlloc(allocator, origin);
         if (origin.receiver == null) for (render.program.types) |declaration| {
@@ -43,7 +43,7 @@ fn analyze(context: plugin_api.AnalyzeContext) !void {
             });
         };
         for (functions, info) |other, other_info| {
-            if (!other_info.is_public or !semantic.optionalStringEqual(origin.receiver, other.origin.receiver) or !semantic.optionalStringEqual(origin.package, other.origin.package) or !std.mem.eql(u8, must_name, other_info.go_name)) continue;
+            if (!other_info.is_public or !semantic.optionalStringEqual(origin.receiver, other.origin.receiver) or !semantic.optionalStringEqual(origin.package, other.origin.package) or !std.mem.eql(u8, must_name, other_info.public_name)) continue;
             const other_path = try plugin_api.site.functionDeclarationAlloc(allocator, other.origin.*);
             try context.diagnose(.{
                 .severity = .@"error",
@@ -59,11 +59,11 @@ fn analyze(context: plugin_api.AnalyzeContext) !void {
 fn methodHook(context: plugin_api.Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
     if (!try hasVariant(context, function)) return;
     const method = context.method.?;
-    try writer.print("\n// Must{0s} calls {0s} and panics with its typed error on failure.\n", .{method.go_name});
+    try writer.print("\n// Must{0s} calls {0s} and panics with its typed error on failure.\n", .{method.public_name});
     if (method.receiver) |receiver|
-        try writer.print("func ({s} *{s}) Must{s}", .{ method.receiver_name.?, receiver, method.go_name })
+        try writer.print("func ({s} *{s}) Must{s}", .{ method.receiver_name.?, receiver, method.public_name })
     else
-        try writer.print("func Must{s}", .{method.go_name});
+        try writer.print("func Must{s}", .{method.public_name});
     try context.writeParameters(writer, function);
     const count = try context.writeResultType(writer, function, .{ .omit_error = true });
     try writer.writeAll(" { ");
@@ -73,7 +73,7 @@ fn methodHook(context: plugin_api.Context, writer: *std.Io.Writer, function: abi
         else => "return zigoMustMatch(",
     });
     if (method.receiver_name) |receiver| try writer.print("{s}.", .{receiver});
-    try writer.print("{s}(", .{method.go_name});
+    try writer.print("{s}(", .{method.public_name});
     try context.writeCallArguments(writer, function);
     try writer.writeAll(")) }\n");
 }

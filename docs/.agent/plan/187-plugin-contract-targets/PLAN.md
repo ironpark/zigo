@@ -8,7 +8,7 @@ registered_at: "2026-09-10T03:29:16Z"
 # Phases
 
 - [x] [Phase 00: Free the word "target" inside the contract](phases/00-rename-subject-axis.md)
-- [ ] [Phase 01: Thread the resolved target through the contract](phases/01-thread-target.md)
+- [x] [Phase 01: Thread the resolved target through the contract](phases/01-thread-target.md)
 - [ ] [Phase 02: Rename the neutral contract surface off Go](phases/02-neutral-contract-names.md)
 
 # Shared Verification

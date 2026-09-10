@@ -9,7 +9,7 @@ pub var path_runs: usize = 0;
 pub const plugin: api.Plugin = .{
     .name = "OUTPUTS",
     .Config = struct { enabled: bool = false, artifact_path: ?[]const u8 = null, go_path: ?[]const u8 = null, fail: bool = false },
-    .go_files = &.{
+    .source_files = &.{
         .{ .enabled = enabledGo, .imports = publicImports, .pathAlloc = publicPath, .render = renderPublic },
         .{ .enabled = enabledGo, .scope = .document, .pathAlloc = documentGoPath, .render = renderDocumentGo },
         .{ .enabled = enabledGo, .scope = .document, .package = .raw, .pathAlloc = rawPath, .render = renderRaw },
@@ -39,28 +39,28 @@ fn enabledArtifact(context: api.ArtifactContext) !bool {
 fn publicPath(context: api.Context) ![]u8 {
     path_runs += 1;
     if ((try context.config(plugin)).go_path) |path| return context.allocator.dupe(u8, path);
-    return context.goFilePathAlloc("zigo_output_gen.go");
+    return context.sourceFilePathAlloc("zigo_output_gen.go");
 }
 fn documentGoPath(context: api.Context) ![]u8 {
-    return context.goFilePathAlloc("zigo_document_gen.go");
+    return context.sourceFilePathAlloc("zigo_document_gen.go");
 }
 fn rawPath(context: api.Context) ![]u8 {
-    return context.goFilePathAlloc("zigo_raw_extra.go");
+    return context.sourceFilePathAlloc("zigo_raw_extra.go");
 }
 fn rawTestPath(context: api.Context) ![]u8 {
-    return context.goFilePathAlloc("zigo_raw_extra_test.go");
+    return context.sourceFilePathAlloc("zigo_raw_extra_test.go");
 }
 fn internalTestPath(context: api.Context) ![]u8 {
-    return context.goFilePathAlloc("zigo_internal_test.go");
+    return context.sourceFilePathAlloc("zigo_internal_test.go");
 }
 fn externalTestPath(context: api.Context) ![]u8 {
-    return context.goFilePathAlloc("zigo_external_test.go");
+    return context.sourceFilePathAlloc("zigo_external_test.go");
 }
 fn taggedPath(context: api.Context) ![]u8 {
-    return context.goFilePathAlloc("zigo_tagged.go");
+    return context.sourceFilePathAlloc("zigo_tagged.go");
 }
 fn excludedPath(context: api.Context) ![]u8 {
-    return context.goFilePathAlloc("zigo_excluded.go");
+    return context.sourceFilePathAlloc("zigo_excluded.go");
 }
 fn renderPublic(_: api.Context, writer: *std.Io.Writer) !void {
     try writer.writeAll("const PluginPublicAnswer = 42\n//go:embed api.md\nvar PluginDoc string\n");

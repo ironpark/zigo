@@ -1,6 +1,6 @@
 # 플러그인 API 참조
 
-현재 플러그인 계약은 `2.0`입니다. 이 문서는 `src/plugin.zig`이 제공하는 공개 타입과 실행
+현재 플러그인 계약은 `3.0`입니다. 이 문서는 `src/plugin.zig`이 제공하는 공개 타입과 실행
 순서를 요약합니다. 정확한 함수 시그니처는 [소스](../../src/plugin.zig)가 정본입니다.
 
 ## 실행 순서
@@ -24,13 +24,14 @@ configuration and dependency checks
 
 | 필드 | 기본값 | 역할 |
 |---|---|---|
-| `min_contract` | 현재 2.0 | 필요한 계약 version |
+| `min_contract` | 현재 3.0 | 필요한 계약 version |
 | `name` | 필수 | 식별 정보와 진단 접두사 |
 | `Config` | `struct {}` | 빌드 전체 설정 타입 |
 | `Facts` | `struct {}` | analyze 결과의 typed storage |
 | `FunctionOptions` | `struct {}` | 함수 연결 옵션 |
 | `TypeOptions` | `struct {}` | 타입 연결 옵션 |
 | `subjects` | 함수와 모든 지원 타입 | 연결되는 선언 종류 제한. 출력 언어가 아니라 declaration kind입니다 |
+| `output_targets` | `&.{"go"}` | 렌더링할 수 있는 출력 언어. 해석된 target이 목록에 없으면 이 plugin은 아무것도 하지 않습니다 |
 | `requires` | empty | 필수 플러그인 의존성 |
 | `after` | empty | optional ordering constraint |
 | `transform` | null | semantic document 교체·추가·제거 |
@@ -43,7 +44,7 @@ configuration and dependency checks
 | `type_hook` | null | 공개 타입 직후 body |
 | `file_hook` | null | 공개 file body begin/end |
 | `package_hook` | null | 패키지별 플러그인 file body |
-| `go_files` | empty | framed Go file 출력 |
+| `source_files` | empty | framed 출력 언어 소스 file |
 | `artifacts` | empty | exact 바이트 출력 |
 | `imports` | empty | hook이 사용할 non-standard Go import |
 
@@ -75,7 +76,7 @@ Go surface만 만들며 shim, 헤더와 raw API를 바꾸지 않습니다.
 - 메서드 hook의 `method` 정보
 - 공개 타입/시그니처/doc writer
 - `functionOptions`, `typeOptions`, `config`
-- `goFilePathAlloc`, `publicFilePathAlloc`
+- `sourceFilePathAlloc`, `publicFilePathAlloc`
 
 `ArtifactContext`는 allocator, full program, options와 config/path 도우미만 제공합니다.
 
@@ -115,7 +116,7 @@ validation/analyze에서 계산한 결과를 렌더링 hook이 소스 text 재�
 직접 타입, 패키지 qualifier 또는 매개변수 이름을 재구성하면 하위 패키지와 이름 collision에서
 core 출력과 달라질 수 있습니다.
 
-## `GoFile`
+## `SourceFile`
 
 | 필드 | 기본값 | 의미 |
 |---|---|---|
@@ -143,7 +144,7 @@ qualifier를 사용할 때만 포함됩니다. 소스는 `gofmt`를 통과합니
 | `render` | 필수 |
 
 Go가 아닌 schema, Markdown 또는 binary 출력에 사용합니다. `.go` 산출물도 바이트 그대로
-유지되므로 일반 Go 소스에는 `GoFile`을 사용하세요.
+유지되므로 일반 소스 file에는 `SourceFile`을 사용하세요.
 
 모든 출력 경로는 출력 root 안의 정규화된 상대 경로여야 하며 서로 충돌할 수 없습니다.
 위반은 `ZIGO059`이며 기존 출력 tree를 변경하지 않습니다.

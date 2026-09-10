@@ -21,7 +21,7 @@ pub const plugin: plugin_api.Plugin = .{
 fn methodHook(context: plugin_api.Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
     if (function.origin.goImplements() == null) return;
     const method = context.method.?;
-    try renderImplementsWrapper(writer, function, method.receiver_name.?, method.go_name, method.needs_check);
+    try renderImplementsWrapper(writer, function, method.receiver_name.?, method.public_name, method.needs_check);
 }
 
 fn validateDocument(context: plugin_api.ValidateContext) !void {

@@ -28,7 +28,7 @@ pub const Options = plugin.Options;
 pub const Emitter = struct {
     enabled: ?*const fn (std.mem.Allocator, abi.Program, Options) anyerror!bool = null,
     helper_scan: bool = true,
-    go_file: ?plugin.GoFile = null,
+    source_file: ?plugin.SourceFile = null,
     owner: []const u8 = "generator",
     pathAlloc: *const fn (std.mem.Allocator, abi.Program, Options) anyerror![]u8,
     render: *const fn (std.mem.Allocator, *std.Io.Writer, abi.Program, Options) anyerror!void,
@@ -118,7 +118,7 @@ pub const PublicEmitters = struct {
         }
         var offset = builtin_count;
         inline for (registry.plugins, 0..) |registered, plugin_index| {
-            inline for (registered.go_files) |file| {
+            inline for (registered.source_files) |file| {
                 if (file.scope == self.scope) {
                     if (self.index == offset) {
                         self.index += 1;
@@ -137,17 +137,17 @@ pub const PublicEmitters = struct {
 /// block derived from that body are added here. A plugin therefore never
 /// spells an import block, and a body that came out empty leaves the file at
 /// its prelude, which the generator drops.
-fn framedPluginFile(comptime plugin_index: usize, comptime file: plugin.GoFile) Emitter {
+fn framedPluginFile(comptime plugin_index: usize, comptime file: plugin.SourceFile) Emitter {
     return .{
         .owner = registry.plugins[plugin_index].name,
-        .go_file = file,
+        .source_file = file,
         .helper_scan = file.scope == .package and file.package == .public and file.kind == .source,
         .enabled = struct {
             fn enabled(allocator: std.mem.Allocator, program: abi.Program, options: Options) anyerror!bool {
                 if (!plugin_hooks.runs(plugin_index, options)) return false;
                 if (file.enabled) |predicate| {
                     var file_options = options;
-                    file_options.file = .{ .path = "", .owner = registry.plugins[plugin_index].name, .kind = .plugin, .go_file = file };
+                    file_options.file = .{ .path = "", .owner = registry.plugins[plugin_index].name, .kind = .plugin, .source_file = file };
                     return predicate(plugin_hooks.context(allocator, program, file_options));
                 }
                 return true;
@@ -156,7 +156,7 @@ fn framedPluginFile(comptime plugin_index: usize, comptime file: plugin.GoFile) 
         .pathAlloc = struct {
             fn path(allocator: std.mem.Allocator, program: abi.Program, options: Options) anyerror![]u8 {
                 var file_options = options;
-                file_options.file = .{ .path = "", .owner = registry.plugins[plugin_index].name, .kind = .plugin, .go_file = file };
+                file_options.file = .{ .path = "", .owner = registry.plugins[plugin_index].name, .kind = .plugin, .source_file = file };
                 return file.pathAlloc(plugin_hooks.context(allocator, program, file_options));
             }
         }.path,
@@ -166,7 +166,7 @@ fn framedPluginFile(comptime plugin_index: usize, comptime file: plugin.GoFile) 
                 // leaves the file at its prelude and the generator drops it.
                 if (!plugin_hooks.runs(plugin_index, options)) return;
                 var file_options = options;
-                file_options.file = .{ .path = "", .owner = registry.plugins[plugin_index].name, .kind = .plugin, .go_file = file };
+                file_options.file = .{ .path = "", .owner = registry.plugins[plugin_index].name, .kind = .plugin, .source_file = file };
                 const path = try file.pathAlloc(plugin_hooks.context(allocator, program, file_options));
                 defer allocator.free(path);
                 file_options.file.?.path = path;

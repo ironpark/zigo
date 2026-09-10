@@ -429,9 +429,9 @@ pub fn addRepositorySteps(
     }
     inline for (.{
         .{ "old-version", ".{ .name = \"BAD\", .min_contract = .{ .major = 1, .minor = 1 } }", "incompatible plugin contract: BAD" },
-        .{ "raw-scope", ".{ .name = \"BAD\", .go_files = &.{.{ .package = .raw, .pathAlloc = undefined, .render = undefined }} }", "raw Go files require document scope: BAD" },
-        .{ "external-kind", ".{ .name = \"BAD\", .go_files = &.{.{ .package = .external_test, .pathAlloc = undefined, .render = undefined }} }", "external test Go files require test kind: BAD" },
-        .{ "build-constraint", ".{ .name = \"BAD\", .go_files = &.{.{ .build_constraint = \"linux &&\", .pathAlloc = undefined, .render = undefined }} }", "invalid Go build constraint: BAD" },
+        .{ "raw-scope", ".{ .name = \"BAD\", .source_files = &.{.{ .package = .raw, .pathAlloc = undefined, .render = undefined }} }", "raw Go files require document scope: BAD" },
+        .{ "external-kind", ".{ .name = \"BAD\", .source_files = &.{.{ .package = .external_test, .pathAlloc = undefined, .render = undefined }} }", "external test Go files require test kind: BAD" },
+        .{ "build-constraint", ".{ .name = \"BAD\", .source_files = &.{.{ .build_constraint = \"linux &&\", .pathAlloc = undefined, .render = undefined }} }", "invalid Go build constraint: BAD" },
         .{ "version", ".{ .name = \"BAD\", .min_contract = .{ .major = 99, .minor = 0 } }", "incompatible plugin contract: BAD" },
         .{ "duplicate", ".{ .name = \"A\" }, .{ .name = \"A\" }", "duplicate plugin: A" },
         .{ "dependency", ".{ .name = \"A\", .requires = &.{\"MISSING\"} }", "missing plugin dependency: A requires MISSING" },

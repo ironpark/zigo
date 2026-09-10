@@ -1,8 +1,16 @@
 //! The generator's plugin contract. A plugin is an ordinary Zig package that
-//! compiles against this file alone: it names itself, owns typed function and type options, validates its own declarations, and adds Go code through hooks.
+//! compiles against this file alone: it names itself, owns typed function and
+//! type options, validates its own declarations, and adds generated code
+//! through hooks.
+//!
+//! A plugin declares two independent things about what it applies to.
+//! `subjects` is the kind of declaration -- function, handle, value and so on.
+//! `output_targets` is the output language, and it defaults to Go alone,
+//! because the rendering surface a plugin writes through writes Go. A plugin
+//! whose `output_targets` exclude the resolved target contributes nothing.
 //!
 //! Semantic transforms run before validation and may change the ABI. Rendering
-//! hooks are additive and Go-only; they cannot modify the shim, header or raw API.
+//! hooks are additive; they cannot modify the shim, header or raw API.
 const std = @import("std");
 const abi = @import("abi");
 const semantic = @import("semantic");
@@ -202,6 +210,11 @@ pub const Options = struct {
     /// reaching for `targets.default`. The emitters do not read it: they are
     /// Go's, which is what `Plugin.output_targets` records.
     target: targets.Target = targets.default,
+    // The `go_*` fields below describe the Go module system specifically -- a
+    // module path, a package name, a package directory, a package doc. They are
+    // read by Go's emitter and by nothing else. A second target does not want
+    // them renamed; it wants its own fields beside them, because a crate name
+    // is different data rather than a different spelling.
     go_module: []const u8,
     cflags_override: ?[]const u8 = null,
     ldflags_override: ?[]const u8 = null,
@@ -302,17 +315,17 @@ pub const Options = struct {
 /// Document outputs run once with the full program. Package outputs run once
 /// per public package, with that package's function view and active_package.
 pub const OutputScope = enum { document, package };
-pub const GoPackage = enum { public, external_test, raw };
-pub const GoFileKind = enum { source, test_file };
+pub const PackageKind = enum { public, external_test, raw };
+pub const FileKind = enum { source, test_file };
 
 /// A framed Go body. The path is module-relative and must belong to the chosen
-/// package directory. Use goFilePathAlloc to construct it. Raw outputs require
+/// package directory. Use sourceFilePathAlloc to construct it. Raw outputs require
 /// document scope; external_test outputs require test kind.
-pub const GoFile = struct {
+pub const SourceFile = struct {
     enabled: ?*const fn (Context) anyerror!bool = null,
     scope: OutputScope = .package,
-    package: GoPackage = .public,
-    kind: GoFileKind = .source,
+    package: PackageKind = .public,
+    kind: FileKind = .source,
     /// Single-line ASCII Go build expression (up to 4096 bytes).
     build_constraint: ?[]const u8 = null,
     imports: ?*const fn (Context) anyerror![]const Import = null,
@@ -346,15 +359,15 @@ pub const ArtifactContext = struct {
     }
 };
 
-pub fn goFilePathAlloc(allocator: std.mem.Allocator, program: abi.Program, options: Options, package: GoPackage, filename: []const u8) ![]u8 {
+pub fn sourceFilePathAlloc(allocator: std.mem.Allocator, program: abi.Program, options: Options, package: PackageKind, filename: []const u8) ![]u8 {
     if (package != .raw) return publicFilePathAlloc(allocator, program, options, filename);
     if (options.raw_package_path.len == 0 or std.mem.eql(u8, options.raw_package_path, ".")) return allocator.dupe(u8, filename);
     return std.fmt.allocPrint(allocator, "{s}/{s}", .{ options.raw_package_path, filename });
 }
-const goFilePathAllocImpl = goFilePathAlloc;
+const sourceFilePathAllocImpl = sourceFilePathAlloc;
 
 /// Module-relative path for a file in the currently rendered public package.
-/// Call from GoFile.pathAlloc or Artifact.pathAlloc; the caller owns the returned allocation.
+/// Call from SourceFile.pathAlloc or Artifact.pathAlloc; the caller owns the returned allocation.
 pub fn publicFilePathAlloc(allocator: std.mem.Allocator, program: abi.Program, options: Options, filename: []const u8) ![]u8 {
     const directory = if (options.go_package_path.len != 0)
         try allocator.dupe(u8, options.go_package_path)
@@ -411,8 +424,8 @@ pub const Writers = struct {
 /// The names are the ones the method itself used, so a wrapper that calls it
 /// can never spell the call differently.
 pub const Method = struct {
-    /// The exported Go method name.
-    go_name: []const u8,
+    /// The method's exported name in the output language.
+    public_name: []const u8,
     /// The Go receiver type, absent for a free function.
     receiver: ?[]const u8 = null,
     /// The receiver variable name, absent for a free function.
@@ -443,6 +456,11 @@ pub const Context = struct {
     pub fn config(self: Context, comptime P: Plugin) !P.Config {
         return readConfig(P, self.allocator, self.options.configurations);
     }
+
+    // The writers below render Go source. They are not target-generic and
+    // renaming them would not make them so: there is one emitter, and it is
+    // Go's. A plugin that calls any of them belongs to the default
+    // `output_targets = &.{"go"}` and will not be run for another language.
 
     pub fn writeTypeName(self: Context, writer: *std.Io.Writer, name: []const u8) !void {
         return self.writers.writeTypeName(self, writer, name);
@@ -486,17 +504,17 @@ pub const Context = struct {
     pub fn writeValueType(self: Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
         return self.writers.writeValueType(self, writer, function);
     }
-    pub fn writeDoc(self: Context, writer: *std.Io.Writer, go_name: []const u8, zig_name: []const u8, doc: []const u8) !void {
-        return self.writers.writeDoc(writer, go_name, zig_name, doc);
+    pub fn writeDoc(self: Context, writer: *std.Io.Writer, public_name: []const u8, zig_name: []const u8, doc: []const u8) !void {
+        return self.writers.writeDoc(writer, public_name, zig_name, doc);
     }
     pub fn functionInfo(self: Context, function: abi.AbiFn) !FunctionInfo {
         return self.writers.functionInfo(self, function);
     }
 
-    /// Path in this GoFile's selected package, or the public package in other hooks.
-    pub fn goFilePathAlloc(self: Context, filename: []const u8) ![]u8 {
-        const selected_package = if (self.options.file) |file| if (file.go_file) |go| go.package else .public else .public;
-        return goFilePathAllocImpl(self.allocator, self.program, self.options, selected_package, filename);
+    /// Path in this SourceFile's selected package, or the public package in other hooks.
+    pub fn sourceFilePathAlloc(self: Context, filename: []const u8) ![]u8 {
+        const selected_package = if (self.options.file) |file| if (file.source_file) |go| go.package else .public else .public;
+        return sourceFilePathAllocImpl(self.allocator, self.program, self.options, selected_package, filename);
     }
 
     pub fn publicFilePathAlloc(self: Context, filename: []const u8) ![]u8 {
@@ -599,7 +617,7 @@ pub const Plugin = struct {
     file_hook: ?*const fn (Context, *std.Io.Writer, FileInfo, FilePhase) anyerror!void = null,
     /// One contribution per package per render pass, in zigo_plugins_gen.go.
     package_hook: ?*const fn (Context, *std.Io.Writer) anyerror!void = null,
-    go_files: []const GoFile = &.{},
+    source_files: []const SourceFile = &.{},
     artifacts: []const Artifact = &.{},
 
     /// Non-standard imports the hooks may write, added where they are used.
@@ -625,7 +643,7 @@ pub fn ordered(comptime entries: []const Plugin) [entries.len]Plugin {
         for (entries, 0..) |entry, i| {
             if (entry.min_contract.major != contract_version.major or entry.min_contract.minor > contract_version.minor)
                 @compileError("incompatible plugin contract: " ++ entry.name);
-            for (entry.go_files) |file| {
+            for (entry.source_files) |file| {
                 if (file.package == .raw and file.scope != .document) @compileError("raw Go files require document scope: " ++ entry.name);
                 if (file.package == .external_test and file.kind != .test_file) @compileError("external test Go files require test kind: " ++ entry.name);
                 if (file.build_constraint) |constraint| if (!@import("plugin/build_constraint.zig").valid(constraint)) @compileError("invalid Go build constraint: " ++ entry.name);
@@ -682,7 +700,7 @@ test "plugin config decodes defaults and rejects unknown fields" {
 
 pub const SignatureOptions = struct { parameter_names: bool = true, omit_error: bool = false };
 /// Names are allocated from Context.allocator. The caller owns go_name.
-pub const FunctionInfo = struct { go_name: []const u8, is_public: bool, has_error: bool };
+pub const FunctionInfo = struct { public_name: []const u8, is_public: bool, has_error: bool };
 
 /// Once per generation, after lowering and before any package is rendered.
 pub const AnalyzeContext = struct {
@@ -742,7 +760,7 @@ test "plugin facts preserve typed validation results across copied declarations"
 
 pub const FilePhase = enum { begin, end };
 pub const FileInfo = struct {
-    go_file: ?GoFile = null,
+    source_file: ?SourceFile = null,
     path: []const u8,
     owner: []const u8 = "generator",
     kind: enum { api, enums, structs, handles, runtime, errors, tagged_union, plugin, package },

@@ -72,8 +72,8 @@ pub const Options = struct {
 
 const PreparedFile = struct {
     verbatim: bool = false,
-    go_kind: ?plugin.GoFileKind = null,
-    go_directory: ?[]const u8 = null,
+    source_kind: ?plugin.FileKind = null,
+    source_directory: ?[]const u8 = null,
     owner: []const u8 = "generator",
     path: []const u8,
     contents: []const u8,
@@ -277,8 +277,8 @@ fn outputPathIssue(allocator: std.mem.Allocator, files: []PreparedFile, target: 
             .site = .{ .path = normalized, .declaration = file.owner },
             .hint = "give each emitter a unique public file path; use plugin.publicFilePathAlloc to include the active package",
         };
-        if (file.go_kind) |kind| {
-            const expected_directory = file.go_directory.?;
+        if (file.source_kind) |kind| {
+            const expected_directory = file.source_directory.?;
             // Normalize a sentinel path so the root directory remains representable.
             const probe = try normalizeOutputPath(allocator, try std.fmt.allocPrint(allocator, "{s}/_{s}", .{ expected_directory, target.source_extension }));
             const directory = std.fs.path.dirname(probe) orelse ".";
@@ -289,7 +289,7 @@ fn outputPathIssue(allocator: std.mem.Allocator, files: []PreparedFile, target: 
                 .code = "ZIGO059",
                 .message = try std.fmt.allocPrint(allocator, "{s} file `{s}` does not match its package directory or source/test kind", .{ target.display_name, normalized }),
                 .site = .{ .path = normalized, .declaration = file.owner },
-                .hint = try std.fmt.allocPrint(allocator, "use context.goFilePathAlloc and a {s} filename ({s} only for test_file); use artifacts for other formats", .{ target.source_extension, target.test_file_suffix orelse target.source_extension }),
+                .hint = try std.fmt.allocPrint(allocator, "use context.sourceFilePathAlloc and a {s} filename ({s} only for test_file); use artifacts for other formats", .{ target.source_extension, target.test_file_suffix orelse target.source_extension }),
             };
         }
         entry.value_ptr.* = index;
@@ -313,9 +313,9 @@ fn appendEmitters(allocator: std.mem.Allocator, prepared: *std.ArrayList(Prepare
             rendered.writer.writeByte('\n') catch return error.OutOfMemory;
         }
         try prepared.append(allocator, .{
-            .go_kind = if (emitter.go_file) |file| file.kind else null,
-            .go_directory = if (emitter.go_file) |file| blk: {
-                const example = try plugin.goFilePathAlloc(allocator, program, options, file.package, "_.go");
+            .source_kind = if (emitter.source_file) |file| file.kind else null,
+            .source_directory = if (emitter.source_file) |file| blk: {
+                const example = try plugin.sourceFilePathAlloc(allocator, program, options, file.package, "_.go");
                 break :blk std.fs.path.dirname(example) orelse ".";
             } else null,
             .path = relative_path,

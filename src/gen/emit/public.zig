@@ -694,7 +694,7 @@ fn renderPublicBody(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
         }
         try writer.writeAll("}\n");
         try plugin_hooks.runMethodHooks(plugin_hooks.methodContext(allocator, program, options, .{
-            .go_name = go_name,
+            .public_name = go_name,
             .receiver = function.origin.receiver,
             .receiver_name = receiver_name,
             .param_names = go_names,
@@ -724,9 +724,9 @@ pub fn renderPublicFile(
 
 /// Every public file, including union and plugin files, uses this frame.
 pub fn writePublicFileBody(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: emit.Options, contents: []const u8) !void {
-    const go = if (options.file) |file| file.go_file else null;
+    const go = if (options.file) |file| file.source_file else null;
     if (go != null and std.mem.trim(u8, contents, " \t\r\n").len == 0) return;
-    const target: plugin.GoPackage = if (go) |file| file.package else .public;
+    const target: plugin.PackageKind = if (go) |file| file.package else .public;
     const public_package = try common.publicPackageAlloc(allocator, program, options);
     defer allocator.free(public_package);
     const package = switch (target) {
@@ -972,7 +972,7 @@ pub fn writePublicImports(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
     defer std_group.deinit(allocator);
     for (public_std_imports) |entry| try appendGoImport(allocator, &std_group, .{ .qualifier = entry.qualifier, .path = entry.path }, body);
     for (plugin_hooks.declaredImports()) |entry| try appendGoImport(allocator, &std_group, entry, body);
-    if (options.file) |info| if (info.go_file) |file| {
+    if (options.file) |info| if (info.source_file) |file| {
         if (file.imports) |imports| for (try imports(plugin_hooks.context(allocator, program, options))) |entry| try appendGoImport(allocator, &std_group, entry, body);
     };
     std.mem.sort(plugin.Import, std_group.items, {}, struct {

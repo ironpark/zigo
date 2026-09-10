@@ -8,6 +8,17 @@
 
 ### Breaking
 
+- 플러그인 계약이 **3.0**으로 올라갔습니다. 호환 계층은 없으므로 기존 plugin은
+  `min_contract = .{ .major = 3, .minor = 0 }`에 맞춰 갱신해야 합니다. 바뀐 이름은
+  `Plugin.targets` → `subjects`(연결되는 declaration kind이며 출력 언어가 아닙니다),
+  `Plugin.go_files` → `source_files`, `GoFile` → `SourceFile`,
+  `GoFileKind` → `FileKind`, `GoPackage` → `PackageKind`,
+  `goFilePathAlloc` → `sourceFilePathAlloc`(module 함수와 `Context` 메서드 모두),
+  `Method.go_name`·`FunctionInfo.go_name` → `public_name`입니다.
+- plugin이 `output_targets`로 렌더링할 수 있는 출력 언어를 선언합니다. 기본값은
+  `&.{"go"}`이고, 해석된 target이 목록에 없는 plugin은 transform·진단·출력 file 중
+  무엇도 내지 않습니다. `Context.writeGoType`과 그 형제 writer들은 Go 소스를 쓰므로
+  이름을 유지하며, 이 필드가 그 사실을 계약에 명시합니다.
 - `semantic.json`의 `ir_version`이 **2**로 올라갔습니다. 출력 언어에만 해당하는 필드가
   선언마다 하나의 `go` 객체로 모입니다. 함수의 `go_name`·`go_owner`·`return_go_adapter`·
   `iterator`·`implements`는 `go.name`·`go.owner`·`go.return_adapter`·`go.iterator`·
@@ -19,6 +30,10 @@
 
 ### Changed
 
+- plugin 계약이 해석된 출력 target을 나릅니다. 모든 context가 그 값을 노출하고,
+  interface 이름 검사와 `ZIGO059`의 file 모양 규칙이 `targets.default` 대신 그 값을
+  읽습니다. `ZIGO059`는 `.go`와 `_test.go` 리터럴 대신 target의 확장자와 test file
+  접미사를 씁니다. 두 진단 모두 언어 이름을 보간하므로 Go에서의 문구는 그대로입니다.
 - 출력 언어별 규칙을 `Target` 하나로 모았습니다. 예약어, 식별자와 변환 함수 이름 검사,
   파라미터 이름 생성, 공개·비공개·패키지 이름의 케이스 규칙, 생성 파일 이름과 포매터가
   Go 전용 함수로 흩어져 있던 것을 `src/gen/targets.zig`의 인터페이스 뒤로 옮겼습니다.

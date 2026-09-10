@@ -156,7 +156,7 @@ fn functionInfo(value: plugin.Context, function: abi.AbiFn) anyerror!plugin.Func
     const origin = function.origin.*;
     const document: semantic.Semantic = .{ .constructors = value.program.constructors, .package = value.program.package, .prefix = value.program.prefix, .zig_version = "" };
     return .{
-        .go_name = try targets.go.publicFunctionNameAlloc(value.allocator, document, origin),
+        .public_name = try targets.go.publicFunctionNameAlloc(value.allocator, document, origin),
         .is_public = public.emitsPublicFunction(value.program, function),
         .has_error = common.constructorForInit(value.program, origin) != null or origin.@"return" == .error_union or public.signatureShape(function).needs_check,
     };
@@ -297,7 +297,7 @@ test "plugin result and parameter writers avoid parsing checked signatures" {
     const program = try @import("lower").semanticDocument(allocator, document, "sample", "zg", &.{.{ .name = "Failure", .code = 1 }});
     for (program.functions, 0..) |function, index| {
         const names = try common.goParamNamesForAlloc(allocator, function.origin.params);
-        const ctx = methodContext(allocator, program, .{ .go_module = "example.com/sample" }, .{ .go_name = "Call", .param_names = names });
+        const ctx = methodContext(allocator, program, .{ .go_module = "example.com/sample" }, .{ .public_name = "Call", .param_names = names });
         var output: std.Io.Writer.Allocating = .init(allocator);
         try ctx.writeParameters(&output.writer, function);
         const count = try ctx.writeResultType(&output.writer, function, .{ .omit_error = true });
