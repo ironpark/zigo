@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-10T07:14:39Z"
 description: Map registered Zig enums to safe named Rust types without changing the shared ABI or Go output
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-10T06:54:22Z"
 ---
 > NEXT: None. Implementation and verification complete; handoffs are in phase 1 and the research document.
@@ -8,7 +9,7 @@ registered_at: "2026-09-10T06:54:22Z"
 # Phases
 
 - [x] [Phase 00: Map scalar enums safely](phases/00-scalar-enums.md)
-- [ ] [Phase 01: Verify the repository and document the mapping](phases/01-verification-and-handoff.md)
+- [x] [Phase 01: Verify the repository and document the mapping](phases/01-verification-and-handoff.md)
 
 # Shared Verification
 

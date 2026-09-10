@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-10T07:14:39Z"
 depends_on:
 - "191-rust-enum-mapping#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: All acceptance checks pass, Go output remains unchanged, actual cargo test/demo and before/after audit evidence recorded.
 > NEXT: none
