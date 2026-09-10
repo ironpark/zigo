@@ -1003,6 +1003,46 @@ fn addGoldenArtifactChecks(
         test_step.dependOn(&compile_crate.step);
     }
 
+    // A case that ships a `compile_fail.rs` builds its golden crate as an
+    // rlib and compiles that file against it, expecting failure. Gated on the
+    // file the way the `roundtrip.zig` step below is, so a case opts in.
+    //
+    // This is the only evidence a lifetime does real work. A golden snapshot
+    // can show that `ContextView<'owner>` was written, and the step above can
+    // show that valid code using it compiles; neither says that *invalid* code
+    // is rejected, which is the whole claim being made over Go -- whose
+    // binding carries the same rule as a doc comment and a run-time parent
+    // refcount.
+    if (hasCaseFile(files, name, "compile_fail.rs")) {
+        const rlib = b.addSystemCommand(&.{
+            "rustc",        "--edition", "2021",
+            "--crate-type", "lib",       "--crate-name",
+            "zigo_golden",
+        });
+        rlib.setName(b.fmt("golden Rust crate links as a library ({s})", .{name}));
+        for (files) |file| {
+            if (!std.mem.startsWith(u8, file, header_prefix)) continue;
+            if (!std.mem.endsWith(u8, file, ".rs")) continue;
+            rlib.addFileInput(cases.path(b, file));
+        }
+        const library = rlib.addPrefixedOutputFileArg("-o", b.fmt("lib{s}_golden.rlib", .{name}));
+        rlib.addFileArg(expected.path(b, "src/lib.rs"));
+        rlib.expectExitCode(0);
+        test_step.dependOn(&rlib.step);
+
+        const compile_fail = b.addSystemCommand(&.{ "rustc", "--edition", "2021", "--crate-type", "lib", "--emit=metadata" });
+        compile_fail.setName(b.fmt("{s} does not compile what it must not", .{name}));
+        compile_fail.addPrefixedFileArg("--extern=zigo_golden=", library);
+        _ = compile_fail.addPrefixedOutputFileArg("-o", b.fmt("{s}-compile-fail.rmeta", .{name}));
+        compile_fail.addFileArg(case.path(b, "compile_fail.rs"));
+        // The specific error code, not merely a failure: a typo in the snippet
+        // would also fail to compile and would prove nothing. The code is
+        // stable across rustc releases in a way the prose is not.
+        compile_fail.expectExitCode(1);
+        compile_fail.expectStdErrMatch("E0515");
+        test_step.dependOn(&compile_fail.step);
+    }
+
     // A case that ships a `roundtrip.zig` runs it against the golden shim.
     if (hasCaseFile(files, name, "roundtrip.zig")) {
         // The target's release path frees through `std.heap.c_allocator`, as

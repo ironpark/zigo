@@ -71,7 +71,7 @@ fn renderFunction(
     try writer.writeByte(')');
     try writePublicResultType(writer, shape);
     try writer.writeAll(" {\n");
-    try writeBody(writer, shape, function, null);
+    try writeBody(allocator, writer, shape, function, null);
     try writer.writeAll("}\n");
 }
 
@@ -97,9 +97,7 @@ pub fn writePublicResultType(writer: *std.Io.Writer, shape: raw.Shape) !void {
 fn writePayloadType(writer: *std.Io.Writer, shape: raw.Shape) !void {
     if (shape.payload) |payload| switch (payload) {
         .scalar => |scalar| return writer.writeAll(scalar.public),
-        // A constructor's own type. `Self` rather than the name, so a renamed
-        // wrapper cannot drift from its constructor's signature.
-        .handle => return writer.writeAll("Self"),
+        .handle => |handle| return handle.writePublicType(writer),
         // An owned copy, not a borrow. The native buffer's lifetime is the
         // library's, and a borrowed slice would need a lifetime the public
         // signature has nothing to tie it to; copying is what the minimal
@@ -122,6 +120,7 @@ fn writePayloadType(writer: *std.Io.Writer, shape: raw.Shape) !void {
 /// their own is what keeps the status-code rule, the slice copy and the `Ok`
 /// wrapping from drifting apart between the two.
 pub fn writeBody(
+    allocator: std.mem.Allocator,
     writer: *std.Io.Writer,
     shape: raw.Shape,
     function: abi.AbiFn,
@@ -169,15 +168,24 @@ pub fn writeBody(
     }
     if (shape.payload) |payload| {
         switch (payload) {
-            .handle => {
+            .handle => |handle| {
                 // A call that reported success must have written a handle.
-                // Without this the wrapper would own a null pointer and hand
-                // it to the destructor in `Drop`.
+                // Without this an owned wrapper would hand a null pointer to
+                // the destructor in `Drop`, and a borrowed one would deref it.
                 try writer.print(
-                    "    assert!(\n        !result.is_null(),\n        \"zigo: {s}: the native constructor reported success without writing a handle\"\n    );\n    ",
+                    "    assert!(\n        !result.is_null(),\n        \"zigo: {s}: the native call reported success without writing a handle\"\n    );\n    ",
                     .{function.origin.name},
                 );
-                return writeResultExpression(writer, shape, "Self { handle: result }");
+                return switch (handle.kind) {
+                    .owned => writeResultExpression(writer, shape, "Self { handle: result }"),
+                    // The lifetime is inferred from the receiver's borrow, so
+                    // the constructor expression names only the marker.
+                    .borrowed => writeResultExpression(writer, shape, try std.fmt.allocPrint(
+                        allocator,
+                        "{s} {{ handle: result, owner: core::marker::PhantomData }}",
+                        .{handle.type_name},
+                    )),
+                };
             },
             .scalar => |scalar| {
                 try writer.writeAll("    ");

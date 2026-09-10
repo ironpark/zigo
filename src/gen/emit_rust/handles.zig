@@ -22,7 +22,7 @@ const types = @import("types.zig");
 /// Whether the crate has a handle module at all.
 pub fn hasHandles(program: abi.Program) bool {
     for (program.handles) |handle| {
-        if (types.ownedHandleFor(program, handle.name) != null) return true;
+        if (types.renderableHandle(program, handle.name) != null) return true;
     }
     return false;
 }
@@ -36,8 +36,8 @@ pub fn renderHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, progr
     );
     if (program.error_codes.len != 0) try writer.writeAll("use crate::Error;\n");
     for (program.handles) |handle| {
-        if (types.ownedHandleFor(program, handle.name) == null) continue;
-        try renderHandle(allocator, writer, program, handle);
+        const renderable = types.renderableHandle(program, handle.name) orelse continue;
+        try renderHandle(allocator, writer, program, handle, renderable.kind);
     }
 }
 
@@ -46,43 +46,69 @@ fn renderHandle(
     writer: *std.Io.Writer,
     program: abi.Program,
     handle: abi.AbiOpaque,
+    kind: types.HandleKind,
 ) !void {
     const declaration = semantic.typeDecl(program.types, handle.name);
     try writer.writeByte('\n');
     if (declaration) |value| if (value.doc) |doc| try public.writeDocComment(writer, doc, "///");
-    try writer.print(
-        \\/// Owns a native `{0s}`.
-        \\///
-        \\/// The native object is released when this value is dropped, so there is
-        \\/// no close call to make and no closed state to guard against.
-        \\///
-        \\/// Neither `Send` nor `Sync`, which is the honest default: whether the
-        \\/// bound library's `{0s}` may cross threads is a fact about that library
-        \\/// and zigo does not record it. Wrap it yourself if you know the answer.
-        \\pub struct {0s} {{
-        \\    pub(crate) handle: *mut raw::{1s},
-        \\}}
-        \\
-        \\impl {0s} {{
-    , .{ handle.name, handle.c_name });
+    switch (kind) {
+        .owned => try writer.print(
+            \\/// Owns a native `{0s}`.
+            \\///
+            \\/// The native object is released when this value is dropped, so there is
+            \\/// no close call to make and no closed state to guard against.
+            \\///
+            \\/// Neither `Send` nor `Sync`, which is the honest default: whether the
+            \\/// bound library's `{0s}` may cross threads is a fact about that library
+            \\/// and zigo does not record it. Wrap it yourself if you know the answer.
+            \\pub struct {0s} {{
+            \\    pub(crate) handle: *mut raw::{1s},
+            \\}}
+            \\
+            \\impl {0s} {{
+        , .{ handle.name, handle.c_name }),
+        // A view owns nothing, so it has no `Drop`; what it has is a lifetime.
+        // `PhantomData<&'owner ()>` rather than `&'owner Owner` so the view
+        // borrows the *lifetime* without also claiming to hold a reference to
+        // a particular type -- which would force the owner's name into this
+        // struct and make a view borrowable from only one type.
+        .borrowed => try writer.print(
+            \\/// A borrowed view into a native `{0s}`.
+            \\///
+            \\/// The lifetime is the borrow of whatever handed this out, so the
+            \\/// compiler rejects a view that outlives its owner. Go's binding can
+            \\/// only say so in a doc comment and check it at run time.
+            \\///
+            \\/// Nothing is released when this value is dropped: it points into an
+            \\/// object another handle owns.
+            \\pub struct {0s}<'owner> {{
+            \\    pub(crate) handle: *mut raw::{1s},
+            \\    pub(crate) owner: core::marker::PhantomData<&'owner ()>,
+            \\}}
+            \\
+            \\impl {0s}<'_> {{
+        , .{ handle.name, handle.c_name }),
+    }
 
     // The constructor first, then the methods in program order, because that
     // is the order a reader of the Zig container met them in.
     for (program.functions) |function| {
         const placement = types.placementOf(program, function);
         if (placement != .constructor or !std.mem.eql(u8, placement.constructor, handle.name)) continue;
-        try renderAssociated(allocator, writer, program, function, null);
+        try renderAssociated(allocator, writer, program, function, false);
     }
     for (program.functions) |function| {
         const placement = types.placementOf(program, function);
         if (placement != .method or !std.mem.eql(u8, placement.method, handle.name)) continue;
-        try renderAssociated(allocator, writer, program, function, handle);
+        try renderAssociated(allocator, writer, program, function, true);
     }
     try writer.writeAll("}\n");
-    try renderDrop(allocator, writer, program, handle);
+    // A view has nothing to release, so it has no `Drop` -- which is the whole
+    // difference between the two kinds.
+    if (kind == .owned) try renderDrop(allocator, writer, program, handle);
 }
 
-/// One associated function: a constructor when `owner` is null, a method
+/// One associated function: a method when `is_method`, a constructor
 /// otherwise. Both go through `public.writeBody`, so the status-code rule and
 /// the result shape cannot differ between a method and a free function.
 fn renderAssociated(
@@ -90,14 +116,14 @@ fn renderAssociated(
     writer: *std.Io.Writer,
     program: abi.Program,
     function: abi.AbiFn,
-    owner: ?abi.AbiOpaque,
+    is_method: bool,
 ) !void {
     const shape = try raw.Shape.of(allocator, program, function);
     defer shape.deinit(allocator);
-    const name = if (owner == null)
-        try constructorNameAlloc(allocator, program, function)
+    const name = if (is_method)
+        try allocator.dupe(u8, shape.public_name)
     else
-        try allocator.dupe(u8, shape.public_name);
+        try constructorNameAlloc(allocator, program, function);
     defer allocator.free(name);
     try writer.writeByte('\n');
     var documented = false;
@@ -123,7 +149,7 @@ fn renderAssociated(
     // one place, which is the part that could go wrong.
     var body: std.Io.Writer.Allocating = .init(allocator);
     defer body.deinit();
-    try public.writeBody(&body.writer, shape, function, if (shape.receiver != null) "self.handle" else null);
+    try public.writeBody(allocator, &body.writer, shape, function, if (shape.receiver != null) "self.handle" else null);
     var lines = std.mem.splitScalar(u8, std.mem.trimEnd(u8, body.written(), "\n"), '\n');
     var first = true;
     while (lines.next()) |line| {

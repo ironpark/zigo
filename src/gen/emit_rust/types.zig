@@ -71,6 +71,40 @@ pub fn ownedHandleFor(program: abi.Program, name: []const u8) ?abi.AbiOpaque {
     return null;
 }
 
+/// How this backend holds a handle.
+pub const HandleKind = enum {
+    /// A constructor made it and `Drop` releases it.
+    owned,
+    /// A pointer into an object another handle owns. No `Drop`, and a lifetime
+    /// parameter tying it to the borrow it came from.
+    ///
+    /// This is where Rust says something Go cannot. Go's binding hands back a
+    /// wrapper with a doc comment -- "remains valid only while its parent
+    /// handle remains open" -- and a run-time parent refcount to catch the
+    /// mistake after it is made. Rust makes outliving the owner a compile
+    /// error, and the phase's compile-fail check is what proves it.
+    borrowed,
+};
+
+pub const RenderableHandle = struct { record: abi.AbiOpaque, kind: HandleKind };
+
+/// The handle `name` names and how this backend holds one, or null when it
+/// cannot hold one at all.
+pub fn renderableHandle(program: abi.Program, name: []const u8) ?RenderableHandle {
+    const record = handleFor(program, name) orelse return null;
+    if (ownedHandleFor(program, name) != null) return .{ .record = record, .kind = .owned };
+    // Only a type something actually borrows out is a view. A registered
+    // opaque nothing is bound to -- `plugin_disabled` has one -- is neither,
+    // and skipping it is safe because no function can mention it without
+    // being refused.
+    for (program.functions) |function| {
+        if (function.ownership != .borrowed_view) continue;
+        if (std.mem.eql(u8, function.ownership.borrowed_view.type_name, name))
+            return .{ .record = record, .kind = .borrowed };
+    }
+    return null;
+}
+
 /// Where one function's public surface goes.
 ///
 /// One definition, because three emitters read it: `lib.rs` writes the free
@@ -203,9 +237,9 @@ pub fn unsupported(program: abi.Program, function: abi.AbiFn) ?Unsupported {
             .what = "a method on a type that is not a plain opaque handle",
             .hint = "a tagged-union receiver needs the Rust enum mapping first",
         };
-        if (ownedHandleFor(program, receiver) == null) return .{
+        if (renderableHandle(program, receiver) == null) return .{
             .what = "a method on a handle with no bound constructor and destructor pair",
-            .hint = "Rust owns a handle through Drop, so it needs both halves bound",
+            .hint = "Rust owns a handle through Drop, so it needs both halves bound -- unless the handle is only ever borrowed out of another one",
         };
         if (handle.lifecycle.dependent_parent != null or handle.lifecycle.has_dependent_children) return .{
             .what = "a handle in a parent-child lifetime relation",
@@ -239,9 +273,17 @@ pub fn unsupported(program: abi.Program, function: abi.AbiFn) ?Unsupported {
                 .hint = "the Rust backend constructs a handle only through the constructor the binding paired with it",
             };
         },
-        .borrowed_view => return .{
-            .what = "a borrowed view into another handle",
-            .hint = "a view has to carry the lifetime it borrows; not designed yet",
+        .borrowed_view => |record| {
+            if (renderableHandle(program, record.type_name) == null) return .{
+                .what = "a borrowed view of a type this backend cannot hold",
+                .hint = "a view is a lifetime-bound wrapper, so its type must be a plain opaque handle",
+            };
+            // A view's lifetime is the receiver's borrow, so a free function
+            // returning one has nothing to tie it to.
+            if (placement != .method) return .{
+                .what = "a borrowed view returned by something other than a method",
+                .hint = "a view borrows from its receiver, so only a method can return one",
+            };
         },
         else => {},
     }
@@ -294,7 +336,7 @@ pub fn unsupported(program: abi.Program, function: abi.AbiFn) ?Unsupported {
                 .what = "a tagged-union parameter",
                 .hint = "a tagged union needs the Rust enum mapping first",
             };
-        } else if (ownedHandleFor(program, record.name) == null) return .{
+        } else if (renderableHandle(program, record.name) == null) return .{
             .what = "a handle parameter whose type has no bound constructor and destructor pair",
             .hint = "Rust owns a handle through Drop, so it needs both halves bound",
         },

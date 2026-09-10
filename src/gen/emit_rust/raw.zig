@@ -32,7 +32,7 @@ pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
     // The incomplete C structs the signatures below point at, before the
     // block that names them.
     for (program.handles) |handle| {
-        if (types.ownedHandleFor(program, handle.name) == null) continue;
+        if (types.renderableHandle(program, handle.name) == null) continue;
         try types.opaqueDeclaration(writer, handle);
     }
     try renderExternBlock(allocator, writer, program);
@@ -317,6 +317,26 @@ pub const Shape = struct {
 
     pub const Direct = struct { raw: []const u8, public: []const u8, is_bool: bool };
 
+    /// A handle a call produces. Named apart from `Input.Handle`, which is a
+    /// handle a call *takes*: the two answer different questions and Zig would
+    /// otherwise resolve the bare name ambiguously inside `Input`.
+    pub const Produced = struct {
+        type_name: []const u8,
+        c_name: []const u8,
+        kind: types.HandleKind,
+
+        /// The public spelling of the produced value. An owned handle is
+        /// `Self` -- so a renamed wrapper cannot drift from its constructor --
+        /// and a borrowed one names its type with an inferred lifetime, which
+        /// is the receiver's borrow.
+        pub fn writePublicType(self: Produced, writer: *std.Io.Writer) !void {
+            return switch (self.kind) {
+                .owned => writer.writeAll("Self"),
+                .borrowed => writer.print("{s}<'_>", .{self.type_name}),
+            };
+        }
+    };
+
     pub const Receiver = struct {
         /// Registered type name, as the public wrapper struct is called.
         type_name: []const u8,
@@ -350,10 +370,10 @@ pub const Shape = struct {
         /// `error{E}!bool` arrive as `Result<u8, Error>`.
         scalar: Direct,
         slice: types.Element,
-        /// A constructed handle: the C ABI writes the pointer through an out
-        /// parameter, so the raw wrapper hands back the raw pointer and the
-        /// public layer wraps it in the type that owns it.
-        handle: Receiver,
+        /// A constructed or borrowed handle: the C ABI writes the pointer
+        /// through an out parameter, so the raw wrapper hands back the raw
+        /// pointer and the public layer wraps it.
+        handle: Produced,
     };
 
     pub const Input = struct {
@@ -459,12 +479,12 @@ pub const Shape = struct {
             .declares_errors = function.errors.len != 0,
         };
         if (payload_node == .opaque_ptr) {
-            const record = types.handleFor(program, payload_node.opaque_ptr.ref) orelse
+            const handle = types.renderableHandle(program, payload_node.opaque_ptr.ref) orelse
                 return error.UnsupportedType;
             shape.payload = .{ .handle = .{
-                .type_name = record.name,
-                .c_name = record.c_name,
-                .is_const = false,
+                .type_name = handle.record.name,
+                .c_name = handle.record.c_name,
+                .kind = handle.kind,
             } };
         } else if (payload_node == .slice) {
             shape.payload = .{ .slice = types.sliceElement(payload_node, function.ret_string) orelse

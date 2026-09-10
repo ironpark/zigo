@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-10T06:13:03Z"
 depends_on:
 - "190-rust-handles-and-buffers#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: The golden `src/handle.rs` contains `impl Drop for` once per handle type, and
 > NEXT: none

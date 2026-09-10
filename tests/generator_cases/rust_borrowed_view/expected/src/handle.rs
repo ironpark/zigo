@@ -42,13 +42,6 @@ impl Context {
         result
     }
 
-    pub fn set_total(&mut self, c: i64) {
-        let code = unsafe { raw::context_set_total(self.handle, c) };
-        if code != 0 {
-            raw::panic_native("setTotal", code);
-        }
-    }
-
     /// addCopy receives a copy of the handle's value. Its mutation is visible
     /// to this call but cannot change the storage owned by the Go handle.
     pub fn add_copy(&self, value: i64) -> i64 {
@@ -58,6 +51,18 @@ impl Context {
         }
         result
     }
+
+    pub fn borrow_view(&mut self) -> ContextView<'_> {
+        let (result, code) = unsafe { raw::context_borrow_view(self.handle) };
+        if code != 0 {
+            raw::panic_native("borrowView", code);
+        }
+        assert!(
+            !result.is_null(),
+            "zigo: borrowView: the native call reported success without writing a handle"
+        );
+        ContextView { handle: result, owner: core::marker::PhantomData }
+    }
 }
 
 impl Drop for Context {
@@ -66,5 +71,28 @@ impl Drop for Context {
         // it, and panicking here would abort the process whenever a
         // destructor failed during another panic's unwind.
         let _ = unsafe { raw::context_deinit(self.handle) };
+    }
+}
+
+/// A borrowed view into a native `ContextView`.
+///
+/// The lifetime is the borrow of whatever handed this out, so the
+/// compiler rejects a view that outlives its owner. Go's binding can
+/// only say so in a doc comment and check it at run time.
+///
+/// Nothing is released when this value is dropped: it points into an
+/// object another handle owns.
+pub struct ContextView<'owner> {
+    pub(crate) handle: *mut raw::zg_context_view,
+    pub(crate) owner: core::marker::PhantomData<&'owner ()>,
+}
+
+impl ContextView<'_> {
+    pub fn total(&mut self) -> i64 {
+        let (result, code) = unsafe { raw::context_view_total(self.handle) };
+        if code != 0 {
+            raw::panic_native("total", code);
+        }
+        result
     }
 }
