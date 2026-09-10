@@ -2,6 +2,7 @@ const std = @import("std");
 const naming = @import("naming");
 const abi = @import("abi");
 const semantic = @import("semantic");
+const targets = @import("targets");
 const lower = @import("lower");
 const stream_return = @import("stream_return");
 
@@ -114,9 +115,9 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
         // that named it changes.
         if (!semantic.optionalStringEqual(old.goOwner(), new.goOwner()))
             try add(allocator, &report, .breaking, identity, "Go owner changed");
-        const old_go_name = try semantic.publicFunctionNameAlloc(allocator, base, old);
+        const old_go_name = try targets.default.publicFunctionNameAlloc(allocator, base, old);
         defer allocator.free(old_go_name);
-        const new_go_name = try semantic.publicFunctionNameAlloc(allocator, current, new);
+        const new_go_name = try targets.default.publicFunctionNameAlloc(allocator, current, new);
         defer allocator.free(new_go_name);
         if (!std.mem.eql(u8, old_go_name, new_go_name))
             try add(allocator, &report, .breaking, identity, "Go signature changed");

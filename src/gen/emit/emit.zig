@@ -7,6 +7,7 @@ const plugin = @import("plugin");
 const plugin_hooks = @import("plugin_hooks.zig");
 const registry = @import("../plugins/registry.zig");
 const semantic = @import("semantic");
+const targets = @import("targets");
 const naming = @import("naming");
 const common = @import("common.zig");
 const docs = @import("docs.zig");
@@ -380,7 +381,7 @@ pub fn unionFilesAlloc(allocator: std.mem.Allocator, program: abi.Program, optio
     }
     for (variants) |entry| {
         if (!packageMatches(entry.owner.package, options.active_package)) continue;
-        const stem = try naming.unionFileStemAlloc(allocator, entry.owner.name, @ptrCast(stems.items));
+        const stem = try targets.go.unionFileStemAlloc(allocator, entry.owner.name, @ptrCast(stems.items));
         try stems.append(allocator, stem);
         const path = try publicUnionPathAlloc(allocator, program, options, stem);
         errdefer allocator.free(path);
@@ -552,7 +553,7 @@ test "a cgo target list qualifies one link line per platform" {
         .package = "hub",
         .prefix = "zg",
     };
-    const targets: []const Options.CgoTarget = &.{
+    const cgo_targets: []const Options.CgoTarget = &.{
         .{ .goos = "darwin", .goarch = "arm64" },
         .{ .goos = "linux", .goarch = "amd64" },
     };
@@ -562,7 +563,7 @@ test "a cgo target list qualifies one link line per platform" {
     try raw.renderRaw(std.testing.allocator, &static_output.writer, program, .{
         .go_module = "example.com/hub",
         .library_dir = "${SRCDIR}/lib",
-        .cgo_targets = targets,
+        .cgo_targets = cgo_targets,
         .system_ldflags = "-lz",
     });
     const static_text = static_output.written();
@@ -577,7 +578,7 @@ test "a cgo target list qualifies one link line per platform" {
     try raw.renderRaw(std.testing.allocator, &dynamic_output.writer, program, .{
         .go_module = "example.com/hub",
         .library_dir = "${SRCDIR}/lib",
-        .cgo_targets = targets,
+        .cgo_targets = cgo_targets,
         .link_mode = .dynamic,
     });
     try std.testing.expect(std.mem.indexOf(u8, dynamic_output.written(), "\n#cgo linux,amd64 LDFLAGS: -L${SRCDIR}/lib/linux_amd64 -lhub_zigo\n") != null);
@@ -587,7 +588,7 @@ test "a cgo target list qualifies one link line per platform" {
     defer override_output.deinit();
     try raw.renderRaw(std.testing.allocator, &override_output.writer, program, .{
         .go_module = "example.com/hub",
-        .cgo_targets = targets,
+        .cgo_targets = cgo_targets,
         .ldflags_override = "-L/opt/hub -lhub",
     });
     try std.testing.expect(std.mem.indexOf(u8, override_output.written(), "\n#cgo LDFLAGS: -L/opt/hub -lhub\n") != null);

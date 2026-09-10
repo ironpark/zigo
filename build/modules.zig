@@ -22,6 +22,7 @@ pub const GeneratorModules = struct {
     dynamic_library: *std.Build.Module,
     semantic: *std.Build.Module,
     naming: *std.Build.Module,
+    targets: *std.Build.Module,
     abi: *std.Build.Module,
     diagnostic: *std.Build.Module,
     plugin: *std.Build.Module,
@@ -64,6 +65,17 @@ pub fn createGeneratorModules(
         .optimize = optimize,
         .imports = &.{.{ .name = "naming", .module = naming_module }},
     });
+    // The target abstraction sits above the IR and below every emitter: it
+    // may read the document, and the document may never read it.
+    const targets_module = b.createModule(.{
+        .root_source_file = source_root.path(b, "gen/targets.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "naming", .module = naming_module },
+            .{ .name = "semantic", .module = semantic_module },
+        },
+    });
     const abi_module = b.createModule(.{
         .root_source_file = source_root.path(b, "gen/ir/abi.zig"),
         .target = target,
@@ -84,6 +96,7 @@ pub fn createGeneratorModules(
         .optimize = optimize,
         .imports = &.{
             .{ .name = "naming", .module = naming_module },
+            .{ .name = "targets", .module = targets_module },
             .{ .name = "abi", .module = abi_module },
             .{ .name = "semantic", .module = semantic_module },
             .{ .name = "diagnostic", .module = diagnostic_module },
@@ -149,6 +162,7 @@ pub fn createGeneratorModules(
         .optimize = optimize,
         .imports = &.{
             .{ .name = "naming", .module = naming_module },
+            .{ .name = "targets", .module = targets_module },
             .{ .name = "abi", .module = abi_module },
             .{ .name = "lower", .module = gen_lower_module },
             .{ .name = "stream_return", .module = gen_stream_return_module },
@@ -174,6 +188,7 @@ pub fn createGeneratorModules(
             .{ .name = "output_manifest", .module = output_manifest_module },
             .{ .name = "semantic", .module = semantic_module },
             .{ .name = "naming", .module = naming_module },
+            .{ .name = "targets", .module = targets_module },
             .{ .name = "abi", .module = abi_module },
             .{ .name = "diagnostic", .module = diagnostic_module },
             .{ .name = "errors_lock", .module = errors_lock_module },
@@ -189,6 +204,7 @@ pub fn createGeneratorModules(
         .dynamic_library = dynamic_library_module,
         .semantic = semantic_module,
         .naming = naming_module,
+        .targets = targets_module,
         .abi = abi_module,
         .diagnostic = diagnostic_module,
         .plugin = plugin_module,
@@ -267,6 +283,7 @@ pub fn addGeneratorWithModules(
                 .{ .name = "dynamic_library", .module = modules.dynamic_library },
                 .{ .name = "semantic", .module = modules.semantic },
                 .{ .name = "naming", .module = modules.naming },
+                .{ .name = "targets", .module = modules.targets },
                 .{ .name = "abi", .module = modules.abi },
                 .{ .name = "diagnostic", .module = modules.diagnostic },
                 .{ .name = "errors_lock", .module = modules.errors_lock },

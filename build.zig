@@ -1,6 +1,10 @@
 const std = @import("std");
 const build_options = @import("src/build_options.zig");
 const naming = @import("src/gen/naming.zig");
+// Word-level rules of the output language. `go_words.zig` is the leaf of the
+// target abstraction that imports only `std`, which is what lets the build
+// integration validate its own options before a module graph exists.
+const go_words = @import("src/gen/targets/go_words.zig");
 const modules = @import("build/modules.zig");
 const steps = @import("build/steps.zig");
 const tests = @import("build/tests.zig");
@@ -366,7 +370,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     }
     const artifact_package = naming.snakeAlloc(b.allocator, options.name) catch @panic("OOM");
     const go_package = if (options.go_package) |value| blk: {
-        naming.validateGoPackageName(value) catch
+        go_words.validatePackageName(value) catch
             @panic("go_package must be a valid Go package identifier");
         break :blk value;
     } else artifact_package;
@@ -403,6 +407,18 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         .optimize = .Debug,
         .imports = &.{.{ .name = "naming", .module = naming_module }},
     });
+    // The output language's rules. The reflector's package check and the
+    // plugin contract's interface check both ask the target, so the module
+    // reaches as far as the declaration side does.
+    const targets_module = b.createModule(.{
+        .root_source_file = zigo_dependency.path("src/gen/targets.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+        .imports = &.{
+            .{ .name = "naming", .module = naming_module },
+            .{ .name = "semantic", .module = semantic_module },
+        },
+    });
     // The declaration side of a plugin: what `bindings.zig` imports so
     // `extend` can name the plugin and its option type. Only created because
     // a plugin's root file is written against the whole contract; a module
@@ -427,6 +443,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
             .{ .name = "semantic", .module = semantic_module },
             .{ .name = "diagnostic", .module = diagnostic_declaration_module },
             .{ .name = "naming", .module = naming_module },
+            .{ .name = "targets", .module = targets_module },
         },
     });
     // The reflected module is the caller's, retargeted to the host. Its
@@ -461,6 +478,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
             .{ .name = "semantic", .module = semantic_module },
             .{ .name = "diagnostic", .module = diagnostic_declaration_module },
             .{ .name = "naming", .module = naming_module },
+            .{ .name = "targets", .module = targets_module },
         },
     }));
     const reflector = b.addExecutable(.{
@@ -472,6 +490,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
             .imports = &.{
                 .{ .name = "bindings", .module = bindings_module },
                 .{ .name = "naming", .module = naming_module },
+                .{ .name = "targets", .module = targets_module },
                 .{ .name = "semantic", .module = semantic_module },
                 // The same module instance `bindings.zig` imports, so the
                 // declaration types the reflector reads are the ones the
@@ -966,7 +985,7 @@ fn resolveRawPackage(b: *std.Build, path: []const u8, go_package_path: []const u
         error.InvalidCharacter => @panic("raw_package components may contain only ASCII letters, digits, '_', '-' and '.'"),
     };
     const name = naming.snakeAlloc(b.allocator, std.fs.path.basename(path)) catch @panic("OOM");
-    naming.validateGoPackageName(name) catch
+    go_words.validatePackageName(name) catch
         @panic("raw_package basename must normalize to a valid Go package name");
     return .{ .path = path, .name = name, .colocated = false };
 }

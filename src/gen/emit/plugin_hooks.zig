@@ -13,6 +13,7 @@ const public = @import("public.zig");
 const public_writers = @import("public_writers.zig");
 const registry = @import("../plugins/registry.zig");
 const semantic = @import("semantic");
+const targets = @import("targets");
 
 /// The writers table every context hands to a plugin. It is one value: the
 /// functions read everything they need from the context they are given.
@@ -155,7 +156,7 @@ fn functionInfo(value: plugin.Context, function: abi.AbiFn) anyerror!plugin.Func
     const origin = function.origin.*;
     const document: semantic.Semantic = .{ .constructors = value.program.constructors, .package = value.program.package, .prefix = value.program.prefix, .zig_version = "" };
     return .{
-        .go_name = try semantic.publicFunctionNameAlloc(value.allocator, document, origin),
+        .go_name = try targets.go.publicFunctionNameAlloc(value.allocator, document, origin),
         .is_public = public.emitsPublicFunction(value.program, function),
         .has_error = common.constructorForInit(value.program, origin) != null or origin.@"return" == .error_union or public.signatureShape(function).needs_check,
     };

@@ -1,6 +1,7 @@
 const std = @import("std");
 const naming = @import("naming");
 const semantic = @import("semantic");
+const targets = @import("targets");
 const zigo = @import("zigo").normalized;
 const packages = @import("packages.zig");
 
@@ -3839,7 +3840,7 @@ test "an unregistered generated enum is named from @typeName and rejected downst
 
     // Reflection still records what it saw; `ZIGO021` is what refuses it, and
     // its message points at the Zig path recorded here.
-    try std.testing.expect(!naming.isGoIdentifier(document.types[0].name));
+    try std.testing.expect(!targets.default.isIdentifier(document.types[0].name));
     try std.testing.expect(std.mem.endsWith(u8, document.types[0].zig_path.?, "[0..2])"));
 }
 

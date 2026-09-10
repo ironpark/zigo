@@ -2,6 +2,7 @@
 const std = @import("std");
 const diagnostic = @import("diagnostic");
 const semantic = @import("semantic");
+const targets = @import("targets");
 const naming = @import("naming");
 const site = @import("site.zig");
 const validate = @import("validate.zig");
@@ -9,7 +10,7 @@ const validate = @import("validate.zig");
 pub fn packageMetadataIssue(_: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
     const packages = document.packages orelse return null;
     for (packages, 0..) |package, index| {
-        if (!naming.isGoIdentifier(package.name) or !semantic.validPackagePath(package.path)) return .{
+        if (!targets.default.isIdentifier(package.name) or !semantic.validPackagePath(package.path)) return .{
             .severity = .@"error",
             .code = "ZIGO031",
             .message = "semantic document contains an invalid public package declaration",

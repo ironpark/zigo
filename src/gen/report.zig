@@ -1,5 +1,6 @@
 const std = @import("std");
 const semantic = @import("semantic");
+const targets = @import("targets");
 const lower = @import("lower");
 const naming = @import("naming");
 
@@ -63,7 +64,7 @@ pub fn render(allocator: std.mem.Allocator, writer: *std.Io.Writer, document: se
         });
         // The default matches the emitter: a package-specific name, then the shared one.
         const package = try naming.snakeAlloc(scratch_allocator, document.package);
-        const specific = try naming.libraryPathEnvironmentAlloc(scratch_allocator, package);
+        const specific = try targets.default.libraryPathEnvironmentAlloc(scratch_allocator, package);
         const default_names = try std.fmt.allocPrint(scratch_allocator, "{s},ZIGO_LIBRARY_PATH", .{specific});
         const env_names = options.library_env_vars orelse default_names;
         try writer.print("library environment: {s}\n", .{if (env_names.len == 0) "none" else env_names});
@@ -127,7 +128,7 @@ pub fn render(allocator: std.mem.Allocator, writer: *std.Io.Writer, document: se
 /// The report spells the same public name the collision check and `abi-diff`
 /// do, plus the receiver qualification a reader needs to find the method.
 fn publicFunctionNameAlloc(allocator: std.mem.Allocator, document: semantic.Semantic, function: semantic.SemanticFn) ![]u8 {
-    const name = try semantic.publicFunctionNameAlloc(allocator, document, function);
+    const name = try targets.default.publicFunctionNameAlloc(allocator, document, function);
     defer allocator.free(name);
     if (semantic.constructorForInit(document.constructors, function) == null and
         lower.constructorForDeinit(document.constructors, function) != null)

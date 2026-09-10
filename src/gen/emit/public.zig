@@ -5,6 +5,7 @@ const type_spelling = @import("type_spelling.zig");
 const std = @import("std");
 const abi = @import("abi");
 const semantic = @import("semantic");
+const targets = @import("targets");
 const naming = @import("naming");
 const callbacks = @import("callbacks.zig");
 const common = @import("common.zig");
@@ -306,7 +307,7 @@ fn renderPublicBody(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
         else
             null;
         defer if (receiver_name) |name| allocator.free(name);
-        const go_name = try semantic.publicFunctionNameAlloc(allocator, .{ .constructors = program.constructors, .package = program.package, .prefix = program.prefix, .zig_version = "" }, function.origin.*);
+        const go_name = try targets.go.publicFunctionNameAlloc(allocator, .{ .constructors = program.constructors, .package = program.package, .prefix = program.prefix, .zig_version = "" }, function.origin.*);
         defer allocator.free(go_name);
         const operation = if (function.origin.receiver) |receiver|
             try std.fmt.allocPrint(allocator, "{s}.{s}", .{ receiver, go_name })

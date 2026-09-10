@@ -3,6 +3,7 @@ const std = @import("std");
 const abi = @import("abi");
 const diagnostic = @import("diagnostic");
 const semantic = @import("semantic");
+const targets = @import("targets");
 const functions = @import("functions.zig");
 const materialized = @import("materialized.zig");
 const ownership = @import("ownership.zig");
@@ -64,7 +65,7 @@ pub fn typeIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             const is_enum = declaration.kind == .@"enum";
             const wrong_kind = !is_extern_struct and !is_enum;
             const is_union_tag = is_enum and enumIsUnionTag(document, declaration.name);
-            const bad_names = adapter.type.len == 0 or !isGoIdentifier(adapter.to_raw) or !isGoIdentifier(adapter.from_raw);
+            const bad_names = adapter.type.len == 0 or !targets.default.isConversionFunctionName(adapter.to_raw) or !targets.default.isConversionFunctionName(adapter.from_raw);
             if (wrong_kind or is_union_tag or bad_names) return .{
                 .severity = .@"error",
                 .code = "ZIGO052",
@@ -1531,12 +1532,6 @@ test "an optional slice is accepted while its unsupported combinations are not" 
         };
         try std.testing.expect((try validate.findIssue(scratch.allocator(), rejected)) != null);
     }
-}
-
-fn isGoIdentifier(name: []const u8) bool {
-    if (name.len == 0 or std.ascii.isDigit(name[0])) return false;
-    for (name) |byte| if (!(std.ascii.isAlphanumeric(byte) or byte == '_')) return false;
-    return true;
 }
 
 /// Projections and snapshots spell the tag through the generated enum, so a

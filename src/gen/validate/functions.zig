@@ -4,6 +4,7 @@ const abi = @import("abi");
 const diagnostic = @import("diagnostic");
 const lower = @import("lower");
 const semantic = @import("semantic");
+const targets = @import("targets");
 const callbacks = @import("callbacks.zig");
 const materialized = @import("materialized.zig");
 const names = @import("names.zig");
@@ -410,7 +411,7 @@ fn scalarAdapterIssue(allocator: std.mem.Allocator, function: semantic.SemanticF
     for (function.params) |parameter| {
         const adapter = parameter.goAdapter() orelse continue;
         if (parameter.injected == null and parameter.flatten == null and parameter.direction == .in and adaptableScalar(parameter.type) and
-            adapter.type.len != 0 and isGoIdentifierName(adapter.to_raw) and isGoIdentifierName(adapter.from_raw)) continue;
+            adapter.type.len != 0 and targets.default.isConversionFunctionName(adapter.to_raw) and targets.default.isConversionFunctionName(adapter.from_raw)) continue;
         return .{
             .severity = .@"error",
             .code = "ZIGO052",
@@ -421,7 +422,7 @@ fn scalarAdapterIssue(allocator: std.mem.Allocator, function: semantic.SemanticF
     }
     if (function.returnGoAdapter()) |adapter| {
         const payload = function.@"return".errorPayload();
-        if (!adaptableScalar(payload) or adapter.type.len == 0 or !isGoIdentifierName(adapter.to_raw) or !isGoIdentifierName(adapter.from_raw)) return .{
+        if (!adaptableScalar(payload) or adapter.type.len == 0 or !targets.default.isConversionFunctionName(adapter.to_raw) or !targets.default.isConversionFunctionName(adapter.from_raw)) return .{
             .severity = .@"error",
             .code = "ZIGO052",
             .message = "`.go` on a function whose result is not a plain scalar",
@@ -497,12 +498,6 @@ fn codepointIssue(allocator: std.mem.Allocator, function: semantic.SemanticFn) !
         };
     }
     return null;
-}
-
-fn isGoIdentifierName(name: []const u8) bool {
-    if (name.len == 0 or std.ascii.isDigit(name[0])) return false;
-    for (name) |byte| if (!(std.ascii.isAlphanumeric(byte) or byte == '_')) return false;
-    return true;
 }
 
 /// What a value receiver cannot be asked to do. A registered enum owns its

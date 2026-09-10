@@ -2,6 +2,7 @@
 const std = @import("std");
 const naming = @import("naming");
 const semantic = @import("semantic");
+const targets = @import("targets");
 const zigo = @import("zigo").normalized;
 const Pairing = @import("pairing.zig").Pairing;
 
@@ -19,7 +20,7 @@ pub fn reflectPackages(
             break :blk try naming.snakeAlloc(allocator, base);
         };
         if (!semantic.validPackagePath(entry.path)) return packageIssue("invalid package path `{s}`", .{entry.path});
-        if (!naming.isGoIdentifier(name)) return packageIssue("package name `{s}` is not a valid Go identifier", .{name});
+        if (!targets.default.isIdentifier(name)) return packageIssue("package name `{s}` is not a valid Go identifier", .{name});
         for (packages.items) |previous| {
             if (std.mem.eql(u8, previous.path, entry.path)) return packageIssue("duplicate package path `{s}`", .{entry.path});
             if (std.mem.eql(u8, previous.name, name)) return packageIssue("duplicate package name `{s}`", .{name});

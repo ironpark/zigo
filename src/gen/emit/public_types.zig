@@ -3,6 +3,7 @@ const type_spelling = @import("type_spelling.zig");
 const std = @import("std");
 const abi = @import("abi");
 const semantic = @import("semantic");
+const targets = @import("targets");
 const naming = @import("naming");
 const common = @import("common.zig");
 const docs = @import("docs.zig");
@@ -553,7 +554,7 @@ pub fn unionVariantNamesAlloc(allocator: std.mem.Allocator, program: abi.Program
             names.deinit(allocator);
         }
         for (declaration.fields) |field| {
-            const name = try naming.variantTypeNameAlloc(allocator, declaration.name, field.name, identifiers.items);
+            const name = try targets.go.variantTypeNameAlloc(allocator, declaration.name, field.name, identifiers.items);
             errdefer allocator.free(name);
             try names.append(allocator, name);
             const owned = try allocator.dupe(u8, name);

@@ -940,7 +940,8 @@ pub const SemanticFn = struct {
 
     /// The exact public Go spelling a binding asked for, if it asked. Callers
     /// wanting the name a function is actually published under want
-    /// `publicFunctionNameAlloc`, which resolves constructors too.
+    /// `Target.publicFunctionNameAlloc`, which resolves constructors too and
+    /// reads this override through the target's own namespace.
     pub fn goName(self: SemanticFn) ?[]const u8 {
         return (self.go orelse FnGo{}).name;
     }
@@ -1175,28 +1176,6 @@ pub fn constructorForInit(constructors: []const Constructor, function: SemanticF
             std.mem.eql(u8, constructor.type, function.goOwner() orelse "")) return constructor;
     }
     return null;
-}
-
-/// The public Go name a function reaches generated code under, ignoring the
-/// receiver: a method's name is scoped by its receiver type, so two methods on
-/// different receivers never collide even when this returns the same spelling
-/// for both. Constructors are the one function shape whose public name is not
-/// simply the pascal-cased Zig name.
-///
-/// This is the single rule. The collision check, the `abi-diff` contract guard
-/// and the report all read it from here -- three copies would let a rename
-/// rule silently make them disagree about the same function.
-pub fn publicFunctionNameAlloc(
-    allocator: std.mem.Allocator,
-    document: Semantic,
-    function: SemanticFn,
-) ![]u8 {
-    if (function.goName()) |name| return allocator.dupe(u8, name);
-    if (constructorForInit(document.constructors, function)) |constructor| {
-        if (constructor.name) |name| return naming.pascalAlloc(allocator, name);
-        return std.fmt.allocPrint(allocator, "New{s}", .{constructor.type});
-    }
-    return naming.pascalAlloc(allocator, function.name);
 }
 
 /// The document shape `serialize` writes.

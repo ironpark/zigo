@@ -24,6 +24,7 @@ pub fn addRepositorySteps(
         .optimize = optimize,
         .imports = &.{
             .{ .name = "naming", .module = generator_modules.naming },
+            .{ .name = "targets", .module = generator_modules.targets },
             .{ .name = "semantic", .module = generator_modules.semantic },
             .{ .name = "zigo", .module = zigo },
         },
@@ -42,6 +43,7 @@ pub fn addRepositorySteps(
         // inherits walk.zig's own imports too.
         .imports = &.{
             .{ .name = "naming", .module = generator_modules.naming },
+            .{ .name = "targets", .module = generator_modules.targets },
             .{ .name = "semantic", .module = generator_modules.semantic },
             .{ .name = "zigo", .module = zigo },
         },
@@ -52,6 +54,7 @@ pub fn addRepositorySteps(
         .optimize = optimize,
         .imports = &.{
             .{ .name = "naming", .module = generator_modules.naming },
+            .{ .name = "targets", .module = generator_modules.targets },
             .{ .name = "semantic", .module = generator_modules.semantic },
             .{ .name = "abi", .module = generator_modules.abi },
             .{ .name = "output_manifest", .module = generator_modules.output_manifest },
@@ -71,6 +74,7 @@ pub fn addRepositorySteps(
             .{ .name = "output_manifest", .module = generator_modules.output_manifest },
             .{ .name = "lower", .module = generator_modules.lower },
             .{ .name = "naming", .module = generator_modules.naming },
+            .{ .name = "targets", .module = generator_modules.targets },
             .{ .name = "diagnostic", .module = generator_modules.diagnostic },
             .{ .name = "plugin", .module = generator_modules.plugin },
             .{ .name = "plugin_registry", .module = generator_modules.plugin_registry },
@@ -86,6 +90,7 @@ pub fn addRepositorySteps(
         .optimize = optimize,
         .imports = &.{
             .{ .name = "naming", .module = generator_modules.naming },
+            .{ .name = "targets", .module = generator_modules.targets },
             .{ .name = "abi", .module = generator_modules.abi },
             .{ .name = "output_manifest", .module = generator_modules.output_manifest },
             .{ .name = "lower", .module = generator_modules.lower },
@@ -107,6 +112,7 @@ pub fn addRepositorySteps(
             .{ .name = "output_manifest", .module = generator_modules.output_manifest },
             .{ .name = "lower", .module = generator_modules.lower },
             .{ .name = "naming", .module = generator_modules.naming },
+            .{ .name = "targets", .module = generator_modules.targets },
             .{ .name = "plugin", .module = generator_modules.plugin },
             .{ .name = "plugin_registry", .module = generator_modules.plugin_registry },
             .{ .name = "builtin_plugins", .module = generator_modules.builtin_plugins },
@@ -140,6 +146,8 @@ pub fn addRepositorySteps(
     // once per module that used to import the file.
     const naming_tests = b.addTest(.{ .root_module = generator_modules.naming, .filters = test_filters });
     const run_naming_tests = b.addRunArtifact(naming_tests);
+    const targets_tests = b.addTest(.{ .root_module = generator_modules.targets, .filters = test_filters });
+    const run_targets_tests = b.addRunArtifact(targets_tests);
     const abi_diff_tests = b.addTest(.{ .root_module = generator_modules.abi_diff, .filters = test_filters });
     const run_abi_diff_tests = b.addRunArtifact(abi_diff_tests);
     const semantic_tests = b.addTest(.{ .root_module = generator_modules.semantic, .filters = test_filters });
@@ -314,6 +322,7 @@ pub fn addRepositorySteps(
     test_step.dependOn(&run_reflect_walk_tests.step);
     test_step.dependOn(&run_reflect_names_tests.step);
     test_step.dependOn(&run_naming_tests.step);
+    test_step.dependOn(&run_targets_tests.step);
     test_step.dependOn(&run_abi_diff_tests.step);
     test_step.dependOn(&run_semantic_tests.step);
     test_step.dependOn(&run_errors_lock_tests.step);

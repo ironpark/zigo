@@ -3,6 +3,7 @@ const std = @import("std");
 const diagnostic = @import("diagnostic");
 const lower = @import("lower");
 const semantic = @import("semantic");
+const targets = @import("targets");
 const naming = @import("naming");
 const site = @import("site.zig");
 const validate = @import("validate.zig");
@@ -30,7 +31,7 @@ pub fn publicNameCollisionIssue(allocator: std.mem.Allocator, document: semantic
         for (document.functions) |function| {
             if (function.receiver != null) continue;
             if (!semantic.optionalStringEqual(declaration.package, function.package)) continue;
-            const function_name = try semantic.publicFunctionNameAlloc(allocator, document, function);
+            const function_name = try targets.default.publicFunctionNameAlloc(allocator, document, function);
             defer allocator.free(function_name);
             if (!std.mem.eql(u8, function_name, declaration.name)) continue;
             // Kept alive: `site.declaration` below points directly at it.
@@ -52,14 +53,14 @@ pub fn publicNameCollisionIssue(allocator: std.mem.Allocator, document: semantic
     for (document.functions, 0..) |function, index| {
         if (lower.constructorForDeinit(document.constructors, function) != null) continue;
         const bucket = function.receiver orelse "";
-        const name = try semantic.publicFunctionNameAlloc(allocator, document, function);
+        const name = try targets.default.publicFunctionNameAlloc(allocator, document, function);
         defer allocator.free(name);
         for (document.functions[0..index]) |previous| {
             if (lower.constructorForDeinit(document.constructors, previous) != null) continue;
             const previous_bucket = previous.receiver orelse "";
             if (!std.mem.eql(u8, bucket, previous_bucket)) continue;
             if (!semantic.optionalStringEqual(function.package, previous.package)) continue;
-            const previous_name = try semantic.publicFunctionNameAlloc(allocator, document, previous);
+            const previous_name = try targets.default.publicFunctionNameAlloc(allocator, document, previous);
             defer allocator.free(previous_name);
             if (!std.mem.eql(u8, name, previous_name)) continue;
             // Kept alive: `site.declaration` below points directly at it.
@@ -93,7 +94,7 @@ pub fn publicNameCollisionIssue(allocator: std.mem.Allocator, document: semantic
         for (document.functions, 0..) |other, other_index| {
             if (!std.mem.eql(u8, other.receiver orelse "", receiver)) continue;
             if (!semantic.optionalStringEqual(function.package, other.package)) continue;
-            const other_name = try semantic.publicFunctionNameAlloc(allocator, document, other);
+            const other_name = try targets.default.publicFunctionNameAlloc(allocator, document, other);
             defer allocator.free(other_name);
             const clashes_method = std.mem.eql(u8, iterator.name, other_name);
             const clashes_wrapper = other_index < index and other.goIterator() != null and std.mem.eql(u8, iterator.name, other.goIterator().?.name);
@@ -124,7 +125,7 @@ pub fn publicNameCollisionIssue(allocator: std.mem.Allocator, document: semantic
         for (document.functions, 0..) |other, other_index| {
             if (!std.mem.eql(u8, other.receiver orelse "", receiver)) continue;
             if (!semantic.optionalStringEqual(function.package, other.package)) continue;
-            const other_name = try semantic.publicFunctionNameAlloc(allocator, document, other);
+            const other_name = try targets.default.publicFunctionNameAlloc(allocator, document, other);
             defer allocator.free(other_name);
             const clashes_method = std.mem.eql(u8, wrapper, other_name);
             const clashes_iterator = other.goIterator() != null and std.mem.eql(u8, wrapper, other.goIterator().?.name);
@@ -153,7 +154,7 @@ pub fn publicNameCollisionIssue(allocator: std.mem.Allocator, document: semantic
         if (!function.receiverIsValue()) continue;
         const declaration = semantic.typeDecl(document.types, function.receiver.?) orelse continue;
         if (declaration.kind != .@"enum") continue;
-        const name = try semantic.publicFunctionNameAlloc(allocator, document, function);
+        const name = try targets.default.publicFunctionNameAlloc(allocator, document, function);
         defer allocator.free(name);
         const generated: []const []const u8 = if (declaration.text orelse false)
             &.{ "String", "MarshalText", "UnmarshalText" }
@@ -459,8 +460,8 @@ fn nameIssue(allocator: std.mem.Allocator, check: NameCheck) !?diagnostic.Diagno
         candidate = converted.?;
         // An empty conversion would emit no member spelling at all (and, for
         // an enum, collide with the type name), even when a prefix is valid.
-        if (suffix.len != 0 and naming.isGoIdentifier(candidate)) return null;
-    } else if (naming.isGoIdentifier(candidate)) return null;
+        if (suffix.len != 0 and targets.default.isIdentifier(candidate)) return null;
+    } else if (targets.default.isIdentifier(candidate)) return null;
     const message = if (check.zig_path) |path|
         try std.fmt.allocPrint(allocator, "{s} `{s}` from Zig type `{s}` is not a valid Go identifier", .{ check.label, check.spelling, path })
     else
@@ -561,7 +562,7 @@ fn validGoNameAlloc(allocator: std.mem.Allocator, candidate: []const u8, fallbac
         if (std.ascii.isAlphanumeric(character) or character == '_') try result.append(allocator, character);
     }
     if (result.items.len == 0) try result.appendSlice(allocator, fallback);
-    if (!naming.isGoIdentifier(result.items)) try result.appendSlice(allocator, "Value");
+    if (!targets.default.isIdentifier(result.items)) try result.appendSlice(allocator, "Value");
     return result.toOwnedSlice(allocator);
 }
 
@@ -602,7 +603,7 @@ fn findGeneratedAccessorCollision(allocator: std.mem.Allocator, document: semant
         }
         for (document.functions) |function| {
             if (!std.mem.eql(u8, function.receiver orelse "", declaration.name)) continue;
-            const method = try semantic.publicFunctionNameAlloc(allocator, document, function);
+            const method = try targets.default.publicFunctionNameAlloc(allocator, document, function);
             defer allocator.free(method);
             if (std.mem.eql(u8, method, "Tag")) return function.name;
             for (declaration.fields) |field| {

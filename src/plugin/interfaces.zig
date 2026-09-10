@@ -2,11 +2,12 @@ const std = @import("std");
 const diagnostic = @import("diagnostic");
 const naming = @import("naming");
 const semantic = @import("semantic");
+const targets = @import("targets");
 
 pub fn interfaceIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
     const interfaces = document.interfaces orelse return null;
     for (interfaces, 0..) |interface, index| {
-        if (!naming.isGoIdentifier(interface.name)) return issue(interface, "interface name is not a Go identifier", "give the interface a `.name` that is a valid exported Go identifier");
+        if (!targets.default.isIdentifier(interface.name)) return issue(interface, "interface name is not a Go identifier", "give the interface a `.name` that is a valid exported Go identifier");
         if (try collisionIssue(allocator, document, interfaces[0..index], interface)) |found| return found;
         if (interface.types.len == 0) return issue(interface, "interface lists no types", "list at least one registered opaque type in `.types`");
         if (interface.methods.len == 0) return issue(interface, "interface lists no methods", "list at least one Zig method name in `.methods`");
@@ -63,7 +64,7 @@ fn collisionIssue(allocator: std.mem.Allocator, document: semantic.Semantic, pre
     }
     for (document.functions) |function| {
         if (function.receiver != null or !semantic.optionalStringEqual(function.package, interface.package)) continue;
-        const function_name = try semantic.publicFunctionNameAlloc(allocator, document, function);
+        const function_name = try targets.default.publicFunctionNameAlloc(allocator, document, function);
         defer allocator.free(function_name);
         if (!std.mem.eql(u8, function_name, interface.name)) continue;
         return try collision(allocator, interface, try std.fmt.allocPrint(allocator, "interface `{s}` and function `{s}`", .{ interface.name, function.name }));

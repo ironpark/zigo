@@ -3,6 +3,7 @@ const type_spelling = @import("type_spelling.zig");
 const std = @import("std");
 const abi = @import("abi");
 const semantic = @import("semantic");
+const targets = @import("targets");
 const naming = @import("naming");
 const callbacks = @import("callbacks.zig");
 const docs = @import("docs.zig");
@@ -31,11 +32,11 @@ pub fn goParamNamesForAlloc(allocator: std.mem.Allocator, params: []const semant
     const zig_names = try allocator.alloc([]const u8, params.len);
     defer allocator.free(zig_names);
     for (params, 0..) |parameter, index| zig_names[index] = parameter.name;
-    return naming.goParamNamesAlloc(allocator, zig_names);
+    return targets.go.paramNamesAlloc(allocator, zig_names);
 }
 
 pub fn flattenedGoNameAlloc(allocator: std.mem.Allocator, abi_name: []const u8) ![]u8 {
-    const names = try naming.goParamNamesAlloc(allocator, &.{abi_name});
+    const names = try targets.go.paramNamesAlloc(allocator, &.{abi_name});
     defer allocator.free(names);
     return names[0];
 }
