@@ -8,8 +8,9 @@
 use core::ffi::c_char;
 
 extern "C" {
-    pub fn zg_sum(values_ptr: *const i32, values_len: usize) -> i64;
-    pub fn zg_measure(text_ptr: *const u8, text_len: usize) -> usize;
+    pub fn zg_width(cp: u32, out_result: *mut i8) -> i32;
+    pub fn zg_checked_width(cp: u32, out_result: *mut i8) -> i32;
+    pub fn zg_is_printable(cp: u32, out_result: *mut u8) -> i32;
     pub fn zg_last_error_message() -> *const c_char;
     pub fn zg_caught_panic_message(code: i32) -> *const c_char;
 }
@@ -62,12 +63,23 @@ unsafe fn message_at(pointer: *const c_char) -> String {
         .into_owned()
 }
 
-/// Calls the generated C ABI wrapper for `zg_sum`.
-pub fn sum(values: &[i32]) -> i64 {
-    unsafe { zg_sum(values.as_ptr(), values.len()) }
+/// Calls the generated C ABI wrapper for `zg_width`.
+pub fn width(cp: u32) -> (i8, i32) {
+    let mut out_result: i8 = 0;
+    let code = unsafe { zg_width(cp, &mut out_result) };
+    (out_result, code)
 }
 
-/// Calls the generated C ABI wrapper for `zg_measure`.
-pub fn measure(text: &str) -> usize {
-    unsafe { zg_measure(text.as_ptr(), text.len()) }
+/// Calls the generated C ABI wrapper for `zg_checked_width`.
+pub fn checked_width(cp: u32) -> (i8, i32) {
+    let mut out_result: i8 = 0;
+    let code = unsafe { zg_checked_width(cp, &mut out_result) };
+    (out_result, code)
+}
+
+/// Calls the generated C ABI wrapper for `zg_is_printable`.
+pub fn is_printable(cp: u32) -> (u8, i32) {
+    let mut out_result: u8 = 0;
+    let code = unsafe { zg_is_printable(cp, &mut out_result) };
+    (out_result, code)
 }

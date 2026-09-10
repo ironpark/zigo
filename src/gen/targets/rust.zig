@@ -262,4 +262,3 @@ test "Rust generated file names carry no stem suffix" {
     try std.testing.expect(target.fileNameMatchesKind("src/lib.rs", true));
     try std.testing.expect(target.fileNameMatchesKind("src/lib.rs", false));
 }
-

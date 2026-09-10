@@ -33,8 +33,51 @@ fn supportedRole(role: abi.AbiParam.Role) bool {
 /// Whether the minimal Rust backend can render `function`, and what stands in
 /// the way when it cannot. The order of the checks is the order a reader would
 /// ask the questions in, so the first refusal is the most specific one.
+/// Whether `node` reaches a registered enum, at any depth this backend can
+/// otherwise render.
+///
+/// `type_spelling.semanticScalar` happily maps an enum to its tag integer,
+/// which is how a `EraseDisplay` parameter was arriving in Rust as a bare
+/// `u8`: correct at the ABI, and useless to a caller who has no way to learn
+/// that `0` means `below`. Go emits a named type with constants. Until Rust
+/// does too, a boundary enum is refused rather than silently flattened.
+fn reachesEnum(node: semantic.TypeNode) bool {
+    return switch (node) {
+        .@"enum" => true,
+        .slice => |slice| reachesEnum(slice.element.*),
+        .optional => |optional| reachesEnum(optional.child.*),
+        .error_union => |union_type| reachesEnum(union_type.payload.*),
+        else => false,
+    };
+}
+
 pub fn unsupported(program: abi.Program, function: abi.AbiFn) ?Unsupported {
     const origin = function.origin.*;
+    // A document with sub-packages would have every package's functions
+    // flattened into one crate root, silently merging namespaces the binding
+    // deliberately separated -- and two same-named functions from different
+    // packages would collide into one `pub fn`.
+    if (program.packages != null) return .{
+        .what = "sub-packages in the binding",
+        .hint = "the Rust backend emits one crate root; a crate per package is not designed yet",
+    };
+    // A free function declared inside a Zig container: `unicode.codepointWidth`
+    // has nowhere to go in a flat crate root, so its namespace would be
+    // dropped and `a.parse` and `b.parse` would collide. A *method* also
+    // carries a namespace -- its receiver type -- and is judged by the
+    // receiver rules instead.
+    if (origin.receiver == null and origin.namespace != null) return .{
+        .what = "a namespaced free function",
+        .hint = "the Rust backend has no module for a Zig namespace yet; the name would be flattened",
+    };
+    if (reachesEnum(origin.@"return")) return .{
+        .what = "a registered enum result",
+        .hint = "a Rust enum with the tag's repr is not designed yet; the value would arrive as a bare integer",
+    };
+    for (origin.params) |parameter| if (reachesEnum(parameter.type)) return .{
+        .what = "a registered enum parameter",
+        .hint = "a Rust enum with the tag's repr is not designed yet; the value would arrive as a bare integer",
+    };
     if (origin.cancel != null) return .{
         .what = "a cancellable call",
         .hint = "cancellation has no Rust counterpart yet; drop `.cancel` or generate this binding for Go",

@@ -1,0 +1,6 @@
+{
+  "output_target": "rust",
+  "package": "text",
+  "prefix": "zg",
+  "go_module": "unused-by-rust"
+}

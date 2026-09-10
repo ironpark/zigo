@@ -64,10 +64,16 @@ fn renderFunction(
     try writer.writeAll("}\n");
 }
 
-/// The public signature's result. A fallible call is `Result<T, Error>`; an
-/// infallible one is the payload itself, and `()` is written as no arrow.
+/// The public signature's result.
+///
+/// `Result<T, Error>` only when the binding declares a Zig error set. A call
+/// that merely has a status channel -- which is every call with a handle or a
+/// narrow-integer parameter, since `lower.promoteCheckedFunctions` gives those
+/// an empty error union so a native panic has somewhere to go -- returns its
+/// payload, because the codes it can report are defects rather than
+/// conditions. See `raw.Shape.declares_errors`.
 fn writePublicResultType(writer: *std.Io.Writer, shape: raw.Shape) !void {
-    if (shape.fallible) {
+    if (shape.declares_errors) {
         try writer.writeAll(" -> Result<");
         try writePayloadType(writer, shape);
         return writer.writeAll(", Error>");
@@ -79,7 +85,7 @@ fn writePublicResultType(writer: *std.Io.Writer, shape: raw.Shape) !void {
 
 fn writePayloadType(writer: *std.Io.Writer, shape: raw.Shape) !void {
     if (shape.payload) |payload| switch (payload) {
-        .scalar => |scalar| return writer.writeAll(scalar),
+        .scalar => |scalar| return writer.writeAll(scalar.public),
         // An owned copy, not a borrow. The native buffer's lifetime is the
         // library's, and a borrowed slice would need a lifetime the public
         // signature has nothing to tie it to; copying is what the minimal
@@ -102,9 +108,9 @@ fn writeBody(writer: *std.Io.Writer, shape: raw.Shape, function: abi.AbiFn) !voi
             .scalar => try writer.writeAll("    let (result"),
             .slice => try writer.writeAll("    let (result_ptr, result_len"),
         }
-        if (shape.fallible) try writer.writeAll(", code");
+        if (shape.has_status_code) try writer.writeAll(", code");
         try writer.writeAll(") = ");
-    } else if (shape.fallible) {
+    } else if (shape.has_status_code) {
         try writer.writeAll("    let code = ");
     } else {
         // Nothing to inspect after the call, so it is the tail expression.
@@ -125,13 +131,32 @@ fn writeBody(writer: *std.Io.Writer, shape: raw.Shape, function: abi.AbiFn) !voi
         try writer.writeAll(input.name);
     }
     try writer.writeAll(");\n");
-    if (shape.fallible) try writer.print(
-        "    if code != 0 {{\n        return Err(Error::from_code(\"{s}\", code));\n    }}\n",
-        .{function.origin.name},
-    );
+    // What a non-zero code means is the whole of this plan's status-channel
+    // decision, spelled in two lines. A declared error set makes it a value
+    // the caller handles; an empty one makes it a defect, and the only codes
+    // reachable there are an invalid handle -- unreachable in Rust -- and a
+    // caught Zig panic.
+    if (shape.has_status_code) {
+        if (shape.declares_errors) {
+            try writer.print(
+                "    if code != 0 {{\n        return Err(Error::from_code(\"{s}\", code));\n    }}\n",
+                .{function.origin.name},
+            );
+        } else {
+            try writer.print(
+                "    if code != 0 {{\n        raw::panic_native(\"{s}\", code);\n    }}\n",
+                .{function.origin.name},
+            );
+        }
+    }
     if (shape.payload) |payload| {
         switch (payload) {
-            .scalar => try writer.writeAll("    "),
+            .scalar => |scalar| {
+                try writer.writeAll("    ");
+                // A `bool` payload crossed as a byte, so the public value is
+                // the comparison rather than the name.
+                if (scalar.is_bool) return writeResultExpression(writer, shape, "result != 0");
+            },
             // The pointer is the library's for the duration of the call only,
             // so the bytes are copied before returning. A null pointer with a
             // zero length is an empty result, which `from_raw_parts` may not
@@ -145,7 +170,7 @@ fn writeBody(writer: *std.Io.Writer, shape: raw.Shape, function: abi.AbiFn) !voi
                 // it to a name only to return the name is what `clippy` calls
                 // `let_and_return`; a fallible one is not, since its tail is
                 // the `Ok` around the name.
-                try writer.writeAll(if (shape.fallible) "    let result = " else "    ");
+                try writer.writeAll(if (shape.declares_errors) "    let result = " else "    ");
                 try writer.print(
                     \\if result_ptr.is_null() || result_len == 0 {{
                     \\        {s}::new()
@@ -157,19 +182,19 @@ fn writeBody(writer: *std.Io.Writer, shape: raw.Shape, function: abi.AbiFn) !voi
                     if (element.text) "String" else "Vec",
                     if (element.text) "String::from_utf8_lossy(bytes).into_owned()" else "bytes.to_vec()",
                 });
-                if (!shape.fallible) return writer.writeByte('\n');
+                if (!shape.declares_errors) return writer.writeByte('\n');
                 try writer.writeAll(";\n    ");
             },
         }
         return writeResultExpression(writer, shape, "result");
     }
-    // A fallible call whose payload is `void`: the status code was the whole
-    // result, and it was already turned into an `Err` above.
-    if (shape.fallible) try writer.writeAll("    Ok(())\n");
+    // A call whose payload is `void` and whose error set is declared: the
+    // status code was the whole result, and it became an `Err` above.
+    if (shape.declares_errors) try writer.writeAll("    Ok(())\n");
 }
 
 fn writeResultExpression(writer: *std.Io.Writer, shape: raw.Shape, expression: []const u8) !void {
-    if (shape.fallible) return writer.print("Ok({s})\n", .{expression});
+    if (shape.declares_errors) return writer.print("Ok({s})\n", .{expression});
     try writer.print("{s}\n", .{expression});
 }
 

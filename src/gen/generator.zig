@@ -343,7 +343,6 @@ fn appendRustTree(tree: Tree) !void {
     try appendArtifacts(tree.scratch_allocator, tree.prepared, tree.program, tree.emitter_options, .document);
 }
 
-
 /// Normalize before writing anything so aliases such as ./x and dir/../x
 /// cannot silently replace a different emitter's output. All output paths
 /// are portable module-relative paths, including on Windows.
@@ -596,6 +595,83 @@ test "the Rust target writes a crate and reuses the neutral outputs verbatim" {
     try std.testing.expectError(error.FileNotFound, rust_tree.dir.access(std.testing.io, "src/error.rs", .{}));
     // And no Go anywhere in the tree.
     try std.testing.expectError(error.FileNotFound, rust_tree.dir.access(std.testing.io, "calc/calc_gen.go", .{}));
+}
+
+test "the Rust target refuses the shapes it would otherwise flatten silently" {
+    // Found by running every Go generator case's document through the Rust
+    // target and compiling the result. Each of these three used to be
+    // *accepted* and to produce a crate that compiled while quietly throwing
+    // away something the binding said:
+    //
+    //   - a registered enum arrived as its bare tag integer, so a caller had
+    //     no way to learn that `0` means `low`
+    //   - a namespaced free function lost its namespace, so `a.parse` and
+    //     `b.parse` would have collided into one `pub fn parse`
+    //   - sub-packages were merged into one crate root
+    //
+    // A wrong answer that compiles is the failure ZIGO060 exists to prevent,
+    // so all three are refused until each has a real mapping.
+    const cases = [_]struct { fixture: []const u8, names: []const u8 }{
+        .{ .fixture =
+        \\{"package":"sample","prefix":"zg","types":[{"kind":"enum","name":"Level","exhaustive":true,"fields":[{"name":"low","value":0}],"tag_type":{"bits":8,"kind":"int","signed":false}}],"zig_version":"0.16.0","functions":[{"name":"echo","params":[{"name":"value","type":{"kind":"enum","ref":"Level"}}],"return":{"kind":"void"},"symbol":"zg_echo"}]}
+        , .names = "enum" },
+        .{ .fixture =
+        \\{"package":"sample","prefix":"zg","types":[],"zig_version":"0.16.0","functions":[{"name":"width","namespace":"unicode","params":[],"return":{"bits":8,"kind":"int","signed":true},"symbol":"zg_unicode_width"}]}
+        , .names = "namespaced" },
+        .{ .fixture =
+        \\{"package":"sample","prefix":"zg","types":[],"zig_version":"0.16.0","functions":[{"name":"width","package":"text","params":[],"return":{"bits":8,"kind":"int","signed":true},"symbol":"zg_width"}],"packages":[{"name":"text","path":"text"}]}
+        , .names = "sub-packages" },
+    };
+    for (cases) |case| {
+        var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+        defer arena.deinit();
+        var tree = std.testing.tmpDir(.{ .iterate = true });
+        defer tree.cleanup();
+        var issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
+        try std.testing.expectError(error.InvalidSemantic, generate(arena.allocator(), std.testing.io, case.fixture, tree.dir, .{
+            .output_target = targets.rust.target,
+            .diagnostics = &issues,
+            .package = "sample",
+            .prefix = "zg",
+            .go_module = "unused-by-rust",
+        }));
+        try std.testing.expect(issues.items.len != 0);
+        try std.testing.expectEqualStrings("ZIGO060", issues.items[0].code);
+        try std.testing.expect(std.mem.indexOf(u8, issues.items[0].message, case.names) != null);
+        // Refused before the tree is touched, like every other generation
+        // failure.
+        try std.testing.expectError(error.FileNotFound, tree.dir.access(std.testing.io, "src/lib.rs", .{}));
+    }
+}
+
+test "a status channel with no declared errors returns its payload and panics" {
+    // The crate this used to produce did not compile. A narrow-integer
+    // parameter makes `lower.promoteCheckedFunctions` rewrite the return into
+    // an error union with an *empty* error set, so that a native panic has a
+    // channel; the Rust backend read that as "declares errors", spelled the
+    // signature `Result<i8, Error>`, and emitted no `error.rs` to define
+    // `Error` -- because no error code exists to define one from.
+    const fixture =
+        \\{"functions":[{"doc":"Infallible in Zig.","name":"width","params":[{"name":"cp","type":{"bits":21,"kind":"int","signed":false}}],"return":{"bits":8,"kind":"int","signed":true},"symbol":"zg_width"}],"package":"text","prefix":"zg","types":[],"zig_version":"0.16.0"}
+    ;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var tree = std.testing.tmpDir(.{ .iterate = true });
+    defer tree.cleanup();
+    try generate(arena.allocator(), std.testing.io, fixture, tree.dir, .{
+        .output_target = targets.rust.target,
+        .package = "text",
+        .prefix = "zg",
+        .go_module = "unused-by-rust",
+    });
+    const lib = try tree.dir.readFileAlloc(std.testing.io, "src/lib.rs", arena.allocator(), .limited(64 * 1024));
+    // The payload, not a `Result`, and the non-zero code is a panic.
+    try std.testing.expect(std.mem.indexOf(u8, lib, "pub fn width(cp: u32) -> i8 {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lib, "raw::panic_native(\"width\", code);") != null);
+    // Nothing names an error type, and no module claims to define one.
+    try std.testing.expect(std.mem.indexOf(u8, lib, "Error") == null);
+    try std.testing.expect(std.mem.indexOf(u8, lib, "mod error;") == null);
+    try std.testing.expectError(error.FileNotFound, tree.dir.access(std.testing.io, "src/error.rs", .{}));
 }
 
 test "the Rust target refuses a shape it cannot render, naming the declaration" {

@@ -24,6 +24,27 @@ pub fn panic_message(code: i32) -> String {
     unsafe { message_at(zg_caught_panic_message(code)) }
 }
 
+/// Reports a native failure the call had no error channel for.
+///
+/// Only two codes can reach here. `-4` is an invalid handle, which a
+/// generated wrapper makes unreachable by owning a non-null pointer for
+/// its whole life -- Go needs a run-time check for it because a closed
+/// handle is still a usable Go value. `-256` and below is a Zig panic the
+/// shim caught. Both are defects in the bound library rather than
+/// conditions a caller can act on, and Rust's vehicle for a defect in the
+/// callee is a panic, so a call whose Zig signature declares no error set
+/// returns its value directly and comes here if the native side failed.
+///
+/// Declare a Zig error set on the function to get a `Result` instead.
+#[cold]
+pub fn panic_native(operation: &str, code: i32) -> ! {
+    let message = panic_message(code);
+    if message.is_empty() {
+        panic!("zigo: {operation}: native failure, status {code}");
+    }
+    panic!("zigo: {operation}: native panic: {message}");
+}
+
 /// Copies a NUL-terminated message the shim owns. A null pointer is an
 /// absent message rather than an error: the accessors return one when no
 /// panic has been recorded.

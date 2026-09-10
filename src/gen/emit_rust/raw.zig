@@ -81,7 +81,7 @@ fn writeRawParamType(writer: *std.Io.Writer, parameter: abi.AbiParam) !void {
             try writer.print("*{s} ", .{if (pointer.is_const) "const" else "mut"});
             try writer.writeAll(types.rawScalar(pointer.child.*) orelse return error.UnsupportedType);
         },
-        // The out-parameter pair a fallible or slice-returning call writes
+        // The out-parameter pair a status-carrying or slice-returning call writes
         // through. `payload_out` carries one value; the two `return_slice_*`
         // roles carry a pointer and a length, so the pointer's own parameter
         // is a pointer to a pointer.
@@ -119,6 +119,27 @@ fn renderMessageAccessors(writer: *std.Io.Writer, program: abi.Program) !void {
         \\    unsafe {{ message_at({0s}_caught_panic_message(code)) }}
         \\}}
         \\
+        \\/// Reports a native failure the call had no error channel for.
+        \\///
+        \\/// Only two codes can reach here. `-4` is an invalid handle, which a
+        \\/// generated wrapper makes unreachable by owning a non-null pointer for
+        \\/// its whole life -- Go needs a run-time check for it because a closed
+        \\/// handle is still a usable Go value. `-256` and below is a Zig panic the
+        \\/// shim caught. Both are defects in the bound library rather than
+        \\/// conditions a caller can act on, and Rust's vehicle for a defect in the
+        \\/// callee is a panic, so a call whose Zig signature declares no error set
+        \\/// returns its value directly and comes here if the native side failed.
+        \\///
+        \\/// Declare a Zig error set on the function to get a `Result` instead.
+        \\#[cold]
+        \\pub fn panic_native(operation: &str, code: i32) -> ! {{
+        \\    let message = panic_message(code);
+        \\    if message.is_empty() {{
+        \\        panic!("zigo: {{operation}}: native failure, status {{code}}");
+        \\    }}
+        \\    panic!("zigo: {{operation}}: native panic: {{message}}");
+        \\}}
+        \\
         \\/// Copies a NUL-terminated message the shim owns. A null pointer is an
         \\/// absent message rather than an error: the accessors return one when no
         \\/// panic has been recorded.
@@ -144,9 +165,9 @@ fn renderMessageAccessors(writer: *std.Io.Writer, program: abi.Program) !void {
 /// `unsafe`.
 ///
 /// The wrapper's return shape is the call's ABI shape, not its public shape:
-/// a fallible function returns `(payload, code)` and the public layer turns
-/// the code into a `Result`. Keeping the split there means the error type is
-/// the public layer's business alone.
+/// a call with a status channel returns `(payload, code)` and the public layer
+/// decides what a non-zero code means. Keeping the split there means both the
+/// error type and the panic are the public layer's business alone.
 fn renderWrapper(
     allocator: std.mem.Allocator,
     writer: *std.Io.Writer,
@@ -172,8 +193,8 @@ fn renderWrapper(
         // overwritten by the call, so the initializer only has to be a valid
         // one, and a concrete literal reads as the placeholder it is.
         .scalar => |scalar| try writer.print("    let mut out_result: {s} = {s};\n", .{
-            scalar,
-            if (scalar.len != 0 and scalar[0] == 'f') "0.0" else "0",
+            scalar.raw,
+            if (scalar.raw.len != 0 and scalar.raw[0] == 'f') "0.0" else "0",
         }),
         .slice => |element| try writer.print(
             "    let mut out_result_ptr: *const {s} = core::ptr::null();\n    let mut out_result_len: usize = 0;\n",
@@ -182,19 +203,16 @@ fn renderWrapper(
     };
     // The call is the tail expression whenever nothing has to be read after
     // it. Binding it to a name first and returning the name is what `clippy`
-    // calls `let_and_return`, and it would be the shape of every infallible
-    // scalar call -- which is most of them.
-    // Only an out parameter has to be read after the call. A fallible call
-    // with no payload returns its status code and nothing else, so that too
-    // is the tail expression.
+    // calls `let_and_return`, and it would be the shape of every scalar call
+    // with no out parameter -- which is most of them.
     //
-    // Being a statement and binding a name are two different questions. An
-    // infallible call with an out parameter is a statement, but the C wrapper
-    // returns `void`, so binding `code` to it binds `()` and rustc rejects the
-    // unused name under `-D warnings`.
+    // Being a statement and binding a name are two different questions. A call
+    // with an out parameter but no status code is a statement, but the C
+    // wrapper returns `void`, so binding `code` to it binds `()` and rustc
+    // rejects the unused name under `-D warnings`.
     const reads_after_call = shape.payload != null;
     try writer.writeAll("    ");
-    if (reads_after_call and shape.fallible) try writer.writeAll("let code = ");
+    if (reads_after_call and shape.has_status_code) try writer.writeAll("let code = ");
     try writer.print("unsafe {{ {s}(", .{function.symbol});
     for (function.params, 0..) |parameter, index| {
         if (index != 0) try writer.writeAll(", ");
@@ -244,13 +262,38 @@ pub const Shape = struct {
     /// The scalar the call returns directly, when it returns one and it is not
     /// a status code.
     direct: ?Direct = null,
-    /// The function can fail, so its C return is a status code.
-    fallible: bool,
+    /// The C return is a status code rather than the result, so the result
+    /// travels through an out parameter and the code has to be inspected.
+    ///
+    /// This is *not* the same question as `declares_errors` below, and
+    /// conflating the two is what made a narrow-integer parameter generate a
+    /// crate that referenced an error type nobody emitted.
+    /// `lower.promoteCheckedFunctions` rewrites the return of every function
+    /// that `reportsPanics` -- a handle receiver, a handle parameter, or a
+    /// narrow-integer parameter -- into an error union with an *empty* error
+    /// set, because a native panic needs a channel to be reported through.
+    /// So a status channel exists far more often than a Zig error does.
+    has_status_code: bool,
+    /// The binding declares a Zig error set for this call, so a non-zero code
+    /// is a condition the caller can act on and the public signature is a
+    /// `Result`.
+    ///
+    /// When this is false but `has_status_code` is true, the only reachable
+    /// non-zero codes are `-4` (an invalid handle, which a Rust wrapper makes
+    /// unreachable by owning a non-null pointer for its whole life) and
+    /// `<= -256` (a caught Zig panic). Both are defects rather than
+    /// conditions, and Rust's vehicle for a defect in the callee is a panic,
+    /// so the public signature stays the bare payload.
+    declares_errors: bool,
 
     pub const Direct = struct { raw: []const u8, public: []const u8, is_bool: bool };
 
     pub const Payload = union(enum) {
-        scalar: []const u8,
+        /// Both spellings, because the C ABI carries a Zig `bool` as a byte:
+        /// the raw layer sees `u8` and only the public layer knows it is a
+        /// `bool`. Spelling the payload with the raw name alone made
+        /// `error{E}!bool` arrive as `Result<u8, Error>`.
+        scalar: Direct,
         slice: types.Element,
     };
 
@@ -303,29 +346,36 @@ pub const Shape = struct {
             }
             try inputs.append(allocator, input);
         }
-        const fallible = origin.@"return" == .error_union;
-        const payload_node: semantic.TypeNode = if (fallible) origin.@"return".error_union.payload.* else origin.@"return";
+        const has_status_code = origin.@"return" == .error_union;
+        const payload_node: semantic.TypeNode = if (has_status_code) origin.@"return".error_union.payload.* else origin.@"return";
         var shape: Shape = .{
             .raw_name = raw_name,
             .inputs = try inputs.toOwnedSlice(allocator),
-            .fallible = fallible,
+            .has_status_code = has_status_code,
+            .declares_errors = function.errors.len != 0,
         };
         if (payload_node == .slice) {
             shape.payload = .{ .slice = types.sliceElement(payload_node, function.ret_string) orelse
                 return error.UnsupportedType };
-        } else if (fallible and payload_node != .void) {
-            shape.payload = .{ .scalar = types.rawScalar(
-                type_spelling.semanticScalar(program, payload_node),
-            ) orelse return error.UnsupportedType };
-        } else if (!fallible and payload_node != .void) {
-            const scalar = type_spelling.semanticScalar(program, payload_node);
-            shape.direct = .{
-                .raw = types.rawScalar(scalar) orelse return error.UnsupportedType,
-                .public = types.publicScalar(payload_node, scalar) orelse return error.UnsupportedType,
-                .is_bool = payload_node == .bool,
-            };
+        } else if (payload_node != .void) {
+            const spelling = try scalarSpelling(program, payload_node);
+            // Whether the value comes back through an out parameter or as the
+            // C return is the status channel's question, not the error set's.
+            if (has_status_code) shape.payload = .{ .scalar = spelling } else shape.direct = spelling;
         }
         return shape;
+    }
+
+    /// Both spellings of one scalar. The two differ only for `bool`, which
+    /// the C ABI carries as a byte, so this is the one place that difference
+    /// is decided.
+    fn scalarSpelling(program: abi.Program, node: semantic.TypeNode) !Direct {
+        const scalar = type_spelling.semanticScalar(program, node);
+        return .{
+            .raw = types.rawScalar(scalar) orelse return error.UnsupportedType,
+            .public = types.publicScalar(node, scalar) orelse return error.UnsupportedType,
+            .is_bool = node == .bool,
+        };
     }
 
     pub fn deinit(self: Shape, allocator: std.mem.Allocator) void {
@@ -334,19 +384,20 @@ pub const Shape = struct {
         allocator.free(self.inputs);
     }
 
-    /// The raw wrapper's return type: the payload beside its status code when
-    /// the call can fail, the payload alone when it cannot.
+    /// The raw wrapper's return type. The raw layer reports the ABI as it is,
+    /// so it always carries the status code when one exists; deciding what the
+    /// code *means* is the public layer's job.
     pub fn writeRawResultType(self: Shape, writer: *std.Io.Writer) !void {
         if (self.payload) |payload| {
             try writer.writeAll(" -> (");
             switch (payload) {
-                .scalar => |scalar| try writer.writeAll(scalar),
+                .scalar => |scalar| try writer.writeAll(scalar.raw),
                 .slice => |element| try writer.print("*const {s}, usize", .{element.raw}),
             }
-            if (self.fallible) try writer.writeAll(", i32");
+            if (self.has_status_code) try writer.writeAll(", i32");
             return writer.writeByte(')');
         }
-        if (self.fallible) return writer.writeAll(" -> i32");
+        if (self.has_status_code) return writer.writeAll(" -> i32");
         if (self.direct) |direct| return writer.print(" -> {s}", .{direct.raw});
     }
 
@@ -357,7 +408,7 @@ pub const Shape = struct {
                 .scalar => try writer.writeAll("out_result"),
                 .slice => try writer.writeAll("out_result_ptr, out_result_len"),
             }
-            if (self.fallible) try writer.writeAll(", code");
+            if (self.has_status_code) try writer.writeAll(", code");
             return writer.writeAll(")\n");
         }
     }
