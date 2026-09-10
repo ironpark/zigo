@@ -7,7 +7,7 @@ registered_at: "2026-09-10T05:36:17Z"
 
 # Phases
 
-- [ ] [Phase 00: Separate the status channel from the declared error set](phases/00-status-channel.md)
+- [x] [Phase 00: Separate the status channel from the declared error set](phases/00-status-channel.md)
 - [ ] [Phase 01: Move the constructor-name rule behind the target](phases/01-constructor-name-rule.md)
 - [ ] [Phase 02: Opaque handles become owning structs with Drop](phases/02-handles-as-drop.md)
 - [ ] [Phase 03: Borrowed views carry the lifetime they borrow](phases/03-borrowed-views.md)

@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-10T05:49:18Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `tests/generator_cases/rust_checked/expected/src/lib.rs` shows the
 > NEXT: none

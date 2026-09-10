@@ -71,6 +71,16 @@ pub const VTable = struct {
     /// namespace. `Parameter`, `SemanticFn` and `TypeDecl` each hold one
     /// namespace per target, so this is where a target reads its own.
     nameOverride: *const fn (function: semantic.SemanticFn) ?[]const u8,
+    /// The public name a constructor is reached under. `type_name` is the
+    /// registered type it constructs and `declared_name` is the spelling the
+    /// binding asked for, if it asked.
+    ///
+    /// A rule rather than a case of `exportedFunctionNameAlloc` because the
+    /// languages disagree about whether the type belongs in the name at all:
+    /// Go has no associated functions, so a constructor is a package-level
+    /// `NewContext`, while Rust reaches one as `Context::new` and repeating
+    /// the type would spell `Context::new_context`.
+    constructorNameAlloc: *const fn (allocator: std.mem.Allocator, type_name: []const u8, declared_name: ?[]const u8) anyerror![]u8,
     setNameOverride: *const fn (function: *semantic.SemanticFn, name: ?[]const u8) void,
     /// Environment variable a generated dynamic-loading package reads before
     /// the shared `ZIGO_LIBRARY_PATH`, so two packages in one process stay
@@ -139,6 +149,15 @@ pub const Target = struct {
         return self.vtable.nameOverride(function);
     }
 
+    pub fn constructorNameAlloc(
+        self: Target,
+        allocator: std.mem.Allocator,
+        type_name: []const u8,
+        declared_name: ?[]const u8,
+    ) anyerror![]u8 {
+        return self.vtable.constructorNameAlloc(allocator, type_name, declared_name);
+    }
+
     /// The write side of `nameOverride`. A plugin's `name_function` hook runs
     /// in target-neutral code, so the namespace it writes into has to be the
     /// selected target's; writing Go's would leave the name somewhere the
@@ -167,9 +186,16 @@ pub const Target = struct {
         function: semantic.SemanticFn,
     ) ![]u8 {
         if (self.nameOverride(function)) |name| return allocator.dupe(u8, name);
+        // `constructorForInit` matches on `function.goOwner()`, which is
+        // `FnGo.owner` falling back to `SemanticFn.namespace`. The fallback is
+        // the Zig container the function was declared in and is neutral in
+        // substance; only the `.constructs` override that can replace it lives
+        // in a Go-named field. Left as it is rather than refused: refusing a
+        // shape that works, for a naming-hygiene reason, would be the wrong
+        // trade. Splitting it into a neutral owner plus a per-target override
+        // is a hand-off, not a blocker.
         if (semantic.constructorForInit(document.constructors, function)) |constructor| {
-            if (constructor.name) |name| return self.exportedFunctionNameAlloc(allocator, name);
-            return std.fmt.allocPrint(allocator, "New{s}", .{constructor.type});
+            return self.constructorNameAlloc(allocator, constructor.type, constructor.name);
         }
         return self.exportedFunctionNameAlloc(allocator, function.name);
     }
@@ -257,6 +283,58 @@ test "Go answers the type rule and the function rule identically" {
         defer std.testing.allocator.free(pascal);
         try std.testing.expectEqualStrings(pascal, function_name);
     }
+}
+
+test "the two languages disagree about whether a constructor names its type" {
+    // Go has no associated functions, so the type has to be in the name for
+    // `NewContext` and `NewParser` to be distinguishable at package scope.
+    // Rust reaches one as `Context::new()`, where the path already says it.
+    const cases = [_]struct {
+        type_name: []const u8,
+        declared: ?[]const u8,
+        go_name: []const u8,
+        rust_name: []const u8,
+    }{
+        .{ .type_name = "Context", .declared = null, .go_name = "NewContext", .rust_name = "new" },
+        .{ .type_name = "EventQueue", .declared = null, .go_name = "NewEventQueue", .rust_name = "new" },
+        // A declared name goes through each language's function-name rule, so
+        // the same spelling arrives PascalCase in Go and snake_case in Rust.
+        .{ .type_name = "Context", .declared = "openWith", .go_name = "OpenWith", .rust_name = "open_with" },
+    };
+    for (cases) |case| {
+        const go_name = try go.target.constructorNameAlloc(std.testing.allocator, case.type_name, case.declared);
+        defer std.testing.allocator.free(go_name);
+        try std.testing.expectEqualStrings(case.go_name, go_name);
+        const rust_name = try rust.target.constructorNameAlloc(std.testing.allocator, case.type_name, case.declared);
+        defer std.testing.allocator.free(rust_name);
+        try std.testing.expectEqualStrings(case.rust_name, rust_name);
+    }
+}
+
+test "the public function name reaches the constructor rule through the target" {
+    // What used to be a `New{s}` literal inside this file. The document is the
+    // minimum `constructorForInit` matches on: it pairs by `init` name and by
+    // `goOwner()`, which falls back to the Zig container.
+    const document: semantic.Semantic = .{
+        .constructors = &.{.{ .deinit = "deinit", .init = "create", .type = "Context" }},
+        .functions = &.{},
+        .package = "sample",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    const function: semantic.SemanticFn = .{
+        .name = "create",
+        .namespace = "Context",
+        .params = &.{},
+        .@"return" = .void,
+        .symbol = "zg_context_create",
+    };
+    const go_name = try go.target.publicFunctionNameAlloc(std.testing.allocator, document, function);
+    defer std.testing.allocator.free(go_name);
+    try std.testing.expectEqualStrings("NewContext", go_name);
+    const rust_name = try rust.target.publicFunctionNameAlloc(std.testing.allocator, document, function);
+    defer std.testing.allocator.free(rust_name);
+    try std.testing.expectEqualStrings("new", rust_name);
 }
 
 test "targets are addressable by name" {

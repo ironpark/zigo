@@ -51,6 +51,7 @@ pub const target: target_api.Target = .{
         .unexportedNameAlloc = vtUnexportedNameAlloc,
         .packageNameAlloc = vtPackageNameAlloc,
         .nameOverride = nameOverride,
+        .constructorNameAlloc = vtConstructorNameAlloc,
         .setNameOverride = setNameOverride,
         .libraryPathEnvironmentAlloc = vtLibraryPathEnvironmentAlloc,
     },
@@ -101,6 +102,28 @@ pub const isRawIdentifierEligible = words.isRawIdentifierEligible;
 /// functions take the snake_case path, which has no table.
 pub fn typeNameAlloc(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
     return naming.pascalWithInitialismsAlloc(allocator, input, &.{});
+}
+
+fn vtConstructorNameAlloc(allocator: std.mem.Allocator, type_name: []const u8, declared_name: ?[]const u8) anyerror![]u8 {
+    return constructorNameAlloc(allocator, type_name, declared_name);
+}
+
+/// Rust's constructor spelling: `new`, or the snake spelling of the name the
+/// binding asked for.
+///
+/// The type is not in the name. A Rust constructor is an associated function
+/// reached as `Context::new()`, so the path already says which type is being
+/// constructed and Go's `NewContext` would spell `Context::new_context`.
+/// `new` is the convention Rust's own API guidelines state for the primary
+/// constructor.
+pub fn constructorNameAlloc(
+    allocator: std.mem.Allocator,
+    type_name: []const u8,
+    declared_name: ?[]const u8,
+) ![]u8 {
+    _ = type_name;
+    if (declared_name) |name| return naming.snakeAlloc(allocator, name);
+    return allocator.dupe(u8, "new");
 }
 
 /// The public Rust spelling of a function's name override, read from the

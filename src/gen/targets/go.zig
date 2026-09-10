@@ -32,6 +32,7 @@ pub const target: target_api.Target = .{
         .unexportedNameAlloc = vtUnexportedNameAlloc,
         .packageNameAlloc = vtPackageNameAlloc,
         .nameOverride = nameOverride,
+        .constructorNameAlloc = vtConstructorNameAlloc,
         .setNameOverride = setNameOverride,
         .libraryPathEnvironmentAlloc = vtLibraryPathEnvironmentAlloc,
     },
@@ -75,6 +76,28 @@ fn setNameOverride(function: *semantic.SemanticFn, name: ?[]const u8) void {
 
 fn nameOverride(function: semantic.SemanticFn) ?[]const u8 {
     return function.goName();
+}
+
+fn vtConstructorNameAlloc(allocator: std.mem.Allocator, type_name: []const u8, declared_name: ?[]const u8) anyerror![]u8 {
+    return constructorNameAlloc(allocator, type_name, declared_name);
+}
+
+/// Go's constructor spelling: `New<Type>`, or the exported spelling of the
+/// name the binding asked for.
+///
+/// Go has no associated functions, so a constructor is a package-level
+/// function and the type has to be in its name for `NewContext` and
+/// `NewParser` to be distinguishable. The `New` prefix is the standard library's
+/// convention and predates the target seam; it is spelled here rather than in
+/// `targets.zig` because it is a Go convention, not a property of a
+/// constructor.
+pub fn constructorNameAlloc(
+    allocator: std.mem.Allocator,
+    type_name: []const u8,
+    declared_name: ?[]const u8,
+) ![]u8 {
+    if (declared_name) |name| return naming.pascalAlloc(allocator, name);
+    return std.fmt.allocPrint(allocator, "New{s}", .{type_name});
 }
 
 /// `Target.generatedFileNameAlloc` for callers already inside the Go emitter.
