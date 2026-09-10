@@ -4,6 +4,28 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Breaking
+
+- `semantic.json`의 `ir_version`이 **2**로 올라갔습니다. 출력 언어에만 해당하는 필드가
+  선언마다 하나의 `go` 객체로 모입니다. 함수의 `go_name`·`go_owner`·`return_go_adapter`·
+  `iterator`·`implements`는 `go.name`·`go.owner`·`go.return_adapter`·`go.iterator`·
+  `go.implements`로, 파라미터의 `go_adapter`·`go_error`는 `go.adapter`·`go.callback_error`로,
+  등록 타입의 `go_adapter`는 `go.adapter`로 옮겨갑니다. 생성기는 버전 1 문서를 읽을 때
+  자동으로 올리므로 커밋된 `semantic.json`을 손으로 고칠 필요는 없지만, 다음 생성에서
+  파일이 새 형태로 다시 쓰입니다. 바인딩 작성 API(`.go`, `.go_error`, `.name`)와 생성되는
+  Go 코드는 그대로입니다.
+
+### Changed
+
+- 출력 언어별 규칙을 `Target` 하나로 모았습니다. 예약어, 식별자와 변환 함수 이름 검사,
+  파라미터 이름 생성, 공개·비공개·패키지 이름의 케이스 규칙, 생성 파일 이름과 포매터가
+  Go 전용 함수로 흩어져 있던 것을 `src/gen/targets.zig`의 인터페이스 뒤로 옮겼습니다.
+  검증·reflect·`abi-diff`·report·generator는 이제 타겟을 값으로 받고, 타겟은
+  `src/main.zig`와 `addGoBindings` 두 곳에서만 정해집니다. 생성물은 바이트 단위로
+  동일합니다.
+
 ## [0.21.1] - 2026-09-08
 
 ### Fixed
