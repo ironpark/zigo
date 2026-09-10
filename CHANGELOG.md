@@ -47,13 +47,26 @@
   `pub fn echo(value: u8) -> u8`이 되어 호출자가 `0`이 `below`인지 알 방법이
   없었고, `unicode.grapheme.breaks`는 네임스페이스를 잃어 같은 이름의 두 함수가
   하나로 충돌했습니다. sub-package도 하나의 크레이트 루트로 병합됐습니다.
-  세 가지 모두 `ZIGO060`으로 거부됩니다.
+  네임스페이스와 sub-package는 `ZIGO060`으로 거부됩니다. 등록된 스칼라 enum은
+  아래의 이름 있는 Rust 타입 매핑으로 해결했습니다.
 - Rust 타겟에서 **주입된 파라미터**(`std.mem.Allocator`, `std.Io`)가 공개
   시그니처에 `()` 인자로 새던 문제.
 - `error{E}!bool`이 Rust에서 `Result<u8, Error>`로 오던 문제.
 - `src/gen/targets/rust.zig`가 `zig fmt --check`를 통과하지 못하던 문제.
 
 ### Added
+
+- **등록된 Zig enum → 이름 있는 Rust 타입**. 닫힌 enum은 tag 폭·부호를 따르는
+  `#[repr(...)]` enum, 열린 enum은 이름 없는 값도 보존하는 `#[repr(transparent)]`
+  newtype과 `Type::Member` 상수로 생성됩니다. 정수에서의 `TryFrom`은 닫힌 enum의
+  미등록·생략 멤버와 열린 enum의 원래 tag 범위 밖 값을 거부합니다. C ABI는 계속
+  정수만 전달하고, 유효하지 않은 반환 tag는 상태 코드 확인 후 Rust panic으로
+  보고하므로 잘못된 Rust 판별자를 만들지 않습니다. 자유 함수와 핸들 메서드의
+  스칼라 파라미터·반환·error union payload를 지원합니다.
+- enum의 **`text: true` → `Display`·`FromStr`**. 공개된 Zig 멤버 이름을 표시·파싱하고,
+  열린 enum의 이름 없는 값은 `Type(number)`로 표시합니다. 숫자 표기는 진단용이며
+  `FromStr`은 공개 멤버 이름만 받습니다. enum 슬라이스·버퍼·optional과 enum 값
+  수신자는 계속 선언 이름을 명시하는 `ZIGO060`으로 거부됩니다.
 
 - **opaque 핸들 → `Drop`**. 핸들이 자기 수명 동안만 네이티브 포인터를 소유하는
   구조체가 되고, destructor는 `Drop`에서 호출됩니다. 잊을 `Close()`도, 검사할

@@ -3,11 +3,11 @@ description: Map registered Zig enums to safe named Rust types without changing 
 plan_status: in-progress
 registered_at: "2026-09-10T06:54:22Z"
 ---
-> NEXT: Implement and verify scalar enum mapping. ([Phase 0](phases/00-scalar-enums.md))
+> NEXT: None. Implementation and verification complete; handoffs are in phase 1 and the research document.
 
 # Phases
 
-- [ ] [Phase 00: Map scalar enums safely](phases/00-scalar-enums.md)
+- [x] [Phase 00: Map scalar enums safely](phases/00-scalar-enums.md)
 - [ ] [Phase 01: Verify the repository and document the mapping](phases/01-verification-and-handoff.md)
 
 # Shared Verification
@@ -20,4 +20,4 @@ Implement and prove scalar mapping first; full repository verification and hando
 
 # Next Implementation Target
 
-Implement and verify scalar enum mapping.
+None. Enum receivers and aggregate enum shapes remain explicit follow-up work.

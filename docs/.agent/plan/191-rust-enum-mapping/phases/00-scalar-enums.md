@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-10T07:09:56Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Root zig build test passes, new goldens compile with edition 2021 -D warnings, rustfmt and clippy pass, executable boundary tests pass.
 > NEXT: none

@@ -240,18 +240,71 @@ report·generator 어느 caller도 Rust 때문에 바뀌지 않았습니다.
   중립이고 `.constructs` override만 Go 네임스페이스에 있습니다. 중립 `owner` +
   타겟별 override로 쪼개는 것이 정리입니다.
 
+### 등록된 enum (플랜 `191-rust-enum-mapping`)
+
+등록된 스칼라 enum이 공개 Rust API에서 이름을 유지합니다. 자유 함수뿐 아니라
+핸들 메서드의 파라미터·직접 반환·상태 통로 payload에도 같은 변환을 씁니다.
+
+- **닫힌 enum**: ABI tag의 폭·부호를 따르는 `#[repr(u8)]`, `#[repr(i32)]` 등의
+  Rust enum. `TryFrom<tag>`가 공개 멤버를 명시적으로 매칭하며 오류에는 원래
+  정수를 돌려줍니다. `From<Enum>`은 tag 정수를 돌려줍니다.
+- **열린 enum**: private 정수 필드를 가진 `#[repr(transparent)]` newtype.
+  `Type::Member` 상수와 `TryFrom`/`From`을 제공합니다. 모든 원래 Zig tag 값을
+  보존하지만, `u3`/`i3`처럼 ABI가 폭을 늘린 경우에는 원래 범위를 검사합니다.
+  `Unknown` variant나 `#[non_exhaustive]`에 의존하지 않으므로 미등록 판별자 UB가
+  없습니다. 상수의 PascalCase는 닫힌 enum과 호출법을 같게 하려는 의도적인
+  `non_upper_case_globals` 예외입니다.
+- **경계**: extern과 raw 반환은 끝까지 정수입니다. 성공 상태를 확인한 후
+  `TryFrom`으로 변환하고, 닫힌 enum의 알 수 없거나 생략된 값은 계약 위반으로
+  Rust panic을 냅니다. Zig 오류 집합에 새 오류를 끼워 넣지 않습니다.
+  enum 정수 인자를 받는 raw 래퍼는 `unsafe fn`입니다. 공개 API가 이름 있는
+  타입을 받아 Zig 유효성 전제조건을 충족합니다.
+- **멤버·텍스트**: `program.liveFields`로 omit을 반영합니다. Rust의 빈 initialism
+  표를 재사용해 `http_id` → `HttpId`, `utf8_url` → `Utf8Url`을 얻습니다.
+  `text: true`일 때만 `Display`·`FromStr`이 생깁니다. 열린 enum의 이름 없는 값은
+  `Type(number)`로 표시하지만 파싱은 공개 Zig 멤버 이름만 허용합니다. Go의
+  숫자 파싱 계약을 그대로 복사하지 않았습니다.
+- **방어**: 빈 닫힌 enum과 Rust 이름 변환 충돌은 함수가 없어도 `ZIGO060`으로
+  진단합니다. 빈 열린 enum은 지원하며 text trait의 불필요한 단일-arm match는
+  clippy 검증에서 찾아 제거했습니다.
+
+실제 재사용: `AbiEnum`·`Program.liveFields`·`typeDecl`, 기존 tag lowering과
+`Shape.has_status_code`/`declares_errors`, 공유 `writeBody`, Rust의
+`pascalWithInitialismsAlloc(..., &.{})`, 조건부 emitter 표. IR 필드 추가도
+`ir_version` 변경도 없으며 Go emitter·shim·header는 수정하지 않았습니다.
+파일 규모를 다시 센 결과, 그대로 재사용한 reflect **8,620줄**, IR **3,049줄**,
+lowering **3,292줄**, validate **6,416줄**, shim/header/target_types **1,887줄**입니다.
+Rust 전용 새 `enums.zig`는 **213줄**(진단·단위 테스트 포함), 기존 Rust emitter
+수정은 **+75/-24줄**, 전체 `emit_rust`는 **2,096 → 2,360줄**입니다.
+테스트 빌드에 runtime 실행 연결 **22줄**을 추가했습니다.
+
+감사: 같은 Go 입력 74개에 대해 **before `accepted=7 broken= crashed=` →
+after `accepted=10 broken= crashed=`**. 추가 통과는 `enum_text`, `enum_lookup`,
+`enum_lookup_purego`입니다. 나머지 64개는 진단으로 거부되며 생성기 패닉은 없습니다.
+처음 이유가 enum이라는 통계는 그 문서의 나머지 모든 선언도 지원한다는 뜻이
+아닙니다. 예를 들어 `open_enum`에는 extern struct와 enum slice가 함께 있습니다.
+
+검증: 루트 **434/434 스텝·672/672 테스트**, 별도 Rust 경계 runtime **7/7 테스트**,
+두 신규 골든의 `rustc --edition 2021 -D warnings`·rustfmt·clippy 통과.
+전체 generator 문서는 브랜치 시작 시 83개, 두 케이스 추가 후 **85개**입니다
+(Go 74 + Rust 11). 기존 Go 골든은 전부 무변경입니다. 계획과 달리 기존 Rust
+handle raw 골든 3개에서 중복 빈 줄을 하나씩 제거했습니다. 새 handle+enum
+골든의 rustfmt가 드러낸 기존 문제이며 코드 동작에는 변화가 없습니다.
+Go 예제 13개의 전체 단계·Go 테스트와 Rust 예제의 전체 단계·fmt·clippy·테스트가
+모두 통과했고, 예제 트리는 브랜치 기준점 대비 전체가 무변경입니다. Rust 예제의
+실제 결과는 `9 passed; 0 failed`, 데모의 첫 줄은 `2 + 3 = 5`, 마지막 줄은
+`live bytes after drop = 0`입니다. 전체 출력은 플랜 191의 페이즈 1 Outcome에
+기록했습니다.
+
 ### 다음 사람에게
 
 우선순위 순:
 
-1. **등록된 enum → Rust enum** (`#[repr(u8)]` + tag). 위 버그 3의 정식 해결입니다.
-
-   규모를 정확히 세어 두면: Go case 74개 중 **31개가 enum을 등록**하고,
-   거부된 67개 중 **12개가 진단에 enum을 언급**하며, enum이 **유일한/첫
-   걸림돌인 것은 6개**입니다(거부는 함수별 첫 이유만 보고하고 단축 평가합니다).
-   그러니 enum만 고쳐서 곧바로 통과하는 문서는 6개뿐이고, 나머지는 다른
-   걸림돌도 함께 가지고 있습니다 — enum은 "많은 문서가 추가로 필요한 전제"이지
-   "혼자서 대다수를 여는 열쇠"가 아닙니다.
+1. **등록된 스칼라 enum 매핑은 완료** (플랜 191). 남은 enum 범위는
+   **enum 값 수신자**의 `impl` 배치·마셜링과 **enum slice/buffer/optional**입니다.
+   이들은 계속 `ZIGO060`으로 거부됩니다. 특히 네이티브 정수 배열을 닫힌 Rust
+   enum 배열로 그대로 cast하면 UB가 될 수 있으므로 원소별 검사와 소유권 설계가
+   먼저입니다. 열린 enum 자체는 지원되며, 이 남은 범위와 혼동하지 마세요.
 2. **Zig 네임스페이스 → Rust 모듈**, sub-package → 크레이트 또는 모듈. 버그 4.
    첫 걸림돌인 문서가 8개로 enum보다 많습니다.
 3. **tagged union → Rust enum.** 조사 문서가 예상한 세 번째 이득.
