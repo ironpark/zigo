@@ -18,6 +18,8 @@ __pycache__/
 *.py[cod]
 zigo_link_inputs_gen.go
 coverage/
+# cargo's build directory in the Rust example, the counterpart of zig-out
+examples/*/rust/target/
 
 # Local source references
 ref/

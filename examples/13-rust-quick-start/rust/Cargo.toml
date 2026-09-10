@@ -1,0 +1,14 @@
+# Hand-written, the counterpart of a Go binding set's `go.mod`. zigo generates
+# `src/lib.rs`, `src/raw.rs` and `src/error.rs`; the crate manifest and
+# `build.rs` are yours.
+[package]
+name = "calculator"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+
+[[example]]
+name = "demo"
+path = "examples/demo.rs"

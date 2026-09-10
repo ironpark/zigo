@@ -28,8 +28,43 @@
   파일이 새 형태로 다시 쓰입니다. 바인딩 작성 API(`.go`, `.go_error`, `.name`)와 생성되는
   Go 코드는 그대로입니다.
 
+### Added
+
+- **Rust 출력 타겟**(`--output-target rust`). 스칼라, `[]const T` 슬라이스,
+  error union만 다루는 최소 백엔드입니다. C ABI shim·panic 소스·C 헤더는 Go
+  타겟과 **같은 문서에서 바이트 단위로 같은 파일**을 내고, Rust 쪽은 그 위에
+  `extern "C"` 선언과 안전한 공개 래퍼만 새로 씁니다. 생성되는 크레이트는
+  `src/lib.rs`(공개 API), `src/raw.rs`(`extern "C"`와 마셜링),
+  `src/error.rs`(`errors.lock.json`에서 나온 오류 타입, 오류가 있을 때만)
+  입니다. error union은 `Result<T, Error>`가 됩니다.
+- `zigo.addRustBindings`와 `rust`·`rust-check`·`rust-lib`·`rust-coverage`
+  빌드 단계. `Cargo.toml`과 `build.rs`는 Go 바인딩의 `go.mod`와 같이 사용자가
+  작성합니다. 정적 링크만 지원합니다.
+- 새 예제 [13-rust-quick-start](examples/13-rust-quick-start/README.md).
+  `00-quick-start`와 같은 함수를 Rust로 미러링합니다.
+- `--rustfmt <path>`. `--gofmt`는 Go 이름을 유지하며, 선택한 타겟과 맞지 않는
+  포매터 플래그는 조용히 무시하지 않고 오류로 거부합니다.
+- `ZIGO060`. Rust 타겟이 렌더링할 수 없는 선언을 만나면 어떤 선언의 어떤
+  기능이 문제인지 이름을 대며 생성을 거부합니다. 범위 밖인 것은 콜백,
+  `std.Io` 스트림, tagged union, opaque handle, materialized 결과 트리, 취소,
+  동적 로딩입니다. 절반이 빠진 채로 컴파일되는 크레이트를 내는 것보다 거부가
+  낫다는 판단입니다.
+- `semantic.json`에 `rust` 네임스페이스. 함수의 `rust.name`이 공개 Rust 이름을
+  재지정합니다. 선택 필드이므로 `ir_version`은 그대로 **2**이고 기존 문서는
+  바이트 단위로 동일합니다.
+
 ### Changed
 
+- 기존 plugin은 Rust 타겟에서 자동으로 실행되지 않습니다. `output_targets`의
+  기본값이 `&.{"go"}`이기 때문이며, 별도 조치는 필요하지 않습니다.
+- `Target`의 공개 이름 규칙이 타입 규칙과 함수 규칙으로 나뉘었습니다
+  (`exportedTypeNameAlloc`, `exportedFunctionNameAlloc`). Rust는 타입을
+  PascalCase, 함수를 snake_case로 쓰지만 Go는 둘을 같게 쓰므로 **Go 출력은
+  바이트 단위로 동일합니다.**
+- `naming.pascalAlloc`·`camelAlloc`의 initialism 표(`id`→`ID`, `url`→`URL`,
+  `utf8`→`UTF8`)가 변환의 파라미터가 되었습니다. 두 함수의 시그니처와 Go의
+  결과는 그대로이고, 빈 표를 넘기는 타겟은 Rust가 원하는 `Id`·`Url`·`Utf8`을
+  받습니다.
 - plugin 계약이 해석된 출력 target을 나릅니다. 모든 context가 그 값을 노출하고,
   interface 이름 검사와 `ZIGO059`의 file 모양 규칙이 `targets.default` 대신 그 값을
   읽습니다. `ZIGO059`는 `.go`와 `_test.go` 리터럴 대신 target의 확장자와 test file

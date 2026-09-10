@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "files": [
+    {
+      "path": "shim.zig",
+      "kind": "native"
+    },
+    {
+      "path": "panic.c",
+      "kind": "native"
+    },
+    {
+      "path": "zigo_calculator.h",
+      "kind": "native"
+    },
+    {
+      "path": "src/raw.rs",
+      "kind": "go"
+    },
+    {
+      "path": "src/error.rs",
+      "kind": "go"
+    },
+    {
+      "path": "src/lib.rs",
+      "kind": "go"
+    },
+    {
+      "path": "errors.lock.json",
+      "kind": "native"
+    }
+  ]
+}

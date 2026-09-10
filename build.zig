@@ -5,6 +5,7 @@ const naming = @import("src/gen/naming.zig");
 // target abstraction that imports only `std`, which is what lets the build
 // integration validate its own options before a module graph exists.
 const go_words = @import("src/gen/targets/go_words.zig");
+const rust_words = @import("src/gen/targets/rust_words.zig");
 const modules = @import("build/modules.zig");
 const steps = @import("build/steps.zig");
 const tests = @import("build/tests.zig");
@@ -361,32 +362,42 @@ pub fn build(b: *std.Build) void {
 }
 
 /// Adds the Go-binding pipeline to a consuming build graph.
-pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
-    const backend = options.link.backend();
-    const link_mode = options.link.linkMode();
-    if (backend == .purego) {
-        if (!build_options.puregoTargetSupported(options.target.result))
-            @panic("`.link = .purego` supports macOS, Linux and Windows on amd64/arm64 only");
-    }
-    const artifact_package = naming.snakeAlloc(b.allocator, options.name) catch @panic("OOM");
-    const go_package = if (options.go_package) |value| blk: {
-        go_words.validatePackageName(value) catch
-            @panic("go_package must be a valid Go package identifier");
-        break :blk value;
-    } else artifact_package;
-    const go_package_path = resolveGoPackagePath(options.go_package_path orelse go_package);
-    const raw_package = resolveRawPackage(b, options.raw_package, go_package_path, go_package);
-    const raw_source_dir = options.go_dir.path(b, raw_package.path).getPath(b);
-    const public_source_dir = options.go_dir.path(b, go_package_path).getPath(b);
-    const install = resolveInstall(b, options.install, artifact_package, backend, raw_source_dir, public_source_dir);
-    const library_loading = resolvedLibraryLoading(options.library_loading, install);
-    build_options.validateLibraryLoading(library_loading, backend == .purego) catch |err| switch (err) {
-        error.UnsupportedBackend => @panic("library_loading is only supported by .link = .purego"),
-        error.EmptySearchPath => @panic("library_loading.search_paths entries must not be empty"),
-        error.InvalidSearchPath => @panic("library_loading.search_paths entries must not contain quotes, backslashes or control characters"),
-        error.InvalidEnvironmentName => @panic("library_loading.env_vars entries must be ASCII letters, digits and underscores, and must not start with a digit"),
-    };
-    const native_targets = resolveNativeTargets(b, options, backend, install);
+/// What a binding set needs before an output language enters the picture: the
+/// generator executable, the reflected `semantic.json`, and the coverage runs.
+///
+/// One definition, shared by `addGoBindings` and `addRustBindings`. The
+/// research behind the Rust target measured `src/reflect/` at effectively 100%
+/// reuse for a second output language, and this is exactly that layer:
+/// reflection reads Zig declarations and writes the semantic IR, which is the
+/// same document whichever language is generated from it. Two copies of this
+/// module graph would be two places to update whenever a module is added, and
+/// one of them would drift.
+///
+/// Lifted out of `addGoBindings` verbatim, so it is behaviour-preserving by
+/// construction; the thirteen Go examples are what check that.
+const Reflection = struct {
+    /// The generator CLI, built for the host.
+    generator: *std.Build.Step.Compile,
+    /// The run that produced `semantic_json`, exposed so a caller can make it
+    /// depend on a step that must precede reflection.
+    semantic_run: *std.Build.Step.Run,
+    semantic_json: std.Build.LazyPath,
+    /// Reports public Zig API binding coverage.
+    coverage: *std.Build.Step.Run,
+};
+
+const ReflectionOptions = struct {
+    name: []const u8,
+    prefix: []const u8,
+    bindings: std.Build.LazyPath,
+    module: *std.Build.Module,
+    optimize: std.builtin.OptimizeMode,
+    source_root: ?std.Build.LazyPath = null,
+    coverage_json: ?[]const u8 = null,
+    plugins: []const PluginModule = &.{},
+};
+
+fn addReflection(b: *std.Build, options: ReflectionOptions) Reflection {
     const zigo_dependency = b.dependencyFromBuildZig(@This(), .{});
     const plugin_sources = b.allocator.alloc(modules.PluginSource, options.plugins.len) catch @panic("OOM");
     for (options.plugins, plugin_sources) |entry, *source| source.* = .{ .path = entry.root_source_file, .config = entry.config };
@@ -539,7 +550,54 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         publish_coverage.addCopyFileToSource(coverage_json, destination);
         coverage.step.dependOn(&publish_coverage.step);
     }
+    return .{
+        .generator = generator,
+        .semantic_run = semantic_run,
+        .semantic_json = semantic_json,
+        .coverage = coverage,
+    };
+}
 
+pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
+    const backend = options.link.backend();
+    const link_mode = options.link.linkMode();
+    if (backend == .purego) {
+        if (!build_options.puregoTargetSupported(options.target.result))
+            @panic("`.link = .purego` supports macOS, Linux and Windows on amd64/arm64 only");
+    }
+    const artifact_package = naming.snakeAlloc(b.allocator, options.name) catch @panic("OOM");
+    const go_package = if (options.go_package) |value| blk: {
+        go_words.validatePackageName(value) catch
+            @panic("go_package must be a valid Go package identifier");
+        break :blk value;
+    } else artifact_package;
+    const go_package_path = resolveGoPackagePath(options.go_package_path orelse go_package);
+    const raw_package = resolveRawPackage(b, options.raw_package, go_package_path, go_package);
+    const raw_source_dir = options.go_dir.path(b, raw_package.path).getPath(b);
+    const public_source_dir = options.go_dir.path(b, go_package_path).getPath(b);
+    const install = resolveInstall(b, options.install, artifact_package, backend, raw_source_dir, public_source_dir);
+    const library_loading = resolvedLibraryLoading(options.library_loading, install);
+    build_options.validateLibraryLoading(library_loading, backend == .purego) catch |err| switch (err) {
+        error.UnsupportedBackend => @panic("library_loading is only supported by .link = .purego"),
+        error.EmptySearchPath => @panic("library_loading.search_paths entries must not be empty"),
+        error.InvalidSearchPath => @panic("library_loading.search_paths entries must not contain quotes, backslashes or control characters"),
+        error.InvalidEnvironmentName => @panic("library_loading.env_vars entries must be ASCII letters, digits and underscores, and must not start with a digit"),
+    };
+    const native_targets = resolveNativeTargets(b, options, backend, install);
+    const reflection = addReflection(b, .{
+        .name = options.name,
+        .prefix = options.prefix,
+        .bindings = options.bindings,
+        .module = options.module,
+        .optimize = options.optimize,
+        .source_root = options.source_root,
+        .coverage_json = options.coverage_json,
+        .plugins = options.plugins,
+    });
+    const generator = reflection.generator;
+    const semantic_run = reflection.semantic_run;
+    const semantic_json = reflection.semantic_json;
+    const coverage = reflection.coverage;
     const generate = b.addRunArtifact(generator);
     generate.addArgs(&.{ "generate", "--semantic" });
     generate.addFileArg(semantic_json);
@@ -838,6 +896,213 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
 }
 
 /// One platform the native library is built for.
+/// The user-facing options of a Rust binding set.
+///
+/// Deliberately much smaller than `Options`. Most of that record is cgo: link
+/// lines, `go.mod` management, Go platform words, purego loading policy. A
+/// Cargo crate links through its own `build.rs`, so the build integration's
+/// job here is to reflect, generate, build the shim archive, install the
+/// header, and hand `cargo` a tree.
+pub const RustOptions = struct {
+    name: []const u8,
+    module: *std.Build.Module,
+    bindings: std.Build.LazyPath,
+    source_root: ?std.Build.LazyPath = null,
+    /// The crate directory. `src/lib.rs`, `src/raw.rs` and `src/error.rs` are
+    /// generated inside it; `Cargo.toml` and `build.rs` are the user's, the
+    /// way `go.mod` is in a Go binding set.
+    rust_dir: std.Build.LazyPath,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    prefix: []const u8 = "zg",
+    /// `rustfmt` used to format generated Rust. Defaults to the one on `PATH`.
+    rustfmt: ?[]const u8 = null,
+    abi_base: ?[]const u8 = null,
+    install: Install = .{},
+};
+
+pub const RustBindings = struct {
+    /// Generates the crate sources into `rust_dir` and installs the library.
+    update: *std.Build.Step.UpdateSourceFiles,
+    /// Fails when the committed crate is stale.
+    check: *std.Build.Step.Run,
+    /// Fails on a breaking ABI change against `abi_base`.
+    abi_check: ?*std.Build.Step.Run,
+    /// Reports public Zig API binding coverage. The coverage walk reads Zig
+    /// declarations, not generated sources, so it is the same run Go gets.
+    coverage: *std.Build.Step.Run,
+    /// The native library the crate links.
+    lib: *std.Build.Step.Compile,
+    install_library: *std.Build.Step.InstallArtifact,
+    library_path: []const u8,
+    semantic_json: std.Build.LazyPath,
+
+    pub const StandardStepOptions = struct {
+        name_prefix: ?[]const u8 = null,
+        install_library_by_default: bool = true,
+    };
+
+    pub const StandardSteps = struct {
+        update: *std.Build.Step,
+        check: *std.Build.Step,
+        abi_check: ?*std.Build.Step,
+        coverage: *std.Build.Step,
+        library: *std.Build.Step,
+    };
+
+    /// Registers `rust`, `rust-check`, `rust-lib`, `rust-coverage` and, when
+    /// `abi_base` is set, `abi-check`.
+    ///
+    /// There is no `rust-test` step. `cargo` resolves and downloads
+    /// dependencies, so running it from `zig build` would make a build step
+    /// that reaches the network; the examples run `cargo test` themselves,
+    /// which is also what the Go examples do with `go test`.
+    pub fn addStandardSteps(self: RustBindings, b: *std.Build, options: StandardStepOptions) StandardSteps {
+        if (options.name_prefix) |prefix| {
+            if (prefix.len == 0) @panic("Rust binding step name_prefix must not be empty");
+        }
+        const update = b.step(standardStepName(b, options.name_prefix, "rust"), "Generate and build Rust bindings");
+        update.dependOn(&self.update.step);
+        const check = b.step(standardStepName(b, options.name_prefix, "rust-check"), "Fail if generated Rust bindings are stale");
+        check.dependOn(&self.check.step);
+        const coverage = b.step(standardStepName(b, options.name_prefix, "rust-coverage"), "Report public Zig API binding coverage");
+        coverage.dependOn(&self.coverage.step);
+        const library = b.step(standardStepName(b, options.name_prefix, "rust-lib"), "Build and install the native Rust binding library");
+        library.dependOn(&self.install_library.step);
+        if (options.install_library_by_default) b.getInstallStep().dependOn(&self.install_library.step);
+        const abi_check = if (self.abi_check) |run| step: {
+            const value = b.step(standardStepName(b, options.name_prefix, "abi-check"), "Fail on a breaking binding ABI change");
+            value.dependOn(&run.step);
+            break :step value;
+        } else null;
+        return .{ .update = update, .check = check, .abi_check = abi_check, .coverage = coverage, .library = library };
+    }
+};
+
+/// A minimal Rust binding set: scalars, `[]const T` slices and error unions.
+///
+/// The shim, the panic source and the C header are the same artifacts
+/// `addGoBindings` produces from the same document -- that is the seam, and
+/// the code below is deliberately arranged so that nothing about Rust reaches
+/// them. Only the generator's `--output-target` and the crate layout differ.
+pub fn addRustBindings(b: *std.Build, options: RustOptions) RustBindings {
+    const artifact_package = naming.snakeAlloc(b.allocator, options.name) catch @panic("OOM");
+    rust_words.validateCrateName(artifact_package) catch
+        @panic("the binding name must normalize to a valid Rust crate identifier");
+    const crate_source_dir = options.rust_dir.path(b, "src").getPath(b);
+    const install = resolveInstall(b, options.install, artifact_package, .cgo, crate_source_dir, crate_source_dir);
+    const reflection = addReflection(b, .{
+        .name = options.name,
+        .prefix = options.prefix,
+        .bindings = options.bindings,
+        .module = options.module,
+        .optimize = options.optimize,
+        .source_root = options.source_root,
+    });
+
+    const generate = b.addRunArtifact(reflection.generator);
+    generate.addArgs(&.{ "generate", "--semantic" });
+    generate.addFileArg(reflection.semantic_json);
+    generate.addArg("--output");
+    const generated_dir = generate.addOutputDirectoryArg("bindings");
+    generate.addArgs(&.{
+        "--output-target", "rust",
+        "--package",       options.name,
+        "--prefix",        options.prefix,
+        "--header-name",   install.header_name,
+        // Go's module path is required by the CLI and unread by the Rust
+        // emitter; the binding name is a value that cannot mislead anyone
+        // reading the generated crate, because nothing in it appears.
+        "--go-module",     options.name,
+    });
+    if (options.rustfmt) |rustfmt| generate.addArgs(&.{ "--rustfmt", rustfmt });
+    const errors_lock_path = "zigo/errors.lock.json";
+    const has_errors_lock = blk: {
+        b.build_root.handle.access(b.graph.io, errors_lock_path, .{}) catch |err| switch (err) {
+            error.FileNotFound => break :blk false,
+            else => @panic("unable to inspect errors.lock.json"),
+        };
+        break :blk true;
+    };
+    if (has_errors_lock) {
+        generate.addArg("--errors-lock");
+        generate.addFileArg(b.path(errors_lock_path));
+    }
+
+    const check = b.addRunArtifact(reflection.generator);
+    check.addArgs(&.{ "check", "--generated" });
+    check.addDirectoryArg(generated_dir);
+    check.addArg("--source");
+    check.addDirectoryArg(options.rust_dir);
+    // The sidecar files the update step copies outside the crate directory
+    // are part of the committed output too, so a stale one fails here rather
+    // than in a post-generation diff.
+    check.addArg("--file");
+    check.addFileArg(reflection.semantic_json);
+    check.addArg(b.pathFromRoot("zigo/semantic.json"));
+    check.addArg("--file");
+    check.addFileArg(generated_dir.path(b, "errors.lock.json"));
+    check.addArg(b.pathFromRoot(errors_lock_path));
+
+    const abi_check: ?*std.Build.Step.Run = if (options.abi_base) |abi_base| blk: {
+        const baseline = b.addSystemCommand(&.{ "git", "show" });
+        // The ref can move without changing argv, so this read must not reuse
+        // a build-cache entry from an older commit.
+        baseline.has_side_effects = true;
+        baseline.setCwd(b.path("."));
+        baseline.addArg(b.fmt("{s}:./zigo/semantic.json", .{abi_base}));
+        const baseline_semantic = baseline.captureStdOut(.{ .basename = "semantic-base.json", .trim_whitespace = .none });
+        const run = b.addRunArtifact(reflection.generator);
+        run.addArgs(&.{ "abi-diff", "--base" });
+        run.addFileArg(baseline_semantic);
+        run.addArg("--current");
+        run.addFileArg(reflection.semantic_json);
+        run.addArgs(&.{ "--output-target", "rust", "--fail-on", "breaking" });
+        break :blk run;
+    } else null;
+
+    // The shim, byte for byte what a Go binding set builds from the same
+    // document. Nothing below this comment mentions Rust, which is the point.
+    const shim_module = b.createModule(.{
+        .root_source_file = generated_dir.path(b, "shim.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+        .imports = &.{.{ .name = "zigo_target", .module = options.module }},
+    });
+    const lib = b.addLibrary(.{ .name = install.library_stem, .linkage = .static, .root_module = shim_module });
+    lib.root_module.addCSourceFile(.{ .file = generated_dir.path(b, "panic.c"), .flags = &.{"-fno-sanitize=undefined"} });
+    lib.root_module.linkSystemLibrary("c", .{});
+    const install_lib = b.addInstallArtifact(lib, .{ .dest_dir = .{ .override = install.library_dir } });
+    const install_header = b.addInstallFileWithDir(
+        generated_dir.path(b, install.generated_header_name),
+        install.header_dir,
+        install.header_name,
+    );
+    // The archive is useless to `build.rs` without the header beside it.
+    install_lib.step.dependOn(&install_header.step);
+
+    const publish = steps.PublishGeneratedGo.create(b, generated_dir, sourcePath(b, options.rust_dir, "."));
+    const update = b.addUpdateSourceFiles();
+    update.step.dependOn(&publish.step);
+    update.addCopyFileToSource(generated_dir.path(b, "errors.lock.json"), errors_lock_path);
+    update.addCopyFileToSource(reflection.semantic_json, "zigo/semantic.json");
+    update.step.dependOn(&install_lib.step);
+    // Every shim has to compile for the tree to be valid.
+    check.step.dependOn(&lib.step);
+    if (abi_check) |run| run.step.dependOn(&lib.step);
+
+    return .{
+        .update = update,
+        .check = check,
+        .abi_check = abi_check,
+        .coverage = reflection.coverage,
+        .lib = lib,
+        .install_library = install_lib,
+        .library_path = installedLibraryPath(b, install_lib),
+        .semantic_json = reflection.semantic_json,
+    };
+}
+
 const NativeTarget = struct {
     resolved: std.Build.ResolvedTarget,
     /// Go's name for the platform. Always set in multi-target mode.

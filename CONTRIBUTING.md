@@ -37,9 +37,23 @@ zig build go
 ```bash
 set -eu
 for example in examples/*; do
+  # 13-rust-quick-start는 Go 단계가 없습니다. 아래 Rust 절에서 따로 실행합니다.
+  [ -d "$example/go" ] || continue
   (cd "$example" && zig build test go-check go-lib abi-check go-coverage --summary all)
   (cd "$example/go" && go test ./...)
 done
+```
+
+Rust 예제는 단계 이름이 다릅니다(`go-*`가 아니라 `rust-*`). Rust 툴체인이
+있어야 하며, `cargo`는 의존성을 해석하므로 `zig build`가 아니라 직접 실행합니다.
+
+```bash
+set -eu
+cd examples/13-rust-quick-start
+zig build test rust-check abi-check rust-coverage --summary all
+zig build rust
+(cd rust && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test)
+(cd rust && cargo run --example demo)   # `2 + 3 = 5`가 나와야 합니다
 ```
 
 purego를 제공하는 예제는 공유 library를 만든 뒤 cgo를 끄고 테스트합니다.

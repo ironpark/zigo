@@ -116,6 +116,35 @@ jobs:
               go test ./...
             )
           done
+      - name: Build and test the Rust example
+        # A separate leg rather than an entry in the loop above: the Rust
+        # example has no `go-check`, `go` or `go test` step, and its staleness
+        # check is `rust-check`. It is also the one example that needs a Rust
+        # toolchain, so a runner without one fails here alone.
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustc --version
+          cargo --version
+          rustfmt --version
+          cd examples/13-rust-quick-start
+          zig build test --summary all
+          zig build rust-check abi-check rust-coverage --summary all
+          zig build rust
+          (cd rust && cargo fmt --check)
+          (cd rust && cargo clippy --all-targets -- -D warnings)
+          (cd rust && cargo test)
+          # The demo is the acceptance check the README promises.
+          (cd rust && cargo run --example demo) | tee demo.txt
+          grep -qx '2 + 3 = 5' demo.txt
+          rm -f demo.txt
+          cd ../..
+          if [[ -n "$(git status --porcelain --untracked-files=all -- examples/13-rust-quick-start)" ]]; then
+            echo "Generated Rust example files are stale. Run 'zig build rust' and commit the result."
+            git status --short -- examples/13-rust-quick-start
+            git diff -- examples/13-rust-quick-start
+            exit 1
+          fi
       - name: Check callback and stream races
         # Keep purego's CGO_ENABLED=0 coverage below; run the detector separately.
         shell: bash

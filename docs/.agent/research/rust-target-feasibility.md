@@ -77,11 +77,18 @@ Go 개념이 박혀 있어서, 그 상태로 두 번째 타겟을 붙이면 Go �
 2. **`context.Context` 취소** — Rust에 직접 대응물 없음. IR 개념 자체가 Go 모양인
    유일한 부분. `&AtomicBool` 취소 토큰 등 별도 추상화 설계 필요.
    `docs/.agent/research/zig-cancellation.md` 참고
-3. **플러그인 계약 v2** — `contract_version 2.0`이 Go 소스를 직접 쓰는 API
-   (`Context.writeGoType`, `GoFile`, `GoPackage`, `map_type → GoAdapter`).
-   타겟 파라미터화 또는 v3. breaking change
-4. **툴링** — `go_walk.zig`(coverage용 Go 소스 파싱), `doctor.zig`,
-   `tool_probe.zig`, gofmt→rustfmt, `build.zig`의 `go build`/`go test` 오케스트레이션
+3. ~~**플러그인 계약 v2**~~ → **해소됨** (플랜 `187-plugin-contract-targets`).
+   계약 3.0이 해석된 타겟을 나르고 `Plugin.output_targets`가 기본값
+   `&.{"go"}`로 필터링합니다. 최소 Rust 백엔드는 여기에 손대지 않았습니다.
+   남은 것은 `validate.zig:218`의 `setGoName` 하드코딩입니다 —
+   아래 "seam이 삐걱거린 곳" 2번
+4. **툴링** — 부분 해소. `rustfmt`는 `Target.formatter`로 들어갔고
+   `addRustBindings`가 shim 아카이브와 헤더까지 처리합니다. 남은 것:
+   `go_walk.zig`(coverage용 Go 소스 파싱)에 대응하는 Rust 소스 파싱이 없어
+   `rust-coverage`는 Zig 선언만 셉니다 — 실은 그것이 coverage의 본래 질문이라
+   문제가 아닙니다. `doctor.zig`와 `tool_probe.zig`는 Go 툴체인 전용으로
+   남았고, Rust 예제는 `doctor` 단계가 없습니다. `cargo`는 의존성을 해석하며
+   네트워크에 접근할 수 있어 `zig build` 단계로 삼지 않았습니다
 5. ~~**네이밍 규칙** — `naming.zig`의 `isGoKeyword`, `goParamNamesAlloc`,
    `validateGoPackageName`, `isGoIdentifier`, `libraryPathEnvironmentAlloc`~~
    → **해소됨** (플랜 `186-target-interface`). `src/gen/targets.zig`의 `Target`
@@ -102,15 +109,90 @@ Go 개념이 박혀 있어서, 그 상태로 두 번째 타겟을 붙이면 Go �
 3. 플러그인 계약을 타겟 제네릭으로 (또는 v3) ← 다음 차례. `ZIGO059`
    출력 경로 규칙과 `src/plugin/interfaces.zig`의 인터페이스 이름 검사가
    여기에 묶여 아직 `targets.default`를 씁니다
-4. 스칼라 + 슬라이스 + error union만 커버하는 최소 Rust 백엔드를
-   `examples/00-quick-start` 미러로
+4. ~~스칼라 + 슬라이스 + error union만 커버하는 최소 Rust 백엔드를
+   `examples/00-quick-start` 미러로~~ — 완료 (플랜 `188-minimal-rust-backend`)
 
-1~3만으로도 Rust 없이 코드베이스가 개선됩니다. 4는 그 위에 얹는 증명입니다.
+1~3만으로도 Rust 없이 코드베이스가 개선됩니다. 4는 그 위에 얹는 증명이었고,
+아래가 그 결과입니다.
 
-## 규모 감
+## 규모 감 — 추정 대비 실측
 
-| 항목 | 추정 |
-|---|---|
-| 1~3 리팩터링 | 3~5K LOC |
-| 최소 Rust 백엔드 | 신규 4~6K LOC |
-| 현행 Go 기능 전부 대응 | 10~15K LOC |
+| 항목 | 추정 | 실측 |
+|---|---|---|
+| 1~3 리팩터링 | 3~5K LOC | 플랜 185·186·187 참조 |
+| 최소 Rust 백엔드 | 신규 4~6K LOC | **신규 1,393줄** (아래 내역) |
+| 현행 Go 기능 전부 대응 | 10~15K LOC | 미측정 |
+
+추정이 3~4배 컸습니다. 원인은 하나입니다: seam이 실제로 버텼기 때문에 재사용이
+"대부분"이 아니라 "전부"였습니다. 추정은 emit 아래 계층을 일부라도 다시 쓸
+가능성을 계산에 넣었는데, 그럴 필요가 없었습니다.
+
+### 최소 Rust 백엔드 내역
+
+| 파일 | 줄 | 하는 일 |
+|---|---|---|
+| `src/gen/targets/rust_words.zig` | 132 | 키워드·식별자·경로형 변환 함수 이름. `std`만 import |
+| `src/gen/targets/rust.zig` | 304 | `Target` 값과 Rust 네이밍 규칙 |
+| `src/gen/emit_rust/types.zig` | 222 | 타입 스펠링과 "지원하지 않는 모양" 판정 |
+| `src/gen/emit_rust/raw.zig` | 366 | `extern "C"` 블록과 마셜링 래퍼 |
+| `src/gen/emit_rust/public.zig` | 291 | 공개 API와 오류 타입 |
+| `src/gen/emit_rust/emit.zig` | 78 | 이미터 표와 파일 경로 |
+| `build.zig`의 `addRustBindings` | 207 | 빌드 통합 |
+| 합계 | **1,600** | (`addRustBindings` 포함) |
+
+재사용한 것: `src/reflect/**`(8,611줄) 전부, `src/gen/ir/**`(2,765줄) 전부,
+`src/gen/lower.zig`와 `lower/`(3,292줄) 전부, `src/gen/validate/**`(6,381줄)
+전부, `emit/shim.zig`·`header.zig`·`target_types.zig`(1,943줄) 전부,
+`errors_lock`·`output_manifest`·`sync_check`·`abi_diff`, 그리고 build 통합의
+reflection 절반. **한 줄도 고치지 않았습니다** — validate·reflect·abi_diff·
+report·generator 어느 caller도 Rust 때문에 바뀌지 않았습니다.
+
+### seam이 버틴 곳
+
+- **C ABI shim·panic 소스·C 헤더·`errors.lock.json`**: 같은 문서에서 두 타겟이
+  바이트 단위로 같은 파일을 냅니다. `src/gen/generator.zig`의 테스트가 이걸
+  주장으로 두지 않고 검사로 만듭니다.
+- **`Target` 인터페이스**: 플랜 186이 예고한 인터페이스 변경은 정확히 하나
+  (`exportedNameAlloc` 분할)뿐이었고, 나머지 멤버는 표에 적힌 대로 답했습니다.
+- **`ir_version`**: `rust` 네임스페이스는 optional 추가라 마이그레이션도
+  버전 범프도 필요 없었습니다. 플랜 185가 `abi-check` 베이스라인으로 깨졌던
+  실패 유형이 아예 발생하지 않습니다.
+- **plugin 계약**: 플랜 187의 `output_targets` 기본값 `&.{"go"}` 덕분에 Rust용
+  조치가 전혀 필요 없었습니다.
+
+### seam이 삐걱거린 곳
+
+1. **`emit.core_emitters`가 중립 3개와 Go 전용 4개를 한 배열에 섞고 있었습니다.**
+   `neutral_emitters ++ go_emitters`로 나눴습니다. 순서를 유지해야 manifest가
+   안 움직입니다. `src/gen/emit/**`에 대한 유일한 수정입니다.
+2. **`src/gen/validate/validate.zig:218`이 `setGoName`을 하드코딩합니다.**
+   plugin의 `name_function` 훅 결과를 Go 네임스페이스에만 씁니다. `Target`에는
+   이름 override의 *getter*(`nameOverride`)만 있고 setter가 없습니다. 최소
+   범위에서는 Rust plugin이 없어 도달하지 않지만, 두 번째 타겟용 plugin을
+   만들려면 여기가 먼저 바뀌어야 합니다.
+3. **`generator.zig`의 `appendEmitters`가 `.go` 리터럴로 후행 개행을
+   정규화했습니다.** `options.target.isSource()`로 바꿨습니다. Go의 답이 같은
+   접미사 검사이므로 동작은 동일합니다.
+4. **manifest의 `kind: "go"`가 "출력 언어의 framed 소스"를 뜻합니다.** `.rs`
+   파일도 이 태그를 답니다. wire format이라 이름을 못 바꿉니다.
+   `sync_check.compare`는 manifest를 경로로 훑으므로 동작하지만, manifest가
+   없을 때의 fallback walk는 여전히 `.go` 전용입니다.
+5. **`report`는 타겟을 못 받습니다.** 렌더링하는 모든 줄이 Go import 경로나
+   cgo 링크 줄이어서, 플래그를 받아 Go 모양 보고서를 내는 것보다 안 받는 쪽이
+   낫다고 판단했습니다. `src/main.zig`의 `reportTarget()`이 그 사실을 이름으로
+   표시합니다.
+6. **`Target.publicFunctionNameAlloc`의 constructor 분기가 `New{s}`를
+   하드코딩합니다.** Go 관용구입니다. 최소 범위에 constructor가 없어 도달하지
+   않지만, handle을 지원하는 순간 타겟 규칙이 되어야 합니다.
+
+### 다음 사람에게
+
+우선순위 순:
+
+1. **opaque handle → `Drop`.** 조사 문서가 예상한 가장 큰 이득이고, 위 6번을
+   먼저 해결해야 합니다.
+2. **borrowed slice 반환.** 현재는 `Vec<T>`/`String`으로 복사합니다. 라이프타임
+   슬라이스나 `Drop` 래퍼가 더 얇습니다.
+3. **tagged union → Rust enum.**
+4. **Rust plugin.** 위 2번을 먼저 해결해야 합니다.
+5. **취소.** 여전히 별도 설계가 필요합니다. 걸림돌 #2는 그대로 남아 있습니다.
