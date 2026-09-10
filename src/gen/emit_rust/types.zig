@@ -11,6 +11,100 @@ const abi = @import("abi");
 const semantic = @import("semantic");
 const diagnostic = @import("diagnostic");
 
+/// How a semantic type this backend cannot render reads in a diagnostic, or
+/// null when it can render it.
+///
+/// A whitelist, deliberately. The ABI-level checks below cannot see everything:
+/// with the cgo callback convention a callback parameter is not an ABI
+/// parameter at all -- only its `userdata` token crosses -- so every callback
+/// case reached `type_spelling.semanticScalar` and hit its `unreachable`.
+/// Naming the kinds this backend *does* render means a shape it has never seen
+/// is refused rather than crashing.
+pub fn unsupportedNode(node: semantic.TypeNode) ?[]const u8 {
+    return switch (node) {
+        .int, .float, .bool, .void, .slice, .opaque_ptr => null,
+        // Refused with their own messages elsewhere, so they are not named
+        // here: naming them twice would let the two descriptions drift.
+        .@"enum", .optional, .error_union, .value_struct, .materialized => null,
+        .callback => "a callback parameter",
+        .io_stream => "a std.Io stream parameter",
+        .cancel_flag => "a cancellable call",
+        .atomic_ptr => "a shared atomic parameter",
+    };
+}
+
+/// The registered opaque type `name` names, or null when it is not one this
+/// backend owns through `Drop`.
+///
+/// A tagged union is also lowered into `program.handles` -- C only ever holds
+/// a pointer to one -- but it is not a handle in the sense this backend means,
+/// so it is excluded here and refused with the tagged-union message instead.
+pub fn handleFor(program: abi.Program, name: []const u8) ?abi.AbiOpaque {
+    for (program.handles) |handle| {
+        if (!std.mem.eql(u8, handle.name, name)) continue;
+        const declaration = semantic.typeDecl(program.types, name) orelse return null;
+        return if (declaration.kind == .@"opaque") handle else null;
+    }
+    return null;
+}
+
+/// The handle `name` names, when this backend can actually own one.
+///
+/// Owning means `Drop`, and `Drop` means a destructor to call, so a registered
+/// opaque with no constructor-and-destructor pair is not a handle this backend
+/// can emit -- `plugin_disabled` registers exactly that, a `Counter` nothing is
+/// bound to, and rendering it crashed on the missing destructor.
+///
+/// Skipping such a type is not a silent omission: no function can mention it
+/// without being refused, because the parameter and receiver rules both ask
+/// for the constructor. It is `placementOf` that must keep using the plain
+/// `handleFor`, so that a method on an unowned type is refused as a method
+/// rather than misreported as a namespaced free function.
+pub fn ownedHandleFor(program: abi.Program, name: []const u8) ?abi.AbiOpaque {
+    const handle = handleFor(program, name) orelse return null;
+    const constructor = handle.lifecycle.constructor orelse return null;
+    for (program.functions) |function| {
+        const origin = function.origin.*;
+        if (!std.mem.eql(u8, origin.receiver orelse "", name)) continue;
+        if (std.mem.eql(u8, constructor.deinit, origin.name)) return handle;
+    }
+    return null;
+}
+
+/// Where one function's public surface goes.
+///
+/// One definition, because three emitters read it: `lib.rs` writes the free
+/// functions, `handle.rs` writes the constructors and the methods, and the
+/// destructor is written by neither -- it belongs to `Drop`. If they disagreed
+/// about one function, it would be emitted twice or not at all.
+pub const Placement = union(enum) {
+    free_function,
+    /// An associated function on the named handle type.
+    constructor: []const u8,
+    /// A method on the named handle type.
+    method: []const u8,
+    /// Consumed by the handle's `Drop`, so it has no public surface of its
+    /// own. This is the whole of Rust's advantage here: Go has to publish
+    /// `Close()` and then guard every method against having been called after
+    /// it.
+    destructor: []const u8,
+};
+
+pub fn placementOf(program: abi.Program, function: abi.AbiFn) Placement {
+    const origin = function.origin.*;
+    if (origin.receiver) |receiver| {
+        const handle = handleFor(program, receiver) orelse return .free_function;
+        if (handle.lifecycle.constructor) |constructor| {
+            if (std.mem.eql(u8, constructor.deinit, origin.name)) return .{ .destructor = receiver };
+        }
+        return .{ .method = receiver };
+    }
+    if (semantic.constructorForInit(program.constructors, origin)) |constructor| {
+        if (handleFor(program, constructor.type) != null) return .{ .constructor = constructor.type };
+    }
+    return .free_function;
+}
+
 /// The shapes this backend refuses, each mapped to the feature that would
 /// have to be designed to accept it. Reported as a diagnostic naming the
 /// function, so a user pointing `--target rust` at a binding it cannot render
@@ -26,6 +120,10 @@ fn supportedRole(role: abi.AbiParam.Role) bool {
     return switch (role) {
         .value, .slice_pointer, .slice_length, .string_data, .string_data_length => true,
         .payload_out, .return_slice_pointer, .return_slice_length => true,
+        // The handle a method is called on. It is not in `origin.params`, so
+        // it never reaches the parameter walk below and is judged by the
+        // receiver rules instead.
+        .receiver => true,
         else => false,
     };
 }
@@ -33,6 +131,30 @@ fn supportedRole(role: abi.AbiParam.Role) bool {
 /// Whether the minimal Rust backend can render `function`, and what stands in
 /// the way when it cannot. The order of the checks is the order a reader would
 /// ask the questions in, so the first refusal is the most specific one.
+/// How an unsupported parameter role reads in a diagnostic.
+///
+/// `@tagName` was reaching the user, so a binding with a flattened struct
+/// parameter was told "it has flattened_field" -- an internal enum name for a
+/// concept the message never explained. A diagnostic names the feature the
+/// user wrote, not the field the generator stores it in.
+fn roleDescription(role: abi.AbiParam.Role) []const u8 {
+    return switch (role) {
+        .flattened_field => "a struct parameter whose fields are passed individually",
+        .struct_in, .struct_out => "an extern struct parameter",
+        .optional_in => "an optional parameter",
+        .payload_has_out => "an optional error-union payload",
+        .slice_written => "a slice the callee writes into",
+        .string_lengths, .string_count => "a slice-of-strings parameter",
+        .union_tag, .union_payload => "a tagged union passed by value",
+        .cancel_flag => "a cancellable call",
+        .atomic_ptr => "a shared atomic parameter",
+        .stream_callback, .stream_data, .stream_data_length, .stream_userdata => "a std.Io stream parameter",
+        // Every remaining role is one this backend renders, so reaching here
+        // means `supportedRole` and this table disagree.
+        else => "an unsupported parameter",
+    };
+}
+
 /// Whether `node` reaches a registered enum, at any depth this backend can
 /// otherwise render.
 ///
@@ -61,15 +183,68 @@ pub fn unsupported(program: abi.Program, function: abi.AbiFn) ?Unsupported {
         .what = "sub-packages in the binding",
         .hint = "the Rust backend emits one crate root; a crate per package is not designed yet",
     };
+    const placement = placementOf(program, function);
     // A free function declared inside a Zig container: `unicode.codepointWidth`
     // has nowhere to go in a flat crate root, so its namespace would be
-    // dropped and `a.parse` and `b.parse` would collide. A *method* also
-    // carries a namespace -- its receiver type -- and is judged by the
-    // receiver rules instead.
-    if (origin.receiver == null and origin.namespace != null) return .{
+    // dropped and `a.parse` and `b.parse` would collide. A method and a
+    // constructor also carry a namespace -- the type they belong to -- and
+    // land in an `impl` block, which is exactly the module a free function
+    // lacks.
+    if (placement == .free_function and origin.namespace != null) return .{
         .what = "a namespaced free function",
         .hint = "the Rust backend has no module for a Zig namespace yet; the name would be flattened",
     };
+    if (origin.receiver) |receiver| {
+        if ((origin.receiver_kind orelse .handle) != .handle) return .{
+            .what = "a method on a value receiver",
+            .hint = "a registered enum owning methods needs the Rust enum mapping first",
+        };
+        const handle = handleFor(program, receiver) orelse return .{
+            .what = "a method on a type that is not a plain opaque handle",
+            .hint = "a tagged-union receiver needs the Rust enum mapping first",
+        };
+        if (ownedHandleFor(program, receiver) == null) return .{
+            .what = "a method on a handle with no bound constructor and destructor pair",
+            .hint = "Rust owns a handle through Drop, so it needs both halves bound",
+        };
+        if (handle.lifecycle.dependent_parent != null or handle.lifecycle.has_dependent_children) return .{
+            .what = "a handle in a parent-child lifetime relation",
+            .hint = "a child that must close before its parent needs a lifetime parameter on the child; not designed yet",
+        };
+        if (handle.retained_callback_slots != 0) return .{
+            .what = "a handle that stores retained callbacks",
+            .hint = "callbacks are not in the Rust backend, so a handle has none to store",
+        };
+    }
+    switch (function.ownership) {
+        .handle => |record| {
+            if (record.boxed) return .{
+                .what = "a boxed constructor pair",
+                .hint = "a create/destroy pair over a boxed value has its own ownership shape; not designed yet",
+            };
+            if (record.child_of_receiver) return .{
+                .what = "a handle that must close before the receiver it came from",
+                .hint = "that ordering needs a lifetime parameter on the child; not designed yet",
+            };
+            if (record.retained_slots != 0) return .{
+                .what = "a handle that stores retained callbacks",
+                .hint = "callbacks are not in the Rust backend, so a handle has none to store",
+            };
+            if (record.destructor == null) return .{
+                .what = "a constructed handle with no destructor",
+                .hint = "Rust frees a handle in Drop, so it needs a destructor to call",
+            };
+            if (placement != .constructor) return .{
+                .what = "a handle returned by something other than its constructor",
+                .hint = "the Rust backend constructs a handle only through the constructor the binding paired with it",
+            };
+        },
+        .borrowed_view => return .{
+            .what = "a borrowed view into another handle",
+            .hint = "a view has to carry the lifetime it borrows; not designed yet",
+        },
+        else => {},
+    }
     if (reachesEnum(origin.@"return")) return .{
         .what = "a registered enum result",
         .hint = "a Rust enum with the tag's repr is not designed yet; the value would arrive as a bare integer",
@@ -81,10 +256,6 @@ pub fn unsupported(program: abi.Program, function: abi.AbiFn) ?Unsupported {
     if (origin.cancel != null) return .{
         .what = "a cancellable call",
         .hint = "cancellation has no Rust counterpart yet; drop `.cancel` or generate this binding for Go",
-    };
-    if (origin.receiver != null) return .{
-        .what = "a method on a handle or value receiver",
-        .hint = "the minimal Rust backend binds free functions only",
     };
     if (function.ret_struct != null or function.payload_struct != null) return .{
         .what = "an extern struct result",
@@ -98,10 +269,6 @@ pub fn unsupported(program: abi.Program, function: abi.AbiFn) ?Unsupported {
         .what = "an optional result",
         .hint = "the minimal Rust backend supports scalar, slice and error-union results only",
     };
-    if (function.ownership == .handle or function.ownership == .borrowed_view) return .{
-        .what = "a handle result",
-        .hint = "an opaque handle would map to a Drop wrapper; not designed yet",
-    };
     if (function.ownership == .buffer) return .{
         .what = "a caller-owned buffer result",
         .hint = "a released slice result is not in the minimal Rust backend",
@@ -111,19 +278,41 @@ pub fn unsupported(program: abi.Program, function: abi.AbiFn) ?Unsupported {
         .hint = "the minimal Rust backend supports one scalar or one byte slice",
     };
     for (function.params) |parameter| if (!supportedRole(parameter.role)) return .{
-        .what = @tagName(parameter.role),
-        .hint = "the minimal Rust backend supports scalar and slice parameters only",
+        .what = roleDescription(parameter.role),
+        .hint = "the Rust backend supports scalar, slice and handle parameters only",
     };
     for (function.params) |parameter| switch (parameter.scalar) {
-        .callback, .@"opaque", .snapshot, .value_struct => return .{
-            .what = "a callback, handle or struct parameter",
-            .hint = "the minimal Rust backend supports scalar and slice parameters only",
+        .callback, .snapshot, .value_struct => return .{
+            .what = "a callback or struct parameter",
+            .hint = "the Rust backend supports scalar, slice and handle parameters only",
+        },
+        // A handle parameter is accepted, but only for a type this backend
+        // actually owns: without a constructor and destructor pair there is no
+        // wrapper to take a reference to.
+        .@"opaque" => |record| if (handleFor(program, record.name) == null) {
+            return .{
+                .what = "a tagged-union parameter",
+                .hint = "a tagged union needs the Rust enum mapping first",
+            };
+        } else if (ownedHandleFor(program, record.name) == null) return .{
+            .what = "a handle parameter whose type has no bound constructor and destructor pair",
+            .hint = "Rust owns a handle through Drop, so it needs both halves bound",
         },
         .pointer => |pointer| if (pointer.is_c_string or pointer.is_optional) return .{
             .what = "a C-string or nullable pointer parameter",
             .hint = "the minimal Rust backend supports plain `[]const T` slices",
         },
         else => {},
+    };
+    // Before anything that spells a type: a kind this backend has no spelling
+    // for must not reach the emitter, which would answer with `unreachable`.
+    if (unsupportedNode(origin.@"return".errorPayload())) |what| return .{
+        .what = what,
+        .hint = "the Rust backend supports scalar, slice and handle results only",
+    };
+    for (origin.params) |parameter| if (unsupportedNode(parameter.type)) |what| return .{
+        .what = what,
+        .hint = "the Rust backend supports scalar, slice and handle parameters only",
     };
     for (origin.params) |parameter| {
         if (parameter.type == .optional) return .{
@@ -136,7 +325,11 @@ pub fn unsupported(program: abi.Program, function: abi.AbiFn) ?Unsupported {
         };
         if (parameter.direction == .out) return .{
             .what = "an out parameter",
-            .hint = "the minimal Rust backend returns results rather than writing them",
+            .hint = "the Rust backend returns results rather than writing them",
+        };
+        if (parameter.type == .opaque_ptr and parameter.type.opaque_ptr.nullable) return .{
+            .what = "a nullable handle parameter",
+            .hint = "the Rust backend takes a reference, which cannot be null; an Option<&T> form is not designed yet",
         };
     }
     if (program.projections.len != 0 or program.snapshots.len != 0) return .{
@@ -166,6 +359,25 @@ pub fn unsupportedDiagnostic(
     };
 }
 
+/// The Rust name of one handle's opaque C type, as the raw module declares it.
+///
+/// The C typedef is incomplete -- `typedef struct zg_context zg_context;` --
+/// so Rust must not pretend to know the layout. A zero-length private field is
+/// the stable way to say "an address I never dereference"; `extern type`, which
+/// would say it directly, is still unstable.
+pub fn opaqueDeclaration(writer: *std.Io.Writer, handle: abi.AbiOpaque) !void {
+    try writer.print(
+        \\
+        \\/// The native `{0s}`. Incomplete on purpose: the Rust side only ever
+        \\/// holds its address.
+        \\#[repr(C)]
+        \\pub struct {1s} {{
+        \\    _private: [u8; 0],
+        \\}}
+        \\
+    , .{ handle.name, handle.c_name });
+}
+
 /// The Rust spelling of one C ABI scalar, as an `extern "C"` signature needs
 /// it. `size_t` is `usize` and `ptrdiff_t` is `isize` because Rust guarantees
 /// both match the platform's pointer width, which is what the C typedefs mean.
@@ -174,6 +386,9 @@ pub fn unsupportedDiagnostic(
 pub fn rawScalar(value: abi.AbiScalar) ?[]const u8 {
     return switch (value) {
         .void => "()",
+        // The incomplete struct `opaqueDeclaration` writes. A handle only ever
+        // crosses behind a pointer, so this is always the pointee.
+        .@"opaque" => |record| record.c_name,
         .bool_u8 => "u8",
         .usize => "usize",
         .isize => "isize",
@@ -198,6 +413,21 @@ pub fn rawScalar(value: abi.AbiScalar) ?[]const u8 {
         },
         else => null,
     };
+}
+
+/// One C ABI scalar as an `extern "C"` signature spells it, pointers included.
+///
+/// `rawScalar` answers the flat cases as a single word; a pointer needs two, so
+/// it is written rather than returned. Recursive because a slice return crosses
+/// as a pointer to a pointer.
+pub fn writeRawScalar(writer: *std.Io.Writer, value: abi.AbiScalar) !void {
+    switch (value) {
+        .pointer => |pointer| {
+            try writer.print("*{s} ", .{if (pointer.is_const) "const" else "mut"});
+            try writeRawScalar(writer, pointer.child.*);
+        },
+        else => try writer.writeAll(rawScalar(value) orelse return error.UnsupportedType),
+    }
 }
 
 /// The Rust spelling of a value as the public API presents it. The one place

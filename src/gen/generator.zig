@@ -597,6 +597,85 @@ test "the Rust target writes a crate and reuses the neutral outputs verbatim" {
     try std.testing.expectError(error.FileNotFound, rust_tree.dir.access(std.testing.io, "calc/calc_gen.go", .{}));
 }
 
+test "the Rust target refuses every handle shape it does not own" {
+    // The four the plan names, plus the callback shape that used to panic.
+    //
+    // A callback parameter is not an *ABI* parameter under the cgo convention
+    // -- only its `userdata` token crosses -- so plan 188's check on ABI
+    // scalars never saw one, and every callback document reached
+    // `type_spelling.semanticScalar` and its `unreachable`. The refusal is a
+    // whitelist over semantic kinds now, so a shape the backend has never met
+    // is refused rather than crashing.
+    const cases = [_]struct { fixture: []const u8, names: []const u8 }{
+        .{ .fixture =
+        \\{"package":"sample","prefix":"zg","types":[{"kind":"enum","name":"Level","exhaustive":true,"fields":[{"name":"low","value":0}],"tag_type":{"bits":8,"kind":"int","signed":false}}],"zig_version":"0.16.0","functions":[{"name":"label","receiver":"Level","receiver_kind":"value","params":[],"return":{"bits":8,"kind":"int","signed":true},"symbol":"zg_level_label"}]}
+        , .names = "value receiver" },
+        .{ .fixture =
+        \\{"package":"sample","prefix":"zg","types":[{"kind":"opaque","name":"Counter"}],"zig_version":"0.16.0","functions":[{"name":"count","receiver":"Counter","params":[],"return":{"bits":8,"kind":"int","signed":true},"symbol":"zg_counter_count"}]}
+        , .names = "no bound constructor and destructor pair" },
+        .{ .fixture =
+        \\{"package":"sample","prefix":"zg","types":[],"zig_version":"0.16.0","functions":[{"name":"filter","params":[{"name":"predicate","type":{"kind":"callback","c_callconv":true,"has_userdata":true,"params":[{"bits":64,"kind":"int","is_usize":true,"signed":false}],"return":{"kind":"bool"}}},{"name":"userdata","type":{"bits":64,"kind":"int","is_usize":true,"signed":false}}],"return":{"kind":"void"},"symbol":"zg_filter"}]}
+        , .names = "callback" },
+    };
+    for (cases) |case| {
+        var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+        defer arena.deinit();
+        var tree = std.testing.tmpDir(.{ .iterate = true });
+        defer tree.cleanup();
+        var issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
+        try std.testing.expectError(error.InvalidSemantic, generate(arena.allocator(), std.testing.io, case.fixture, tree.dir, .{
+            .output_target = targets.rust.target,
+            .diagnostics = &issues,
+            .package = "sample",
+            .prefix = "zg",
+            .go_module = "unused-by-rust",
+        }));
+        try std.testing.expect(issues.items.len != 0);
+        try std.testing.expectEqualStrings("ZIGO060", issues.items[0].code);
+        try std.testing.expect(std.mem.indexOf(u8, issues.items[0].message, case.names) != null);
+    }
+}
+
+test "a handle becomes a struct that frees itself" {
+    const fixture =
+        \\{"package":"sample","prefix":"zg","types":[{"kind":"opaque","name":"Counter"}],"zig_version":"0.16.0","constructors":[{"deinit":"deinit","init":"create","type":"Counter"}],"functions":[{"name":"create","namespace":"Counter","ownership":"caller","params":[],"return":{"kind":"error_union","error_set":["OutOfMemory"],"payload":{"kind":"opaque_ptr","ref":"Counter","const":false,"nullable":false}},"symbol":"zg_counter_create"},{"name":"bump","receiver":"Counter","params":[],"return":{"bits":64,"kind":"int","signed":true},"symbol":"zg_counter_bump"},{"name":"peek","receiver":"Counter","receiver_by_value":true,"params":[],"return":{"bits":64,"kind":"int","signed":true},"symbol":"zg_counter_peek"},{"name":"deinit","receiver":"Counter","params":[],"return":{"kind":"void"},"symbol":"zg_counter_deinit"}]}
+    ;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var tree = std.testing.tmpDir(.{ .iterate = true });
+    defer tree.cleanup();
+    try generate(arena.allocator(), std.testing.io, fixture, tree.dir, .{
+        .output_target = targets.rust.target,
+        .package = "sample",
+        .prefix = "zg",
+        .go_module = "unused-by-rust",
+    });
+    const handle = try tree.dir.readFileAlloc(std.testing.io, "src/handle.rs", arena.allocator(), .limited(64 * 1024));
+    // The whole point: the destructor is reached through `Drop`, so there is
+    // no close call to publish and no closed state to guard.
+    try std.testing.expect(std.mem.indexOf(u8, handle, "impl Drop for Counter {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, handle, "raw::counter_deinit(self.handle)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, handle, "pub fn close") == null);
+    try std.testing.expect(std.mem.indexOf(u8, handle, "is_closed") == null);
+    // The constructor is `new`, not Go's `NewCounter`: the path already names
+    // the type.
+    try std.testing.expect(std.mem.indexOf(u8, handle, "pub fn new() -> Result<Self, Error> {") != null);
+    // A pointer receiver borrows mutably and a by-value receiver borrows
+    // shared -- a distinction Go cannot make, since every Go receiver is
+    // `*Counter`.
+    try std.testing.expect(std.mem.indexOf(u8, handle, "pub fn bump(&mut self) -> i64 {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, handle, "pub fn peek(&self) -> i64 {") != null);
+    // `bump` is infallible in Zig but has a status channel, so it reports a
+    // native defect by panicking rather than by returning a `Result`.
+    try std.testing.expect(std.mem.indexOf(u8, handle, "raw::panic_native(\"bump\", code)") != null);
+    // None of the handle's surface leaks into the crate root as a free
+    // function; the destructor appears nowhere public at all.
+    const lib = try tree.dir.readFileAlloc(std.testing.io, "src/lib.rs", arena.allocator(), .limited(64 * 1024));
+    try std.testing.expect(std.mem.indexOf(u8, lib, "mod handle;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lib, "pub fn ") == null);
+    try std.testing.expect(std.mem.indexOf(u8, handle, "pub fn deinit") == null);
+}
+
 test "the Rust target refuses the shapes it would otherwise flatten silently" {
     // Found by running every Go generator case's document through the Rust
     // target and compiling the result. Each of these three used to be

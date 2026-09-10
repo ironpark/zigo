@@ -12,6 +12,7 @@ const emit = @import("../emit/emit.zig");
 // The Rust target's own rules, reached the way the Go emitter reaches Go's:
 // through the `targets` module, since `targets.zig` owns those files.
 const rust = @import("targets").rust;
+const handles = @import("handles.zig");
 const raw = @import("raw.zig");
 const types = @import("types.zig");
 
@@ -31,9 +32,18 @@ pub fn renderLib(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
     }
     try writer.writeAll("\npub mod raw;\n");
     if (hasErrors(program)) try writer.writeAll("\nmod error;\npub use error::{Error, ErrorKind};\n");
-    // Unfiltered for the same reason as `raw.renderRaw`: the refusal happens
-    // once, upstream, over the whole document.
-    for (program.functions) |function| try renderFunction(allocator, writer, program, function, options);
+    if (handles.hasHandles(program)) try writer.writeAll("\nmod handle;\npub use handle::*;\n");
+    // Filtered by *placement*, not by support: the refusal for a shape this
+    // backend cannot render happens once, upstream, over the whole document.
+    // A constructor and a method belong to a handle's `impl` block and a
+    // destructor belongs to its `Drop`, so this file writes the free
+    // functions and `handle.rs` writes the rest. `types.placementOf` is the
+    // one definition of that split, so no function can be emitted twice or
+    // dropped by both emitters believing the other has it.
+    for (program.functions) |function| {
+        if (types.placementOf(program, function) != .free_function) continue;
+        try renderFunction(allocator, writer, program, function, options);
+    }
 }
 
 fn renderFunction(
@@ -46,21 +56,22 @@ fn renderFunction(
     const shape = try raw.Shape.of(allocator, program, function);
     defer shape.deinit(allocator);
     try writer.writeByte('\n');
-    if (function.origin.doc) |doc| try writeDocComment(writer, doc, "///");
+    var documented = false;
+    if (function.origin.doc) |doc| {
+        try writeDocComment(writer, doc, "///");
+        documented = true;
+    }
     if (function.errors.len != 0) {
-        try writer.writeAll("///\n/// # Errors\n///\n");
+        if (documented) try writer.writeAll("///\n");
+        try writer.writeAll("/// # Errors\n///\n");
         for (function.errors) |code| try writer.print("/// - [`ErrorKind::{s}`]\n", .{code.name});
     }
     try writer.print("pub fn {s}(", .{shape.raw_name});
-    for (shape.inputs, 0..) |input, index| {
-        if (index != 0) try writer.writeAll(", ");
-        try writer.print("{s}: ", .{input.name});
-        try input.writeRawType(writer);
-    }
+    try writeParameters(writer, shape, null);
     try writer.writeByte(')');
     try writePublicResultType(writer, shape);
     try writer.writeAll(" {\n");
-    try writeBody(writer, shape, function);
+    try writeBody(writer, shape, function, null);
     try writer.writeAll("}\n");
 }
 
@@ -72,7 +83,7 @@ fn renderFunction(
 /// an empty error union so a native panic has somewhere to go -- returns its
 /// payload, because the codes it can report are defects rather than
 /// conditions. See `raw.Shape.declares_errors`.
-fn writePublicResultType(writer: *std.Io.Writer, shape: raw.Shape) !void {
+pub fn writePublicResultType(writer: *std.Io.Writer, shape: raw.Shape) !void {
     if (shape.declares_errors) {
         try writer.writeAll(" -> Result<");
         try writePayloadType(writer, shape);
@@ -86,6 +97,9 @@ fn writePublicResultType(writer: *std.Io.Writer, shape: raw.Shape) !void {
 fn writePayloadType(writer: *std.Io.Writer, shape: raw.Shape) !void {
     if (shape.payload) |payload| switch (payload) {
         .scalar => |scalar| return writer.writeAll(scalar.public),
+        // A constructor's own type. `Self` rather than the name, so a renamed
+        // wrapper cannot drift from its constructor's signature.
+        .handle => return writer.writeAll("Self"),
         // An owned copy, not a borrow. The native buffer's lifetime is the
         // library's, and a borrowed slice would need a lifetime the public
         // signature has nothing to tie it to; copying is what the minimal
@@ -100,12 +114,24 @@ fn writePayloadType(writer: *std.Io.Writer, shape: raw.Shape) !void {
     try writer.writeAll("()");
 }
 
-fn writeBody(writer: *std.Io.Writer, shape: raw.Shape, function: abi.AbiFn) !void {
+/// One public function's body, shared by the free functions in `lib.rs` and
+/// the `impl` blocks in `handle.rs`.
+///
+/// `self_expression` is what the raw wrapper's receiver parameter is passed,
+/// or null for a free function. Sharing the writer rather than giving methods
+/// their own is what keeps the status-code rule, the slice copy and the `Ok`
+/// wrapping from drifting apart between the two.
+pub fn writeBody(
+    writer: *std.Io.Writer,
+    shape: raw.Shape,
+    function: abi.AbiFn,
+    self_expression: ?[]const u8,
+) !void {
     // The raw wrapper's result is destructured to exactly what this function
     // has to look at, so an unused binding never reaches the compiler.
     if (shape.payload) |payload| {
         switch (payload) {
-            .scalar => try writer.writeAll("    let (result"),
+            .scalar, .handle => try writer.writeAll("    let (result"),
             .slice => try writer.writeAll("    let (result_ptr, result_len"),
         }
         if (shape.has_status_code) try writer.writeAll(", code");
@@ -116,26 +142,18 @@ fn writeBody(writer: *std.Io.Writer, shape: raw.Shape, function: abi.AbiFn) !voi
         // Nothing to inspect after the call, so it is the tail expression.
         // `bool` is the one result that still needs a word after it: the C ABI
         // carries a Zig `bool` as a byte.
-        try writer.print("    raw::{s}(", .{shape.raw_name});
-        for (shape.inputs, 0..) |input, index| {
-            if (index != 0) try writer.writeAll(", ");
-            try writer.writeAll(input.name);
-        }
-        try writer.writeAll(")");
+        try writer.writeAll("    ");
+        try writeCall(writer, shape, self_expression);
         if (shape.direct) |direct| if (direct.is_bool) try writer.writeAll(" != 0");
         return writer.writeByte('\n');
     }
-    try writer.print("raw::{s}(", .{shape.raw_name});
-    for (shape.inputs, 0..) |input, index| {
-        if (index != 0) try writer.writeAll(", ");
-        try writer.writeAll(input.name);
-    }
-    try writer.writeAll(");\n");
-    // What a non-zero code means is the whole of this plan's status-channel
-    // decision, spelled in two lines. A declared error set makes it a value
-    // the caller handles; an empty one makes it a defect, and the only codes
-    // reachable there are an invalid handle -- unreachable in Rust -- and a
-    // caught Zig panic.
+    try writeCall(writer, shape, self_expression);
+    try writer.writeAll(";\n");
+    // What a non-zero code means is the whole of the status-channel decision,
+    // spelled in two lines. A declared error set makes it a value the caller
+    // handles; an empty one makes it a defect, and the only codes reachable
+    // there are an invalid handle -- unreachable in Rust -- and a caught Zig
+    // panic.
     if (shape.has_status_code) {
         if (shape.declares_errors) {
             try writer.print(
@@ -151,6 +169,16 @@ fn writeBody(writer: *std.Io.Writer, shape: raw.Shape, function: abi.AbiFn) !voi
     }
     if (shape.payload) |payload| {
         switch (payload) {
+            .handle => {
+                // A call that reported success must have written a handle.
+                // Without this the wrapper would own a null pointer and hand
+                // it to the destructor in `Drop`.
+                try writer.print(
+                    "    assert!(\n        !result.is_null(),\n        \"zigo: {s}: the native constructor reported success without writing a handle\"\n    );\n    ",
+                    .{function.origin.name},
+                );
+                return writeResultExpression(writer, shape, "Self { handle: result }");
+            },
             .scalar => |scalar| {
                 try writer.writeAll("    ");
                 // A `bool` payload crossed as a byte, so the public value is
@@ -161,6 +189,7 @@ fn writeBody(writer: *std.Io.Writer, shape: raw.Shape, function: abi.AbiFn) !voi
             // so the bytes are copied before returning. A null pointer with a
             // zero length is an empty result, which `from_raw_parts` may not
             // be handed.
+            //
             // One binding, so one allocation and one copy. Converting inside
             // the `else` arm matters for text: `from_utf8_lossy` borrows for
             // valid UTF-8, so going through an owned `Vec` first would copy
@@ -193,7 +222,38 @@ fn writeBody(writer: *std.Io.Writer, shape: raw.Shape, function: abi.AbiFn) !voi
     if (shape.declares_errors) try writer.writeAll("    Ok(())\n");
 }
 
-fn writeResultExpression(writer: *std.Io.Writer, shape: raw.Shape, expression: []const u8) !void {
+/// The call into the raw wrapper, receiver first when there is one.
+///
+/// A wrapper that takes a handle pointer is `unsafe fn`, and this is where its
+/// precondition is discharged: every pointer passed here comes out of a
+/// wrapper that owns a live native object for its whole lifetime, because the
+/// only way to obtain one is a constructor and the only way to release one is
+/// `Drop`.
+fn writeCall(writer: *std.Io.Writer, shape: raw.Shape, self_expression: ?[]const u8) !void {
+    const wrap = shape.touchesHandlePointer();
+    if (wrap) try writer.writeAll("unsafe { ");
+    try writer.print("raw::{s}(", .{shape.raw_name});
+    if (self_expression) |expression| try writer.writeAll(expression);
+    for (shape.inputs, 0..) |input, index| {
+        if (index != 0 or self_expression != null) try writer.writeAll(", ");
+        try input.writeArgument(writer);
+    }
+    try writer.writeByte(')');
+    if (wrap) try writer.writeAll(" }");
+}
+
+/// One public function's parameter list, without the enclosing parentheses and
+/// without the receiver, which an `impl` block spells as `&self`.
+pub fn writeParameters(writer: *std.Io.Writer, shape: raw.Shape, leading: ?[]const u8) !void {
+    if (leading) |value| try writer.writeAll(value);
+    for (shape.inputs, 0..) |input, index| {
+        if (index != 0 or leading != null) try writer.writeAll(", ");
+        try writer.print("{s}: ", .{input.name});
+        try input.writePublicType(writer);
+    }
+}
+
+pub fn writeResultExpression(writer: *std.Io.Writer, shape: raw.Shape, expression: []const u8) !void {
     if (shape.declares_errors) return writer.print("Ok({s})\n", .{expression});
     try writer.print("{s}\n", .{expression});
 }
@@ -318,7 +378,7 @@ pub fn renderErrors(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
 /// A Zig doc comment as a Rust one. Zig doc text arrives as plain lines, and
 /// `///` or `//!` is prefixed per line so a multi-line doc does not become one
 /// unreadable run.
-fn writeDocComment(writer: *std.Io.Writer, doc: []const u8, marker: []const u8) !void {
+pub fn writeDocComment(writer: *std.Io.Writer, doc: []const u8, marker: []const u8) !void {
     var lines = std.mem.splitScalar(u8, std.mem.trimEnd(u8, doc, "\n"), '\n');
     while (lines.next()) |line| {
         const trimmed = std.mem.trimEnd(u8, line, " \t\r");

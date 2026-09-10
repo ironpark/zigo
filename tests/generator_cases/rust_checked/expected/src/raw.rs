@@ -4,6 +4,10 @@
 //! library. Not part of the supported API.
 
 #![allow(dead_code)]
+// An `unsafe fn` body is implicitly unsafe in edition 2021, which would
+// make the block inside one redundant. Denying that keeps every native
+// call inside an explicit block, so the unsafe operations stay visible.
+#![deny(unsafe_op_in_unsafe_fn)]
 
 use core::ffi::c_char;
 

@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-10T05:53:37Z"
 depends_on:
 - "190-rust-handles-and-buffers#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `grep -n 'New{s}' src/gen/targets.zig` finds nothing; the literal lives in
 > NEXT: none
