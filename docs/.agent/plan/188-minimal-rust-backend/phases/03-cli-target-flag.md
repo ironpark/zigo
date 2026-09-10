@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-10T04:44:43Z"
 depends_on:
 - "188-minimal-rust-backend#2"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `zigo-gen generate --target rust ...` writes a Rust tree; without `--target`
 > NEXT: none

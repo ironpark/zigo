@@ -10,7 +10,7 @@ registered_at: "2026-09-10T04:02:52Z"
 - [x] [Phase 00: Split the exported-name rule into a type rule and a function rule](phases/00-split-exported-name-rule.md)
 - [x] [Phase 01: Give Rust a Target value and an IR namespace](phases/01-rust-target-value.md)
 - [x] [Phase 02: Name the neutral emitters and write the Rust emitter](phases/02-rust-emitter.md)
-- [ ] [Phase 03: Select the target from the command line](phases/03-cli-target-flag.md)
+- [x] [Phase 03: Select the target from the command line](phases/03-cli-target-flag.md)
 - [ ] [Phase 04: Build integration and a runnable example](phases/04-runnable-example.md)
 
 # Shared Verification
