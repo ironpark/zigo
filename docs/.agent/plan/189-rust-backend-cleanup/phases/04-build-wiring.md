@@ -2,7 +2,7 @@
 depends_on:
 - "189-rust-backend-cleanup#3"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: All 14 examples pass their full step list.
 > NEXT: none

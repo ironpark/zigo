@@ -397,6 +397,79 @@ const ReflectionOptions = struct {
     plugins: []const PluginModule = &.{},
 };
 
+/// Where a binding set's committed error-code lock lives, relative to the
+/// build root. Neutral: the lock records the C ABI's status codes, which every
+/// target reads from the same document.
+const errors_lock_path = "zigo/errors.lock.json";
+
+/// Hands the generator the committed error-code lock when there is one, so a
+/// code already published keeps its number. Absent on a first generation.
+fn addErrorsLockArg(bld: *std.Build, generate: *std.Build.Step.Run) void {
+    const has_errors_lock = blk: {
+        bld.build_root.handle.access(bld.graph.io, errors_lock_path, .{}) catch |err| switch (err) {
+            error.FileNotFound => break :blk false,
+            else => @panic("unable to inspect errors.lock.json"),
+        };
+        break :blk true;
+    };
+    if (!has_errors_lock) return;
+    generate.addArg("--errors-lock");
+    generate.addFileArg(bld.path(errors_lock_path));
+}
+
+/// The staleness check: committed output against what this build would write.
+/// The sidecar files the update step copies outside the language directory are
+/// part of the committed output too, so a stale one fails here rather than in
+/// a post-generation diff. Both are neutral -- `semantic.json` and the error
+/// lock are the same bytes whichever target rendered the tree.
+fn addStalenessCheck(
+    bld: *std.Build,
+    generator: *std.Build.Step.Compile,
+    generated_dir: std.Build.LazyPath,
+    source_dir: std.Build.LazyPath,
+    semantic_json: std.Build.LazyPath,
+) *std.Build.Step.Run {
+    const check = bld.addRunArtifact(generator);
+    check.addArgs(&.{ "check", "--generated" });
+    check.addDirectoryArg(generated_dir);
+    check.addArg("--source");
+    check.addDirectoryArg(source_dir);
+    check.addArg("--file");
+    check.addFileArg(semantic_json);
+    check.addArg(bld.pathFromRoot("zigo/semantic.json"));
+    check.addArg("--file");
+    check.addFileArg(generated_dir.path(bld, "errors.lock.json"));
+    check.addArg(bld.pathFromRoot(errors_lock_path));
+    return check;
+}
+
+/// Compares this build's `semantic.json` against the one committed at
+/// `abi_base`. The baseline read is a `git show`, whose ref can move without
+/// changing argv, so it must not reuse a build-cache entry from an older
+/// commit. `target_args` carries the backend or output-target flags the
+/// comparison is made under; everything else here is neutral.
+fn addAbiCheck(
+    bld: *std.Build,
+    generator: *std.Build.Step.Compile,
+    semantic_json: std.Build.LazyPath,
+    abi_base: []const u8,
+    target_args: []const []const u8,
+) *std.Build.Step.Run {
+    const baseline = bld.addSystemCommand(&.{ "git", "show" });
+    baseline.has_side_effects = true;
+    baseline.setCwd(bld.path("."));
+    baseline.addArg(bld.fmt("{s}:./zigo/semantic.json", .{abi_base}));
+    const baseline_semantic = baseline.captureStdOut(.{ .basename = "semantic-base.json", .trim_whitespace = .none });
+    const run = bld.addRunArtifact(generator);
+    run.addArgs(&.{ "abi-diff", "--base" });
+    run.addFileArg(baseline_semantic);
+    run.addArg("--current");
+    run.addFileArg(semantic_json);
+    run.addArgs(target_args);
+    run.addArgs(&.{ "--fail-on", "breaking" });
+    return run;
+}
+
 fn addReflection(b: *std.Build, options: ReflectionOptions) Reflection {
     const zigo_dependency = b.dependencyFromBuildZig(@This(), .{});
     const plugin_sources = b.allocator.alloc(modules.PluginSource, options.plugins.len) catch @panic("OOM");
@@ -669,33 +742,8 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     generate.addArgs(&.{ "--plugin-config", options.plugin_config });
     if (backend == .purego) addLibraryLoadingArgs(b, generate, library_loading);
     if (raw_package.colocated) generate.addArg("--raw-colocated");
-    const errors_lock_path = "zigo/errors.lock.json";
-    const has_errors_lock = blk: {
-        b.build_root.handle.access(b.graph.io, errors_lock_path, .{}) catch |err| switch (err) {
-            error.FileNotFound => break :blk false,
-            else => @panic("unable to inspect errors.lock.json"),
-        };
-        break :blk true;
-    };
-    if (has_errors_lock) {
-        generate.addArg("--errors-lock");
-        generate.addFileArg(b.path(errors_lock_path));
-    }
-
-    const check = b.addRunArtifact(generator);
-    check.addArgs(&.{ "check", "--generated" });
-    check.addDirectoryArg(generated_dir);
-    check.addArg("--source");
-    check.addDirectoryArg(options.go_dir);
-    // The sidecar files the update step copies outside the Go directory are
-    // part of the committed output too, so a stale one fails the check here
-    // rather than in CI's post-generation diff.
-    check.addArg("--file");
-    check.addFileArg(semantic_json);
-    check.addArg(b.pathFromRoot("zigo/semantic.json"));
-    check.addArg("--file");
-    check.addFileArg(generated_dir.path(b, "errors.lock.json"));
-    check.addArg(b.pathFromRoot(errors_lock_path));
+    addErrorsLockArg(b, generate);
+    const check = addStalenessCheck(b, generator, generated_dir, options.go_dir, semantic_json);
     const report = b.addRunArtifact(generator);
     report.addArgs(&.{ "report", "--semantic" });
     report.addFileArg(semantic_json);
@@ -715,23 +763,10 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     doctor.addArgs(&.{ "--backend", @tagName(backend) });
     // Report the same gofmt the update step will format with.
     if (options.gofmt) |gofmt| doctor.addArgs(&.{ "--gofmt", gofmt });
-    const abi_check: ?*std.Build.Step.Run = if (options.abi_base) |abi_base| check: {
-        const baseline = b.addSystemCommand(&.{ "git", "show" });
-        // The ref can move without changing argv, so this read must not reuse a
-        // build-cache entry from an older commit.
-        baseline.has_side_effects = true;
-        baseline.setCwd(b.path("."));
-        baseline.addArg(b.fmt("{s}:./zigo/semantic.json", .{abi_base}));
-        const baseline_semantic = baseline.captureStdOut(.{ .basename = "semantic-base.json", .trim_whitespace = .none });
-        const run = b.addRunArtifact(generator);
-        run.addArgs(&.{ "abi-diff", "--base" });
-        run.addFileArg(baseline_semantic);
-        run.addArg("--current");
-        run.addFileArg(semantic_json);
-        run.addArgs(&.{ "--base-backend", @tagName(backend), "--current-backend", @tagName(backend) });
-        run.addArgs(&.{ "--fail-on", "breaking" });
-        break :check run;
-    } else null;
+    const abi_check: ?*std.Build.Step.Run = if (options.abi_base) |abi_base|
+        addAbiCheck(b, generator, semantic_json, abi_base, &.{ "--base-backend", @tagName(backend), "--current-backend", @tagName(backend) })
+    else
+        null;
 
     var native_libraries: std.ArrayList(GoBindings.NativeLibrary) = .empty;
     var target_link_flags: std.ArrayList(steps.PublishCgoLinkFlags.TargetFlags) = .empty;
@@ -821,7 +856,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         })
     else
         null;
-    const publish = steps.PublishGeneratedGo.create(b, generated_dir, sourcePath(b, options.go_dir, "."));
+    const publish = steps.PublishGenerated.create(b, generated_dir, sourcePath(b, options.go_dir, "."));
     const update = b.addUpdateSourceFiles();
     update.step.dependOn(&publish.step);
     update.addCopyFileToSource(generated_dir.path(b, "errors.lock.json"), errors_lock_path);
@@ -1016,50 +1051,13 @@ pub fn addRustBindings(b: *std.Build, options: RustOptions) RustBindings {
         "--go-module",     options.name,
     });
     if (options.rustfmt) |rustfmt| generate.addArgs(&.{ "--rustfmt", rustfmt });
-    const errors_lock_path = "zigo/errors.lock.json";
-    const has_errors_lock = blk: {
-        b.build_root.handle.access(b.graph.io, errors_lock_path, .{}) catch |err| switch (err) {
-            error.FileNotFound => break :blk false,
-            else => @panic("unable to inspect errors.lock.json"),
-        };
-        break :blk true;
-    };
-    if (has_errors_lock) {
-        generate.addArg("--errors-lock");
-        generate.addFileArg(b.path(errors_lock_path));
-    }
+    addErrorsLockArg(b, generate);
+    const check = addStalenessCheck(b, reflection.generator, generated_dir, options.rust_dir, reflection.semantic_json);
 
-    const check = b.addRunArtifact(reflection.generator);
-    check.addArgs(&.{ "check", "--generated" });
-    check.addDirectoryArg(generated_dir);
-    check.addArg("--source");
-    check.addDirectoryArg(options.rust_dir);
-    // The sidecar files the update step copies outside the crate directory
-    // are part of the committed output too, so a stale one fails here rather
-    // than in a post-generation diff.
-    check.addArg("--file");
-    check.addFileArg(reflection.semantic_json);
-    check.addArg(b.pathFromRoot("zigo/semantic.json"));
-    check.addArg("--file");
-    check.addFileArg(generated_dir.path(b, "errors.lock.json"));
-    check.addArg(b.pathFromRoot(errors_lock_path));
-
-    const abi_check: ?*std.Build.Step.Run = if (options.abi_base) |abi_base| blk: {
-        const baseline = b.addSystemCommand(&.{ "git", "show" });
-        // The ref can move without changing argv, so this read must not reuse
-        // a build-cache entry from an older commit.
-        baseline.has_side_effects = true;
-        baseline.setCwd(b.path("."));
-        baseline.addArg(b.fmt("{s}:./zigo/semantic.json", .{abi_base}));
-        const baseline_semantic = baseline.captureStdOut(.{ .basename = "semantic-base.json", .trim_whitespace = .none });
-        const run = b.addRunArtifact(reflection.generator);
-        run.addArgs(&.{ "abi-diff", "--base" });
-        run.addFileArg(baseline_semantic);
-        run.addArg("--current");
-        run.addFileArg(reflection.semantic_json);
-        run.addArgs(&.{ "--output-target", "rust", "--fail-on", "breaking" });
-        break :blk run;
-    } else null;
+    const abi_check: ?*std.Build.Step.Run = if (options.abi_base) |abi_base|
+        addAbiCheck(b, reflection.generator, reflection.semantic_json, abi_base, &.{ "--output-target", "rust" })
+    else
+        null;
 
     // The shim, byte for byte what a Go binding set builds from the same
     // document. Nothing below this comment mentions Rust, which is the point.
@@ -1081,7 +1079,7 @@ pub fn addRustBindings(b: *std.Build, options: RustOptions) RustBindings {
     // The archive is useless to `build.rs` without the header beside it.
     install_lib.step.dependOn(&install_header.step);
 
-    const publish = steps.PublishGeneratedGo.create(b, generated_dir, sourcePath(b, options.rust_dir, "."));
+    const publish = steps.PublishGenerated.create(b, generated_dir, sourcePath(b, options.rust_dir, "."));
     const update = b.addUpdateSourceFiles();
     update.step.dependOn(&publish.step);
     update.addCopyFileToSource(generated_dir.path(b, "errors.lock.json"), errors_lock_path);

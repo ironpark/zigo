@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-10T05:24:08Z"
 depends_on:
 - "189-rust-backend-cleanup#2"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `grep -n "targets.rust" src/gen/generator.zig` matches only the backend table
 > NEXT: none
