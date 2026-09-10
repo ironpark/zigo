@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-09T10:08:37Z"
 depends_on:
 - "185-ir-target-namespacing#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `SemanticFn` declares none of the fields this plan moves outside `go`.
 > NEXT: none

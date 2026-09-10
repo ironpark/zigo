@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-09T10:08:37Z"
 description: Move Go-specific fields in the semantic IR under a target namespace so a second output language can be added
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-09T09:41:31Z"
 ---
 > NEXT: Add the missing Go field accessors and convert every reader in `src/gen` and ([Phase 0](phases/00-read-through-accessors.md))
@@ -9,7 +10,7 @@ registered_at: "2026-09-09T09:41:31Z"
 
 - [x] [Phase 00: Route Go field reads through accessors](phases/00-read-through-accessors.md)
 - [x] [Phase 01: Nest the fields and migrate the document](phases/01-nest-and-migrate.md)
-- [ ] [Phase 02: Move the Go standard-library features](phases/02-move-plugin-go-features.md)
+- [x] [Phase 02: Move the Go standard-library features](phases/02-move-plugin-go-features.md)
 
 # Shared Verification
 
