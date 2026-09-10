@@ -24,7 +24,11 @@ pub const target: target_api.Target = .{
         .isIdentifier = isIdentifier,
         .isConversionFunctionName = isConversionFunctionName,
         .paramNamesAlloc = vtParamNamesAlloc,
-        .exportedNameAlloc = vtExportedNameAlloc,
+        // Go spells a public type and a public function the same way, so the
+        // two rules the target seam separates have one answer here. This is
+        // what makes the split invisible to generated Go.
+        .exportedTypeNameAlloc = vtExportedNameAlloc,
+        .exportedFunctionNameAlloc = vtExportedNameAlloc,
         .unexportedNameAlloc = vtUnexportedNameAlloc,
         .packageNameAlloc = vtPackageNameAlloc,
         .nameOverride = nameOverride,

@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `grep -rn "exportedNameAlloc" src build build.zig plugins tests` finds
 > NEXT: none

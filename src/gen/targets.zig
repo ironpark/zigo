@@ -52,9 +52,18 @@ pub const VTable = struct {
     /// against the locals the generated bodies introduce, and against each
     /// other. Free with `freeNames`.
     paramNamesAlloc: *const fn (allocator: std.mem.Allocator, zig_names: []const []const u8) anyerror![][]u8,
-    /// The case a name takes when it is part of the public API.
-    exportedNameAlloc: *const fn (allocator: std.mem.Allocator, input: []const u8) anyerror![]u8,
-    /// The case a name takes when it is local to a generated body.
+    /// The case a public *type* name takes. Go spells a public type and a
+    /// public function the same way, so both of its answers are
+    /// `naming.pascalAlloc`; Rust does not, which is why this is two rules
+    /// rather than one. Splitting them here rather than at the call sites is
+    /// what keeps the emitters out of it.
+    exportedTypeNameAlloc: *const fn (allocator: std.mem.Allocator, input: []const u8) anyerror![]u8,
+    /// The case a public *function* name takes.
+    exportedFunctionNameAlloc: *const fn (allocator: std.mem.Allocator, input: []const u8) anyerror![]u8,
+    /// The case a name takes when it is local to a generated body. No
+    /// generator caller reads this today -- Go's emitter reaches
+    /// `naming.camelAlloc` directly, being behind this seam -- so it is here
+    /// as the rule a target states rather than as a dispatch point.
     unexportedNameAlloc: *const fn (allocator: std.mem.Allocator, input: []const u8) anyerror![]u8,
     /// The case a module or package name takes.
     packageNameAlloc: *const fn (allocator: std.mem.Allocator, input: []const u8) anyerror![]u8,
@@ -109,8 +118,12 @@ pub const Target = struct {
         return self.vtable.paramNamesAlloc(allocator, zig_names);
     }
 
-    pub fn exportedNameAlloc(self: Target, allocator: std.mem.Allocator, input: []const u8) anyerror![]u8 {
-        return self.vtable.exportedNameAlloc(allocator, input);
+    pub fn exportedTypeNameAlloc(self: Target, allocator: std.mem.Allocator, input: []const u8) anyerror![]u8 {
+        return self.vtable.exportedTypeNameAlloc(allocator, input);
+    }
+
+    pub fn exportedFunctionNameAlloc(self: Target, allocator: std.mem.Allocator, input: []const u8) anyerror![]u8 {
+        return self.vtable.exportedFunctionNameAlloc(allocator, input);
     }
 
     pub fn unexportedNameAlloc(self: Target, allocator: std.mem.Allocator, input: []const u8) anyerror![]u8 {
@@ -146,10 +159,10 @@ pub const Target = struct {
     ) ![]u8 {
         if (self.nameOverride(function)) |name| return allocator.dupe(u8, name);
         if (semantic.constructorForInit(document.constructors, function)) |constructor| {
-            if (constructor.name) |name| return self.exportedNameAlloc(allocator, name);
+            if (constructor.name) |name| return self.exportedFunctionNameAlloc(allocator, name);
             return std.fmt.allocPrint(allocator, "New{s}", .{constructor.type});
         }
-        return self.exportedNameAlloc(allocator, function.name);
+        return self.exportedFunctionNameAlloc(allocator, function.name);
     }
 
     /// Releases names returned by `paramNamesAlloc`. Freeing a name list is
@@ -214,6 +227,22 @@ test "generated file names carry the language's suffix and extension" {
     try std.testing.expectEqualStrings("event_queue_enums_gen.go", name);
     try std.testing.expect(default.isSource("a/b_gen.go"));
     try std.testing.expect(!default.isSource("a/b.zig"));
+}
+
+test "Go answers the type rule and the function rule identically" {
+    // The seam separates two rules because Rust needs them separate. Go
+    // spells a public type and a public function the same way, so this is the
+    // check that the split cannot move a byte of generated Go.
+    for ([_][]const u8{ "lookupID", "pushEvent", "add", "parse_url" }) |name| {
+        const type_name = try default.exportedTypeNameAlloc(std.testing.allocator, name);
+        defer std.testing.allocator.free(type_name);
+        const function_name = try default.exportedFunctionNameAlloc(std.testing.allocator, name);
+        defer std.testing.allocator.free(function_name);
+        try std.testing.expectEqualStrings(type_name, function_name);
+        const pascal = try naming.pascalAlloc(std.testing.allocator, name);
+        defer std.testing.allocator.free(pascal);
+        try std.testing.expectEqualStrings(pascal, function_name);
+    }
 }
 
 test "targets are addressable by name" {

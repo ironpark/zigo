@@ -20,7 +20,34 @@ pub fn snakeAlloc(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
     return output.toOwnedSlice(allocator);
 }
 
+/// One entry of an initialism table: the lowercased word, and the spelling a
+/// language's style guide wants for it.
+pub const Initialism = struct { lower: []const u8, canonical: []const u8 };
+
+/// Go's table. `id` -> `ID` is a Go convention, not a property of the bound
+/// Zig library, which is why it is a parameter of the transform below rather
+/// than a constant inside it: Rust's style guide asks for `Id`, `Url` and
+/// `Utf8`, so a Rust target passes `&.{}` and gets them. Go's own callers keep
+/// calling `pascalAlloc` and `camelAlloc`, so no call site had to move for the
+/// table to become a parameter.
+pub const go_initialisms: []const Initialism = &.{
+    .{ .lower = "id", .canonical = "ID" },
+    .{ .lower = "url", .canonical = "URL" },
+    .{ .lower = "utf8", .canonical = "UTF8" },
+};
+
 pub fn pascalAlloc(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
+    return pascalWithInitialismsAlloc(allocator, input, go_initialisms);
+}
+
+/// `pascalAlloc` with the initialism table named by the caller. An empty table
+/// title-cases every word, which is what a language without Go's acronym rule
+/// wants.
+pub fn pascalWithInitialismsAlloc(
+    allocator: std.mem.Allocator,
+    input: []const u8,
+    initialisms: []const Initialism,
+) ![]u8 {
     const snake = try snakeAlloc(allocator, input);
     defer allocator.free(snake);
     var output: std.ArrayList(u8) = .empty;
@@ -28,7 +55,7 @@ pub fn pascalAlloc(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
     var iterator = std.mem.splitScalar(u8, snake, '_');
     while (iterator.next()) |word| {
         if (word.len == 0) continue;
-        if (initialism(word)) |canonical| {
+        if (initialism(word, initialisms)) |canonical| {
             try output.appendSlice(allocator, canonical);
         } else {
             try output.append(allocator, std.ascii.toUpper(word[0]));
@@ -127,6 +154,15 @@ pub fn projectionSymbolAlloc(allocator: std.mem.Allocator, prefix: []const u8, t
 }
 
 pub fn camelAlloc(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
+    return camelWithInitialismsAlloc(allocator, input, go_initialisms);
+}
+
+/// `camelAlloc` with the initialism table named by the caller.
+pub fn camelWithInitialismsAlloc(
+    allocator: std.mem.Allocator,
+    input: []const u8,
+    initialisms: []const Initialism,
+) ![]u8 {
     const snake = try snakeAlloc(allocator, input);
     defer allocator.free(snake);
     var output: std.ArrayList(u8) = .empty;
@@ -138,7 +174,7 @@ pub fn camelAlloc(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
         if (first) {
             try output.appendSlice(allocator, word);
             first = false;
-        } else if (initialism(word)) |canonical| {
+        } else if (initialism(word, initialisms)) |canonical| {
             try output.appendSlice(allocator, canonical);
         } else {
             try output.append(allocator, std.ascii.toUpper(word[0]));
@@ -159,14 +195,28 @@ pub fn stripFunctionPrefix(comptime input: []const u8, comptime prefix: []const 
     return &frozen;
 }
 
-fn initialism(word: []const u8) ?[]const u8 {
-    const table = [_]struct { lower: []const u8, canonical: []const u8 }{
-        .{ .lower = "id", .canonical = "ID" },
-        .{ .lower = "url", .canonical = "URL" },
-        .{ .lower = "utf8", .canonical = "UTF8" },
-    };
-    inline for (table) |entry| if (std.mem.eql(u8, word, entry.lower)) return entry.canonical;
+fn initialism(word: []const u8, table: []const Initialism) ?[]const u8 {
+    for (table) |entry| if (std.mem.eql(u8, word, entry.lower)) return entry.canonical;
     return null;
+}
+
+test "an empty initialism table title-cases every word" {
+    // What a Rust target asks for: `Id`, not Go's `ID`.
+    const cases = [_]struct { input: []const u8, pascal: []const u8, camel: []const u8 }{
+        .{ .input = "lookupID", .pascal = "LookupId", .camel = "lookupId" },
+        .{ .input = "parseURL", .pascal = "ParseUrl", .camel = "parseUrl" },
+        .{ .input = "validateUTF8", .pascal = "ValidateUtf8", .camel = "validateUtf8" },
+        // A name with no initialism word in it is spelled the same either way.
+        .{ .input = "HTTPClient", .pascal = "HttpClient", .camel = "httpClient" },
+    };
+    for (cases) |case| {
+        const pascal = try pascalWithInitialismsAlloc(std.testing.allocator, case.input, &.{});
+        defer std.testing.allocator.free(pascal);
+        try std.testing.expectEqualStrings(case.pascal, pascal);
+        const camel = try camelWithInitialismsAlloc(std.testing.allocator, case.input, &.{});
+        defer std.testing.allocator.free(camel);
+        try std.testing.expectEqualStrings(case.camel, camel);
+    }
 }
 
 test "naming normalizes symbols and initialisms" {
