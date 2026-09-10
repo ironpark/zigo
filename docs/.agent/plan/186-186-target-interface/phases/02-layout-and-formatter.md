@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-10T03:20:29Z"
 depends_on:
 - "186-186-target-interface#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `grep -rn '_gen\.go' src/gen/emit src/gen/generator.zig` finds only the
 > NEXT: none

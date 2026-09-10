@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-10T03:20:29Z"
 description: Extract a Target interface so the output language's keyword, naming, layout and formatter rules live in one place
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-10T02:48:46Z"
 ---
 > NEXT: None. All three phases are done; the hand-offs are listed under `What a Rust Target Implements`.
@@ -9,7 +10,7 @@ registered_at: "2026-09-10T02:48:46Z"
 
 - [x] [Phase 00: Introduce the Target seam with Go behind it](phases/00-introduce-target-seam.md)
 - [x] [Phase 01: Thread the target as a value](phases/01-thread-target-value.md)
-- [ ] [Phase 02: Move file layout and the formatter behind the target](phases/02-layout-and-formatter.md)
+- [x] [Phase 02: Move file layout and the formatter behind the target](phases/02-layout-and-formatter.md)
 
 # Shared Verification
 
