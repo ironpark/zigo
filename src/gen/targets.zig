@@ -71,6 +71,7 @@ pub const VTable = struct {
     /// namespace. `Parameter`, `SemanticFn` and `TypeDecl` each hold one
     /// namespace per target, so this is where a target reads its own.
     nameOverride: *const fn (function: semantic.SemanticFn) ?[]const u8,
+    setNameOverride: *const fn (function: *semantic.SemanticFn, name: ?[]const u8) void,
     /// Environment variable a generated dynamic-loading package reads before
     /// the shared `ZIGO_LIBRARY_PATH`, so two packages in one process stay
     /// independent.
@@ -136,6 +137,14 @@ pub const Target = struct {
 
     pub fn nameOverride(self: Target, function: semantic.SemanticFn) ?[]const u8 {
         return self.vtable.nameOverride(function);
+    }
+
+    /// The write side of `nameOverride`. A plugin's `name_function` hook runs
+    /// in target-neutral code, so the namespace it writes into has to be the
+    /// selected target's; writing Go's would leave the name somewhere the
+    /// selected target never reads.
+    pub fn setNameOverride(self: Target, function: *semantic.SemanticFn, name: ?[]const u8) void {
+        self.vtable.setNameOverride(function, name);
     }
 
     pub fn libraryPathEnvironmentAlloc(self: Target, allocator: std.mem.Allocator, package: []const u8) anyerror![]u8 {

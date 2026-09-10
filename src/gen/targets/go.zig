@@ -32,6 +32,7 @@ pub const target: target_api.Target = .{
         .unexportedNameAlloc = vtUnexportedNameAlloc,
         .packageNameAlloc = vtPackageNameAlloc,
         .nameOverride = nameOverride,
+        .setNameOverride = setNameOverride,
         .libraryPathEnvironmentAlloc = vtLibraryPathEnvironmentAlloc,
     },
 };
@@ -68,6 +69,10 @@ pub const isConversionFunctionName = words.isConversionFunctionName;
 
 /// The public Go spelling of a function's name override, read from the `go`
 /// namespace the declaration carries.
+fn setNameOverride(function: *semantic.SemanticFn, name: ?[]const u8) void {
+    function.setGoName(name);
+}
+
 fn nameOverride(function: semantic.SemanticFn) ?[]const u8 {
     return function.goName();
 }

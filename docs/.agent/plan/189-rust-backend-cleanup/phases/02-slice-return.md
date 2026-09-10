@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-10T05:18:31Z"
 depends_on:
 - "189-rust-backend-cleanup#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: The new case's goldens contain exactly one allocation per slice result.
 > NEXT: none

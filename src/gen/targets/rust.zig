@@ -51,6 +51,7 @@ pub const target: target_api.Target = .{
         .unexportedNameAlloc = vtUnexportedNameAlloc,
         .packageNameAlloc = vtPackageNameAlloc,
         .nameOverride = nameOverride,
+        .setNameOverride = setNameOverride,
         .libraryPathEnvironmentAlloc = vtLibraryPathEnvironmentAlloc,
     },
 };
@@ -104,6 +105,10 @@ pub fn typeNameAlloc(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
 
 /// The public Rust spelling of a function's name override, read from the
 /// `rust` namespace the declaration carries.
+fn setNameOverride(function: *semantic.SemanticFn, name: ?[]const u8) void {
+    function.setRustName(name);
+}
+
 fn nameOverride(function: semantic.SemanticFn) ?[]const u8 {
     return function.rustName();
 }

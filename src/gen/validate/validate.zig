@@ -215,7 +215,7 @@ pub fn transformDocument(allocator: std.mem.Allocator, input: semantic.Semantic,
             }
             if (registered.name_function) |hook| {
                 if (registered.supports(.function)) for (functions_copy) |*function| {
-                    if (try hook(context, function.*)) |name| function.setGoName(name);
+                    if (try hook(context, function.*)) |name| target.setNameOverride(function, name);
                 };
             }
             document.functions = functions_copy;

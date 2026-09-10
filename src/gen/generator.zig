@@ -173,13 +173,23 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
     // above this line is language-neutral -- the same document, the same
     // error-code lock, the same lowered program -- and everything below is
     // the selected target's own tree. The two trees share
-    // `emit.neutral_emitters` and nothing else, so a target added later adds
-    // a branch here rather than a parameter to the Go emitter.
-    if (std.mem.eql(u8, options.output_target.name, targets.rust.target.name)) {
-        try appendRustCrate(scratch_allocator, allocator, &prepared, program, emitter_options, options);
-    } else {
-        try appendGoPackages(scratch_allocator, &prepared, program, emitter_options, document);
+    // `emit.neutral_emitters` and nothing else.
+    const backend = backendFor(options.output_target);
+    if (backend.unsupportedIssues) |refuse| {
+        var issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
+        try refuse(scratch_allocator, program, &issues);
+        if (issues.items.len != 0) {
+            if (options.diagnostics) |out| for (issues.items) |issue| try out.append(allocator, try issue.clone(allocator));
+            return error.InvalidSemantic;
+        }
     }
+    try backend.appendTree(.{
+        .scratch_allocator = scratch_allocator,
+        .prepared = &prepared,
+        .program = program,
+        .emitter_options = emitter_options,
+        .document = document,
+    });
     const serialized_lock = try lock.serialize(scratch_allocator);
     try prepared.append(scratch_allocator, .{ .path = "errors.lock.json", .contents = serialized_lock });
 
@@ -259,27 +269,80 @@ fn appendGoPackages(
     try appendArtifacts(allocator, prepared, program, emitter_options, .document);
 }
 
-/// The Rust tree: the shared neutral emitters plus the crate's own three
-/// files. A declaration the minimal backend cannot render is reported rather
-/// than skipped -- a crate that compiles and silently omits half the binding
-/// is worse than a refusal naming the declaration, because the point of the
-/// minimal scope is that its edges are visible.
-fn appendRustCrate(
+/// One row per output language: how its tree is written, and how it refuses a
+/// document it cannot render.
+///
+/// A table rather than a branch, so that a target added to `targets.all`
+/// without a row here fails to compile instead of silently emitting Go. The
+/// table cannot live on `Target.vtable`: `targets` is a leaf that both `emit`
+/// and `emit_rust` import, so pointing it back at their emitter tables would
+/// close a build-graph cycle. What `Target` owns is the language's naming and
+/// file-shape rules, which need no emitter to answer.
+const Backend = struct {
+    target_name: []const u8,
+    /// Null when the backend renders every document the validator accepts.
+    /// Non-null for one whose scope is narrower than the IR: it names what it
+    /// cannot render rather than emitting a tree with declarations missing.
+    unsupportedIssues: ?*const fn (
+        allocator: std.mem.Allocator,
+        program: abi.Program,
+        issues: *std.ArrayList(diagnostic.Diagnostic),
+    ) anyerror!void = null,
+    appendTree: *const fn (tree: Tree) anyerror!void,
+};
+
+/// What every backend needs to write its tree, so that one signature serves
+/// the table and a backend takes only what it reads.
+const Tree = struct {
     scratch_allocator: std.mem.Allocator,
-    allocator: std.mem.Allocator,
     prepared: *std.ArrayList(PreparedFile),
     program: abi.Program,
     emitter_options: emit.Options,
-    options: Options,
-) !void {
-    var issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
-    try emit_rust.unsupportedIssues(scratch_allocator, program, &issues);
-    if (issues.items.len != 0) {
-        if (options.diagnostics) |out| for (issues.items) |issue| try out.append(allocator, try issue.clone(allocator));
-        return error.InvalidSemantic;
+    document: semantic.Semantic,
+};
+
+const backends = [_]Backend{
+    .{ .target_name = targets.go.target.name, .appendTree = appendGoTree },
+    .{
+        .target_name = targets.rust.target.name,
+        .unsupportedIssues = emit_rust.unsupportedIssues,
+        .appendTree = appendRustTree,
+    },
+};
+
+comptime {
+    for (targets.all) |target| {
+        var covered = false;
+        for (backends) |backend| {
+            if (std.mem.eql(u8, backend.target_name, target.name)) covered = true;
+        }
+        if (!covered) @compileError("target '" ++ target.name ++ "' has no backend row in generator.zig");
     }
-    try appendEmitters(scratch_allocator, prepared, program, emitter_options, &emit_rust.core_emitters);
 }
+
+fn backendFor(target: targets.Target) Backend {
+    for (backends) |backend| if (std.mem.eql(u8, backend.target_name, target.name)) return backend;
+    // The comptime block above proves every target in `targets.all` has a row,
+    // and `Target` values come from there.
+    unreachable;
+}
+
+fn appendGoTree(tree: Tree) !void {
+    return appendGoPackages(tree.scratch_allocator, tree.prepared, tree.program, tree.emitter_options, tree.document);
+}
+
+/// The Rust tree: the shared neutral emitters plus the crate's own three
+/// files. The refusal that keeps a declaration from being dropped silently
+/// happens before this runs, in the backend table's `unsupportedIssues` slot.
+fn appendRustTree(tree: Tree) !void {
+    try appendEmitters(tree.scratch_allocator, tree.prepared, tree.program, tree.emitter_options, &emit_rust.core_emitters);
+    // Plugin artifacts are byte blobs at plugin-supplied paths -- nothing
+    // about them is Go-shaped -- and `registry.runs` already gates them on the
+    // plugin's `output_targets`. Skipping the call here would drop a plugin's
+    // files with no message rather than letting the contract decide.
+    try appendArtifacts(tree.scratch_allocator, tree.prepared, tree.program, tree.emitter_options, .document);
+}
+
 
 /// Normalize before writing anything so aliases such as ./x and dir/../x
 /// cannot silently replace a different emitter's output. All output paths
