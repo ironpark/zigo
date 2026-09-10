@@ -19,8 +19,28 @@ pub const ParseError = error{
     UnknownCommand,
 };
 
+/// Which formatter flag the caller used, so a flag belonging to a different
+/// output language is refused rather than silently obeyed. The value is the
+/// `Target.name` the flag belongs to; `parse` compares it with the selected
+/// target and `main` never has to.
+const FormatterFlag = struct { target: []const u8, executable: []const u8 };
+
+/// Every formatter override flag, paired with the target whose formatter it
+/// names. This is the one place the CLI spells target names, which is where
+/// they belong: target *selection* is the CLI's job, and every layer below
+/// reads the resolved `Target` instead.
+const formatter_flags = [_]struct { flag: []const u8, target: []const u8 }{
+    .{ .flag = "--gofmt", .target = "go" },
+    .{ .flag = "--rustfmt", .target = "rust" },
+};
+
 pub const Generate = struct {
     semantic_path: []const u8,
+    /// The output language, by `Target.name`. Resolved in `main`, which owns
+    /// the `targets` module; `cli` stays a `std`-only leaf so its tests need
+    /// no module graph. Defaults to Go, so every existing invocation is
+    /// unchanged by a second target existing.
+    output_target: []const u8 = "go",
     output_path: []const u8,
     package: []const u8,
     prefix: []const u8 = "zg",
@@ -62,8 +82,10 @@ pub const Generate = struct {
     library_platform_dirs: bool = false,
     /// The formatter run over the generated sources, so generation formats
     /// its own output rather than leaving the caller to enumerate the files.
-    /// Null takes the output target's default; the flag is still spelled
-    /// `--gofmt`, which is Go's name and is user-visible.
+    /// Null takes the output target's default. `--gofmt` keeps its Go name
+    /// because it is user-visible surface; `--rustfmt` is its Rust
+    /// counterpart, and passing the wrong one for the selected target is an
+    /// error rather than a silently ignored flag.
     formatter_executable: ?[]const u8 = null,
 };
 
@@ -81,6 +103,10 @@ pub const FilePair = struct {
 };
 
 pub const AbiDiff = struct {
+    /// The output language, by `Target.name`. The comparison reads it for the
+    /// public-name contract guard; the C symbols it compares are the same for
+    /// every target.
+    output_target: []const u8 = "go",
     base_path: []const u8,
     current_path: []const u8,
     json: bool = false,
@@ -132,12 +158,14 @@ pub fn writeUsage(writer: *std.Io.Writer) std.Io.Writer.Error!void {
         \\usage: zigo-gen <command> [options]
         \\
         \\commands:
-        \\  generate  --semantic <file> --output <dir> --package <name> [--gofmt <path>] [options]
+        \\  generate  --semantic <file> --output <dir> --package <name> [options]
+        \\            [--output-target go|rust] [--gofmt <path>] [--rustfmt <path>]
         \\            [--go-package <name>] [--go-package-path <path>] [--plugin-config <json-object>]
         \\            [--link-mode static|dynamic] [--cgo-target <goos>/<goarch>]...
         \\            [--target-ldflags <goos>[,<goarch>]=<flags>]...
         \\  check     --generated <dir> --source <dir> [--file <generated> <source>]...
         \\  abi-diff  --base <file> --current <file> [--base-backend cgo|purego] [--current-backend cgo|purego] [--json] [--fail-on breaking]
+        \\            [--output-target go|rust]
         \\  report    --semantic <file> [--go-module <path>] [options]
         \\            [--go-package <name>] [--go-package-path <path>] [--plugin-config <json-object>]
         \\            [--library-search-paths <a:b>] [--library-env-vars <A,B>]
@@ -209,6 +237,8 @@ const LibraryLoadingArgs = struct {
 };
 
 fn parseGenerate(args: []const []const u8) ParseError!Generate {
+    var output_target: ?[]const u8 = null;
+    var formatter: ?FormatterFlag = null;
     var semantic_path: ?[]const u8 = null;
     var output_path: ?[]const u8 = null;
     var package: ?[]const u8 = null;
@@ -231,7 +261,6 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
     var go_package_path: ?[]const u8 = null;
     var go_package_doc: ?[]const u8 = null;
     var errors_lock_path: ?[]const u8 = null;
-    var gofmt_executable: ?[]const u8 = null;
     var raw_colocated = false;
     var raw_colocated_seen = false;
     var plugin_config: ?[]const u8 = null;
@@ -317,14 +346,22 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
             target_ldflags.append(std.heap.page_allocator, entry) catch @panic("OOM");
         } else if (std.mem.eql(u8, flag, "--library-stem")) {
             try set(&library_stem, try takeValue(args, &index));
-        } else if (std.mem.eql(u8, flag, "--gofmt")) {
-            try set(&gofmt_executable, try takeValue(args, &index));
+        } else if (std.mem.eql(u8, flag, "--output-target")) {
+            try set(&output_target, try takeValue(args, &index));
+        } else if (formatterFlag(flag)) |owner| {
+            if (formatter != null) return error.DuplicateArgument;
+            formatter = .{ .target = owner, .executable = try takeValue(args, &index) };
         } else {
             return error.UnknownArgument;
         }
     }
 
     if (pkg_config_libs != null and pkg_config_libs_path != null) return error.DuplicateArgument;
+    const resolved_target = output_target orelse "go";
+    // A formatter flag names one language's formatter. Obeying `--gofmt`
+    // while generating Rust would run gofmt over `.rs` files; ignoring it
+    // would hide a typo. Refusing it says which flag the caller wanted.
+    if (formatter) |value| if (!std.mem.eql(u8, value.target, resolved_target)) return error.InvalidValue;
     const resolved_package = package orelse return error.MissingRequiredArgument;
     return .{
         .semantic_path = semantic_path orelse return error.MissingRequiredArgument,
@@ -361,8 +398,16 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
         .library_automatic = loading.automatic,
         .library_exported_api = loading.exported_api,
         .library_platform_dirs = loading.platform_dirs,
-        .formatter_executable = gofmt_executable,
+        .output_target = resolved_target,
+        .formatter_executable = if (formatter) |value| value.executable else null,
     };
+}
+
+/// The target whose formatter `flag` overrides, or null when `flag` is not a
+/// formatter flag at all.
+fn formatterFlag(flag: []const u8) ?[]const u8 {
+    for (formatter_flags) |entry| if (std.mem.eql(u8, flag, entry.flag)) return entry.target;
+    return null;
 }
 
 fn parseCheck(args: []const []const u8) ParseError!Check {
@@ -393,6 +438,7 @@ fn parseCheck(args: []const []const u8) ParseError!Check {
 }
 
 fn parseAbiDiff(args: []const []const u8) ParseError!AbiDiff {
+    var output_target: ?[]const u8 = null;
     var base_path: ?[]const u8 = null;
     var current_path: ?[]const u8 = null;
     var json = false;
@@ -424,11 +470,14 @@ fn parseAbiDiff(args: []const []const u8) ParseError!AbiDiff {
         } else if (std.mem.eql(u8, flag, "--current-backend")) {
             if (current_backend != null) return error.DuplicateArgument;
             current_backend = parseBackend(try takeValue(args, &index)) orelse return error.InvalidValue;
+        } else if (std.mem.eql(u8, flag, "--output-target")) {
+            try set(&output_target, try takeValue(args, &index));
         } else {
             return error.UnknownArgument;
         }
     }
     return .{
+        .output_target = output_target orelse "go",
         .base_path = base_path orelse return error.MissingRequiredArgument,
         .current_path = current_path orelse return error.MissingRequiredArgument,
         .json = json,
@@ -717,6 +766,36 @@ test "generate command retains defaults" {
 
     const named = (try parse(&.{ "generate", "--semantic", "semantic.json", "--output", "out", "--package", "scalar", "--go-package", "scalarapi" })).generate;
     try std.testing.expectEqualStrings("scalarapi", named.go_package_path);
+    // Naming no output target is Go, so every invocation written before a
+    // second target existed parses to exactly what it did before.
+    try std.testing.expectEqualStrings("go", options.output_target);
+    try std.testing.expect(options.formatter_executable == null);
+}
+
+test "the output target is selected by name and pairs with its own formatter flag" {
+    const base = [_][]const u8{ "generate", "--semantic", "semantic.json", "--output", "out", "--package", "calc" };
+
+    const rust = (try parse(&(base ++ [_][]const u8{ "--output-target", "rust", "--rustfmt", "/tools/rustfmt" }))).generate;
+    try std.testing.expectEqualStrings("rust", rust.output_target);
+    try std.testing.expectEqualStrings("/tools/rustfmt", rust.formatter_executable.?);
+
+    const go = (try parse(&(base ++ [_][]const u8{ "--output-target", "go", "--gofmt", "/tools/gofmt" }))).generate;
+    try std.testing.expectEqualStrings("go", go.output_target);
+    try std.testing.expectEqualStrings("/tools/gofmt", go.formatter_executable.?);
+
+    // A formatter flag belonging to another language is refused rather than
+    // obeyed: running gofmt over `.rs` files is not what the caller meant, and
+    // silently dropping the flag would hide a typo.
+    try std.testing.expectError(error.InvalidValue, parse(&(base ++ [_][]const u8{ "--output-target", "rust", "--gofmt", "/tools/gofmt" })));
+    try std.testing.expectError(error.InvalidValue, parse(&(base ++ [_][]const u8{ "--rustfmt", "/tools/rustfmt" })));
+    // Two formatter flags at once name two languages, so the second is a
+    // duplicate of the same option rather than an addition.
+    try std.testing.expectError(error.DuplicateArgument, parse(&(base ++ [_][]const u8{ "--gofmt", "/a", "--rustfmt", "/b" })));
+
+    // The name itself is not validated here: `cli` is a `std`-only leaf, so
+    // `main` resolves it against `targets.all` and reports the known names.
+    const unknown = (try parse(&(base ++ [_][]const u8{ "--output-target", "haskell" }))).generate;
+    try std.testing.expectEqualStrings("haskell", unknown.output_target);
 }
 
 test "check and abi-diff commands parse named arguments" {
@@ -732,6 +811,10 @@ test "check and abi-diff commands parse named arguments" {
     try std.testing.expect(diff.fail_on_breaking);
     try std.testing.expectEqual(Backend.cgo, diff.base_backend);
     try std.testing.expectEqual(Backend.purego, diff.current_backend);
+    try std.testing.expectEqualStrings("go", diff.output_target);
+
+    const rust_diff = (try parse(&.{ "abi-diff", "--base", "old.json", "--current", "new.json", "--output-target", "rust" })).abi_diff;
+    try std.testing.expectEqualStrings("rust", rust_diff.output_target);
 }
 
 test "report and doctor commands parse effective configuration" {

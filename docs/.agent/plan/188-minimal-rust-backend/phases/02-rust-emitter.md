@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-10T04:35:27Z"
 depends_on:
 - "188-minimal-rust-backend#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `src/gen/emit/emit.zig` defines `core_emitters` as
 > NEXT: none

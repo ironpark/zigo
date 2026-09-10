@@ -39,15 +39,47 @@ pub fn main(init: std.process.Init) !void {
 }
 
 /// One of the two places an output language is chosen -- this one for the
-/// CLI, `addGoBindings` in `build.zig` for the build integration. Every layer
-/// below reads the target from what it is handed, so a second language is a
-/// second `targets.Target` and a way to name it here, not a change to the
-/// generator, the validators or the report.
-fn outputTarget() targets.Target {
+/// CLI, the build integration for the other. Every layer below reads the
+/// target from what it is handed, so a second language is a second
+/// `targets.Target` and a way to name it here, not a change to the generator,
+/// the validators or the report.
+///
+/// The flag is `--output-target` rather than `--target` because this CLI has
+/// already spent that word on build platforms: `doctor --target native|cross`
+/// and `generate --cgo-target <goos>/<goarch>` both mean a machine, not a
+/// language. Reusing it would make `--target` mean two things one subcommand
+/// apart.
+///
+/// `cli.zig` carries the name as a string and does not resolve it, so it can
+/// stay a `std`-only leaf whose tests need no module graph. The resolution and
+/// the diagnostic live here.
+fn outputTarget(io: std.Io, name: []const u8) targets.Target {
+    return targets.byName(name) orelse {
+        var buffer: [512]u8 = undefined;
+        var stderr = std.Io.File.Writer.init(.stderr(), io, &buffer);
+        stderr.interface.print("error: unknown output target '{s}'; known targets are", .{name}) catch {};
+        for (targets.all, 0..) |candidate, index| {
+            stderr.interface.print("{s} {s}", .{ if (index == 0) "" else ",", candidate.name }) catch {};
+        }
+        stderr.interface.writeAll("\n") catch {};
+        stderr.interface.flush() catch {};
+        std.process.exit(2);
+    };
+}
+
+/// `report` is deliberately not given the flag. Every line it renders is a Go
+/// import path, a Go package layout or a cgo link line, so a Rust report is a
+/// separate piece of work rather than a target parameter -- and answering
+/// `--output-target rust` with a Go-shaped report would be worse than not
+/// accepting the flag.
+fn reportTarget() targets.Target {
     return targets.default;
 }
 
 fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) !void {
+    // Not `target`: the cgo-platform loop below already binds that word, in
+    // the build-platform sense the CLI's other flags use.
+    const output_target = outputTarget(io, options.output_target);
     const semantic_bytes = try std.Io.Dir.cwd().readFileAlloc(io, options.semantic_path, allocator, .limited(64 * 1024 * 1024));
     const pkg_config_libs = if (options.pkg_config_libs_path) |path|
         std.mem.trim(u8, try std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(1024 * 1024)), " \r\n\t")
@@ -70,7 +102,7 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
     for (options.target_ldflags, target_ldflags) |source, *entry| entry.* = .{ .constraint = source.constraint, .flags = source.flags };
     var generation_issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
     generator.generate(allocator, io, semantic_bytes, output, .{
-        .output_target = outputTarget(),
+        .output_target = output_target,
         .diagnostics = &generation_issues,
         .write_manifest = true,
         .package = options.package,
@@ -118,7 +150,7 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
         try stderr.interface.flush();
         std.process.exit(1);
     };
-    try formatGenerated(allocator, io, options.output_path, outputTarget(), options.formatter_executable);
+    try formatGenerated(allocator, io, options.output_path, output_target, options.formatter_executable);
 }
 
 /// Format only framed source outputs. Artifacts, including ones in the
@@ -201,6 +233,7 @@ fn runCheck(allocator: std.mem.Allocator, io: std.Io, options: cli.Check) !void 
 }
 
 fn runAbiDiff(allocator: std.mem.Allocator, io: std.Io, options: cli.AbiDiff) !void {
+    const target = outputTarget(io, options.output_target);
     const cwd = std.Io.Dir.cwd();
     const base_bytes = try cwd.readFileAlloc(io, options.base_path, allocator, .limited(64 * 1024 * 1024));
     const current_bytes = try cwd.readFileAlloc(io, options.current_path, allocator, .limited(64 * 1024 * 1024));
@@ -211,15 +244,15 @@ fn runAbiDiff(allocator: std.mem.Allocator, io: std.Io, options: cli.AbiDiff) !v
     // Lowering assumes a validated document, so a hand-edited or truncated
     // input would panic inside `lower` instead of being reported. Both
     // documents come from outside this run, so both are judged first.
-    try rejectInvalidAbiInput(allocator, io, base.value, options.base_path);
-    try rejectInvalidAbiInput(allocator, io, current.value, options.current_path);
+    try rejectInvalidAbiInput(allocator, io, base.value, options.base_path, target);
+    try rejectInvalidAbiInput(allocator, io, current.value, options.current_path, target);
     var report = try abi_diff.diffForTarget(allocator, base.value, switch (options.base_backend) {
         .cgo => .cgo,
         .purego => .purego,
     }, current.value, switch (options.current_backend) {
         .cgo => .cgo,
         .purego => .purego,
-    }, outputTarget());
+    }, target);
     defer report.deinit(allocator);
     var buffer: [4096]u8 = undefined;
     var stdout = std.Io.File.Writer.init(.stdout(), io, &buffer);
@@ -232,10 +265,16 @@ fn runAbiDiff(allocator: std.mem.Allocator, io: std.Io, options: cli.AbiDiff) !v
 /// about which of the two `abi-diff` inputs was rejected; the file the user
 /// passed takes its place unless the diagnostic already points at a Zig
 /// source location.
-fn rejectInvalidAbiInput(allocator: std.mem.Allocator, io: std.Io, document: semantic.Semantic, path: []const u8) !void {
+fn rejectInvalidAbiInput(
+    allocator: std.mem.Allocator,
+    io: std.Io,
+    document: semantic.Semantic,
+    path: []const u8,
+    target: targets.Target,
+) !void {
     var scratch = std.heap.ArenaAllocator.init(allocator);
     defer scratch.deinit();
-    const issues = try validate.findIssuesForTarget(scratch.allocator(), document, null, outputTarget());
+    const issues = try validate.findIssuesForTarget(scratch.allocator(), document, null, target);
     if (issues.len == 0) return;
     var buffer: [1024]u8 = undefined;
     var stderr = std.Io.File.Writer.init(.stderr(), io, &buffer);
@@ -256,7 +295,7 @@ fn runReport(allocator: std.mem.Allocator, io: std.Io, options: cli.Report) !voi
     const configurations = try api.configurationsAlloc(allocator, @import("gen/plugins/registry.zig").configurations, options.plugin_config);
     var facts: api.Facts = .{};
     var issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
-    const document = try generator.prepareDocument(allocator, parsed.value, null, configurations, &facts, &issues, outputTarget());
+    const document = try generator.prepareDocument(allocator, parsed.value, null, configurations, &facts, &issues, reportTarget());
     if (issues.items.len != 0) {
         var error_buffer: [1024]u8 = undefined;
         var stderr = std.Io.File.Writer.init(.stderr(), io, &error_buffer);
@@ -271,7 +310,7 @@ fn runReport(allocator: std.mem.Allocator, io: std.Io, options: cli.Report) !voi
     var buffer: [4096]u8 = undefined;
     var stdout = std.Io.File.Writer.init(.stdout(), io, &buffer);
     try binding_report.render(allocator, &stdout.interface, document, .{
-        .output_target = outputTarget(),
+        .output_target = reportTarget(),
         .go_module = options.go_module,
         .raw_package_path = options.raw_package_path,
         .raw_colocated = options.raw_colocated,

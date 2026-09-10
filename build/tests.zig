@@ -566,6 +566,47 @@ fn addProcessContractTests(b: *std.Build, test_step: *std.Build.Step, generator:
     invalid_arguments.expectStdErrMatch("error: the command is missing or unknown");
     test_step.dependOn(&invalid_arguments.step);
 
+    // The output language is selected by name, and an unknown name reports
+    // the ones that exist rather than a stack trace or a silent fallback to
+    // Go -- a typo that generated the wrong language would be found much later.
+    const unknown_target = b.addRunArtifact(generator);
+    unknown_target.setName("CLI contract (unknown output target)");
+    unknown_target.addArgs(&.{ "generate", "--semantic" });
+    unknown_target.addFileArg(b.path("tests/generator_cases/rust_scalar/semantic.json"));
+    unknown_target.addArg("--output");
+    _ = unknown_target.addOutputDirectoryArg("unknown-target-output");
+    unknown_target.addArgs(&.{ "--package", "calculator", "--output-target", "haskell" });
+    unknown_target.expectExitCode(2);
+    unknown_target.expectStdErrMatch("error: unknown output target 'haskell'; known targets are go, rust");
+    test_step.dependOn(&unknown_target.step);
+
+    // `--output-target rust` really generates the crate through the CLI, not
+    // just through the case runner: the flag, the emitter table and the
+    // formatter all have to agree for this to exit zero.
+    const rust_generate = b.addRunArtifact(generator);
+    rust_generate.setName("CLI contract (generate for Rust)");
+    rust_generate.addArgs(&.{ "generate", "--semantic" });
+    rust_generate.addFileArg(b.path("tests/generator_cases/rust_errors/semantic.json"));
+    rust_generate.addArg("--output");
+    const rust_output = rust_generate.addOutputDirectoryArg("rust-generate-output");
+    rust_generate.addArgs(&.{ "--package", "calculator", "--output-target", "rust" });
+    rust_generate.expectExitCode(0);
+    test_step.dependOn(&rust_generate.step);
+
+    // And the crate the CLI wrote compiles, having been through rustfmt on
+    // the way out. This is the one check that covers the whole path.
+    const rust_compiles = b.addSystemCommand(&.{
+        "rustc",        "--edition",       "2021",
+        "--crate-type", "lib",             "--crate-name",
+        "zigo_cli",     "--emit=metadata", "-D",
+        "warnings",
+    });
+    rust_compiles.setName("CLI contract (the Rust crate the CLI wrote compiles)");
+    _ = rust_compiles.addPrefixedOutputFileArg("-o", "rust-cli-crate.rmeta");
+    rust_compiles.addFileArg(rust_output.path(b, "src/lib.rs"));
+    rust_compiles.expectExitCode(0);
+    test_step.dependOn(&rust_compiles.step);
+
     const invalid_semantic = b.addRunArtifact(generator);
     invalid_semantic.setName("CLI contract (invalid semantic)");
     invalid_semantic.addArgs(&.{ "generate", "--semantic" });
