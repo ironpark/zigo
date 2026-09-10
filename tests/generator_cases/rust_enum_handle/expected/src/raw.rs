@@ -17,20 +17,10 @@ use core::ffi::c_char;
 pub struct zg_context {
     _private: [u8; 0],
 }
-
-/// The native `ContextView`. Incomplete on purpose: the Rust side only ever
-/// holds its address.
-#[repr(C)]
-pub struct zg_context_view {
-    _private: [u8; 0],
-}
 extern "C" {
     pub fn zg_context_create(out_result: *mut *mut zg_context) -> i32;
-    pub fn zg_context_add(self_: *mut zg_context, value: i64, out_result: *mut i64) -> i32;
-    pub fn zg_context_add_copy(self_: *const zg_context, value: i64, out_result: *mut i64) -> i32;
-    pub fn zg_context_borrow_view(self_: *mut zg_context, out_result: *mut *mut zg_context_view) -> i32;
     pub fn zg_context_deinit(self_: *mut zg_context) -> i32;
-    pub fn zg_context_view_total(self_: *mut zg_context_view, out_result: *mut i64) -> i32;
+    pub fn zg_context_choose(self_: *mut zg_context, mode: u8, out_result: *mut u8) -> i32;
     pub fn zg_last_error_message() -> *const c_char;
     pub fn zg_caught_panic_message(code: i32) -> *const c_char;
 }
@@ -90,45 +80,6 @@ pub fn context_create() -> (*mut zg_context, i32) {
     (out_result, code)
 }
 
-/// Calls the generated C ABI wrapper for `zg_context_add`.
-///
-/// # Safety
-///
-/// Every handle argument must point at a live native object of its own
-/// type. The generated wrapper that owns the handle guarantees this; a
-/// hand-written caller has to.
-pub unsafe fn context_add(receiver: *mut zg_context, value: i64) -> (i64, i32) {
-    let mut out_result: i64 = 0;
-    let code = unsafe { zg_context_add(receiver, value, &mut out_result) };
-    (out_result, code)
-}
-
-/// Calls the generated C ABI wrapper for `zg_context_add_copy`.
-///
-/// # Safety
-///
-/// Every handle argument must point at a live native object of its own
-/// type. The generated wrapper that owns the handle guarantees this; a
-/// hand-written caller has to.
-pub unsafe fn context_add_copy(receiver: *const zg_context, value: i64) -> (i64, i32) {
-    let mut out_result: i64 = 0;
-    let code = unsafe { zg_context_add_copy(receiver, value, &mut out_result) };
-    (out_result, code)
-}
-
-/// Calls the generated C ABI wrapper for `zg_context_borrow_view`.
-///
-/// # Safety
-///
-/// Every handle argument must point at a live native object of its own
-/// type. The generated wrapper that owns the handle guarantees this; a
-/// hand-written caller has to.
-pub unsafe fn context_borrow_view(receiver: *mut zg_context) -> (*mut zg_context_view, i32) {
-    let mut out_result: *mut zg_context_view = core::ptr::null_mut();
-    let code = unsafe { zg_context_borrow_view(receiver, &mut out_result) };
-    (out_result, code)
-}
-
 /// Calls the generated C ABI wrapper for `zg_context_deinit`.
 ///
 /// # Safety
@@ -140,15 +91,17 @@ pub unsafe fn context_deinit(receiver: *mut zg_context) -> i32 {
     unsafe { zg_context_deinit(receiver) }
 }
 
-/// Calls the generated C ABI wrapper for `zg_context_view_total`.
+/// Calls the generated C ABI wrapper for `zg_context_choose`.
 ///
 /// # Safety
 ///
 /// Every handle argument must point at a live native object of its own
 /// type. The generated wrapper that owns the handle guarantees this; a
 /// hand-written caller has to.
-pub unsafe fn context_view_total(receiver: *mut zg_context_view) -> (i64, i32) {
-    let mut out_result: i64 = 0;
-    let code = unsafe { zg_context_view_total(receiver, &mut out_result) };
+/// Enum integer arguments must be valid values of the declared Zig enum,
+/// including its original tag width.
+pub unsafe fn context_choose(receiver: *mut zg_context, mode: u8) -> (u8, i32) {
+    let mut out_result: u8 = 0;
+    let code = unsafe { zg_context_choose(receiver, mode, &mut out_result) };
     (out_result, code)
 }

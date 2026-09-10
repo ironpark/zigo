@@ -11,18 +11,16 @@
 
 use core::ffi::c_char;
 
-/// The native `Terminal`. Incomplete on purpose: the Rust side only ever
-/// holds its address.
-#[repr(C)]
-pub struct zg_terminal {
-    _private: [u8; 0],
-}
 extern "C" {
-    pub fn zg_new_terminal(columns: u32, out_result: *mut *mut zg_terminal) -> i32;
-    pub fn zg_terminal_free_terminal(self_: *mut zg_terminal) -> i32;
-    pub fn zg_terminal_resize(self_: *mut zg_terminal, columns: u32) -> i32;
-    pub fn zg_terminal_render(self_: *mut zg_terminal, out_result_ptr: *mut *const u8, out_result_len: *mut usize) -> i32;
-    pub fn zg_free_string(str_ptr: *const u8, str_len: usize);
+    pub fn zg_echo(value: u8) -> u8;
+    pub fn zg_pick(value: i32) -> i32;
+    pub fn zg_echo_level(value: u8) -> u8;
+    pub fn zg_fallible(value: i32, fail: u8, out_result: *mut i32) -> i32;
+    pub fn zg_checked(value: u8, out_result: *mut u8) -> i32;
+    pub fn zg_invalid() -> u8;
+    pub fn zg_get_hidden() -> u8;
+    pub fn zg_wire(value: u16) -> u16;
+    pub fn zg_get_tiny(value: u8) -> u8;
     pub fn zg_last_error_message() -> *const c_char;
     pub fn zg_caught_panic_message(code: i32) -> *const c_char;
 }
@@ -75,50 +73,81 @@ unsafe fn message_at(pointer: *const c_char) -> String {
         .into_owned()
 }
 
-/// Calls the generated C ABI wrapper for `zg_new_terminal`.
-pub fn new_terminal(columns: u32) -> (*mut zg_terminal, i32) {
-    let mut out_result: *mut zg_terminal = core::ptr::null_mut();
-    let code = unsafe { zg_new_terminal(columns, &mut out_result) };
+/// Calls the generated C ABI wrapper for `zg_echo`.
+///
+/// # Safety
+///
+/// Enum integer arguments must be valid values of the declared Zig enum,
+/// including its original tag width.
+pub unsafe fn echo(value: u8) -> u8 {
+    unsafe { zg_echo(value) }
+}
+
+/// Calls the generated C ABI wrapper for `zg_pick`.
+///
+/// # Safety
+///
+/// Enum integer arguments must be valid values of the declared Zig enum,
+/// including its original tag width.
+pub unsafe fn pick(value: i32) -> i32 {
+    unsafe { zg_pick(value) }
+}
+
+/// Calls the generated C ABI wrapper for `zg_echo_level`.
+///
+/// # Safety
+///
+/// Enum integer arguments must be valid values of the declared Zig enum,
+/// including its original tag width.
+pub unsafe fn echo_level(value: u8) -> u8 {
+    unsafe { zg_echo_level(value) }
+}
+
+/// Calls the generated C ABI wrapper for `zg_fallible`.
+///
+/// # Safety
+///
+/// Enum integer arguments must be valid values of the declared Zig enum,
+/// including its original tag width.
+pub unsafe fn fallible(value: i32, fail: bool) -> (i32, i32) {
+    let mut out_result: i32 = 0;
+    let code = unsafe { zg_fallible(value, u8::from(fail), &mut out_result) };
     (out_result, code)
 }
 
-/// Calls the generated C ABI wrapper for `zg_terminal_free_terminal`.
+/// Calls the generated C ABI wrapper for `zg_checked`.
+pub fn checked(value: u8) -> (u8, i32) {
+    let mut out_result: u8 = 0;
+    let code = unsafe { zg_checked(value, &mut out_result) };
+    (out_result, code)
+}
+
+/// Calls the generated C ABI wrapper for `zg_invalid`.
+pub fn invalid() -> u8 {
+    unsafe { zg_invalid() }
+}
+
+/// Calls the generated C ABI wrapper for `zg_get_hidden`.
+pub fn get_hidden() -> u8 {
+    unsafe { zg_get_hidden() }
+}
+
+/// Calls the generated C ABI wrapper for `zg_wire`.
 ///
 /// # Safety
 ///
-/// Every handle argument must point at a live native object of its own
-/// type. The generated wrapper that owns the handle guarantees this; a
-/// hand-written caller has to.
-pub unsafe fn terminal_free_terminal(receiver: *mut zg_terminal) -> i32 {
-    unsafe { zg_terminal_free_terminal(receiver) }
+/// Enum integer arguments must be valid values of the declared Zig enum,
+/// including its original tag width.
+pub unsafe fn wire(value: u16) -> u16 {
+    unsafe { zg_wire(value) }
 }
 
-/// Calls the generated C ABI wrapper for `zg_terminal_resize`.
+/// Calls the generated C ABI wrapper for `zg_get_tiny`.
 ///
 /// # Safety
 ///
-/// Every handle argument must point at a live native object of its own
-/// type. The generated wrapper that owns the handle guarantees this; a
-/// hand-written caller has to.
-pub unsafe fn terminal_resize(receiver: *mut zg_terminal, columns: u32) -> i32 {
-    unsafe { zg_terminal_resize(receiver, columns) }
-}
-
-/// Calls the generated C ABI wrapper for `zg_terminal_render`.
-///
-/// # Safety
-///
-/// Every handle argument must point at a live native object of its own
-/// type. The generated wrapper that owns the handle guarantees this; a
-/// hand-written caller has to.
-pub unsafe fn terminal_render(receiver: *mut zg_terminal) -> (*const u8, usize, i32) {
-    let mut out_result_ptr: *const u8 = core::ptr::null();
-    let mut out_result_len: usize = 0;
-    let code = unsafe { zg_terminal_render(receiver, &mut out_result_ptr, &mut out_result_len) };
-    (out_result_ptr, out_result_len, code)
-}
-
-/// Calls the generated C ABI wrapper for `zg_free_string`.
-pub fn free_string(str: &str) {
-    unsafe { zg_free_string(str.as_ptr(), str.len()) }
+/// Enum integer arguments must be valid values of the declared Zig enum,
+/// including its original tag width.
+pub unsafe fn get_tiny(value: u8) -> u8 {
+    unsafe { zg_get_tiny(value) }
 }

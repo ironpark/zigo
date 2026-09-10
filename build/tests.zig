@@ -1043,6 +1043,28 @@ fn addGoldenArtifactChecks(
         test_step.dependOn(&compile_fail.step);
     }
 
+    // Native stubs can exercise defensive Rust boundary conversion without
+    // requiring an invalid value to be constructed in Zig itself.
+    if (hasCaseFile(files, name, "runtime.rs")) {
+        const rlib = b.addSystemCommand(&.{ "rustc", "--edition", "2021", "--crate-type", "lib", "--crate-name", "zigo_golden", "-D", "warnings" });
+        for (files) |file| {
+            if (std.mem.startsWith(u8, file, header_prefix) and std.mem.endsWith(u8, file, ".rs"))
+                rlib.addFileInput(cases.path(b, file));
+        }
+        const library = rlib.addPrefixedOutputFileArg("-o", b.fmt("lib{s}_runtime.rlib", .{name}));
+        rlib.addFileArg(expected.path(b, "src/lib.rs"));
+        rlib.expectExitCode(0);
+        const compile_runtime = b.addSystemCommand(&.{ "rustc", "--edition", "2021", "--test", "-D", "warnings" });
+        compile_runtime.addPrefixedFileArg("--extern=zigo_golden=", library);
+        compile_runtime.addFileArg(case.path(b, "runtime.rs"));
+        const executable = compile_runtime.addPrefixedOutputFileArg("-o", b.fmt("{s}-runtime", .{name}));
+        compile_runtime.expectExitCode(0);
+        const run_runtime = std.Build.Step.Run.create(b, b.fmt("golden Rust boundary runtime ({s})", .{name}));
+        run_runtime.addFileArg(executable);
+        run_runtime.expectExitCode(0);
+        test_step.dependOn(&run_runtime.step);
+    }
+
     // A case that ships a `roundtrip.zig` runs it against the golden shim.
     if (hasCaseFile(files, name, "roundtrip.zig")) {
         // The target's release path frees through `std.heap.c_allocator`, as

@@ -11,7 +11,6 @@
 
 use core::ffi::c_char;
 
-
 /// The native `Context`. Incomplete on purpose: the Rust side only ever
 /// holds its address.
 #[repr(C)]

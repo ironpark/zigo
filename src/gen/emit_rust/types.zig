@@ -194,14 +194,7 @@ fn roleDescription(role: abi.AbiParam.Role) []const u8 {
     };
 }
 
-/// Whether `node` reaches a registered enum, at any depth this backend can
-/// otherwise render.
-///
-/// `type_spelling.semanticScalar` happily maps an enum to its tag integer,
-/// which is how a `EraseDisplay` parameter was arriving in Rust as a bare
-/// `u8`: correct at the ABI, and useless to a caller who has no way to learn
-/// that `0` means `below`. Go emits a named type with constants. Until Rust
-/// does too, a boundary enum is refused rather than silently flattened.
+/// Used to refuse aggregate enum shapes until their elementwise conversion exists.
 fn reachesEnum(node: semantic.TypeNode) bool {
     return switch (node) {
         .@"enum" => true,
@@ -209,6 +202,14 @@ fn reachesEnum(node: semantic.TypeNode) bool {
         .optional => |optional| reachesEnum(optional.child.*),
         .error_union => |union_type| reachesEnum(union_type.payload.*),
         else => false,
+    };
+}
+
+fn aggregateEnum(node: semantic.TypeNode) bool {
+    return switch (node) {
+        .@"enum" => false,
+        .error_union => |value| aggregateEnum(value.payload.*),
+        else => reachesEnum(node),
     };
 }
 
@@ -236,7 +237,7 @@ pub fn unsupported(program: abi.Program, function: abi.AbiFn) ?Unsupported {
     if (origin.receiver) |receiver| {
         if ((origin.receiver_kind orelse .handle) != .handle) return .{
             .what = "a method on a value receiver",
-            .hint = "a registered enum owning methods needs the Rust enum mapping first",
+            .hint = "enum value receivers need their own method placement and marshalling; only scalar enum parameters and results are supported",
         };
         const handle = handleFor(program, receiver) orelse return .{
             .what = "a method on a type that is not a plain opaque handle",
@@ -292,13 +293,13 @@ pub fn unsupported(program: abi.Program, function: abi.AbiFn) ?Unsupported {
         },
         else => {},
     }
-    if (reachesEnum(origin.@"return")) return .{
-        .what = "a registered enum result",
-        .hint = "a Rust enum with the tag's repr is not designed yet; the value would arrive as a bare integer",
+    if (aggregateEnum(origin.@"return")) return .{
+        .what = "an aggregate enum result",
+        .hint = "enum slices, buffers and optionals need elementwise checked conversion; only scalar enum boundaries are supported",
     };
-    for (origin.params) |parameter| if (reachesEnum(parameter.type)) return .{
-        .what = "a registered enum parameter",
-        .hint = "a Rust enum with the tag's repr is not designed yet; the value would arrive as a bare integer",
+    for (origin.params) |parameter| if (aggregateEnum(parameter.type)) return .{
+        .what = "an aggregate enum parameter",
+        .hint = "enum slices, buffers and optionals need elementwise checked conversion; only scalar enum boundaries are supported",
     };
     if (origin.cancel != null) return .{
         .what = "a cancellable call",
@@ -497,6 +498,8 @@ pub fn writeRawScalar(writer: *std.Io.Writer, value: abi.AbiScalar) !void {
 /// The Rust spelling of a value as the public API presents it. The one place
 /// this differs from `rawScalar` is `bool`, which crosses the C ABI as a byte.
 pub fn publicScalar(node: semantic.TypeNode, value: abi.AbiScalar) ?[]const u8 {
+    // Named enums require enums.typeNameAlloc; never silently erase them.
+    if (node == .@"enum") return null;
     if (node == .bool) return "bool";
     return rawScalar(value);
 }

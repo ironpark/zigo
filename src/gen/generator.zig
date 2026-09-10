@@ -710,22 +710,11 @@ test "a handle becomes a struct that frees itself" {
 }
 
 test "the Rust target refuses the shapes it would otherwise flatten silently" {
-    // Found by running every Go generator case's document through the Rust
-    // target and compiling the result. Each of these three used to be
-    // *accepted* and to produce a crate that compiled while quietly throwing
-    // away something the binding said:
-    //
-    //   - a registered enum arrived as its bare tag integer, so a caller had
-    //     no way to learn that `0` means `low`
-    //   - a namespaced free function lost its namespace, so `a.parse` and
-    //     `b.parse` would have collided into one `pub fn parse`
-    //   - sub-packages were merged into one crate root
-    //
-    // A wrong answer that compiles is the failure ZIGO060 exists to prevent,
-    // so all three are refused until each has a real mapping.
+    // Namespaces and sub-packages must not flatten silently. Scalar enums
+    // now have a real mapping, but enum aggregates still need conversion.
     const cases = [_]struct { fixture: []const u8, names: []const u8 }{
         .{ .fixture =
-        \\{"package":"sample","prefix":"zg","types":[{"kind":"enum","name":"Level","exhaustive":true,"fields":[{"name":"low","value":0}],"tag_type":{"bits":8,"kind":"int","signed":false}}],"zig_version":"0.16.0","functions":[{"name":"echo","params":[{"name":"value","type":{"kind":"enum","ref":"Level"}}],"return":{"kind":"void"},"symbol":"zg_echo"}]}
+        \\{"package":"sample","prefix":"zg","types":[{"kind":"enum","name":"Level","exhaustive":true,"fields":[{"name":"low","value":0}],"tag_type":{"bits":8,"kind":"int","signed":false}}],"zig_version":"0.16.0","functions":[{"name":"echo","params":[{"name":"value","type":{"kind":"slice","const":true,"element":{"kind":"enum","ref":"Level"}}}],"return":{"kind":"void"},"symbol":"zg_echo"}]}
         , .names = "enum" },
         .{ .fixture =
         \\{"package":"sample","prefix":"zg","types":[],"zig_version":"0.16.0","functions":[{"name":"width","namespace":"unicode","params":[],"return":{"bits":8,"kind":"int","signed":true},"symbol":"zg_unicode_width"}]}

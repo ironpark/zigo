@@ -1,0 +1,100 @@
+{
+  "constructors": [
+    {
+      "deinit": "deinit",
+      "init": "create",
+      "type": "Context"
+    }
+  ],
+  "functions": [
+    {
+      "name": "create",
+      "namespace": "Context",
+      "ownership": "caller",
+      "params": [],
+      "return": {
+        "error_set": [
+          "OutOfMemory"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "const": false,
+          "kind": "opaque_ptr",
+          "nullable": false,
+          "ref": "Context"
+        }
+      },
+      "source": {
+        "column": 12,
+        "line": 21,
+        "path": "root.zig"
+      },
+      "symbol": "zg_context_create"
+    },
+    {
+      "name": "deinit",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Context",
+      "return": {
+        "kind": "void"
+      },
+      "source": {
+        "column": 12,
+        "line": 87,
+        "path": "root.zig"
+      },
+      "symbol": "zg_context_deinit"
+    },
+    {
+      "name": "choose",
+      "receiver": "Context",
+      "params": [
+        {
+          "name": "mode",
+          "type": {
+            "kind": "enum",
+            "ref": "Mode"
+          }
+        }
+      ],
+      "return": {
+        "kind": "enum",
+        "ref": "Mode"
+      },
+      "symbol": "zg_context_choose"
+    }
+  ],
+  "ir_version": 2,
+  "package": "opaque",
+  "prefix": "zg",
+  "types": [
+    {
+      "exhaustive": true,
+      "fields": [],
+      "kind": "opaque",
+      "name": "Context",
+      "zig_path": "root.Context"
+    },
+    {
+      "name": "Mode",
+      "kind": "enum",
+      "tag_type": {
+        "kind": "int",
+        "bits": 8,
+        "signed": false
+      },
+      "fields": [
+        {
+          "name": "fast",
+          "value": 1
+        },
+        {
+          "name": "slow",
+          "value": 2
+        }
+      ]
+    }
+  ],
+  "zig_version": "0.16.0"
+}

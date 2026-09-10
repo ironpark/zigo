@@ -11,6 +11,7 @@ const std = @import("std");
 const abi = @import("abi");
 const diagnostic = @import("diagnostic");
 const emit = @import("../emit/emit.zig");
+const enums = @import("enums.zig");
 const buffers = @import("buffers.zig");
 const handles = @import("handles.zig");
 const public = @import("public.zig");
@@ -33,6 +34,7 @@ pub const core_emitters = emit.neutral_emitters ++ [_]Emitter{
     .{ .pathAlloc = errorPath, .render = public.renderErrors, .enabled = errorsEnabled },
     .{ .pathAlloc = handlePath, .render = handles.renderHandles, .enabled = handlesEnabled },
     .{ .pathAlloc = bufferPath, .render = buffers.renderBuffers, .enabled = buffersEnabled },
+    .{ .pathAlloc = enums.path, .render = enums.render, .enabled = enums.enabled },
     .{ .pathAlloc = libPath, .render = public.renderLib },
 };
 
@@ -84,6 +86,7 @@ pub fn unsupportedIssues(
     program: abi.Program,
     issues: *std.ArrayList(diagnostic.Diagnostic),
 ) !void {
+    try enums.unsupportedIssues(allocator, program, issues);
     for (program.functions) |function| {
         if (types.unsupported(program, function)) |reason|
             try issues.append(allocator, try types.unsupportedDiagnostic(allocator, function, reason));
@@ -97,4 +100,5 @@ test {
     std.testing.refAllDecls(public);
     std.testing.refAllDecls(handles);
     std.testing.refAllDecls(buffers);
+    std.testing.refAllDecls(enums);
 }

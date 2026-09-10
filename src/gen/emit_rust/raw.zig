@@ -15,6 +15,7 @@ const type_spelling = @import("../emit/type_spelling.zig");
 // through the `targets` module, since `targets.zig` owns those files.
 const rust = @import("targets").rust;
 const words = rust.words;
+const enums = @import("enums.zig");
 const types = @import("types.zig");
 
 pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, _: emit.Options) !void {
@@ -27,8 +28,9 @@ pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
             "// make the block inside one redundant. Denying that keeps every native\n" ++
             "// call inside an explicit block, so the unsafe operations stay visible.\n" ++
             "#![deny(unsafe_op_in_unsafe_fn)]\n\n" ++
-            "use core::ffi::c_char;\n\n",
+            "use core::ffi::c_char;\n",
     );
+    if (!@import("handles.zig").hasHandles(program)) try writer.writeByte('\n');
     // The incomplete C structs the signatures below point at, before the
     // block that names them.
     for (program.handles) |handle| {
@@ -165,8 +167,8 @@ fn renderWrapper(
     const shape = try Shape.of(allocator, program, function);
     defer shape.deinit(allocator);
     try writer.print("\n/// Calls the generated C ABI wrapper for `{s}`.\n", .{function.symbol});
-    const unsafe_wrapper = shape.touchesHandlePointer();
-    if (unsafe_wrapper) try writer.writeAll(
+    const unsafe_wrapper = shape.requiresUnsafeCall();
+    if (shape.touchesHandlePointer()) try writer.writeAll(
         "///\n" ++
             "/// # Safety\n" ++
             "///\n" ++
@@ -174,6 +176,11 @@ fn renderWrapper(
             "/// type. The generated wrapper that owns the handle guarantees this; a\n" ++
             "/// hand-written caller has to.\n",
     );
+    for (shape.inputs) |input| if (input.enum_type != null) {
+        if (!shape.touchesHandlePointer()) try writer.writeAll("///\n/// # Safety\n///\n");
+        try writer.writeAll("/// Enum integer arguments must be valid values of the declared Zig enum,\n/// including its original tag width.\n");
+        break;
+    };
     try writer.print("pub {s}fn {s}(", .{ if (unsafe_wrapper) "unsafe " else "", shape.raw_name });
     var written = false;
     if (shape.receiver) |record| {
@@ -325,7 +332,7 @@ pub const Shape = struct {
     /// so the public signature stays the bare payload.
     declares_errors: bool,
 
-    pub const Direct = struct { raw: []const u8, public: []const u8, is_bool: bool };
+    pub const Direct = struct { raw: []const u8, public: []const u8, is_bool: bool, is_enum: bool = false };
 
     pub const Buffer = struct {
         element: types.Element,
@@ -403,6 +410,7 @@ pub const Shape = struct {
         scalar: ?[]const u8 = null,
         element: ?types.Element = null,
         handle: ?Handle = null,
+        enum_type: ?[]const u8 = null,
         is_bool: bool = false,
         /// The shim supplies this argument -- an `std.mem.Allocator` or an
         /// `std.Io` the binding injected -- so it never crosses the C ABI and
@@ -433,12 +441,14 @@ pub const Shape = struct {
                 if (handle.is_const) "const" else "mut",
                 handle.c_name,
             });
+            if (self.enum_type != null) return writer.writeAll(self.scalar.?);
             try self.writePublicType(writer);
         }
 
         /// The type the public signature takes. The two differ only for a
         /// handle, which the public API presents as a borrow of its wrapper.
         pub fn writePublicType(self: Input, writer: *std.Io.Writer) !void {
+            if (self.enum_type) |name| return writer.writeAll(name);
             if (self.handle) |handle| return writer.print("&{s}{s}", .{
                 if (handle.is_const) "" else "mut ",
                 handle.type_name,
@@ -452,6 +462,7 @@ pub const Shape = struct {
 
         /// The expression the public layer passes to the raw wrapper.
         pub fn writeArgument(self: Input, writer: *std.Io.Writer) !void {
+            if (self.enum_type != null) return writer.print("{s}.into()", .{self.name});
             if (self.handle != null) return writer.print("{s}.handle", .{self.name});
             try writer.writeAll(self.name);
         }
@@ -493,6 +504,10 @@ pub const Shape = struct {
                         .is_const = pointer.@"const",
                     };
                 },
+                .@"enum" => |value| {
+                    input.enum_type = try enums.typeNameAlloc(allocator, value.ref);
+                    input.scalar = types.rawScalar(type_spelling.semanticScalar(program, parameter.type)) orelse return error.UnsupportedType;
+                },
                 .bool => {
                     input.scalar = "bool";
                     input.is_bool = true;
@@ -533,7 +548,7 @@ pub const Shape = struct {
             else
                 .{ .slice = element };
         } else if (payload_node != .void) {
-            const spelling = try scalarSpelling(program, payload_node);
+            const spelling = try scalarSpelling(allocator, program, payload_node);
             // Whether the value comes back through an out parameter or as the
             // C return is the status channel's question, not the error set's.
             if (has_status_code) shape.payload = .{ .scalar = spelling } else shape.direct = spelling;
@@ -544,11 +559,12 @@ pub const Shape = struct {
     /// Both spellings of one scalar. The two differ only for `bool`, which
     /// the C ABI carries as a byte, so this is the one place that difference
     /// is decided.
-    fn scalarSpelling(program: abi.Program, node: semantic.TypeNode) !Direct {
+    fn scalarSpelling(allocator: std.mem.Allocator, program: abi.Program, node: semantic.TypeNode) !Direct {
         const scalar = type_spelling.semanticScalar(program, node);
         return .{
             .raw = types.rawScalar(scalar) orelse return error.UnsupportedType,
-            .public = types.publicScalar(node, scalar) orelse return error.UnsupportedType,
+            .public = if (node == .@"enum") try enums.typeNameAlloc(allocator, node.@"enum".ref) else types.publicScalar(node, scalar) orelse return error.UnsupportedType,
+            .is_enum = node == .@"enum",
             .is_bool = node == .bool,
         };
     }
@@ -572,6 +588,13 @@ pub const Shape = struct {
     /// `not_unsafe_ptr_arg_deref` -- and it is right, so the wrapper is
     /// `unsafe fn` and the public wrapper discharges the precondition by
     /// owning the handle.
+    /// Integer enum arguments also have a native validity precondition. The
+    /// public wrapper supplies a checked named value; raw callers must do so.
+    pub fn requiresUnsafeCall(self: Shape) bool {
+        for (self.inputs) |input| if (input.enum_type != null) return true;
+        return self.touchesHandlePointer();
+    }
+
     pub fn touchesHandlePointer(self: Shape) bool {
         if (self.receiver != null) return true;
         for (self.inputs) |input| if (input.handle != null) return true;
@@ -620,7 +643,16 @@ pub const Shape = struct {
     pub fn deinit(self: Shape, allocator: std.mem.Allocator) void {
         allocator.free(self.raw_name);
         allocator.free(self.public_name);
-        for (self.inputs) |input| allocator.free(input.name);
+        for (self.inputs) |input| {
+            allocator.free(input.name);
+            if (input.enum_type) |name| allocator.free(name);
+        }
+        if (self.direct) |direct| if (direct.is_enum) {
+            allocator.free(direct.public);
+        };
+        if (self.payload) |payload| if (payload == .scalar and payload.scalar.is_enum) {
+            allocator.free(payload.scalar.public);
+        };
         allocator.free(self.inputs);
     }
 

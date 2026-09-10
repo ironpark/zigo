@@ -1,0 +1,450 @@
+{
+  "functions": [
+    {
+      "name": "echo",
+      "params": [
+        {
+          "name": "value",
+          "type": {
+            "kind": "enum",
+            "ref": "EraseDisplay"
+          }
+        }
+      ],
+      "return": {
+        "kind": "enum",
+        "ref": "EraseDisplay"
+      },
+      "symbol": "zg_echo"
+    },
+    {
+      "name": "pick",
+      "params": [
+        {
+          "name": "value",
+          "type": {
+            "kind": "enum",
+            "ref": "Priority"
+          }
+        }
+      ],
+      "return": {
+        "kind": "enum",
+        "ref": "Priority"
+      },
+      "symbol": "zg_pick"
+    },
+    {
+      "name": "echoLevel",
+      "params": [
+        {
+          "name": "value",
+          "type": {
+            "kind": "enum",
+            "ref": "Level"
+          }
+        }
+      ],
+      "return": {
+        "kind": "enum",
+        "ref": "Level"
+      },
+      "symbol": "zg_echo_level"
+    },
+    {
+      "name": "fallible",
+      "symbol": "zg_fallible",
+      "params": [
+        {
+          "name": "value",
+          "type": {
+            "kind": "enum",
+            "ref": "Priority"
+          }
+        },
+        {
+          "name": "fail",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "return": {
+        "kind": "error_union",
+        "error_set": [
+          "Rejected"
+        ],
+        "payload": {
+          "kind": "enum",
+          "ref": "Priority"
+        }
+      }
+    },
+    {
+      "name": "checked",
+      "symbol": "zg_checked",
+      "params": [
+        {
+          "name": "value",
+          "type": {
+            "kind": "int",
+            "bits": 3,
+            "signed": false
+          }
+        }
+      ],
+      "return": {
+        "kind": "enum",
+        "ref": "Level"
+      }
+    },
+    {
+      "name": "invalid",
+      "symbol": "zg_invalid",
+      "params": [],
+      "return": {
+        "kind": "enum",
+        "ref": "Level"
+      }
+    },
+    {
+      "name": "get_hidden",
+      "symbol": "zg_get_hidden",
+      "params": [],
+      "return": {
+        "kind": "enum",
+        "ref": "Hidden"
+      }
+    },
+    {
+      "name": "wire",
+      "symbol": "zg_wire",
+      "params": [
+        {
+          "name": "value",
+          "type": {
+            "kind": "enum",
+            "ref": "WireId"
+          }
+        }
+      ],
+      "return": {
+        "kind": "enum",
+        "ref": "WireId"
+      }
+    },
+    {
+      "name": "get_tiny",
+      "symbol": "zg_get_tiny",
+      "params": [
+        {
+          "name": "value",
+          "type": {
+            "kind": "enum",
+            "ref": "Tiny"
+          }
+        }
+      ],
+      "return": {
+        "kind": "enum",
+        "ref": "Tiny"
+      }
+    }
+  ],
+  "package": "enums",
+  "prefix": "zg",
+  "types": [
+    {
+      "exhaustive": false,
+      "fields": [
+        {
+          "name": "below",
+          "value": 0
+        },
+        {
+          "name": "above",
+          "value": 1
+        }
+      ],
+      "kind": "enum",
+      "name": "EraseDisplay",
+      "open": true,
+      "tag_type": {
+        "bits": 8,
+        "kind": "int",
+        "signed": false
+      },
+      "text": true
+    },
+    {
+      "fields": [
+        {
+          "name": "low",
+          "value": -1
+        },
+        {
+          "name": "normal",
+          "value": 0
+        },
+        {
+          "name": "high",
+          "value": 1
+        }
+      ],
+      "kind": "enum",
+      "name": "Priority",
+      "tag_type": {
+        "bits": 32,
+        "kind": "int",
+        "signed": true
+      },
+      "text": true
+    },
+    {
+      "fields": [
+        {
+          "name": "debug",
+          "value": 0
+        },
+        {
+          "name": "info",
+          "value": 1
+        }
+      ],
+      "kind": "enum",
+      "name": "Level",
+      "tag_type": {
+        "bits": 8,
+        "kind": "int",
+        "signed": false
+      }
+    },
+    {
+      "name": "WireId",
+      "kind": "enum",
+      "tag_type": {
+        "kind": "int",
+        "bits": 16,
+        "signed": false
+      },
+      "fields": [
+        {
+          "name": "http_id",
+          "value": 1
+        },
+        {
+          "name": "utf8_url",
+          "value": 65535
+        }
+      ]
+    },
+    {
+      "name": "SignedByte",
+      "kind": "enum",
+      "tag_type": {
+        "kind": "int",
+        "bits": 8,
+        "signed": true
+      },
+      "fields": [
+        {
+          "name": "min",
+          "value": -128
+        },
+        {
+          "name": "max",
+          "value": 127
+        }
+      ]
+    },
+    {
+      "name": "SignedWord",
+      "kind": "enum",
+      "tag_type": {
+        "kind": "int",
+        "bits": 16,
+        "signed": true
+      },
+      "fields": [
+        {
+          "name": "min",
+          "value": -32768
+        },
+        {
+          "name": "max",
+          "value": 32767
+        }
+      ]
+    },
+    {
+      "name": "Wide",
+      "kind": "enum",
+      "tag_type": {
+        "kind": "int",
+        "bits": 32,
+        "signed": false
+      },
+      "fields": [
+        {
+          "name": "max",
+          "value": 4294967295
+        }
+      ]
+    },
+    {
+      "name": "SignedWide",
+      "kind": "enum",
+      "tag_type": {
+        "kind": "int",
+        "bits": 64,
+        "signed": true
+      },
+      "fields": [
+        {
+          "name": "min",
+          "value": -9223372036854775808
+        },
+        {
+          "name": "max",
+          "value": 9223372036854775807
+        }
+      ]
+    },
+    {
+      "name": "UnsignedWide",
+      "kind": "enum",
+      "tag_type": {
+        "kind": "int",
+        "bits": 64,
+        "signed": false
+      },
+      "fields": [
+        {
+          "name": "max",
+          "value": 9223372036854775807
+        }
+      ]
+    },
+    {
+      "name": "Tiny",
+      "kind": "enum",
+      "tag_type": {
+        "kind": "int",
+        "bits": 3,
+        "signed": false
+      },
+      "fields": [
+        {
+          "name": "one",
+          "value": 1
+        }
+      ],
+      "open": true,
+      "exhaustive": false,
+      "text": true
+    },
+    {
+      "name": "TinySigned",
+      "kind": "enum",
+      "tag_type": {
+        "kind": "int",
+        "bits": 3,
+        "signed": true
+      },
+      "fields": [
+        {
+          "name": "minus",
+          "value": -1
+        }
+      ],
+      "open": true,
+      "exhaustive": false
+    },
+    {
+      "name": "Hidden",
+      "kind": "enum",
+      "tag_type": {
+        "kind": "int",
+        "bits": 8,
+        "signed": false
+      },
+      "fields": [
+        {
+          "name": "visible",
+          "value": 1
+        },
+        {
+          "name": "secret",
+          "value": 2
+        }
+      ],
+      "omitted_variants": [
+        "secret"
+      ],
+      "text": true
+    },
+    {
+      "name": "OpenHidden",
+      "kind": "enum",
+      "tag_type": {
+        "kind": "int",
+        "bits": 8,
+        "signed": false
+      },
+      "fields": [
+        {
+          "name": "visible",
+          "value": 1
+        },
+        {
+          "name": "secret",
+          "value": 2
+        }
+      ],
+      "omitted_variants": [
+        "secret"
+      ],
+      "open": true,
+      "exhaustive": false,
+      "text": true
+    },
+    {
+      "name": "EmptyOpen",
+      "kind": "enum",
+      "tag_type": {
+        "kind": "int",
+        "bits": 8,
+        "signed": false
+      },
+      "fields": [],
+      "open": true,
+      "exhaustive": false,
+      "text": true
+    },
+    {
+      "name": "Words",
+      "kind": "enum",
+      "tag_type": {
+        "kind": "int",
+        "bits": 8,
+        "signed": false
+      },
+      "fields": [
+        {
+          "name": "error",
+          "value": 0
+        },
+        {
+          "name": "err",
+          "value": 1
+        },
+        {
+          "name": "type",
+          "value": 2
+        }
+      ],
+      "text": true
+    }
+  ],
+  "zig_version": "0.16.0"
+}
