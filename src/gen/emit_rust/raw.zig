@@ -175,13 +175,19 @@ fn renderWrapper(
             "/// hand-written caller has to.\n",
     );
     try writer.print("pub {s}fn {s}(", .{ if (unsafe_wrapper) "unsafe " else "", shape.raw_name });
-    if (shape.receiver) |record| try writer.print("{s}: *{s} {s}", .{
-        receiver_parameter,
-        if (record.is_const) "const" else "mut",
-        record.c_name,
-    });
-    for (shape.inputs, 0..) |input, index| {
-        if (index != 0 or shape.receiver != null) try writer.writeAll(", ");
+    var written = false;
+    if (shape.receiver) |record| {
+        try writer.print("{s}: *{s} {s}", .{
+            receiver_parameter,
+            if (record.is_const) "const" else "mut",
+            record.c_name,
+        });
+        written = true;
+    }
+    for (shape.inputs) |input| {
+        if (input.injected) continue;
+        if (written) try writer.writeAll(", ");
+        written = true;
         try writer.print("{s}: ", .{input.name});
         try input.writeRawType(writer);
     }
@@ -201,6 +207,10 @@ fn renderWrapper(
         .slice => |element| try writer.print(
             "    let mut out_result_ptr: *const {s} = core::ptr::null();\n    let mut out_result_len: usize = 0;\n",
             .{element.raw},
+        ),
+        .buffer => |buffer| try writer.print(
+            "    let mut out_result_ptr: *const {s} = core::ptr::null();\n    let mut out_result_len: usize = 0;\n",
+            .{buffer.element.raw},
         ),
         // A null placeholder the call overwrites. The public wrapper checks it
         // rather than trusting the status code alone, because a constructor
@@ -317,6 +327,13 @@ pub const Shape = struct {
 
     pub const Direct = struct { raw: []const u8, public: []const u8, is_bool: bool };
 
+    pub const Buffer = struct {
+        element: types.Element,
+        /// The `extern` symbol of the release function, taken by address as
+        /// the owning slice's release callback.
+        release_symbol: []const u8,
+    };
+
     /// A handle a call produces. Named apart from `Input.Handle`, which is a
     /// handle a call *takes*: the two answer different questions and Zig would
     /// otherwise resolve the bare name ambiguously inside `Input`.
@@ -370,6 +387,10 @@ pub const Shape = struct {
         /// `error{E}!bool` arrive as `Result<u8, Error>`.
         scalar: Direct,
         slice: types.Element,
+        /// A slice the library allocated and handed over. Identical to `slice`
+        /// at the ABI -- the same pointer-and-length pair -- and different in
+        /// the public layer, which owns it instead of copying it.
+        buffer: Buffer,
         /// A constructed or borrowed handle: the C ABI writes the pointer
         /// through an out parameter, so the raw wrapper hands back the raw
         /// pointer and the public layer wraps it.
@@ -383,6 +404,16 @@ pub const Shape = struct {
         element: ?types.Element = null,
         handle: ?Handle = null,
         is_bool: bool = false,
+        /// The shim supplies this argument -- an `std.mem.Allocator` or an
+        /// `std.Io` the binding injected -- so it never crosses the C ABI and
+        /// has no public spelling.
+        ///
+        /// Kept in the list rather than filtered out of it: `writeArgument`
+        /// indexes by *semantic* parameter index, so removing an entry would
+        /// shift every later one. It was not kept before, and an injected
+        /// allocator therefore reached the signature as a `()` argument the
+        /// caller had to supply.
+        injected: bool = false,
 
         pub const Handle = struct {
             type_name: []const u8,
@@ -444,6 +475,11 @@ pub const Shape = struct {
         errdefer inputs.deinit(allocator);
         for (origin.params, names, 0..) |parameter, name, index| {
             var input: Input = .{ .name = name };
+            if (parameter.injected != null) {
+                input.injected = true;
+                try inputs.append(allocator, input);
+                continue;
+            }
             switch (parameter.type) {
                 .slice => {
                     input.element = types.sliceElement(parameter.type, function.paramString(index).role) orelse
@@ -487,8 +523,15 @@ pub const Shape = struct {
                 .kind = handle.kind,
             } };
         } else if (payload_node == .slice) {
-            shape.payload = .{ .slice = types.sliceElement(payload_node, function.ret_string) orelse
-                return error.UnsupportedType };
+            const element = types.sliceElement(payload_node, function.ret_string) orelse
+                return error.UnsupportedType;
+            // Which of the two it is comes off the lowered ownership, not off
+            // the type: `[]const T` is the same node whether the library keeps
+            // the memory or hands it over.
+            shape.payload = if (function.ownership.asBuffer()) |buffer|
+                .{ .buffer = .{ .element = element, .release_symbol = releaseSymbol(program, buffer) } }
+            else
+                .{ .slice = element };
         } else if (payload_node != .void) {
             const spelling = try scalarSpelling(program, payload_node);
             // Whether the value comes back through an out parameter or as the
@@ -508,6 +551,19 @@ pub const Shape = struct {
             .public = types.publicScalar(node, scalar) orelse return error.UnsupportedType,
             .is_bool = node == .bool,
         };
+    }
+
+    /// The `extern` symbol the release half of a caller-owned buffer is
+    /// exported under.
+    fn releaseSymbol(program: abi.Program, buffer: abi.Ownership.Buffer) []const u8 {
+        // By index, not by comparing `release_function`. That pointer reaches
+        // into the table *before* checked promotion, while `AbiFn.origin`
+        // reaches into the promoted one, so the two are never equal and the
+        // comparison matched nothing at all. The index is documented as being
+        // into the full, unfiltered `Program.functions`, which is the only
+        // kind this backend sees: a document with sub-packages -- the one
+        // thing that produces a filtered program -- is refused.
+        return program.functions[buffer.release].symbol;
     }
 
     /// Whether this call takes a native handle pointer, and therefore has a
@@ -577,6 +633,7 @@ pub const Shape = struct {
             switch (payload) {
                 .scalar => |scalar| try writer.writeAll(scalar.raw),
                 .slice => |element| try writer.print("*const {s}, usize", .{element.raw}),
+                .buffer => |buffer| try writer.print("*const {s}, usize", .{buffer.element.raw}),
                 .handle => |record| try writer.print("*mut {s}", .{record.c_name}),
             }
             if (self.has_status_code) try writer.writeAll(", i32");
@@ -591,7 +648,7 @@ pub const Shape = struct {
             try writer.writeAll("    (");
             switch (payload) {
                 .scalar, .handle => try writer.writeAll("out_result"),
-                .slice => try writer.writeAll("out_result_ptr, out_result_len"),
+                .slice, .buffer => try writer.writeAll("out_result_ptr, out_result_len"),
             }
             if (self.has_status_code) try writer.writeAll(", code");
             return writer.writeAll(")\n");

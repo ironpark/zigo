@@ -12,6 +12,7 @@ const emit = @import("../emit/emit.zig");
 // The Rust target's own rules, reached the way the Go emitter reaches Go's:
 // through the `targets` module, since `targets.zig` owns those files.
 const rust = @import("targets").rust;
+const buffers = @import("buffers.zig");
 const handles = @import("handles.zig");
 const raw = @import("raw.zig");
 const types = @import("types.zig");
@@ -33,6 +34,10 @@ pub fn renderLib(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
     try writer.writeAll("\npub mod raw;\n");
     if (hasErrors(program)) try writer.writeAll("\nmod error;\npub use error::{Error, ErrorKind};\n");
     if (handles.hasHandles(program)) try writer.writeAll("\nmod handle;\npub use handle::*;\n");
+    if (buffers.hasBuffers(program)) try writer.print(
+        "\nmod buffer;\npub use buffer::{s};\n",
+        .{buffers.type_name},
+    );
     // Filtered by *placement*, not by support: the refusal for a shape this
     // backend cannot render happens once, upstream, over the whole document.
     // A constructor and a method belong to a handle's `impl` block and a
@@ -107,6 +112,11 @@ fn writePayloadType(writer: *std.Io.Writer, shape: raw.Shape) !void {
             writer.writeAll("String")
         else
             writer.print("Vec<{s}>", .{element.raw}),
+        // Owned, not copied. A text buffer is an `OwnedSlice<u8>` like any
+        // other rather than a `String`: converting on the way out would put
+        // back exactly the copy this type exists to avoid, and
+        // `to_str_lossy` borrows for valid UTF-8.
+        .buffer => |buffer| return writer.print("{s}<{s}>", .{ buffers.type_name, buffer.element.raw }),
     };
     if (shape.direct) |direct| return writer.writeAll(direct.public);
     try writer.writeAll("()");
@@ -131,7 +141,7 @@ pub fn writeBody(
     if (shape.payload) |payload| {
         switch (payload) {
             .scalar, .handle => try writer.writeAll("    let (result"),
-            .slice => try writer.writeAll("    let (result_ptr, result_len"),
+            .slice, .buffer => try writer.writeAll("    let (result_ptr, result_len"),
         }
         if (shape.has_status_code) try writer.writeAll(", code");
         try writer.writeAll(") = ");
@@ -193,6 +203,16 @@ pub fn writeBody(
                 // the comparison rather than the name.
                 if (scalar.is_bool) return writeResultExpression(writer, shape, "result != 0");
             },
+            // The one line this whole phase is for: the pointer and length go
+            // straight into a value that owns them. Go copies here.
+            .buffer => |buffer| {
+                try writer.writeAll("    ");
+                return writeResultExpression(writer, shape, try std.fmt.allocPrint(
+                    allocator,
+                    "unsafe {{ {s}::from_raw(result_ptr, result_len, raw::{s}) }}",
+                    .{ buffers.type_name, buffer.release_symbol },
+                ));
+            },
             // The pointer is the library's for the duration of the call only,
             // so the bytes are copied before returning. A null pointer with a
             // zero length is an empty result, which `from_raw_parts` may not
@@ -241,9 +261,15 @@ fn writeCall(writer: *std.Io.Writer, shape: raw.Shape, self_expression: ?[]const
     const wrap = shape.touchesHandlePointer();
     if (wrap) try writer.writeAll("unsafe { ");
     try writer.print("raw::{s}(", .{shape.raw_name});
-    if (self_expression) |expression| try writer.writeAll(expression);
-    for (shape.inputs, 0..) |input, index| {
-        if (index != 0 or self_expression != null) try writer.writeAll(", ");
+    var written = false;
+    if (self_expression) |expression| {
+        try writer.writeAll(expression);
+        written = true;
+    }
+    for (shape.inputs) |input| {
+        if (input.injected) continue;
+        if (written) try writer.writeAll(", ");
+        written = true;
         try input.writeArgument(writer);
     }
     try writer.writeByte(')');
@@ -253,9 +279,17 @@ fn writeCall(writer: *std.Io.Writer, shape: raw.Shape, self_expression: ?[]const
 /// One public function's parameter list, without the enclosing parentheses and
 /// without the receiver, which an `impl` block spells as `&self`.
 pub fn writeParameters(writer: *std.Io.Writer, shape: raw.Shape, leading: ?[]const u8) !void {
-    if (leading) |value| try writer.writeAll(value);
-    for (shape.inputs, 0..) |input, index| {
-        if (index != 0 or leading != null) try writer.writeAll(", ");
+    var written = false;
+    if (leading) |value| {
+        try writer.writeAll(value);
+        written = true;
+    }
+    for (shape.inputs) |input| {
+        // An injected allocator or io is the shim's to supply, so it is not
+        // part of the public signature.
+        if (input.injected) continue;
+        if (written) try writer.writeAll(", ");
+        written = true;
         try writer.print("{s}: ", .{input.name});
         try input.writePublicType(writer);
     }

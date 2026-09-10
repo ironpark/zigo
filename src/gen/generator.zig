@@ -597,6 +597,39 @@ test "the Rust target writes a crate and reuses the neutral outputs verbatim" {
     try std.testing.expectError(error.FileNotFound, rust_tree.dir.access(std.testing.io, "calc/calc_gen.go", .{}));
 }
 
+test "a caller-owned buffer is owned rather than copied" {
+    const fixture =
+        \\{"functions":[{"name":"takeDigits","ownership":"caller","release":"freeDigits","params":[],"return":{"kind":"slice","const":true,"element":{"bits":32,"kind":"int","signed":true}},"symbol":"zg_take_digits"},{"name":"freeDigits","params":[{"name":"values","type":{"kind":"slice","const":true,"element":{"bits":32,"kind":"int","signed":true}}}],"return":{"kind":"void"},"symbol":"zg_free_digits"}],"package":"buffers","prefix":"zg","types":[],"zig_version":"0.16.0"}
+    ;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var tree = std.testing.tmpDir(.{ .iterate = true });
+    defer tree.cleanup();
+    try generate(arena.allocator(), std.testing.io, fixture, tree.dir, .{
+        .output_target = targets.rust.target,
+        .package = "buffers",
+        .prefix = "zg",
+        .go_module = "unused-by-rust",
+    });
+    const lib = try tree.dir.readFileAlloc(std.testing.io, "src/lib.rs", arena.allocator(), .limited(64 * 1024));
+    // The point of the phase: the pointer and the length go straight into a
+    // value that owns them, so nothing is copied. Go's binding for the same
+    // function copies the payload and releases it before returning, because
+    // its collector cannot own a Zig pointer.
+    try std.testing.expect(std.mem.indexOf(u8, lib, "pub fn take_digits() -> OwnedSlice<i32> {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lib, "OwnedSlice::from_raw(result_ptr, result_len, raw::zg_free_digits)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lib, "to_vec") == null);
+    try std.testing.expect(std.mem.indexOf(u8, lib, "from_utf8_lossy") == null);
+    // The release half is not published. `OwnedSlice`'s `Drop` owns it, so a
+    // public `free_digits` beside it would be a double free waiting to be
+    // written -- Go publishes both and documents the hazard instead.
+    try std.testing.expect(std.mem.indexOf(u8, lib, "pub fn free_digits") == null);
+    const buffer = try tree.dir.readFileAlloc(std.testing.io, "src/buffer.rs", arena.allocator(), .limited(64 * 1024));
+    try std.testing.expect(std.mem.indexOf(u8, buffer, "impl<T> Drop for OwnedSlice<T> {") != null);
+    // One generic type, not one per release function.
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, buffer, "pub struct OwnedSlice"));
+}
+
 test "the Rust target refuses every handle shape it does not own" {
     // The four the plan names, plus the callback shape that used to panic.
     //

@@ -122,6 +122,10 @@ pub const Placement = union(enum) {
     /// `Close()` and then guard every method against having been called after
     /// it.
     destructor: []const u8,
+    /// Consumed by `OwnedSlice`'s `Drop`, for the same reason: publishing it
+    /// beside a buffer that already frees itself would be a double free
+    /// waiting to be written.
+    release,
 };
 
 pub fn placementOf(program: abi.Program, function: abi.AbiFn) Placement {
@@ -136,6 +140,7 @@ pub fn placementOf(program: abi.Program, function: abi.AbiFn) Placement {
     if (semantic.constructorForInit(program.constructors, origin)) |constructor| {
         if (handleFor(program, constructor.type) != null) return .{ .constructor = constructor.type };
     }
+    if (@import("buffers.zig").isRelease(program, function)) return .release;
     return .free_function;
 }
 
@@ -311,10 +316,27 @@ pub fn unsupported(program: abi.Program, function: abi.AbiFn) ?Unsupported {
         .what = "an optional result",
         .hint = "the minimal Rust backend supports scalar, slice and error-union results only",
     };
-    if (function.ownership == .buffer) return .{
-        .what = "a caller-owned buffer result",
-        .hint = "a released slice result is not in the minimal Rust backend",
-    };
+    if (function.ownership.asBuffer()) |buffer| {
+        if (buffer.release_receiver_c_name != null) return .{
+            .what = "a caller-owned buffer whose release function is a method",
+            .hint = "the owning slice would have to hold the receiver too, and then outlive it; not designed yet",
+        };
+        if (buffer.materialized != null) return .{
+            .what = "a materialized result tree",
+            .hint = "Rust would carry this as a borrowed slice or a Drop wrapper; not designed yet",
+        };
+        if (buffer.narrow) return .{
+            .what = "a caller-owned buffer of narrow integers",
+            .hint = "the shim rewrites the buffer in place for these; not designed yet",
+        };
+        // `ret_string` is the function's own record of how the result carries
+        // text; a caller-owned C string crosses as one NUL-terminated pointer
+        // rather than as the pointer-and-length pair an owning slice needs.
+        if (function.ret_string == .c_string) return .{
+            .what = "a caller-owned C string",
+            .hint = "the Rust backend owns a slice, not a NUL-terminated buffer; not designed yet",
+        };
+    }
     if (function.ret_string == .string_slice) return .{
         .what = "a slice-of-strings result",
         .hint = "the minimal Rust backend supports one scalar or one byte slice",

@@ -11,6 +11,7 @@ const std = @import("std");
 const abi = @import("abi");
 const diagnostic = @import("diagnostic");
 const emit = @import("../emit/emit.zig");
+const buffers = @import("buffers.zig");
 const handles = @import("handles.zig");
 const public = @import("public.zig");
 const raw = @import("raw.zig");
@@ -31,6 +32,7 @@ pub const core_emitters = emit.neutral_emitters ++ [_]Emitter{
     .{ .pathAlloc = rawPath, .render = raw.renderRaw },
     .{ .pathAlloc = errorPath, .render = public.renderErrors, .enabled = errorsEnabled },
     .{ .pathAlloc = handlePath, .render = handles.renderHandles, .enabled = handlesEnabled },
+    .{ .pathAlloc = bufferPath, .render = buffers.renderBuffers, .enabled = buffersEnabled },
     .{ .pathAlloc = libPath, .render = public.renderLib },
 };
 
@@ -40,6 +42,10 @@ fn errorsEnabled(_: std.mem.Allocator, program: abi.Program, _: Options) anyerro
 
 fn handlesEnabled(_: std.mem.Allocator, program: abi.Program, _: Options) anyerror!bool {
     return handles.hasHandles(program);
+}
+
+fn buffersEnabled(_: std.mem.Allocator, program: abi.Program, _: Options) anyerror!bool {
+    return buffers.hasBuffers(program);
 }
 
 // The crate layout is fixed rather than derived from an option. Go's raw and
@@ -57,6 +63,10 @@ fn errorPath(allocator: std.mem.Allocator, _: abi.Program, _: Options) ![]u8 {
 
 fn handlePath(allocator: std.mem.Allocator, _: abi.Program, _: Options) ![]u8 {
     return allocator.dupe(u8, "src/handle.rs");
+}
+
+fn bufferPath(allocator: std.mem.Allocator, _: abi.Program, _: Options) ![]u8 {
+    return allocator.dupe(u8, "src/buffer.rs");
 }
 
 fn libPath(allocator: std.mem.Allocator, _: abi.Program, _: Options) ![]u8 {
@@ -86,4 +96,5 @@ test {
     std.testing.refAllDecls(raw);
     std.testing.refAllDecls(public);
     std.testing.refAllDecls(handles);
+    std.testing.refAllDecls(buffers);
 }

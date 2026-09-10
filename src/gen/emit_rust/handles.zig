@@ -14,6 +14,7 @@
 const std = @import("std");
 const abi = @import("abi");
 const semantic = @import("semantic");
+const buffers = @import("buffers.zig");
 const emit = @import("../emit/emit.zig");
 const public = @import("public.zig");
 const raw = @import("raw.zig");
@@ -35,6 +36,10 @@ pub fn renderHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, progr
             "use crate::raw;\n",
     );
     if (program.error_codes.len != 0) try writer.writeAll("use crate::Error;\n");
+    // A method can hand over a caller-owned buffer, and the owning slice is
+    // declared in its own module. Imported by name rather than with a glob so
+    // an unused import is a warning `-D warnings` catches.
+    if (buffers.hasBuffers(program)) try writer.print("use crate::{s};\n", .{buffers.type_name});
     for (program.handles) |handle| {
         const renderable = types.renderableHandle(program, handle.name) orelse continue;
         try renderHandle(allocator, writer, program, handle, renderable.kind);

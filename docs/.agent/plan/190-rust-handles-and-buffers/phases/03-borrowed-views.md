@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-10T06:23:49Z"
 depends_on:
 - "190-rust-handles-and-buffers#2"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: The golden shows a lifetime on the view type and on the returning method's
 > NEXT: none
