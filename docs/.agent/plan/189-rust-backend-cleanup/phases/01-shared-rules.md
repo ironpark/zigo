@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-10T05:13:59Z"
 depends_on:
 - "189-rust-backend-cleanup#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `zig build test` passes.
 > NEXT: none

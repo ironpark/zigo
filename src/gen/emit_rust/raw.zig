@@ -187,15 +187,20 @@ fn renderWrapper(
     // Only an out parameter has to be read after the call. A fallible call
     // with no payload returns its status code and nothing else, so that too
     // is the tail expression.
-    const binds_code = shape.payload != null;
+    //
+    // Being a statement and binding a name are two different questions. An
+    // infallible call with an out parameter is a statement, but the C wrapper
+    // returns `void`, so binding `code` to it binds `()` and rustc rejects the
+    // unused name under `-D warnings`.
+    const reads_after_call = shape.payload != null;
     try writer.writeAll("    ");
-    if (binds_code) try writer.writeAll("let code = ");
+    if (reads_after_call and shape.fallible) try writer.writeAll("let code = ");
     try writer.print("unsafe {{ {s}(", .{function.symbol});
     for (function.params, 0..) |parameter, index| {
         if (index != 0) try writer.writeAll(", ");
         try writeArgument(writer, shape, parameter);
     }
-    try writer.writeAll(if (binds_code) ") };\n" else ") }\n");
+    try writer.writeAll(if (reads_after_call) ") };\n" else ") }\n");
     try shape.writeRawReturn(writer);
     try writer.writeAll("}\n");
 }

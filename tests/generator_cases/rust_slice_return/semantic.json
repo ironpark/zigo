@@ -1,0 +1,68 @@
+{
+  "functions": [
+    {
+      "doc": "Returns the supported operation codes.",
+      "name": "codes",
+      "ownership": "borrowed",
+      "params": [],
+      "return": {
+        "const": true,
+        "element": {
+          "bits": 32,
+          "is_usize": false,
+          "kind": "int",
+          "signed": true
+        },
+        "kind": "slice"
+      },
+      "symbol": "zg_codes"
+    },
+    {
+      "doc": "Returns the stored label, or an error when none is set.",
+      "name": "label",
+      "ownership": "borrowed",
+      "params": [],
+      "return": {
+        "error_set": [
+          "NotSet"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "const": true,
+          "element": {
+            "bits": 8,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          },
+          "kind": "slice"
+        }
+      },
+      "return_semantic": "utf8_string",
+      "symbol": "zg_label"
+    },
+    {
+      "doc": "Returns the library's name as UTF-8 text.",
+      "name": "name",
+      "ownership": "borrowed",
+      "params": [],
+      "return": {
+        "const": true,
+        "element": {
+          "bits": 8,
+          "is_usize": false,
+          "kind": "int",
+          "signed": false
+        },
+        "kind": "slice"
+      },
+      "return_semantic": "utf8_string",
+      "symbol": "zg_name"
+    }
+  ],
+  "ir_version": 2,
+  "package": "calculator",
+  "prefix": "zg",
+  "types": [],
+  "zig_version": "0.16.0"
+}

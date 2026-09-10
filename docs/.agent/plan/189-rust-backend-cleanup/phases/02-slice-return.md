@@ -2,7 +2,7 @@
 depends_on:
 - "189-rust-backend-cleanup#1"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: The new case's goldens contain exactly one allocation per slice result.
 > NEXT: none

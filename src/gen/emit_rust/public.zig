@@ -136,17 +136,30 @@ fn writeBody(writer: *std.Io.Writer, shape: raw.Shape, function: abi.AbiFn) !voi
             // so the bytes are copied before returning. A null pointer with a
             // zero length is an empty result, which `from_raw_parts` may not
             // be handed.
-            .slice => |element| try writer.print(
-                \\    let result = if result_ptr.is_null() || result_len == 0 {{
-                \\        Vec::new()
-                \\    }} else {{
-                \\        unsafe {{ core::slice::from_raw_parts(result_ptr, result_len) }}.to_vec()
-                \\    }};
-                \\    let result = {s};
-                \\    
-            ,
-                .{if (element.text) "String::from_utf8_lossy(&result).into_owned()" else "result"},
-            ),
+            // One binding, so one allocation and one copy. Converting inside
+            // the `else` arm matters for text: `from_utf8_lossy` borrows for
+            // valid UTF-8, so going through an owned `Vec` first would copy
+            // the whole buffer a second time and drop the first.
+            .slice => |element| {
+                // An infallible slice result is the tail expression. Binding
+                // it to a name only to return the name is what `clippy` calls
+                // `let_and_return`; a fallible one is not, since its tail is
+                // the `Ok` around the name.
+                try writer.writeAll(if (shape.fallible) "    let result = " else "    ");
+                try writer.print(
+                    \\if result_ptr.is_null() || result_len == 0 {{
+                    \\        {s}::new()
+                    \\    }} else {{
+                    \\        let bytes = unsafe {{ core::slice::from_raw_parts(result_ptr, result_len) }};
+                    \\        {s}
+                    \\    }}
+                , .{
+                    if (element.text) "String" else "Vec",
+                    if (element.text) "String::from_utf8_lossy(bytes).into_owned()" else "bytes.to_vec()",
+                });
+                if (!shape.fallible) return writer.writeByte('\n');
+                try writer.writeAll(";\n    ");
+            },
         }
         return writeResultExpression(writer, shape, "result");
     }
