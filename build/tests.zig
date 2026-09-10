@@ -999,8 +999,8 @@ fn addBindingAuthoringErrors(b: *std.Build, test_step: *std.Build.Step) void {
         .{ "unknown_option", "zigo unknown option: typo" },
         .{ "empty_selection", "zigo function selection is empty" },
         .{ "duplicate_plugin", "zigo duplicate plugin attachment" },
-        .{ "plugin_target", "zigo plugin TEST does not support handle" },
-        .{ "unsupported_plugin_target", "zigo plugin TEST does not support callback" },
+        .{ "plugin_subject", "zigo plugin TEST does not support handle" },
+        .{ "unsupported_plugin_subject", "zigo plugin TEST does not support callback" },
         .{ "plugin_options", "no field named 'limit'" },
     };
     inline for (cases) |case| {

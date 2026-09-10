@@ -6,7 +6,7 @@ const api = @import("plugin");
 
 pub const plugin: api.Plugin = .{
     .name = "WRAPTEST",
-    .targets = &.{.function},
+    .subjects = &.{.function},
     .method_hook = methodHook,
     .go_files = &.{.{ .pathAlloc = path, .render = helpers }},
 };

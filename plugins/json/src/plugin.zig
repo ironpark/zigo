@@ -34,7 +34,7 @@ pub const Options = struct {
 pub const plugin: plugin_api.Plugin = .{
     .name = name,
     .TypeOptions = Options,
-    .targets = &.{ .value, .enumeration },
+    .subjects = &.{ .value, .enumeration },
     .validate = validateDocument,
     .type_hook = typeHook,
     // Written by the methods below. They are added to a file only when its

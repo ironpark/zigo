@@ -61,7 +61,7 @@ pub fn runMethodHooks(value: plugin.Context, writer: *std.Io.Writer, function: a
 pub fn runTypeHooks(value: plugin.Context, writer: *std.Io.Writer, declaration: semantic.TypeDecl) !void {
     inline for (registry.plugins, 0..) |registered, index| {
         if (registered.type_hook) |hook| {
-            if (registered.supports(plugin.typeTarget(declaration.kind)) and runs(index, value.options)) try hook(value, writer, declaration);
+            if (registered.supports(plugin.typeSubject(declaration.kind)) and runs(index, value.options)) try hook(value, writer, declaration);
         }
     }
 }

@@ -5240,7 +5240,7 @@ test "callback and materialized plugin attachments survive authoring and reflect
         pub const Observer = *const fn (usize) callconv(.c) void;
         pub const Snapshot = struct { text: []const u8 };
     };
-    const P = .{ .name = "EXTRA", .FunctionOptions = struct {}, .TypeOptions = struct { enabled: bool }, .targets = [_]enum { callback, materialized }{ .callback, .materialized } };
+    const P = .{ .name = "EXTRA", .FunctionOptions = struct {}, .TypeOptions = struct { enabled: bool }, .subjects = [_]enum { callback, materialized }{ .callback, .materialized } };
     const api = public.scope(Fixture);
     const binding = comptime public.define(.{ .root = Fixture, .declarations = &.{
         api.callback("Observer", .{}).use(P, .{ .enabled = true }),

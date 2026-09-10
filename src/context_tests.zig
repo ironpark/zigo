@@ -107,7 +107,7 @@ test "decorations before context and after define share existing replacement rul
         .name = "RESEARCH",
         .FunctionOptions = struct {},
         .TypeOptions = struct { label: ?[]const u8 = "default" },
-        .targets = [_]enum { value }{.value},
+        .subjects = [_]enum { value }{.value},
     };
     const Point = api.val("Point", .{}).named("Position").use(Plugin, .{ .label = "point" }).context();
     const old_members = &[_]zigo.Entry{api.func("take", .{})};

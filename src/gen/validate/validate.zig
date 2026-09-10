@@ -180,7 +180,7 @@ pub fn transformDocument(allocator: std.mem.Allocator, input: semantic.Semantic,
             const context: plugin.TransformContext = .{ .allocator = allocator, .document = document, .configurations = configurations, .diagnostics = issues };
             var changes: std.ArrayList(plugin.rename.Rename) = .empty;
             for (document.types) |declaration| {
-                if (registered.supports(plugin.typeTarget(declaration.kind))) {
+                if (registered.supports(plugin.typeSubject(declaration.kind))) {
                     if (try hook(context, declaration)) |name| {
                         if (!std.mem.eql(u8, name, declaration.name)) try changes.append(allocator, .{ .from = declaration.name, .to = name });
                     }
@@ -200,7 +200,7 @@ pub fn transformDocument(allocator: std.mem.Allocator, input: semantic.Semantic,
             const types_copy = try allocator.dupe(semantic.TypeDecl, document.types);
             if (registered.map_type) |hook| {
                 for (types_copy) |*declaration| {
-                    if (registered.supports(plugin.typeTarget(declaration.kind))) {
+                    if (registered.supports(plugin.typeSubject(declaration.kind))) {
                         if (try hook(context, .{ .declaration = declaration.* })) |adapter| declaration.go = semantic.TypeGo.withAdapter(adapter);
                     }
                 }
@@ -314,7 +314,7 @@ fn pluginOptionsIssue(
     }
     for (document.types) |declaration| {
         if (declaration.ext == null) continue;
-        if (declaration.ext.?.get(registered.name) != null and !registered.supports(plugin.typeTarget(declaration.kind)))
+        if (declaration.ext.?.get(registered.name) != null and !registered.supports(plugin.typeSubject(declaration.kind)))
             return try pluginOptionsDiagnostic(registered, allocator, .{ .path = "semantic.json", .declaration = declaration.name }, declaration.name);
         _ = plugin.readOptions(registered, .type, allocator, declaration.ext) catch {
             return try pluginOptionsDiagnostic(

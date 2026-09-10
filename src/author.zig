@@ -192,7 +192,7 @@ pub const Entry = union(enum) {
         return self.type.ref;
     }
     pub fn use(comptime self: Entry, comptime P: anytype, comptime options: pluginOptions(P, self)) Entry {
-        comptime checkPluginTarget(P, self);
+        comptime checkPluginSubject(P, self);
         var result = self;
         const extensions = switch (self) {
             .function => self.function.extensions,
@@ -246,15 +246,15 @@ pub const Entry = union(enum) {
 fn pluginOptions(comptime P: anytype, comptime entry: Entry) type {
     return if (entry == .function) P.FunctionOptions else P.TypeOptions;
 }
-fn checkPluginTarget(comptime P: anytype, comptime entry: Entry) void {
-    if (@hasField(@TypeOf(P), "targets")) {
-        const target = switch (entry) {
+fn checkPluginSubject(comptime P: anytype, comptime entry: Entry) void {
+    if (@hasField(@TypeOf(P), "subjects")) {
+        const subject = switch (entry) {
             .function => "function",
             .type => @tagName(entry.type.representation),
             else => @compileError("zigo plugins attach to functions or types"),
         };
-        inline for (P.targets) |candidate| if (std.mem.eql(u8, @tagName(candidate), target)) return;
-        @compileError("zigo plugin " ++ P.name ++ " does not support " ++ target);
+        inline for (P.subjects) |candidate| if (std.mem.eql(u8, @tagName(candidate), subject)) return;
+        @compileError("zigo plugin " ++ P.name ++ " does not support " ++ subject);
     }
 }
 fn replace(comptime original: anytype, comptime values: anytype) @TypeOf(original) {
@@ -444,7 +444,7 @@ test "type plugins and explicit replacement keep one typed option payload" {
     const Lib = struct {
         pub const Record = extern struct { value: u32 };
     };
-    const P = .{ .name = "TEST", .FunctionOptions = struct {}, .TypeOptions = struct { limit: ?u32 = 10 }, .targets = [_]enum { value }{.value} };
+    const P = .{ .name = "TEST", .FunctionOptions = struct {}, .TypeOptions = struct { limit: ?u32 = 10 }, .subjects = [_]enum { value }{.value} };
     const entry = comptime scope(Lib).val("Record", .{}).use(P, .{ .limit = 5 }).replacePlugin(P, .{ .limit = null });
     try std.testing.expectEqual(@as(usize, 1), entry.type.extensions.len);
     const bytes = try entry.type.extensions[0].jsonAlloc(std.testing.allocator);
@@ -457,7 +457,7 @@ test "plugin options are selected by attachment target" {
         pub const Record = extern struct { value: u32 };
         pub fn f() void {}
     };
-    const P = .{ .name = "DUAL", .FunctionOptions = struct { checked: bool }, .TypeOptions = struct { key: []const u8 }, .targets = [_]enum { function, value }{ .function, .value } };
+    const P = .{ .name = "DUAL", .FunctionOptions = struct { checked: bool }, .TypeOptions = struct { key: []const u8 }, .subjects = [_]enum { function, value }{ .function, .value } };
     const api = scope(Lib);
     const f = comptime api.func("f", .{}).use(P, .{ .checked = true });
     const t = comptime api.val("Record", .{}).use(P, .{ .key = "value" });

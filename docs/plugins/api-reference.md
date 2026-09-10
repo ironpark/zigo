@@ -30,7 +30,7 @@ configuration and dependency checks
 | `Facts` | `struct {}` | analyze 결과의 typed storage |
 | `FunctionOptions` | `struct {}` | 함수 연결 옵션 |
 | `TypeOptions` | `struct {}` | 타입 연결 옵션 |
-| `targets` | 함수와 모든 지원 타입 | 연결 대상 제한 |
+| `subjects` | 함수와 모든 지원 타입 | 연결되는 선언 종류 제한. 출력 언어가 아니라 declaration kind입니다 |
 | `requires` | empty | 필수 플러그인 의존성 |
 | `after` | empty | optional ordering constraint |
 | `transform` | null | semantic document 교체·추가·제거 |

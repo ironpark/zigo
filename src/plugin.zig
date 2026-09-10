@@ -511,11 +511,12 @@ pub fn readOptions(comptime P: anytype, comptime attachment: Attachment, allocat
     return std.json.parseFromValueLeaky(if (attachment == .function) P.FunctionOptions else P.TypeOptions, allocator, attached, .{}) catch return error.InvalidPluginOptions;
 }
 
-/// A generator plugin. Every field but `name` is optional, so a plugin that
-/// only adds a method next to an existing one is four lines long.
-pub const Target = enum { function, handle, value, enumeration, tagged_union, callback, materialized, error_set };
+/// What a plugin attaches to: the kind of declaration, not the output
+/// language. The two axes are separate and `targets.Target` is the other one,
+/// so this deliberately does not use the word.
+pub const Subject = enum { function, handle, value, enumeration, tagged_union, callback, materialized, error_set };
 
-pub fn typeTarget(kind: semantic.TypeKind) Target {
+pub fn typeSubject(kind: semantic.TypeKind) Subject {
     return switch (kind) {
         .@"opaque" => .handle,
         .value_struct => .value,
@@ -527,6 +528,8 @@ pub fn typeTarget(kind: semantic.TypeKind) Target {
     };
 }
 
+/// A generator plugin. Every field but `name` is optional, so a plugin that
+/// only adds a method next to an existing one is four lines long.
 pub const Plugin = struct {
     min_contract: ContractVersion = contract_version,
     Config: type = struct {},
@@ -555,7 +558,9 @@ pub const Plugin = struct {
     /// struct. A plugin that takes none leaves it at the empty struct.
     FunctionOptions: type = struct {},
     TypeOptions: type = struct {},
-    targets: []const Target = &.{ .function, .handle, .value, .enumeration, .tagged_union, .callback, .materialized, .error_set },
+    /// The declaration kinds this plugin attaches to. A plugin left at the
+    /// default attaches to all of them.
+    subjects: []const Subject = &.{ .function, .handle, .value, .enumeration, .tagged_union, .callback, .materialized, .error_set },
     /// Runs after core and option validation; report any number of diagnostics.
     validate: ?*const fn (ValidateContext) anyerror!void = null,
     /// Written after each public method, into the file that owns it.
@@ -574,9 +579,9 @@ pub const Plugin = struct {
     /// Non-standard imports the hooks may write, added where they are used.
     imports: []const Import = &.{},
 
-    pub fn supports(comptime self: Plugin, target: ?Target) bool {
-        const requested = target orelse return false;
-        inline for (self.targets) |candidate| if (candidate == requested) return true;
+    pub fn supports(comptime self: Plugin, subject: ?Subject) bool {
+        const requested = subject orelse return false;
+        inline for (self.subjects) |candidate| if (candidate == requested) return true;
         return false;
     }
 };

@@ -15,7 +15,7 @@ pub const Options = struct {
 pub const plugin: plugin_api.Plugin = .{
     .name = name,
     .TypeOptions = Options,
-    .targets = &.{.enumeration},
+    .subjects = &.{.enumeration},
     .type_hook = typeHook,
     .validate = validateDocument,
 };
