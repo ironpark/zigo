@@ -3,6 +3,9 @@ const generator = @import("generator");
 const snapshot = @import("snapshot.zig");
 
 const CaseOptions = struct {
+    /// Which output language the case generates. Absent is Go, so every case
+    /// that predates a second target is unchanged.
+    output_target: []const u8 = "go",
     /// Which backend the case generates. Most cases are cgo; a case that
     /// exists to pin the purego surface says so here rather than being a
     /// second runner.
@@ -59,7 +62,9 @@ pub fn main(init: std.process.Init) !void {
     else
         null;
 
+    const output_target = @import("targets").byName(options.output_target) orelse return error.UnknownOutputTarget;
     try generator.generate(allocator, init.io, semantic_bytes, output_dir, .{
+        .output_target = output_target,
         .backend = switch (options.backend) {
             .cgo => .cgo,
             .purego => .purego,

@@ -34,15 +34,37 @@ pub const Emitter = struct {
     render: *const fn (std.mem.Allocator, *std.Io.Writer, abi.Program, Options) anyerror!void,
 };
 
-pub const core_emitters = [_]Emitter{
+/// The three outputs that describe the bound library rather than the language
+/// binding it: the Zig shim, its panic source, and the C header. They are the
+/// pivot every target shares, so a second target's emitter table starts with
+/// this array verbatim instead of copying the three entries.
+///
+/// This is not a generalization of the Go emitter -- nothing below becomes
+/// reachable from another target by being named here. It is the boundary of
+/// `src/gen/emit/**` stated out loud: these three were already
+/// language-neutral, and `core_emitters` was the only thing hiding that by
+/// listing them beside four Go-only entries.
+pub const neutral_emitters = [_]Emitter{
     .{ .pathAlloc = shimPath, .render = shim.renderShim },
     .{ .pathAlloc = panicSourcePath, .render = shim.renderPanicSource },
     .{ .pathAlloc = headerPath, .render = header.renderHeader },
+};
+
+/// Go's own package-independent outputs: the raw call layer, the two purego
+/// loaders, and the shared lifecycle package. Each writes Go and has no
+/// counterpart in another language's tree.
+pub const go_emitters = [_]Emitter{
     .{ .pathAlloc = rawPath, .render = raw.renderRaw },
     .{ .pathAlloc = rawLoadPosixPath, .render = purego.renderRawLoadPosix },
     .{ .pathAlloc = rawLoadWindowsPath, .render = purego.renderRawLoadWindows },
     .{ .pathAlloc = lifecyclePath, .render = renderLifecycle },
 };
+
+/// The Go generator's document-scoped table, in the order it has always had.
+/// The concatenation is deliberate: the manifest lists files in emitter order,
+/// so reordering these would move `.zigo-outputs.json` in every golden and
+/// every published tree.
+pub const core_emitters = neutral_emitters ++ go_emitters;
 
 const builtin_public_emitters = [_]Emitter{
     .{ .pathAlloc = publicPath, .render = public.renderPublic },

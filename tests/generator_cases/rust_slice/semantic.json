@@ -1,0 +1,50 @@
+{
+  "functions": [
+    {
+      "doc": "Sums a borrowed slice of signed 32-bit integers.",
+      "name": "sum",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "values",
+          "name_source": "ast",
+          "retention": "borrowed",
+          "type": {
+            "const": true,
+            "element": { "bits": 32, "is_usize": false, "kind": "int", "signed": true },
+            "kind": "slice"
+          }
+        }
+      ],
+      "return": { "bits": 64, "is_usize": false, "kind": "int", "signed": true },
+      "symbol": "zg_sum"
+    },
+    {
+      "doc": "Counts the bytes of a UTF-8 string.",
+      "name": "measure",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "text",
+          "name_source": "ast",
+          "retention": "borrowed",
+          "semantic": "utf8_string",
+          "type": {
+            "const": true,
+            "element": { "bits": 8, "is_usize": false, "kind": "int", "signed": false },
+            "kind": "slice"
+          }
+        }
+      ],
+      "return": { "bits": 64, "is_usize": true, "kind": "int", "signed": false },
+      "symbol": "zg_measure"
+    }
+  ],
+  "ir_version": 2,
+  "package": "calculator",
+  "prefix": "zg",
+  "types": [],
+  "zig_version": "0.16.0"
+}

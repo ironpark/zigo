@@ -9,7 +9,10 @@ const std = @import("std");
 const naming = @import("naming");
 const semantic = @import("semantic");
 const target_api = @import("../targets.zig");
-const words = @import("rust_words.zig");
+/// The `std`-only leaf. Public so the Rust emitter can reach the word rules
+/// through the `targets` module: `targets.zig` owns these files, so an
+/// emitter importing them by relative path would put one file in two modules.
+pub const words = @import("rust_words.zig");
 
 pub const target: target_api.Target = .{
     .name = "rust",

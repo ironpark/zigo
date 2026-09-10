@@ -492,7 +492,7 @@ pub fn addRepositorySteps(
             .root_source_file = b.path("tests/generator_case_main.zig"),
             .target = target,
             .optimize = optimize,
-            .imports = &.{ .{ .name = "generator", .module = showcase_modules.generator }, .{ .name = "plugin", .module = showcase_modules.plugin }, .{ .name = "plugin_registry", .module = showcase_modules.plugin_registry } },
+            .imports = &.{ .{ .name = "generator", .module = showcase_modules.generator }, .{ .name = "plugin", .module = showcase_modules.plugin }, .{ .name = "plugin_registry", .module = showcase_modules.plugin_registry }, .{ .name = "targets", .module = showcase_modules.targets } },
         }),
     });
     addGeneratorCases(b, test_step, generator_case_runner, test_filters);
@@ -934,6 +934,33 @@ fn addGoldenArtifactChecks(
     parse_shim.addFileArg(expected.path(b, "shim.zig"));
     parse_shim.expectExitCode(0);
     test_step.dependOn(&parse_shim.step);
+
+    // A Rust case's crate root is compiled. Generated text no compiler has
+    // seen is the failure mode a golden snapshot cannot catch: a snapshot only
+    // says the emitter is consistent with itself, and consistency with `rustc`
+    // is the property that actually matters. Warnings are denied because every
+    // one of them -- an unreachable match arm, an unused binding, a
+    // `let_and_return` -- would be a real defect in generated code.
+    if (hasCaseFile(files, name, "expected/src/lib.rs")) {
+        const compile_crate = b.addSystemCommand(&.{
+            "rustc",        "--edition",       "2021",
+            "--crate-type", "lib",             "--crate-name",
+            "zigo_golden",  "--emit=metadata", "-D",
+            "warnings",
+        });
+        compile_crate.setName(b.fmt("golden Rust crate compiles ({s})", .{name}));
+        // `lib.rs` declares `mod raw` and `mod error`, so the whole crate is
+        // read from disk; both are declared as inputs by name.
+        for (files) |file| {
+            if (!std.mem.startsWith(u8, file, header_prefix)) continue;
+            if (!std.mem.endsWith(u8, file, ".rs")) continue;
+            compile_crate.addFileInput(cases.path(b, file));
+        }
+        _ = compile_crate.addPrefixedOutputFileArg("-o", b.fmt("{s}-crate.rmeta", .{name}));
+        compile_crate.addFileArg(expected.path(b, "src/lib.rs"));
+        compile_crate.expectExitCode(0);
+        test_step.dependOn(&compile_crate.step);
+    }
 
     // A case that ships a `roundtrip.zig` runs it against the golden shim.
     if (hasCaseFile(files, name, "roundtrip.zig")) {

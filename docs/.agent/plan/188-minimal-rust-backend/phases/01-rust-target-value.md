@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-10T04:18:28Z"
 depends_on:
 - "188-minimal-rust-backend#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `targets.byName("rust")` returns the value and `targets.default.name` is
 > NEXT: none

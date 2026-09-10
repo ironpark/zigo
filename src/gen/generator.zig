@@ -3,6 +3,7 @@ const output_manifest = @import("output_manifest");
 const plugin_hooks = @import("emit/plugin_hooks.zig");
 const std = @import("std");
 const emit = @import("emit/emit.zig");
+const emit_rust = @import("emit_rust/emit.zig");
 const abi = @import("abi");
 const diagnostic = @import("diagnostic");
 const errors_lock = @import("errors_lock");
@@ -168,30 +169,17 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
     var prepared: std.ArrayList(PreparedFile) = .empty;
     defer prepared.deinit(scratch_allocator);
     emitter_options.default_package_path = if (options.go_package_path.len != 0) options.go_package_path else if (options.go_package.len != 0) options.go_package else try naming.snakeAlloc(scratch_allocator, document.package);
-    try appendEmitters(scratch_allocator, &prepared, program, emitter_options, &emit.core_emitters);
-    if (document.packages) |packages| {
-        emitter_options.active_package = "";
-        try appendPublicPackage(scratch_allocator, &prepared, program, emitter_options);
-        const base_path = emitter_options.default_package_path;
-        for (packages) |package| {
-            var package_options = emitter_options;
-            package_options.active_package = package.name;
-            package_options.go_package = package.name;
-            package_options.go_package_path = if (std.mem.eql(u8, base_path, "."))
-                package.path
-            else
-                try std.fmt.allocPrint(scratch_allocator, "{s}/{s}", .{ base_path, package.path });
-            package_options.go_package_doc = package.doc orelse "";
-            try appendPublicPackage(scratch_allocator, &prepared, program, package_options);
-        }
+    // The one place the output language picks its emitter table. Everything
+    // above this line is language-neutral -- the same document, the same
+    // error-code lock, the same lowered program -- and everything below is
+    // the selected target's own tree. The two trees share
+    // `emit.neutral_emitters` and nothing else, so a target added later adds
+    // a branch here rather than a parameter to the Go emitter.
+    if (std.mem.eql(u8, options.output_target.name, targets.rust.target.name)) {
+        try appendRustCrate(scratch_allocator, allocator, &prepared, program, emitter_options, options);
     } else {
-        try appendPublicPackage(scratch_allocator, &prepared, program, emitter_options);
+        try appendGoPackages(scratch_allocator, &prepared, program, emitter_options, document);
     }
-    // Document outputs see the full program once. They never run in the
-    // package helper-discovery passes or inherit the last package's options.
-    var document_emitters: emit.PublicEmitters = .{ .scope = .document };
-    while (document_emitters.next()) |emitter| try appendEmitters(scratch_allocator, &prepared, program, emitter_options, &.{emitter});
-    try appendArtifacts(scratch_allocator, &prepared, program, emitter_options, .document);
     const serialized_lock = try lock.serialize(scratch_allocator);
     try prepared.append(scratch_allocator, .{ .path = "errors.lock.json", .contents = serialized_lock });
 
@@ -229,6 +217,68 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
         if (std.fs.path.dirname(file.path)) |directory| try output.createDirPath(io, directory);
         try output.writeFile(io, .{ .sub_path = file.path, .data = file.contents });
     }
+}
+
+/// The Go tree: the document-scoped core emitters, then one public package
+/// per declared sub-package, then the document-scoped plugin outputs.
+///
+/// Lifted out of `generate` verbatim when the Rust branch arrived, so that the
+/// dispatch above reads as two named alternatives rather than as one function
+/// with a language-shaped `if` in the middle of it.
+fn appendGoPackages(
+    allocator: std.mem.Allocator,
+    prepared: *std.ArrayList(PreparedFile),
+    program: abi.Program,
+    options: emit.Options,
+    document: semantic.Semantic,
+) !void {
+    var emitter_options = options;
+    try appendEmitters(allocator, prepared, program, emitter_options, &emit.core_emitters);
+    if (document.packages) |packages| {
+        emitter_options.active_package = "";
+        try appendPublicPackage(allocator, prepared, program, emitter_options);
+        const base_path = emitter_options.default_package_path;
+        for (packages) |package| {
+            var package_options = emitter_options;
+            package_options.active_package = package.name;
+            package_options.go_package = package.name;
+            package_options.go_package_path = if (std.mem.eql(u8, base_path, "."))
+                package.path
+            else
+                try std.fmt.allocPrint(allocator, "{s}/{s}", .{ base_path, package.path });
+            package_options.go_package_doc = package.doc orelse "";
+            try appendPublicPackage(allocator, prepared, program, package_options);
+        }
+    } else {
+        try appendPublicPackage(allocator, prepared, program, emitter_options);
+    }
+    // Document outputs see the full program once. They never run in the
+    // package helper-discovery passes or inherit the last package's options.
+    var document_emitters: emit.PublicEmitters = .{ .scope = .document };
+    while (document_emitters.next()) |emitter| try appendEmitters(allocator, prepared, program, emitter_options, &.{emitter});
+    try appendArtifacts(allocator, prepared, program, emitter_options, .document);
+}
+
+/// The Rust tree: the shared neutral emitters plus the crate's own three
+/// files. A declaration the minimal backend cannot render is reported rather
+/// than skipped -- a crate that compiles and silently omits half the binding
+/// is worse than a refusal naming the declaration, because the point of the
+/// minimal scope is that its edges are visible.
+fn appendRustCrate(
+    scratch_allocator: std.mem.Allocator,
+    allocator: std.mem.Allocator,
+    prepared: *std.ArrayList(PreparedFile),
+    program: abi.Program,
+    emitter_options: emit.Options,
+    options: Options,
+) !void {
+    var issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
+    try emit_rust.unsupportedIssues(scratch_allocator, program, &issues);
+    if (issues.items.len != 0) {
+        if (options.diagnostics) |out| for (issues.items) |issue| try out.append(allocator, try issue.clone(allocator));
+        return error.InvalidSemantic;
+    }
+    try appendEmitters(scratch_allocator, prepared, program, emitter_options, &emit_rust.core_emitters);
 }
 
 /// Normalize before writing anything so aliases such as ./x and dir/../x
@@ -308,7 +358,11 @@ fn appendEmitters(allocator: std.mem.Allocator, prepared: *std.ArrayList(Prepare
             error.WriteFailed => return error.OutOfMemory,
             else => return err,
         };
-        if (std.mem.endsWith(u8, relative_path, ".go")) {
+        // One trailing newline on a framed source file. Asking the target
+        // rather than testing `.go` keeps Go's answer identical -- its
+        // `isSource` is that same suffix test -- while giving `.rs` the single
+        // trailing newline `rustfmt` insists on.
+        if (options.target.isSource(relative_path)) {
             rendered.shrinkRetainingCapacity(std.mem.trimEnd(u8, rendered.written(), "\n").len);
             rendered.writer.writeByte('\n') catch return error.OutOfMemory;
         }
@@ -438,6 +492,75 @@ fn declaresNothing(path: []const u8, contents: []const u8) bool {
     } else return false;
     if (!std.mem.startsWith(u8, package_line, "package ")) return false;
     return !has_package_doc and lines.next() == null;
+}
+
+test "the Rust target writes a crate and reuses the neutral outputs verbatim" {
+    const fixture =
+        \\{"functions":[{"doc":"Adds two integers.","name":"add","params":[{"name":"a","type":{"bits":32,"kind":"int","signed":true}},{"name":"b","type":{"bits":32,"kind":"int","signed":true}}],"return":{"bits":32,"kind":"int","signed":true},"symbol":"zg_add"}],"package":"calc","prefix":"zg","zig_version":"0.16.0"}
+    ;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var go_tree = std.testing.tmpDir(.{ .iterate = true });
+    defer go_tree.cleanup();
+    var rust_tree = std.testing.tmpDir(.{ .iterate = true });
+    defer rust_tree.cleanup();
+    try generate(arena.allocator(), std.testing.io, fixture, go_tree.dir, .{
+        .package = "calc",
+        .prefix = "zg",
+        .go_module = "example.com/zigo/calc",
+    });
+    try generate(arena.allocator(), std.testing.io, fixture, rust_tree.dir, .{
+        .output_target = targets.rust.target,
+        .package = "calc",
+        .prefix = "zg",
+        .go_module = "unused-by-rust",
+    });
+    // The pivot every target shares. If one of these ever differs between two
+    // targets for the same document, the seam is in the wrong place: the shim
+    // and the header describe the bound library, not the language binding it.
+    for ([_][]const u8{ "shim.zig", "panic.c", "zigo_calc.h", "errors.lock.json" }) |name| {
+        const from_go = try go_tree.dir.readFileAlloc(std.testing.io, name, arena.allocator(), .limited(1024 * 1024));
+        const from_rust = try rust_tree.dir.readFileAlloc(std.testing.io, name, arena.allocator(), .limited(1024 * 1024));
+        try std.testing.expectEqualStrings(from_go, from_rust);
+    }
+    const lib = try rust_tree.dir.readFileAlloc(std.testing.io, "src/lib.rs", arena.allocator(), .limited(64 * 1024));
+    try std.testing.expect(std.mem.indexOf(u8, lib, "/// Adds two integers.\npub fn add(a: i32, b: i32) -> i32 {") != null);
+    const raw_module = try rust_tree.dir.readFileAlloc(std.testing.io, "src/raw.rs", arena.allocator(), .limited(64 * 1024));
+    try std.testing.expect(std.mem.indexOf(u8, raw_module, "pub fn zg_add(a: i32, b: i32) -> i32;") != null);
+    // No error codes, so no error module and no `mod error;` naming a file
+    // the generator did not write.
+    try std.testing.expect(std.mem.indexOf(u8, lib, "mod error;") == null);
+    try std.testing.expectError(error.FileNotFound, rust_tree.dir.access(std.testing.io, "src/error.rs", .{}));
+    // And no Go anywhere in the tree.
+    try std.testing.expectError(error.FileNotFound, rust_tree.dir.access(std.testing.io, "calc/calc_gen.go", .{}));
+}
+
+test "the Rust target refuses a shape it cannot render, naming the declaration" {
+    // A NUL-terminated C-string parameter: out of the minimal backend's scope,
+    // and the kind of shape that would otherwise produce a crate that compiles
+    // and silently omits half the binding.
+    const fixture =
+        \\{"functions":[{"name":"label","params":[{"name":"text","semantic":"c_string","type":{"kind":"slice","const":true,"sentinel":0,"element":{"bits":8,"kind":"int","signed":false}}}],"return":{"bits":64,"kind":"int","is_usize":true,"signed":false},"symbol":"zg_label"}],"package":"docs","prefix":"zg","types":[],"zig_version":"0.16.0"}
+    ;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var temporary = std.testing.tmpDir(.{ .iterate = true });
+    defer temporary.cleanup();
+    var issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
+    try std.testing.expectError(error.InvalidSemantic, generate(arena.allocator(), std.testing.io, fixture, temporary.dir, .{
+        .output_target = targets.rust.target,
+        .diagnostics = &issues,
+        .package = "docs",
+        .prefix = "zg",
+        .go_module = "unused-by-rust",
+    }));
+    try std.testing.expect(issues.items.len != 0);
+    try std.testing.expectEqualStrings("ZIGO060", issues.items[0].code);
+    try std.testing.expect(std.mem.indexOf(u8, issues.items[0].message, "`label`") != null);
+    try std.testing.expect(std.mem.indexOf(u8, issues.items[0].message, "C-string") != null);
+    // Nothing was written: the refusal happens before the output tree is
+    // touched, the same as every other generation failure.
+    try std.testing.expectError(error.FileNotFound, temporary.dir.access(std.testing.io, "src/lib.rs", .{}));
 }
 
 test "bool is lowered to uint8 at the ABI boundary" {
