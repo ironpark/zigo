@@ -12,7 +12,6 @@ const emit = @import("../emit/emit.zig");
 // The Rust target's own rules, reached the way the Go emitter reaches Go's:
 // through the `targets` module, since `targets.zig` owns those files.
 const rust = @import("targets").rust;
-const words = rust.words;
 const raw = @import("raw.zig");
 const types = @import("types.zig");
 
@@ -32,10 +31,9 @@ pub fn renderLib(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
     }
     try writer.writeAll("\npub mod raw;\n");
     if (hasErrors(program)) try writer.writeAll("\nmod error;\npub use error::{Error, ErrorKind};\n");
-    for (program.functions) |function| {
-        if (types.unsupported(program, function)) |_| continue;
-        try renderFunction(allocator, writer, program, function, options);
-    }
+    // Unfiltered for the same reason as `raw.renderRaw`: the refusal happens
+    // once, upstream, over the whole document.
+    for (program.functions) |function| try renderFunction(allocator, writer, program, function, options);
 }
 
 fn renderFunction(

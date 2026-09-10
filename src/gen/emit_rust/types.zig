@@ -172,13 +172,13 @@ pub const Element = struct {
     text: bool,
 };
 
-pub fn sliceElement(program: abi.Program, node: semantic.TypeNode, role: abi.AbiFn.StringRole) ?Element {
+pub fn sliceElement(node: semantic.TypeNode, role: abi.AbiFn.StringRole) ?Element {
     const element = node.slice.element.*;
-    const scalar = elementScalar(program, element) orelse return null;
+    const scalar = elementScalar(element) orelse return null;
     return .{ .raw = rawScalar(scalar) orelse return null, .text = role == .utf8_slice };
 }
 
-fn elementScalar(program: abi.Program, node: semantic.TypeNode) ?abi.AbiScalar {
+fn elementScalar(node: semantic.TypeNode) ?abi.AbiScalar {
     return switch (node) {
         .int => |value| if (value.is_usize)
             (if (value.signed) abi.AbiScalar.isize else abi.AbiScalar.usize)
@@ -187,10 +187,7 @@ fn elementScalar(program: abi.Program, node: semantic.TypeNode) ?abi.AbiScalar {
         else
             .{ .unsigned_int = abi.promotedIntBits(value.bits) },
         .float => |value| .{ .float = value.bits },
-        else => {
-            _ = program;
-            return null;
-        },
+        else => null,
     };
 }
 

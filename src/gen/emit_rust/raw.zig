@@ -10,6 +10,7 @@ const std = @import("std");
 const abi = @import("abi");
 const semantic = @import("semantic");
 const emit = @import("../emit/emit.zig");
+const type_spelling = @import("../emit/type_spelling.zig");
 // The Rust target's own rules, reached the way the Go emitter reaches Go's:
 // through the `targets` module, since `targets.zig` owns those files.
 const rust = @import("targets").rust;
@@ -26,10 +27,11 @@ pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
     );
     try renderExternBlock(allocator, writer, program);
     try renderMessageAccessors(writer, program);
-    for (program.functions) |function| {
-        if (types.unsupported(program, function) != null) continue;
-        try renderWrapper(allocator, writer, program, function);
-    }
+    // No `unsupported` check here: `generator.appendRustCrate` refuses the
+    // whole document before any emitter runs, so a function that reaches this
+    // loop is one this backend can render. A skip here would make the emitter
+    // a filtering pass, which is the silent omission ZIGO060 exists to prevent.
+    for (program.functions) |function| try renderWrapper(allocator, writer, program, function);
 }
 
 /// The `extern "C"` block, one declaration per exported symbol in the order
@@ -38,7 +40,6 @@ pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
 fn renderExternBlock(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program) !void {
     try writer.writeAll("extern \"C\" {\n");
     for (program.functions) |function| {
-        if (types.unsupported(program, function) != null) continue;
         try writer.print("    pub fn {s}(", .{function.symbol});
         for (function.params, 0..) |parameter, index| {
             if (index != 0) try writer.writeAll(", ");
@@ -87,19 +88,18 @@ fn writeRawParamType(writer: *std.Io.Writer, parameter: abi.AbiParam) !void {
         .payload_out, .return_slice_pointer, .return_slice_length => {
             const pointer = parameter.scalar.pointer;
             try writer.writeAll("*mut ");
-            try writeRawPointee(writer, pointer.child.*, pointer.is_many);
+            try writeRawPointee(writer, pointer.child.*);
         },
         else => try writer.writeAll(types.rawScalar(parameter.scalar) orelse return error.UnsupportedType),
     }
 }
 
-fn writeRawPointee(writer: *std.Io.Writer, child: abi.AbiScalar, is_many: bool) !void {
+fn writeRawPointee(writer: *std.Io.Writer, child: abi.AbiScalar) !void {
     if (child == .pointer) {
         const inner = child.pointer;
         try writer.print("*{s} ", .{if (inner.is_const) "const" else "mut"});
         return writer.writeAll(types.rawScalar(inner.child.*) orelse return error.UnsupportedType);
     }
-    _ = is_many;
     try writer.writeAll(types.rawScalar(child) orelse return error.UnsupportedType);
 }
 
@@ -203,7 +203,7 @@ fn renderWrapper(
 fn writeArgument(writer: *std.Io.Writer, shape: Shape, parameter: abi.AbiParam) !void {
     switch (parameter.role) {
         .slice_pointer, .string_data => {
-            const input = shape.inputFor(parameter.source_index).?;
+            const input = shape.inputs[parameter.source_index];
             // An empty Rust slice still yields a non-null, aligned pointer, so
             // there is no zero-slot dance here: `[]const T` in Zig wants
             // exactly what `as_ptr` guarantees. Go needs a placeholder
@@ -213,22 +213,23 @@ fn writeArgument(writer: *std.Io.Writer, shape: Shape, parameter: abi.AbiParam) 
             try writer.print("{s}.as_ptr()", .{input.name});
         },
         .slice_length, .string_data_length => {
-            const input = shape.inputFor(parameter.source_index).?;
+            const input = shape.inputs[parameter.source_index];
             try writer.print("{s}.len()", .{input.name});
         },
         .payload_out => try writer.writeAll("&mut out_result"),
         .return_slice_pointer => try writer.writeAll("&mut out_result_ptr"),
         .return_slice_length => try writer.writeAll("&mut out_result_len"),
         else => {
-            const input = shape.inputFor(parameter.source_index).?;
+            const input = shape.inputs[parameter.source_index];
             if (input.is_bool) try writer.print("u8::from({s})", .{input.name}) else try writer.writeAll(input.name);
         },
     }
 }
 
 /// One function's shape as both layers need to see it: its Rust name, its
-/// public inputs, and how its result travels. Computed once so the raw
-/// wrapper and the public wrapper cannot disagree about a name or an order.
+/// public inputs, and how its result travels. Each layer derives its own from
+/// the same function, so the raw wrapper and the public wrapper cannot
+/// disagree about a name or an order.
 pub const Shape = struct {
     /// Snake-case name, shared by the raw wrapper and the public function.
     raw_name: []u8,
@@ -250,17 +251,15 @@ pub const Shape = struct {
 
     pub const Input = struct {
         name: []u8,
-        source_index: usize,
         /// Null for a slice input, whose spelling is the element plus a
         /// pointer-and-length pair.
         scalar: ?[]const u8 = null,
         element: ?types.Element = null,
         is_bool: bool = false,
-        text: bool = false,
 
         pub fn writeRawType(self: Input, writer: *std.Io.Writer) !void {
             if (self.element) |element| {
-                if (self.text) return writer.writeAll("&str");
+                if (element.text) return writer.writeAll("&str");
                 return writer.print("&[{s}]", .{element.raw});
             }
             try writer.writeAll(self.scalar.?);
@@ -282,12 +281,11 @@ pub const Shape = struct {
         var inputs: std.ArrayList(Input) = .empty;
         errdefer inputs.deinit(allocator);
         for (origin.params, names, 0..) |parameter, name, index| {
-            var input: Input = .{ .name = name, .source_index = index };
+            var input: Input = .{ .name = name };
             switch (parameter.type) {
                 .slice => {
-                    input.element = types.sliceElement(program, parameter.type, function.paramString(index).role) orelse
+                    input.element = types.sliceElement(parameter.type, function.paramString(index).role) orelse
                         return error.UnsupportedType;
-                    input.text = input.element.?.text;
                 },
                 .bool => {
                     input.scalar = "bool";
@@ -295,7 +293,7 @@ pub const Shape = struct {
                 },
                 else => input.scalar = types.publicScalar(
                     parameter.type,
-                    @import("../emit/type_spelling.zig").semanticScalar(program, parameter.type),
+                    type_spelling.semanticScalar(program, parameter.type),
                 ) orelse return error.UnsupportedType,
             }
             try inputs.append(allocator, input);
@@ -308,14 +306,14 @@ pub const Shape = struct {
             .fallible = fallible,
         };
         if (payload_node == .slice) {
-            shape.payload = .{ .slice = types.sliceElement(program, payload_node, function.ret_string) orelse
+            shape.payload = .{ .slice = types.sliceElement(payload_node, function.ret_string) orelse
                 return error.UnsupportedType };
         } else if (fallible and payload_node != .void) {
             shape.payload = .{ .scalar = types.rawScalar(
-                @import("../emit/type_spelling.zig").semanticScalar(program, payload_node),
+                type_spelling.semanticScalar(program, payload_node),
             ) orelse return error.UnsupportedType };
         } else if (!fallible and payload_node != .void) {
-            const scalar = @import("../emit/type_spelling.zig").semanticScalar(program, payload_node);
+            const scalar = type_spelling.semanticScalar(program, payload_node);
             shape.direct = .{
                 .raw = types.rawScalar(scalar) orelse return error.UnsupportedType,
                 .public = types.publicScalar(payload_node, scalar) orelse return error.UnsupportedType,
@@ -329,11 +327,6 @@ pub const Shape = struct {
         allocator.free(self.raw_name);
         for (self.inputs) |input| allocator.free(input.name);
         allocator.free(self.inputs);
-    }
-
-    pub fn inputFor(self: Shape, source_index: usize) ?Input {
-        for (self.inputs) |input| if (input.source_index == source_index) return input;
-        return null;
     }
 
     /// The raw wrapper's return type: the payload beside its status code when
