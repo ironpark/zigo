@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-10T05:28:06Z"
 depends_on:
 - "189-rust-backend-cleanup#3"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: All 14 examples pass their full step list.
 > NEXT: none

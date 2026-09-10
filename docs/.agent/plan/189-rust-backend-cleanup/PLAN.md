@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-10T05:28:06Z"
 description: Apply reuse, simplification, efficiency and altitude review findings to the minimal Rust backend
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-10T05:10:40Z"
 ---
 > NEXT: Remove the state and guards the Rust emitter does not need. ([Phase 0](phases/00-emitter-dead-weight.md))
@@ -11,7 +12,7 @@ registered_at: "2026-09-10T05:10:40Z"
 - [x] [Phase 01: Give the shared rules one definition and drop the unused surface](phases/01-shared-rules.md)
 - [x] [Phase 02: Cover the slice-return path and stop copying it twice](phases/02-slice-return.md)
 - [x] [Phase 03: Make the backend a table and finish the name-override seam](phases/03-backend-table.md)
-- [ ] [Phase 04: Share the neutral build wiring between the two backends](phases/04-build-wiring.md)
+- [x] [Phase 04: Share the neutral build wiring between the two backends](phases/04-build-wiring.md)
 
 # Shared Verification
 
