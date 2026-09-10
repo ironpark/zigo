@@ -72,9 +72,12 @@ pub const VTable = struct {
 pub const Target = struct {
     /// Stable identifier, as `byName` accepts it.
     name: []const u8,
+    /// The language's name as a reader spells it, for diagnostics.
+    display_name: []const u8,
     /// Extension generated sources carry, with the dot.
     source_extension: []const u8,
-    /// Stem suffix marking a file this generator owns.
+    /// Stem suffix marking a source file this generator owns, so a
+    /// hand-written file beside it is never mistaken for one to rewrite.
     generated_suffix: []const u8,
     formatter: ?Formatter,
     vtable: *const VTable,
@@ -148,6 +151,20 @@ pub const Target = struct {
     pub fn freeNames(_: Target, allocator: std.mem.Allocator, names: [][]u8) void {
         naming.freeParamNames(allocator, names);
     }
+
+    /// The file one generated source is written to: `<stem>_gen.go` for Go.
+    /// The caller composes the stem, which is a question about the package
+    /// layout; the suffix and the extension are the language's.
+    pub fn generatedFileNameAlloc(self: Target, allocator: std.mem.Allocator, stem: []const u8) ![]u8 {
+        return std.fmt.allocPrint(allocator, "{s}{s}{s}", .{ stem, self.generated_suffix, self.source_extension });
+    }
+
+    /// Whether a path is a source file in this language, which is what decides
+    /// whether the formatter is offered it and how the output manifest
+    /// classifies it.
+    pub fn isSource(self: Target, path: []const u8) bool {
+        return std.mem.endsWith(u8, path, self.source_extension);
+    }
 };
 
 /// Go's implementation. The namespace, not just the `Target` value: the Go
@@ -167,6 +184,14 @@ pub const default: Target = go.target;
 pub fn byName(name: []const u8) ?Target {
     for (all) |candidate| if (std.mem.eql(u8, candidate.name, name)) return candidate;
     return null;
+}
+
+test "generated file names carry the language's suffix and extension" {
+    const name = try default.generatedFileNameAlloc(std.testing.allocator, "event_queue_enums");
+    defer std.testing.allocator.free(name);
+    try std.testing.expectEqualStrings("event_queue_enums_gen.go", name);
+    try std.testing.expect(default.isSource("a/b_gen.go"));
+    try std.testing.expect(!default.isSource("a/b.zig"));
 }
 
 test "targets are addressable by name" {

@@ -3,12 +3,12 @@ description: Extract a Target interface so the output language's keyword, naming
 plan_status: in-progress
 registered_at: "2026-09-10T02:48:46Z"
 ---
-> NEXT: Add `src/gen/target.zig` and `src/gen/target/go.zig`, wire the module, and move the Go rules out of `naming.zig` and `semantic.zig` with every caller repointed. ([Phase 0](phases/00-introduce-target-seam.md))
+> NEXT: None. All three phases are done; the hand-offs are listed under `What a Rust Target Implements`.
 
 # Phases
 
 - [x] [Phase 00: Introduce the Target seam with Go behind it](phases/00-introduce-target-seam.md)
-- [ ] [Phase 01: Thread the target as a value](phases/01-thread-target-value.md)
+- [x] [Phase 01: Thread the target as a value](phases/01-thread-target-value.md)
 - [ ] [Phase 02: Move file layout and the formatter behind the target](phases/02-layout-and-formatter.md)
 
 # Shared Verification
@@ -30,6 +30,55 @@ registered_at: "2026-09-10T02:48:46Z"
 - `git diff --stat` at the end of each phase must show no generated artifact.
 - The `grep` assertions in each phase's Done When, which are what turn "the
   rules are gathered" from a claim into a check.
+
+# What a Rust Target Implements
+
+The point of the plan, stated as a checklist. Adding Rust means writing
+`src/gen/targets/rust.zig` with a `Target` value, plus a `rust_words.zig` leaf
+if the build integration has to validate crate names. It means editing no
+caller in `src/gen/validate/**`, `src/gen/report.zig`, `src/gen/abi_diff.zig`,
+`src/gen/generator.zig` or `src/reflect/**`.
+
+| `Target` member | Go | What Rust answers |
+|---|---|---|
+| `name` | `"go"` | `"rust"` |
+| `display_name` | `"Go"` | `"Rust"` |
+| `source_extension` | `".go"` | `".rs"` |
+| `generated_suffix` | `"_gen"` | `"_gen"`, or empty with generated files in their own module directory |
+| `formatter` | `gofmt -w`, `--gofmt <path>` | `rustfmt --edition 2021`, `--rustfmt <path>`, "install a Rust toolchain" |
+| `isKeyword` | 25 Go keywords | Rust's strict and reserved keywords, and the `r#` raw-identifier escape is available where Go has only `_` suffixing |
+| `isIdentifier` | ASCII, no keyword, no bare `_` | same shape; `_`-leading names are ordinary in Rust, so the bare-`_` rejection would go |
+| `isConversionFunctionName` | lax: any alphanumeric/`_` run | a path, so this would have to accept `::` or stay lax |
+| `paramNamesAlloc` | camelCase, escape keyword/local/duplicate | snake_case, same three escapes, a different reserved-locals table |
+| `exportedNameAlloc` | `pascalAlloc` | `pascalAlloc` for types, `snakeAlloc` for functions -- so a Rust target splits this into a type rule and a function rule, the one interface change adding Rust would ask for |
+| `unexportedNameAlloc` | `camelAlloc` | `snakeAlloc` |
+| `packageNameAlloc` | `snakeAlloc` | `snakeAlloc` |
+| `nameOverride` | `SemanticFn.goName()` | `SemanticFn.rustName()`, a sibling namespace beside the `go` one plan 185 created |
+| `libraryPathEnvironmentAlloc` | `ZIGO_<PKG>_LIBRARY_PATH` | the same, reused as is |
+| `publicFunctionNameAlloc` | provided by `Target` | provided by `Target`; it composes the three members above and needs no reimplementation |
+
+Not behind the seam, and each its own plan:
+
+- **The plugin contract.** `writeGoType`, `GoFile`, `GoPackage`,
+  `plugin.GoFileKind` and `Context.goFilePathAlloc` are Go-typed, so the
+  `ZIGO059` output-path rule in `src/gen/generator.zig` and the interface-name
+  check in `src/plugin/interfaces.zig` stay on `targets.default`. This is
+  step 3 of the research document's recommended order.
+- **`src/gen/sync_check.zig`.** Its `.go` filter decides which files in a
+  published tree are compared. It has no options record to carry a target, and
+  `zigo check` is a tooling entry point rather than a generation one.
+- **The `--gofmt` flag and `zigo doctor`.** Both are user-visible tooling
+  surface (research blocker 4). The flag keeps its name; only what it feeds
+  moved. `cli.Doctor.gofmt_executable` still names Go because doctor probes the
+  Go toolchain specifically.
+- **The Go initialism table** inside `naming.pascalAlloc` and
+  `naming.camelAlloc` (`id` -> `ID`, `url` -> `URL`, `utf8` -> `UTF8`). That is
+  a Go style convention living in a transform this plan calls neutral. Rust
+  would want `Id`, `Url`, `Utf8`. Parameterizing it means touching 59
+  `pascalAlloc` call sites, so it is deliberately left for the plan that adds
+  the second target, where the change has a reason to exist.
+- **Cancellation.** `context.Context`, `SemanticFn.cancel` and `cancel_error`.
+  Research blocker 2.
 
 # Decisions That Constrain Ordering
 
@@ -59,4 +108,5 @@ document that a later commit fails to parse. `abi-check` reading
 
 # Next Implementation Target
 
-Add `src/gen/target.zig` and `src/gen/target/go.zig`, wire the module, and move the Go rules out of `naming.zig` and `semantic.zig` with every caller repointed.
+None. All three phases are done; the hand-offs are listed under
+`What a Rust Target Implements`.

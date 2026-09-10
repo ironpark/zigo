@@ -82,15 +82,26 @@ Go 개념이 박혀 있어서, 그 상태로 두 번째 타겟을 붙이면 Go �
    타겟 파라미터화 또는 v3. breaking change
 4. **툴링** — `go_walk.zig`(coverage용 Go 소스 파싱), `doctor.zig`,
    `tool_probe.zig`, gofmt→rustfmt, `build.zig`의 `go build`/`go test` 오케스트레이션
-5. **네이밍 규칙** — `naming.zig`의 `isGoKeyword`, `goParamNamesAlloc`,
-   `validateGoPackageName`, `isGoIdentifier`, `libraryPathEnvironmentAlloc`
+5. ~~**네이밍 규칙** — `naming.zig`의 `isGoKeyword`, `goParamNamesAlloc`,
+   `validateGoPackageName`, `isGoIdentifier`, `libraryPathEnvironmentAlloc`~~
+   → **해소됨** (플랜 `186-target-interface`). `src/gen/targets.zig`의 `Target`
+   뒤로 모였고 Go 구현은 `src/gen/targets/go.zig`입니다. 남은 것은
+   `pascalAlloc`/`camelAlloc` 안의 Go initialism 표(`id`→`ID` 등)로, 두 번째
+   타겟을 실제로 붙이는 시점에 파라미터화하는 것이 낫다고 판단해 남겼습니다
 6. **이름** — `zigo` 자체가 Go 전제. 다중 타겟이면 브랜딩이 걸림
 
 ## 권장 순서
 
-1. IR의 Go 전용 필드를 타겟 네임스페이스 확장으로 분리 (기존 문서 호환 유지)
-2. `Target` 인터페이스 추출 — 키워드/네이밍/타입 스펠링/파일 레이아웃/포매터
-3. 플러그인 계약을 타겟 제네릭으로 (또는 v3)
+1. ~~IR의 Go 전용 필드를 타겟 네임스페이스 확장으로 분리 (기존 문서 호환 유지)~~
+   — 완료 (플랜 `185-ir-target-namespacing`)
+2. ~~`Target` 인터페이스 추출 — 키워드/네이밍/타입 스펠링/파일 레이아웃/포매터~~
+   — 완료 (플랜 `186-target-interface`). 타겟 결정은 CLI(`src/main.zig`의
+   `outputTarget()`)와 빌드 통합(`addGoBindings`) 두 곳에서만 일어나고,
+   validate·report·abi_diff·generator는 넘겨받은 `Target`을 읽습니다.
+   `src/gen/emit/**`는 Go 이미터 자체이므로 seam 뒤에 있습니다
+3. 플러그인 계약을 타겟 제네릭으로 (또는 v3) ← 다음 차례. `ZIGO059`
+   출력 경로 규칙과 `src/plugin/interfaces.zig`의 인터페이스 이름 검사가
+   여기에 묶여 아직 `targets.default`를 씁니다
 4. 스칼라 + 슬라이스 + error union만 커버하는 최소 Rust 백엔드를
    `examples/00-quick-start` 미러로
 

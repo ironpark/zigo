@@ -118,17 +118,26 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
         try stderr.interface.flush();
         std.process.exit(1);
     };
-    try formatGeneratedGo(allocator, io, options.output_path, options.gofmt_executable);
+    try formatGenerated(allocator, io, options.output_path, outputTarget(), options.formatter_executable);
 }
 
-/// Format only framed Go outputs. Artifacts, including .go artifacts, keep
-/// their exact bytes and user-owned files in the output tree are untouched.
-fn formatGeneratedGo(
+/// Format only framed source outputs. Artifacts, including ones in the
+/// target's own language, keep their exact bytes, and user-owned files in the
+/// output tree are untouched.
+///
+/// Which formatter, which arguments, what to install and which flag overrides
+/// it are all the target's record; this function only runs what it is told and
+/// reports what came back. A target with no formatter leaves its output as
+/// emitted.
+fn formatGenerated(
     allocator: std.mem.Allocator,
     io: std.Io,
     output_path: []const u8,
-    gofmt_executable: []const u8,
+    target: targets.Target,
+    executable_override: ?[]const u8,
 ) !void {
+    const formatter = target.formatter orelse return;
+    const executable = executable_override orelse formatter.default_executable;
     const manifest_api = @import("output_manifest");
     var directory = try std.Io.Dir.cwd().openDir(io, output_path, .{});
     defer directory.close(io);
@@ -136,12 +145,17 @@ fn formatGeneratedGo(
     defer manifest.deinit();
     var args: std.ArrayList([]const u8) = .empty;
     defer args.deinit(allocator);
-    try args.appendSlice(allocator, &.{ gofmt_executable, "-w" });
+    try args.append(allocator, executable);
+    try args.appendSlice(allocator, formatter.leading_args);
+    const leading = args.items.len;
     for (manifest.value.files) |file| {
+        // `.go` is the manifest's word for a framed source file in the output
+        // language; the manifest is a written document, so its spelling is a
+        // wire format and does not move with this refactoring.
         if (file.kind == .go) try args.append(allocator, try std.fs.path.join(allocator, &.{ output_path, file.path }));
     }
-    defer for (args.items[2..]) |path| allocator.free(path);
-    if (args.items.len == 2) return;
+    defer for (args.items[leading..]) |path| allocator.free(path);
+    if (args.items.len == leading) return;
     const result = std.process.run(allocator, io, .{
         .argv = args.items,
         .stdout_limit = .limited(1024 * 1024),
@@ -150,8 +164,8 @@ fn formatGeneratedGo(
         var buffer: [512]u8 = undefined;
         var stderr = std.Io.File.Writer.init(.stderr(), io, &buffer);
         try stderr.interface.print(
-            "generated Go is formatted with gofmt, but '{s}' could not be run; install the Go distribution or pass --gofmt <path>\n",
-            .{gofmt_executable},
+            "generated {s} is formatted with {s}, but '{s}' could not be run; {s} or pass {s}\n",
+            .{ target.display_name, formatter.default_executable, executable, formatter.install_hint, formatter.override_flag },
         );
         try stderr.interface.flush();
         std.process.exit(1);
@@ -164,7 +178,7 @@ fn formatGeneratedGo(
     }
     var buffer: [4096]u8 = undefined;
     var stderr = std.Io.File.Writer.init(.stderr(), io, &buffer);
-    try stderr.interface.print("gofmt failed on the generated Go:\n{s}\n", .{result.stderr});
+    try stderr.interface.print("{s} failed on the generated {s}:\n{s}\n", .{ formatter.default_executable, target.display_name, result.stderr });
     try stderr.interface.flush();
     std.process.exit(1);
 }

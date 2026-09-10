@@ -9,6 +9,7 @@ const words = @import("go_words.zig");
 
 pub const target: target_api.Target = .{
     .name = "go",
+    .display_name = "Go",
     .source_extension = ".go",
     .generated_suffix = "_gen",
     .formatter = .{
@@ -64,6 +65,11 @@ pub const isConversionFunctionName = words.isConversionFunctionName;
 /// namespace the declaration carries.
 fn nameOverride(function: semantic.SemanticFn) ?[]const u8 {
     return function.goName();
+}
+
+/// `Target.generatedFileNameAlloc` for callers already inside the Go emitter.
+pub fn generatedFileNameAlloc(allocator: std.mem.Allocator, stem: []const u8) ![]u8 {
+    return target.generatedFileNameAlloc(allocator, stem);
 }
 
 /// `Target.publicFunctionNameAlloc` for callers already inside the Go

@@ -59,7 +59,9 @@ fn hasPackageHooks() bool {
 }
 
 fn packageHooksPath(allocator: std.mem.Allocator, program: abi.Program, options: Options) ![]u8 {
-    return plugin.publicFilePathAlloc(allocator, program, options, "zigo_plugins_gen.go");
+    const filename = try targets.go.generatedFileNameAlloc(allocator, "zigo_plugins");
+    defer allocator.free(filename);
+    return plugin.publicFilePathAlloc(allocator, program, options, filename);
 }
 
 fn renderPackageHooks(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
@@ -179,7 +181,9 @@ fn framedPluginFile(comptime plugin_index: usize, comptime file: plugin.GoFile) 
 }
 
 fn lifecyclePath(allocator: std.mem.Allocator, _: abi.Program, options: Options) ![]u8 {
-    return std.fmt.allocPrint(allocator, "{s}/lifecycle_gen.go", .{options.lifecycle_package_path});
+    const filename = try targets.go.generatedFileNameAlloc(allocator, "lifecycle");
+    defer allocator.free(filename);
+    return std.fmt.allocPrint(allocator, "{s}/{s}", .{ options.lifecycle_package_path, filename });
 }
 
 /// Backend-neutral state shared by every public package in a split binding.
@@ -274,11 +278,15 @@ fn rawPath(allocator: std.mem.Allocator, program: abi.Program, options: Options)
     if (options.raw_colocated) {
         const package = try common.publicPackageAlloc(allocator, program, options);
         defer allocator.free(package);
-        const filename = try std.fmt.allocPrint(allocator, "{s}_{s}_gen.go", .{ package, @tagName(options.backend) });
+        const stem = try std.fmt.allocPrint(allocator, "{s}_{s}", .{ package, @tagName(options.backend) });
+        defer allocator.free(stem);
+        const filename = try targets.go.generatedFileNameAlloc(allocator, stem);
         defer allocator.free(filename);
         return publicFilePathAlloc(allocator, program, options, filename);
     }
-    return std.fmt.allocPrint(allocator, "{s}/{s}_gen.go", .{ options.raw_package_path, options.raw_package_name });
+    const filename = try targets.go.generatedFileNameAlloc(allocator, options.raw_package_name);
+    defer allocator.free(filename);
+    return std.fmt.allocPrint(allocator, "{s}/{s}", .{ options.raw_package_path, filename });
 }
 
 /// One naming rule for the concern-scoped companions of the raw package, so a
@@ -288,11 +296,17 @@ fn rawConcernPathAlloc(allocator: std.mem.Allocator, program: abi.Program, optio
     if (options.raw_colocated) {
         const package = try common.publicPackageAlloc(allocator, program, options);
         defer allocator.free(package);
-        const filename = try std.fmt.allocPrint(allocator, "{s}_{s}_{s}_gen.go", .{ package, @tagName(options.backend), concern });
+        const stem = try std.fmt.allocPrint(allocator, "{s}_{s}_{s}", .{ package, @tagName(options.backend), concern });
+        defer allocator.free(stem);
+        const filename = try targets.go.generatedFileNameAlloc(allocator, stem);
         defer allocator.free(filename);
         return publicFilePathAlloc(allocator, program, options, filename);
     }
-    return std.fmt.allocPrint(allocator, "{s}/{s}_{s}_gen.go", .{ options.raw_package_path, options.raw_package_name, concern });
+    const stem = try std.fmt.allocPrint(allocator, "{s}_{s}", .{ options.raw_package_name, concern });
+    defer allocator.free(stem);
+    const filename = try targets.go.generatedFileNameAlloc(allocator, stem);
+    defer allocator.free(filename);
+    return std.fmt.allocPrint(allocator, "{s}/{s}", .{ options.raw_package_path, filename });
 }
 
 fn rawLoadPosixPath(allocator: std.mem.Allocator, program: abi.Program, options: Options) ![]u8 {
@@ -306,7 +320,7 @@ fn rawLoadWindowsPath(allocator: std.mem.Allocator, program: abi.Program, option
 fn publicPath(allocator: std.mem.Allocator, program: abi.Program, options: Options) ![]u8 {
     const package = try common.publicPackageAlloc(allocator, program, options);
     defer allocator.free(package);
-    const filename = try std.fmt.allocPrint(allocator, "{s}_gen.go", .{package});
+    const filename = try targets.go.generatedFileNameAlloc(allocator, package);
     defer allocator.free(filename);
     return publicFilePathAlloc(allocator, program, options, filename);
 }
@@ -340,7 +354,9 @@ fn publicUnionPathAlloc(allocator: std.mem.Allocator, program: abi.Program, opti
 pub fn publicConcernPathAlloc(allocator: std.mem.Allocator, program: abi.Program, options: Options, concern: []const u8) ![]u8 {
     const package = try common.publicPackageAlloc(allocator, program, options);
     defer allocator.free(package);
-    const filename = try std.fmt.allocPrint(allocator, "{s}_{s}_gen.go", .{ package, concern });
+    const stem = try std.fmt.allocPrint(allocator, "{s}_{s}", .{ package, concern });
+    defer allocator.free(stem);
+    const filename = try targets.go.generatedFileNameAlloc(allocator, stem);
     defer allocator.free(filename);
     return publicFilePathAlloc(allocator, program, options, filename);
 }

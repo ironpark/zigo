@@ -60,9 +60,11 @@ pub const Generate = struct {
     /// The library lives in a `<goos>_<goarch>` subdirectory of every search
     /// path entry, the layout `targets` installs.
     library_platform_dirs: bool = false,
-    /// Generated Go is formatted through `gofmt`, so generation runs it over
+    /// The formatter run over the generated sources, so generation formats
     /// its own output rather than leaving the caller to enumerate the files.
-    gofmt_executable: []const u8 = "gofmt",
+    /// Null takes the output target's default; the flag is still spelled
+    /// `--gofmt`, which is Go's name and is user-visible.
+    formatter_executable: ?[]const u8 = null,
 };
 
 pub const Check = struct {
@@ -359,7 +361,7 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
         .library_automatic = loading.automatic,
         .library_exported_api = loading.exported_api,
         .library_platform_dirs = loading.platform_dirs,
-        .gofmt_executable = gofmt_executable orelse "gofmt",
+        .formatter_executable = gofmt_executable,
     };
 }
 

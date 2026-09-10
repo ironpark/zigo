@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-10T03:10:35Z"
 depends_on:
 - "186-186-target-interface#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `grep -rn 'target\.go\b\|target\.default' src build build.zig` returns only
 > NEXT: none

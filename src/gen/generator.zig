@@ -205,7 +205,7 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
         var files: std.ArrayList(output_manifest.File) = .empty;
         for (prepared.items[0 .. prepared.items.len - 1]) |file| {
             if (!file.verbatim and declaresNothing(file.path, file.contents)) continue;
-            try files.append(scratch_allocator, .{ .path = file.path, .kind = if (file.verbatim) .artifact else if (std.mem.endsWith(u8, file.path, ".go")) .go else .native });
+            try files.append(scratch_allocator, .{ .path = file.path, .kind = if (file.verbatim) .artifact else if (options.output_target.isSource(file.path)) .go else .native });
         }
         prepared.items[prepared.items.len - 1].contents = try std.json.Stringify.valueAlloc(scratch_allocator, output_manifest.Document{ .files = files.items }, .{ .whitespace = .indent_2 });
     }

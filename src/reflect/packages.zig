@@ -1,6 +1,5 @@
 //! Package selection, ownership assignment and transitive type closure.
 const std = @import("std");
-const naming = @import("naming");
 const semantic = @import("semantic");
 const targets = @import("targets");
 const zigo = @import("zigo").normalized;
@@ -17,7 +16,9 @@ pub fn reflectPackages(
     inline for (declaration.packages) |entry| {
         const name = entry.name orelse blk: {
             const base = std.fs.path.basename(entry.path);
-            break :blk try naming.snakeAlloc(allocator, base);
+            // Which case a package name takes is the target's rule, not a
+            // plain string conversion, so it is asked rather than assumed.
+            break :blk try targets.default.packageNameAlloc(allocator, base);
         };
         if (!semantic.validPackagePath(entry.path)) return packageIssue("invalid package path `{s}`", .{entry.path});
         // `targets.default`, not a threaded target: the binding walk runs at
