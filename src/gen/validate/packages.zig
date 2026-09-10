@@ -7,10 +7,10 @@ const naming = @import("naming");
 const site = @import("site.zig");
 const validate = @import("validate.zig");
 
-pub fn packageMetadataIssue(_: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
+pub fn packageMetadataIssue(_: std.mem.Allocator, document: semantic.Semantic, target: targets.Target) !?diagnostic.Diagnostic {
     const packages = document.packages orelse return null;
     for (packages, 0..) |package, index| {
-        if (!targets.default.isIdentifier(package.name) or !semantic.validPackagePath(package.path)) return .{
+        if (!target.isIdentifier(package.name) or !semantic.validPackagePath(package.path)) return .{
             .severity = .@"error",
             .code = "ZIGO031",
             .message = "semantic document contains an invalid public package declaration",
@@ -57,7 +57,7 @@ fn unknownPackage(name: []const u8) diagnostic.Diagnostic {
     };
 }
 
-pub fn packageCycleIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
+pub fn packageCycleIssue(allocator: std.mem.Allocator, document: semantic.Semantic, _: targets.Target) !?diagnostic.Diagnostic {
     const packages = document.packages orelse return null;
     const count = packages.len + 1;
     const edges = try allocator.alloc(?[]const u8, count * count);

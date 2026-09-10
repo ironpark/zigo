@@ -8,6 +8,7 @@ const binding_report = @import("gen/report.zig");
 const semantic = @import("semantic");
 const stream_return = @import("stream_return");
 const sync_check = @import("sync_check");
+const targets = @import("targets");
 const validate = @import("gen/validate/validate.zig");
 
 pub fn main(init: std.process.Init) !void {
@@ -37,6 +38,15 @@ pub fn main(init: std.process.Init) !void {
     }
 }
 
+/// One of the two places an output language is chosen -- this one for the
+/// CLI, `addGoBindings` in `build.zig` for the build integration. Every layer
+/// below reads the target from what it is handed, so a second language is a
+/// second `targets.Target` and a way to name it here, not a change to the
+/// generator, the validators or the report.
+fn outputTarget() targets.Target {
+    return targets.default;
+}
+
 fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) !void {
     const semantic_bytes = try std.Io.Dir.cwd().readFileAlloc(io, options.semantic_path, allocator, .limited(64 * 1024 * 1024));
     const pkg_config_libs = if (options.pkg_config_libs_path) |path|
@@ -60,6 +70,7 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
     for (options.target_ldflags, target_ldflags) |source, *entry| entry.* = .{ .constraint = source.constraint, .flags = source.flags };
     var generation_issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
     generator.generate(allocator, io, semantic_bytes, output, .{
+        .output_target = outputTarget(),
         .diagnostics = &generation_issues,
         .write_manifest = true,
         .package = options.package,
@@ -188,13 +199,13 @@ fn runAbiDiff(allocator: std.mem.Allocator, io: std.Io, options: cli.AbiDiff) !v
     // documents come from outside this run, so both are judged first.
     try rejectInvalidAbiInput(allocator, io, base.value, options.base_path);
     try rejectInvalidAbiInput(allocator, io, current.value, options.current_path);
-    var report = try abi_diff.diffWithBackends(allocator, base.value, switch (options.base_backend) {
+    var report = try abi_diff.diffForTarget(allocator, base.value, switch (options.base_backend) {
         .cgo => .cgo,
         .purego => .purego,
     }, current.value, switch (options.current_backend) {
         .cgo => .cgo,
         .purego => .purego,
-    });
+    }, outputTarget());
     defer report.deinit(allocator);
     var buffer: [4096]u8 = undefined;
     var stdout = std.Io.File.Writer.init(.stdout(), io, &buffer);
@@ -210,7 +221,7 @@ fn runAbiDiff(allocator: std.mem.Allocator, io: std.Io, options: cli.AbiDiff) !v
 fn rejectInvalidAbiInput(allocator: std.mem.Allocator, io: std.Io, document: semantic.Semantic, path: []const u8) !void {
     var scratch = std.heap.ArenaAllocator.init(allocator);
     defer scratch.deinit();
-    const issues = try validate.findIssues(scratch.allocator(), document);
+    const issues = try validate.findIssuesForTarget(scratch.allocator(), document, null, outputTarget());
     if (issues.len == 0) return;
     var buffer: [1024]u8 = undefined;
     var stderr = std.Io.File.Writer.init(.stderr(), io, &buffer);
@@ -231,7 +242,7 @@ fn runReport(allocator: std.mem.Allocator, io: std.Io, options: cli.Report) !voi
     const configurations = try api.configurationsAlloc(allocator, @import("gen/plugins/registry.zig").configurations, options.plugin_config);
     var facts: api.Facts = .{};
     var issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
-    const document = try generator.prepareDocument(allocator, parsed.value, null, configurations, &facts, &issues);
+    const document = try generator.prepareDocument(allocator, parsed.value, null, configurations, &facts, &issues, outputTarget());
     if (issues.items.len != 0) {
         var error_buffer: [1024]u8 = undefined;
         var stderr = std.Io.File.Writer.init(.stderr(), io, &error_buffer);
@@ -246,6 +257,7 @@ fn runReport(allocator: std.mem.Allocator, io: std.Io, options: cli.Report) !voi
     var buffer: [4096]u8 = undefined;
     var stdout = std.Io.File.Writer.init(.stdout(), io, &buffer);
     try binding_report.render(allocator, &stdout.interface, document, .{
+        .output_target = outputTarget(),
         .go_module = options.go_module,
         .raw_package_path = options.raw_package_path,
         .raw_colocated = options.raw_colocated,

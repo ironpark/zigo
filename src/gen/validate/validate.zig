@@ -14,6 +14,7 @@ const registry = @import("../plugins/registry.zig");
 const ownership = @import("ownership.zig");
 const packages = @import("packages.zig");
 const site = @import("site.zig");
+const targets = @import("targets");
 const types = @import("types.zig");
 
 /// Every rejection reaches the user as a rendered diagnostic, so this only
@@ -24,11 +25,15 @@ pub fn semanticDocument(allocator: std.mem.Allocator, document: semantic.Semanti
     return semanticDocumentWithPlugins(allocator, document, null);
 }
 
+/// The short entry points below take no target and judge the document against
+/// `targets.default`. They are the convenience layer the tests and the
+/// single-target tools use; generation and the CLI pass the target they
+/// resolved, which is what makes the rules target-agnostic.
 /// Validate core rules and only the selected external plugins; null selects all.
 pub fn semanticDocumentWithPlugins(allocator: std.mem.Allocator, document: semantic.Semantic, selected: ?[]const []const u8) !void {
     var scratch = std.heap.ArenaAllocator.init(allocator);
     defer scratch.deinit();
-    if (try findIssueWithPlugins(scratch.allocator(), document, selected) != null) return error.InvalidSemantic;
+    if (try findIssueWithPlugins(scratch.allocator(), document, selected, targets.default) != null) return error.InvalidSemantic;
 }
 
 /// Every purego callback dispatcher returns one pointer-sized integer, which is
@@ -73,7 +78,7 @@ pub fn puregoCallbacks(document: semantic.Semantic) !void {
 /// in order, and that order is the diagnostic priority: the first rule that
 /// objects names the problem, so the sharper rules come before the general
 /// ones and a document with several faults reports the same one each time.
-const Rule = *const fn (std.mem.Allocator, semantic.Semantic) anyerror!?diagnostic.Diagnostic;
+const Rule = *const fn (std.mem.Allocator, semantic.Semantic, targets.Target) anyerror!?diagnostic.Diagnostic;
 
 const rules = [_]Rule{
     documentHeaderIssue,
@@ -94,12 +99,12 @@ const rules = [_]Rule{
 };
 
 pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
-    return findIssueWithPlugins(allocator, document, null);
+    return findIssueWithPlugins(allocator, document, null, targets.default);
 }
 
 /// Built-in rules always run, including when the external selection is empty.
-pub fn findIssueWithPlugins(allocator: std.mem.Allocator, document: semantic.Semantic, selected: ?[]const []const u8) !?diagnostic.Diagnostic {
-    for (rules) |check| if (try check(allocator, document)) |issue| return issue;
+pub fn findIssueWithPlugins(allocator: std.mem.Allocator, document: semantic.Semantic, selected: ?[]const []const u8, target: targets.Target) !?diagnostic.Diagnostic {
+    for (rules) |check| if (try check(allocator, document, target)) |issue| return issue;
     // Plugins judge last, so a plugin rule can never mask a document fault
     // the generator itself would have rejected.
     return pluginIssue(allocator, document, selected);
@@ -128,17 +133,22 @@ pub fn findIssuesWithPlugins(allocator: std.mem.Allocator, document: semantic.Se
     return findIssuesConfigured(allocator, document, selected, registry.configurations);
 }
 
+pub fn findIssuesForTarget(allocator: std.mem.Allocator, document: semantic.Semantic, selected: ?[]const []const u8, target: targets.Target) ![]const diagnostic.Diagnostic {
+    var facts: plugin.Facts = .{};
+    return findIssuesWithFacts(allocator, document, selected, registry.configurations, &facts, target);
+}
+
 pub fn findIssuesConfigured(allocator: std.mem.Allocator, document: semantic.Semantic, selected: ?[]const []const u8, configurations: []const plugin.Configuration) ![]const diagnostic.Diagnostic {
     var facts: plugin.Facts = .{};
-    return findIssuesWithFacts(allocator, document, selected, configurations, &facts);
+    return findIssuesWithFacts(allocator, document, selected, configurations, &facts, targets.default);
 }
 
 /// Shared entry point for generation and reports. The caller owns the arena,
 /// diagnostics and facts. A document with diagnostics must not be lowered.
-pub fn prepareDocument(allocator: std.mem.Allocator, input: semantic.Semantic, selected: ?[]const []const u8, configurations: []const plugin.Configuration, facts: *plugin.Facts, issues: *std.ArrayList(diagnostic.Diagnostic)) !semantic.Semantic {
+pub fn prepareDocument(allocator: std.mem.Allocator, input: semantic.Semantic, selected: ?[]const []const u8, configurations: []const plugin.Configuration, facts: *plugin.Facts, issues: *std.ArrayList(diagnostic.Diagnostic), target: targets.Target) !semantic.Semantic {
     const document = try transformDocument(allocator, input, selected, configurations, issues);
     if (issues.items.len != 0) return document;
-    try issues.appendSlice(allocator, try findIssuesWithFacts(allocator, document, selected, configurations, facts));
+    try issues.appendSlice(allocator, try findIssuesWithFacts(allocator, document, selected, configurations, facts, target));
     return document;
 }
 
@@ -243,10 +253,10 @@ fn checkPluginSelection(selected: ?[]const []const u8, configurations: []const p
     }
 }
 
-pub fn findIssuesWithFacts(allocator: std.mem.Allocator, document: semantic.Semantic, selected: ?[]const []const u8, configurations: []const plugin.Configuration, facts: *plugin.Facts) ![]const diagnostic.Diagnostic {
+pub fn findIssuesWithFacts(allocator: std.mem.Allocator, document: semantic.Semantic, selected: ?[]const []const u8, configurations: []const plugin.Configuration, facts: *plugin.Facts, target: targets.Target) ![]const diagnostic.Diagnostic {
     var issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
     errdefer issues.deinit(allocator);
-    for (rules) |check| if (try check(allocator, document)) |issue| {
+    for (rules) |check| if (try check(allocator, document, target)) |issue| {
         try issues.append(allocator, issue);
         return issues.toOwnedSlice(allocator);
     };
@@ -339,7 +349,7 @@ fn pluginOptionsDiagnostic(
 
 /// The document itself: an IR version this generator reads and the names it
 /// cannot do without.
-fn documentHeaderIssue(_: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
+fn documentHeaderIssue(_: std.mem.Allocator, document: semantic.Semantic, _: targets.Target) !?diagnostic.Diagnostic {
     if (document.ir_version != semantic.current_ir_version) return .{
         .severity = .@"error",
         .code = "ZIGO020",

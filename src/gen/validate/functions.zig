@@ -16,7 +16,7 @@ const validate = @import("validate.zig");
 
 /// Every function-level shape rule, in one pass so each function is judged
 /// on its sharpest fault first.
-pub fn functionIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
+pub fn functionIssue(allocator: std.mem.Allocator, document: semantic.Semantic, target: targets.Target) !?diagnostic.Diagnostic {
     for (document.functions) |function| {
         if (!validNativeOrder(function)) return .{
             .severity = .@"error",
@@ -47,7 +47,7 @@ pub fn functionIssue(allocator: std.mem.Allocator, document: semantic.Semantic) 
             .hint = "use an explicit error set in the Zig function signature",
         };
         if (try valueReceiverIssue(allocator, document, function)) |issue| return issue;
-        if (try scalarAdapterIssue(allocator, function)) |issue| return issue;
+        if (try scalarAdapterIssue(allocator, function, target)) |issue| return issue;
         if (try codepointIssue(allocator, function)) |issue| return issue;
         if (function.has_comptime_params == true) return .{
             .severity = .@"error",
@@ -328,7 +328,7 @@ pub fn functionIssue(allocator: std.mem.Allocator, document: semantic.Semantic) 
 // An `.out` slice is a buffer the caller already allocated, so making it
 // optional asks the callee to decide whether that buffer exists -- there
 // is no shape for that, and no reading of it the two sides would agree on.
-pub fn optionalOutIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
+pub fn optionalOutIssue(allocator: std.mem.Allocator, document: semantic.Semantic, _: targets.Target) !?diagnostic.Diagnostic {
     for (document.functions) |function| {
         for (function.params) |parameter| {
             if (parameter.direction != .out or parameter.type != .optional) continue;
@@ -407,11 +407,11 @@ fn adaptableScalar(node: semantic.TypeNode) bool {
     };
 }
 
-fn scalarAdapterIssue(allocator: std.mem.Allocator, function: semantic.SemanticFn) !?diagnostic.Diagnostic {
+fn scalarAdapterIssue(allocator: std.mem.Allocator, function: semantic.SemanticFn, target: targets.Target) !?diagnostic.Diagnostic {
     for (function.params) |parameter| {
         const adapter = parameter.goAdapter() orelse continue;
         if (parameter.injected == null and parameter.flatten == null and parameter.direction == .in and adaptableScalar(parameter.type) and
-            adapter.type.len != 0 and targets.default.isConversionFunctionName(adapter.to_raw) and targets.default.isConversionFunctionName(adapter.from_raw)) continue;
+            adapter.type.len != 0 and target.isConversionFunctionName(adapter.to_raw) and target.isConversionFunctionName(adapter.from_raw)) continue;
         return .{
             .severity = .@"error",
             .code = "ZIGO052",
@@ -422,7 +422,7 @@ fn scalarAdapterIssue(allocator: std.mem.Allocator, function: semantic.SemanticF
     }
     if (function.returnGoAdapter()) |adapter| {
         const payload = function.@"return".errorPayload();
-        if (!adaptableScalar(payload) or adapter.type.len == 0 or !targets.default.isConversionFunctionName(adapter.to_raw) or !targets.default.isConversionFunctionName(adapter.from_raw)) return .{
+        if (!adaptableScalar(payload) or adapter.type.len == 0 or !target.isConversionFunctionName(adapter.to_raw) or !target.isConversionFunctionName(adapter.from_raw)) return .{
             .severity = .@"error",
             .code = "ZIGO052",
             .message = "`.go` on a function whose result is not a plain scalar",

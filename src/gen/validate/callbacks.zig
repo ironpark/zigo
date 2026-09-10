@@ -2,6 +2,7 @@
 const std = @import("std");
 const diagnostic = @import("diagnostic");
 const semantic = @import("semantic");
+const targets = @import("targets");
 const site = @import("site.zig");
 const validate = @import("validate.zig");
 
@@ -187,7 +188,7 @@ pub fn callbackUserdataIssue(
 /// The userdata contract over the whole document. It runs last: a callback
 /// with a sharper fault (calling convention, a type it cannot carry) is
 /// reported for that first.
-pub fn callbackUserdataRule(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
+pub fn callbackUserdataRule(allocator: std.mem.Allocator, document: semantic.Semantic, _: targets.Target) !?diagnostic.Diagnostic {
     for (document.functions) |function| {
         for (function.params, 0..) |_, parameter_index| {
             if (try callbackUserdataIssue(allocator, function, parameter_index)) |issue| return issue;
@@ -630,7 +631,7 @@ fn callbackTypeDiagnostic(
 
 /// The callback value-shape contract over the whole document, ahead of the
 /// userdata rule so a signature that cannot cross at all is named first.
-pub fn callbackTypeRule(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
+pub fn callbackTypeRule(allocator: std.mem.Allocator, document: semantic.Semantic, _: targets.Target) !?diagnostic.Diagnostic {
     for (document.functions) |function| {
         for (function.params) |parameter| {
             if (try callbackTypeIssue(allocator, document, function, parameter)) |issue| return issue;
@@ -672,7 +673,7 @@ test "a callback carrying a mutable or non-byte slice, or a by-value handle is a
             .prefix = "zg",
             .zig_version = "0.16.0",
         };
-        const issue = (try callbackTypeRule(std.testing.allocator, document)).?;
+        const issue = (try callbackTypeRule(std.testing.allocator, document, targets.default)).?;
         defer std.testing.allocator.free(issue.message);
         defer std.testing.allocator.free(issue.site.declaration);
         try std.testing.expectEqualStrings("ZIGO057", issue.code);
@@ -715,7 +716,7 @@ test "a callback carrying an enum, a handle pointer, a packed value, and byte pa
         .prefix = "zg",
         .zig_version = "0.16.0",
     };
-    try std.testing.expect((try callbackTypeRule(std.testing.allocator, document)) == null);
+    try std.testing.expect((try callbackTypeRule(std.testing.allocator, document, targets.default)) == null);
 
     var pointer_return: semantic.TypeNode = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "Stream" } };
     var pointer_result = document;
@@ -731,7 +732,7 @@ test "a callback carrying an enum, a handle pointer, a packed value, and byte pa
         .@"return" = .{ .void = {} },
         .symbol = "ignored",
     }};
-    const issue = (try callbackTypeRule(std.testing.allocator, pointer_result)).?;
+    const issue = (try callbackTypeRule(std.testing.allocator, pointer_result, targets.default)).?;
     defer std.testing.allocator.free(issue.message);
     defer std.testing.allocator.free(issue.site.declaration);
     try std.testing.expectEqualStrings("ZIGO057", issue.code);

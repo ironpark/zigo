@@ -4,6 +4,10 @@ const naming = @import("naming");
 const semantic = @import("semantic");
 const targets = @import("targets");
 
+/// `targets.default`, not a threaded target: the plugin contract still
+/// declares its interfaces in Go's terms (`GoFile`, `GoPackage`,
+/// `writeGoType`), so parameterizing this check would promise something the
+/// contract cannot keep. Making the contract target-generic is its own plan.
 pub fn interfaceIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
     const interfaces = document.interfaces orelse return null;
     for (interfaces, 0..) |interface, index| {

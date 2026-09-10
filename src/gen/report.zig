@@ -6,6 +6,8 @@ const naming = @import("naming");
 
 pub const Options = struct {
     pub const Backend = enum { cgo, purego };
+    /// The output language the report describes. The caller resolved it.
+    output_target: targets.Target = targets.default,
     go_module: []const u8 = "",
     raw_package_path: []const u8 = "internal/raw",
     raw_colocated: bool = false,
@@ -64,7 +66,7 @@ pub fn render(allocator: std.mem.Allocator, writer: *std.Io.Writer, document: se
         });
         // The default matches the emitter: a package-specific name, then the shared one.
         const package = try naming.snakeAlloc(scratch_allocator, document.package);
-        const specific = try targets.default.libraryPathEnvironmentAlloc(scratch_allocator, package);
+        const specific = try options.output_target.libraryPathEnvironmentAlloc(scratch_allocator, package);
         const default_names = try std.fmt.allocPrint(scratch_allocator, "{s},ZIGO_LIBRARY_PATH", .{specific});
         const env_names = options.library_env_vars orelse default_names;
         try writer.print("library environment: {s}\n", .{if (env_names.len == 0) "none" else env_names});
@@ -96,7 +98,7 @@ pub fn render(allocator: std.mem.Allocator, writer: *std.Io.Writer, document: se
         const origin = function.origin.*;
         const identity = try semanticIdentityAlloc(scratch_allocator, origin);
         defer scratch_allocator.free(identity);
-        const public_name = try publicFunctionNameAlloc(scratch_allocator, document, origin);
+        const public_name = try publicFunctionNameAlloc(scratch_allocator, document, origin, options.output_target);
         defer scratch_allocator.free(public_name);
         try writer.print("- {s} -> {s} | C {s} | return ownership {s}", .{ identity, public_name, function.symbol, @tagName(origin.ownership) });
         if (origin.package) |package| try writer.print(" | package {s}", .{package});
@@ -127,8 +129,8 @@ pub fn render(allocator: std.mem.Allocator, writer: *std.Io.Writer, document: se
 
 /// The report spells the same public name the collision check and `abi-diff`
 /// do, plus the receiver qualification a reader needs to find the method.
-fn publicFunctionNameAlloc(allocator: std.mem.Allocator, document: semantic.Semantic, function: semantic.SemanticFn) ![]u8 {
-    const name = try targets.default.publicFunctionNameAlloc(allocator, document, function);
+fn publicFunctionNameAlloc(allocator: std.mem.Allocator, document: semantic.Semantic, function: semantic.SemanticFn, target: targets.Target) ![]u8 {
+    const name = try target.publicFunctionNameAlloc(allocator, document, function);
     defer allocator.free(name);
     if (semantic.constructorForInit(document.constructors, function) == null and
         lower.constructorForDeinit(document.constructors, function) != null)

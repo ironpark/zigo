@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-10T03:02:12Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `grep -n 'pub fn' src/gen/naming.zig` lists only neutral transforms, C ABI
 > NEXT: none

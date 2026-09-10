@@ -50,11 +50,20 @@ pub const Report = struct {
     }
 };
 
+/// The convenience entry: cgo on both sides, judged against
+/// `targets.default`. `diffForTarget` is what the CLI calls.
 pub fn diff(allocator: std.mem.Allocator, base: semantic.Semantic, current: semantic.Semantic) !Report {
     return diffWithBackends(allocator, base, .cgo, current, .cgo);
 }
 
 pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, base_backend: Backend, current: semantic.Semantic, current_backend: Backend) !Report {
+    return diffForTarget(allocator, base, base_backend, current, current_backend, targets.default);
+}
+
+/// The public surface a document projects is the target's rule, so the report
+/// on whether that surface broke is judged against the target the caller
+/// resolved.
+pub fn diffForTarget(allocator: std.mem.Allocator, base: semantic.Semantic, base_backend: Backend, current: semantic.Semantic, current_backend: Backend, target: targets.Target) !Report {
     var report: Report = .{};
     errdefer report.deinit(allocator);
 
@@ -115,9 +124,9 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
         // that named it changes.
         if (!semantic.optionalStringEqual(old.goOwner(), new.goOwner()))
             try add(allocator, &report, .breaking, identity, "Go owner changed");
-        const old_go_name = try targets.default.publicFunctionNameAlloc(allocator, base, old);
+        const old_go_name = try target.publicFunctionNameAlloc(allocator, base, old);
         defer allocator.free(old_go_name);
-        const new_go_name = try targets.default.publicFunctionNameAlloc(allocator, current, new);
+        const new_go_name = try target.publicFunctionNameAlloc(allocator, current, new);
         defer allocator.free(new_go_name);
         if (!std.mem.eql(u8, old_go_name, new_go_name))
             try add(allocator, &report, .breaking, identity, "Go signature changed");

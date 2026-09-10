@@ -4,11 +4,12 @@ const abi = @import("abi");
 const diagnostic = @import("diagnostic");
 const lower = @import("lower");
 const semantic = @import("semantic");
+const targets = @import("targets");
 const site = @import("site.zig");
 const types = @import("types.zig");
 const validate = @import("validate.zig");
 
-pub fn materializedReleaseIssue(_: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
+pub fn materializedReleaseIssue(_: std.mem.Allocator, document: semantic.Semantic, _: targets.Target) !?diagnostic.Diagnostic {
     for (document.functions) |function| if ((abi.materializedReturn(function.@"return") != null or abi.materializedOut(function) != null) and
         (function.ownership != .caller or function.release == null)) return .{
         .severity = .@"error",

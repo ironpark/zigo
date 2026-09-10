@@ -11,7 +11,7 @@ const site = @import("site.zig");
 const validate = @import("validate.zig");
 
 /// Every registered type, judged on its own declaration.
-pub fn typeIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
+pub fn typeIssue(allocator: std.mem.Allocator, document: semantic.Semantic, target: targets.Target) !?diagnostic.Diagnostic {
     for (document.types) |declaration| {
         if (declaration.kind == .materialized) {
             if (try materialized.materializedProblemAlloc(allocator, document, declaration)) |problem| return .{
@@ -65,7 +65,7 @@ pub fn typeIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             const is_enum = declaration.kind == .@"enum";
             const wrong_kind = !is_extern_struct and !is_enum;
             const is_union_tag = is_enum and enumIsUnionTag(document, declaration.name);
-            const bad_names = adapter.type.len == 0 or !targets.default.isConversionFunctionName(adapter.to_raw) or !targets.default.isConversionFunctionName(adapter.from_raw);
+            const bad_names = adapter.type.len == 0 or !target.isConversionFunctionName(adapter.to_raw) or !target.isConversionFunctionName(adapter.from_raw);
             if (wrong_kind or is_union_tag or bad_names) return .{
                 .severity = .@"error",
                 .code = "ZIGO052",
@@ -167,7 +167,7 @@ pub fn typeIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
     return null;
 }
 
-pub fn integrityIssue(_: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
+pub fn integrityIssue(_: std.mem.Allocator, document: semantic.Semantic, _: targets.Target) !?diagnostic.Diagnostic {
     if (findIntegrityProblem(document)) |declaration| return .{
         .severity = .@"error",
         .code = "ZIGO010",
@@ -180,7 +180,7 @@ pub fn integrityIssue(_: std.mem.Allocator, document: semantic.Semantic) !?diagn
 
 // Types the C ABI cannot name are reported last so that the sharper
 // diagnostics above keep naming the declarations they always did.
-pub fn abiTypeIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
+pub fn abiTypeIssue(allocator: std.mem.Allocator, document: semantic.Semantic, _: targets.Target) !?diagnostic.Diagnostic {
     for (document.functions) |function| {
         for (function.params) |parameter| {
             if (parameter.type == .atomic_ptr) continue;

@@ -11,6 +11,7 @@ const naming = @import("naming");
 const semantic = @import("semantic");
 const stream_return = @import("stream_return");
 const validate = @import("validate/validate.zig");
+const targets = @import("targets");
 
 pub const prepareDocument = validate.prepareDocument;
 
@@ -18,6 +19,11 @@ pub const CgoTarget = emit.Options.CgoTarget;
 pub const TargetLdflags = emit.Options.TargetLdflags;
 
 pub const Options = struct {
+    /// Which output language the public package is written in. The CLI and the
+    /// build integration resolve it; every layer below reads it from here, so
+    /// adding a language does not touch them. `cgo_targets` below is a build
+    /// platform, an unrelated sense of the word.
+    output_target: targets.Target = targets.default,
     /// Emit ownership metadata for CLI formatting, publishing and checking.
     write_manifest: bool = false,
     /// Optional failure details. Text is copied into the caller allocator;
@@ -82,7 +88,7 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
     defer parsed.deinit();
     var facts: plugin.Facts = .{};
     var preparation_issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
-    const transformed = prepareDocument(scratch_allocator, parsed.value, options.plugins, options.configurations, &facts, &preparation_issues) catch |err| {
+    const transformed = prepareDocument(scratch_allocator, parsed.value, options.plugins, options.configurations, &facts, &preparation_issues, options.output_target) catch |err| {
         if (options.diagnostics) |issues| for (preparation_issues.items) |issue| try issues.append(allocator, try issue.clone(allocator));
         return err;
     };

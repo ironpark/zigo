@@ -8,8 +8,8 @@ const naming = @import("naming");
 const site = @import("site.zig");
 const validate = @import("validate.zig");
 
-pub fn generatedAccessorCollisionIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
-    if (try findGeneratedAccessorCollision(allocator, document)) |declaration| return .{
+pub fn generatedAccessorCollisionIssue(allocator: std.mem.Allocator, document: semantic.Semantic, target: targets.Target) !?diagnostic.Diagnostic {
+    if (try findGeneratedAccessorCollision(allocator, document, target)) |declaration| return .{
         .severity = .@"error",
         .code = "ZIGO007",
         .message = "generated tagged-union accessor collides with another declaration",
@@ -26,12 +26,12 @@ pub fn generatedAccessorCollisionIssue(allocator: std.mem.Allocator, document: s
 // function and a registered type -- can still resolve to the same public
 // Go identifier and fail `go build` with a duplicate declaration instead
 // of a zigo diagnostic.
-pub fn publicNameCollisionIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
+pub fn publicNameCollisionIssue(allocator: std.mem.Allocator, document: semantic.Semantic, target: targets.Target) !?diagnostic.Diagnostic {
     for (document.types) |declaration| {
         for (document.functions) |function| {
             if (function.receiver != null) continue;
             if (!semantic.optionalStringEqual(declaration.package, function.package)) continue;
-            const function_name = try targets.default.publicFunctionNameAlloc(allocator, document, function);
+            const function_name = try target.publicFunctionNameAlloc(allocator, document, function);
             defer allocator.free(function_name);
             if (!std.mem.eql(u8, function_name, declaration.name)) continue;
             // Kept alive: `site.declaration` below points directly at it.
@@ -53,14 +53,14 @@ pub fn publicNameCollisionIssue(allocator: std.mem.Allocator, document: semantic
     for (document.functions, 0..) |function, index| {
         if (lower.constructorForDeinit(document.constructors, function) != null) continue;
         const bucket = function.receiver orelse "";
-        const name = try targets.default.publicFunctionNameAlloc(allocator, document, function);
+        const name = try target.publicFunctionNameAlloc(allocator, document, function);
         defer allocator.free(name);
         for (document.functions[0..index]) |previous| {
             if (lower.constructorForDeinit(document.constructors, previous) != null) continue;
             const previous_bucket = previous.receiver orelse "";
             if (!std.mem.eql(u8, bucket, previous_bucket)) continue;
             if (!semantic.optionalStringEqual(function.package, previous.package)) continue;
-            const previous_name = try targets.default.publicFunctionNameAlloc(allocator, document, previous);
+            const previous_name = try target.publicFunctionNameAlloc(allocator, document, previous);
             defer allocator.free(previous_name);
             if (!std.mem.eql(u8, name, previous_name)) continue;
             // Kept alive: `site.declaration` below points directly at it.
@@ -78,11 +78,11 @@ pub fn publicNameCollisionIssue(allocator: std.mem.Allocator, document: semantic
                 .site = site.functionSiteFor(function, function_path),
                 .hint = "rename one declaration, or give it a `.name` that resolves to a different Go identifier",
                 .note = if (semantic.constructorForInit(document.constructors, function) != null)
-                    try functionOrConstructorRenameNoteAlloc(allocator, document, function)
+                    try functionOrConstructorRenameNoteAlloc(allocator, document, function, target)
                 else if (semantic.constructorForInit(document.constructors, previous) != null)
-                    try functionOrConstructorRenameNoteAlloc(allocator, document, previous)
+                    try functionOrConstructorRenameNoteAlloc(allocator, document, previous, target)
                 else
-                    try functionRenameNoteAlloc(allocator, function),
+                    try functionRenameNoteAlloc(allocator, function, target),
             };
         }
     }
@@ -94,7 +94,7 @@ pub fn publicNameCollisionIssue(allocator: std.mem.Allocator, document: semantic
         for (document.functions, 0..) |other, other_index| {
             if (!std.mem.eql(u8, other.receiver orelse "", receiver)) continue;
             if (!semantic.optionalStringEqual(function.package, other.package)) continue;
-            const other_name = try targets.default.publicFunctionNameAlloc(allocator, document, other);
+            const other_name = try target.publicFunctionNameAlloc(allocator, document, other);
             defer allocator.free(other_name);
             const clashes_method = std.mem.eql(u8, iterator.name, other_name);
             const clashes_wrapper = other_index < index and other.goIterator() != null and std.mem.eql(u8, iterator.name, other.goIterator().?.name);
@@ -125,7 +125,7 @@ pub fn publicNameCollisionIssue(allocator: std.mem.Allocator, document: semantic
         for (document.functions, 0..) |other, other_index| {
             if (!std.mem.eql(u8, other.receiver orelse "", receiver)) continue;
             if (!semantic.optionalStringEqual(function.package, other.package)) continue;
-            const other_name = try targets.default.publicFunctionNameAlloc(allocator, document, other);
+            const other_name = try target.publicFunctionNameAlloc(allocator, document, other);
             defer allocator.free(other_name);
             const clashes_method = std.mem.eql(u8, wrapper, other_name);
             const clashes_iterator = other.goIterator() != null and std.mem.eql(u8, wrapper, other.goIterator().?.name);
@@ -154,7 +154,7 @@ pub fn publicNameCollisionIssue(allocator: std.mem.Allocator, document: semantic
         if (!function.receiverIsValue()) continue;
         const declaration = semantic.typeDecl(document.types, function.receiver.?) orelse continue;
         if (declaration.kind != .@"enum") continue;
-        const name = try targets.default.publicFunctionNameAlloc(allocator, document, function);
+        const name = try target.publicFunctionNameAlloc(allocator, document, function);
         defer allocator.free(name);
         const generated: []const []const u8 = if (declaration.text orelse false)
             &.{ "String", "MarshalText", "UnmarshalText" }
@@ -195,7 +195,7 @@ pub fn publicNameCollisionIssue(allocator: std.mem.Allocator, document: semantic
                     ),
                     .site = .{ .path = "semantic.json", .declaration = declaration.name },
                     .hint = "rename one of the enum tags so they no longer share a Go identifier",
-                    .note = try memberCollisionNoteAlloc(allocator, field.name),
+                    .note = try memberCollisionNoteAlloc(allocator, field.name, target),
                 };
             }
         }
@@ -210,9 +210,9 @@ pub fn publicNameCollisionIssue(allocator: std.mem.Allocator, document: semantic
 /// Go field `Type`. Either way the check runs before generation, because a
 /// name reflection derived from `@typeName` can be something like `4])` and
 /// the only thing worse than rejecting it is writing it into a `.go` file.
-pub fn identifierIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
+pub fn identifierIssue(allocator: std.mem.Allocator, document: semantic.Semantic, target: targets.Target) !?diagnostic.Diagnostic {
     for (document.types) |declaration| {
-        if (try nameIssue(allocator, .{
+        if (try nameIssueForTarget(allocator, target, .{
             .label = "registered type name",
             .spelling = declaration.name,
             .declaration = if (declaration.name.len == 0) "types" else declaration.name,
@@ -220,7 +220,7 @@ pub fn identifierIssue(allocator: std.mem.Allocator, document: semantic.Semantic
             .hint = "register the type in `.types` with an explicit `.name` that is a Go identifier",
         })) |issue| {
             var result = issue;
-            result.note = try invalidTypeNameNoteAlloc(allocator, declaration);
+            result.note = try invalidTypeNameNoteAlloc(allocator, declaration, target);
             return result;
         }
         const member_label = switch (declaration.kind) {
@@ -230,7 +230,7 @@ pub fn identifierIssue(allocator: std.mem.Allocator, document: semantic.Semantic
             else => "field name",
         };
         for (declaration.fields) |field| {
-            if (try nameIssue(allocator, .{
+            if (try nameIssueForTarget(allocator, target, .{
                 .label = member_label,
                 .spelling = field.name,
                 .convert = true,
@@ -244,7 +244,7 @@ pub fn identifierIssue(allocator: std.mem.Allocator, document: semantic.Semantic
                 .hint = "rename the declaration in Zig so its name converts to a Go identifier",
             })) |issue| {
                 var result = issue;
-                result.note = try invalidMemberNameNoteAlloc(allocator, member_label, field.name);
+                result.note = try invalidMemberNameNoteAlloc(allocator, member_label, field.name, target);
                 return result;
             }
         }
@@ -253,7 +253,7 @@ pub fn identifierIssue(allocator: std.mem.Allocator, document: semantic.Semantic
         // An empty function name has its own diagnostic below, and it says
         // more than "this is not an identifier" would.
         if (function.name.len == 0) continue;
-        if (try nameIssue(allocator, .{
+        if (try nameIssueForTarget(allocator, target, .{
             .label = "function name",
             .spelling = function.goName() orelse function.name,
             .convert = function.goName() == null,
@@ -262,7 +262,7 @@ pub fn identifierIssue(allocator: std.mem.Allocator, document: semantic.Semantic
             .hint = "give the entry a `.name` that converts to a Go identifier",
         })) |issue| {
             var result = issue;
-            result.note = try functionOrConstructorRenameNoteAlloc(allocator, document, function);
+            result.note = try functionOrConstructorRenameNoteAlloc(allocator, document, function, target);
             return result;
         }
         // A parameter name reaches the C header verbatim, where `uint8_t
@@ -296,12 +296,12 @@ pub fn identifierIssue(allocator: std.mem.Allocator, document: semantic.Semantic
 /// The C header has one ordinary identifier namespace shared by typedefs,
 /// exported functions, and macros. Check the exact names lowering will emit
 /// for both backends before generation writes an uncompilable header.
-pub fn cIdentifierIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
-    if (try cIdentifierBackendIssue(allocator, document, false)) |issue| return issue;
-    return cIdentifierBackendIssue(allocator, document, true);
+pub fn cIdentifierIssue(allocator: std.mem.Allocator, document: semantic.Semantic, target: targets.Target) !?diagnostic.Diagnostic {
+    if (try cIdentifierBackendIssue(allocator, document, false, target)) |issue| return issue;
+    return cIdentifierBackendIssue(allocator, document, true, target);
 }
 
-fn cIdentifierBackendIssue(allocator: std.mem.Allocator, document: semantic.Semantic, purego: bool) !?diagnostic.Diagnostic {
+fn cIdentifierBackendIssue(allocator: std.mem.Allocator, document: semantic.Semantic, purego: bool, target: targets.Target) !?diagnostic.Diagnostic {
     var scratch_arena = std.heap.ArenaAllocator.init(allocator);
     defer scratch_arena.deinit();
     const scratch = scratch_arena.allocator();
@@ -342,7 +342,7 @@ fn cIdentifierBackendIssue(allocator: std.mem.Allocator, document: semantic.Sema
         const note: CIdentifierOrigin.Note = if (semantic.constructorForInit(document.constructors, function)) |constructor|
             .{ .type = try typeNameRenameNoteAlloc(scratch, constructor.type, .@"opaque") }
         else
-            .{ .function = try functionRenameNoteAlloc(scratch, function) };
+            .{ .function = try functionRenameNoteAlloc(scratch, function, target) };
         if (try addCIdentifier(allocator, scratch, &identifiers, name, .{ .label = label, .note = note })) |issue| return issue;
     }
     for (document.types) |declaration| {
@@ -445,7 +445,7 @@ const NameCheck = struct {
     hint: []const u8,
 };
 
-fn nameIssue(allocator: std.mem.Allocator, check: NameCheck) !?diagnostic.Diagnostic {
+fn nameIssueForTarget(allocator: std.mem.Allocator, target: targets.Target, check: NameCheck) !?diagnostic.Diagnostic {
     // A document that validates must not leak: callers are only asked for a
     // scratch arena because a *rejection* builds strings, not an acceptance.
     var converted: ?[]u8 = null;
@@ -460,8 +460,8 @@ fn nameIssue(allocator: std.mem.Allocator, check: NameCheck) !?diagnostic.Diagno
         candidate = converted.?;
         // An empty conversion would emit no member spelling at all (and, for
         // an enum, collide with the type name), even when a prefix is valid.
-        if (suffix.len != 0 and targets.default.isIdentifier(candidate)) return null;
-    } else if (targets.default.isIdentifier(candidate)) return null;
+        if (suffix.len != 0 and target.isIdentifier(candidate)) return null;
+    } else if (target.isIdentifier(candidate)) return null;
     const message = if (check.zig_path) |path|
         try std.fmt.allocPrint(allocator, "{s} `{s}` from Zig type `{s}` is not a valid Go identifier", .{ check.label, check.spelling, path })
     else
@@ -499,30 +499,30 @@ fn typeNameRenameNoteAlloc(allocator: std.mem.Allocator, name: []const u8, kind:
     );
 }
 
-fn functionRenameNoteAlloc(allocator: std.mem.Allocator, function: semantic.SemanticFn) ![]u8 {
+fn functionRenameNoteAlloc(allocator: std.mem.Allocator, function: semantic.SemanticFn, target: targets.Target) ![]u8 {
     const converted = try naming.pascalAlloc(allocator, function.name);
     defer allocator.free(converted);
-    const public_name = try validGoNameAlloc(allocator, converted, "Function");
+    const public_name = try validGoNameAlloc(allocator, converted, "Function", target);
     defer allocator.free(public_name);
     const path = try site.functionDeclarationAlloc(allocator, function);
     defer allocator.free(path);
     return std.fmt.allocPrint(allocator, "consider .name = \"{s}Binding\" on function {s}", .{ public_name, path });
 }
 
-fn functionOrConstructorRenameNoteAlloc(allocator: std.mem.Allocator, document: semantic.Semantic, function: semantic.SemanticFn) ![]u8 {
+fn functionOrConstructorRenameNoteAlloc(allocator: std.mem.Allocator, document: semantic.Semantic, function: semantic.SemanticFn, target: targets.Target) ![]u8 {
     if (semantic.constructorForInit(document.constructors, function)) |constructor| {
         for (document.types) |declaration| {
             if (std.mem.eql(u8, declaration.name, constructor.type)) return typeRenameNoteAlloc(allocator, declaration);
         }
         return typeNameRenameNoteAlloc(allocator, constructor.type, .@"opaque");
     }
-    return functionRenameNoteAlloc(allocator, function);
+    return functionRenameNoteAlloc(allocator, function, target);
 }
 
-fn invalidTypeNameNoteAlloc(allocator: std.mem.Allocator, declaration: semantic.TypeDecl) ![]u8 {
+fn invalidTypeNameNoteAlloc(allocator: std.mem.Allocator, declaration: semantic.TypeDecl, target: targets.Target) ![]u8 {
     const converted = try naming.pascalAlloc(allocator, declaration.name);
     defer allocator.free(converted);
-    const suggestion = try validGoNameAlloc(allocator, converted, if (declaration.kind == .@"enum") "Enum" else "Type");
+    const suggestion = try validGoNameAlloc(allocator, converted, if (declaration.kind == .@"enum") "Enum" else "Type", target);
     defer allocator.free(suggestion);
     return std.fmt.allocPrint(
         allocator,
@@ -531,23 +531,23 @@ fn invalidTypeNameNoteAlloc(allocator: std.mem.Allocator, declaration: semantic.
     );
 }
 
-fn invalidMemberNameNoteAlloc(allocator: std.mem.Allocator, label: []const u8, name: []const u8) ![]u8 {
+fn invalidMemberNameNoteAlloc(allocator: std.mem.Allocator, label: []const u8, name: []const u8, target: targets.Target) ![]u8 {
     const converted = try naming.camelAlloc(allocator, name);
     defer allocator.free(converted);
-    const suggestion = try validGoNameAlloc(allocator, converted, "value");
+    const suggestion = try validGoNameAlloc(allocator, converted, "value", target);
     defer allocator.free(suggestion);
     return std.fmt.allocPrint(allocator, "consider renaming {s} `{s}` to `{s}`", .{ label, name, suggestion });
 }
 
-fn memberCollisionNoteAlloc(allocator: std.mem.Allocator, name: []const u8) ![]u8 {
+fn memberCollisionNoteAlloc(allocator: std.mem.Allocator, name: []const u8, target: targets.Target) ![]u8 {
     const converted = try naming.camelAlloc(allocator, name);
     defer allocator.free(converted);
-    const base = try validGoNameAlloc(allocator, converted, "value");
+    const base = try validGoNameAlloc(allocator, converted, "value", target);
     defer allocator.free(base);
     return std.fmt.allocPrint(allocator, "consider renaming enum tag `{s}` to `{s}Value`", .{ name, base });
 }
 
-fn validGoNameAlloc(allocator: std.mem.Allocator, candidate: []const u8, fallback: []const u8) ![]u8 {
+fn validGoNameAlloc(allocator: std.mem.Allocator, candidate: []const u8, fallback: []const u8, target: targets.Target) ![]u8 {
     var first: ?u8 = null;
     for (candidate) |character| {
         if (std.ascii.isAlphanumeric(character) or character == '_') {
@@ -562,7 +562,7 @@ fn validGoNameAlloc(allocator: std.mem.Allocator, candidate: []const u8, fallbac
         if (std.ascii.isAlphanumeric(character) or character == '_') try result.append(allocator, character);
     }
     if (result.items.len == 0) try result.appendSlice(allocator, fallback);
-    if (!targets.default.isIdentifier(result.items)) try result.appendSlice(allocator, "Value");
+    if (!target.isIdentifier(result.items)) try result.appendSlice(allocator, "Value");
     return result.toOwnedSlice(allocator);
 }
 
@@ -570,7 +570,7 @@ fn functionSymbolAlloc(allocator: std.mem.Allocator, prefix: []const u8, functio
     return semantic.functionSymbolAlloc(allocator, prefix, function);
 }
 
-fn findGeneratedAccessorCollision(allocator: std.mem.Allocator, document: semantic.Semantic) !?[]const u8 {
+fn findGeneratedAccessorCollision(allocator: std.mem.Allocator, document: semantic.Semantic, target: targets.Target) !?[]const u8 {
     const Generated = struct { symbol: []const u8 };
     var generated: std.ArrayList(Generated) = .empty;
     defer {
@@ -603,7 +603,7 @@ fn findGeneratedAccessorCollision(allocator: std.mem.Allocator, document: semant
         }
         for (document.functions) |function| {
             if (!std.mem.eql(u8, function.receiver orelse "", declaration.name)) continue;
-            const method = try targets.default.publicFunctionNameAlloc(allocator, document, function);
+            const method = try target.publicFunctionNameAlloc(allocator, document, function);
             defer allocator.free(method);
             if (std.mem.eql(u8, method, "Tag")) return function.name;
             for (declaration.fields) |field| {
@@ -957,7 +957,7 @@ test "an enum method cannot take a name zigo generates on that enum" {
             .types = &.{case.declaration},
             .zig_version = "0.16.0",
         };
-        const issue = try publicNameCollisionIssue(scratch.allocator(), document);
+        const issue = try publicNameCollisionIssue(scratch.allocator(), document, targets.default);
         if (!case.collides) {
             try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), issue);
             continue;

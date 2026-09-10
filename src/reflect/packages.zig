@@ -20,6 +20,11 @@ pub fn reflectPackages(
             break :blk try naming.snakeAlloc(allocator, base);
         };
         if (!semantic.validPackagePath(entry.path)) return packageIssue("invalid package path `{s}`", .{entry.path});
+        // `targets.default`, not a threaded target: the binding walk runs at
+        // comptime in the consumer's build, before the CLI has been told which
+        // language to emit. It is a pre-flight that puts the mistake next to
+        // the declaration; `validate/packages.zig` asks the resolved target
+        // the same question at generate time.
         if (!targets.default.isIdentifier(name)) return packageIssue("package name `{s}` is not a valid Go identifier", .{name});
         for (packages.items) |previous| {
             if (std.mem.eql(u8, previous.path, entry.path)) return packageIssue("duplicate package path `{s}`", .{entry.path});
