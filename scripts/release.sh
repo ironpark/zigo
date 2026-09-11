@@ -93,6 +93,10 @@ if [[ $skip_checks -eq 0 ]]; then
 
   step "example generated trees (go-check)"
   for example in examples/*/; do
+    # The Rust examples have no `go-check` step; they are checked below.
+    if grep -q 'addRustBindings' "$example/build.zig"; then
+      continue
+    fi
     if grep -q 'name_prefix = "purego"' "$example/build.zig"; then
       (cd "$example" && zig build go-check purego-go-check --summary all)
     else
@@ -100,6 +104,13 @@ if [[ $skip_checks -eq 0 ]]; then
     fi
   done
   (cd examples/10-tagged-union && zig build go-check -Dpurego --summary all)
+
+  step "example generated trees (rust-check)"
+  for example in examples/*/; do
+    if grep -q 'addRustBindings' "$example/build.zig"; then
+      (cd "$example" && zig build rust-check abi-check --summary all)
+    fi
+  done
   if [[ -n "$(git status --porcelain examples)" ]]; then
     echo "release.sh: example trees changed during go-check; regenerate and commit them" >&2
     git status --short examples >&2
