@@ -137,18 +137,25 @@ edit() { sed -i.release-bak "$1" "$2" && rm -f "$2.release-bak"; }
 
 edit "s/^## \[Unreleased\]\$/## [$version] - $today/" CHANGELOG.md
 edit "s/^\( *\.version = \)\"$current\"/\1\"$version\"/" build.zig.zon
+# Not every one of these files carries a fetch line at any given time, so a
+# file without one is skipped; only having none at all is an error.
+bumped_fetch=0
 for file in README.md docs/getting-started.md; do
   fetch_ref="$current"
   if ! grep -Fq "github.com/ironpark/zigo#$fetch_ref" "$file"; then
     fetch_ref=main
   fi
   if ! grep -Fq "github.com/ironpark/zigo#$fetch_ref" "$file"; then
-    echo "release.sh: $file has no fetch line for $current or main to update" >&2
-    git checkout -- CHANGELOG.md build.zig.zon
-    exit 1
+    continue
   fi
   edit "s#github.com/ironpark/zigo\#$fetch_ref#github.com/ironpark/zigo\#$version#g" "$file"
+  bumped_fetch=1
 done
+if [[ $bumped_fetch -eq 0 ]]; then
+  echo "release.sh: no file has a fetch line for $current or main to update" >&2
+  git checkout -- CHANGELOG.md build.zig.zon
+  exit 1
+fi
 
 # The release notes the workflow will publish must be extractable now.
 scripts/extract-changelog-section.sh "$version" >/dev/null
