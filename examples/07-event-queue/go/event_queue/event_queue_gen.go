@@ -1014,6 +1014,7 @@ type Option func(*options)
 type options struct {
 	rows               uint16
 	maxScrollbackBytes uint
+	blinkIntervalMs    *uint32
 }
 
 // WithRows configures rows. Default: 24.
@@ -1030,18 +1031,27 @@ func WithMaxScrollbackBytes(maxScrollbackBytes uint) Option {
 	}
 }
 
+// WithBlinkIntervalMs configures blink_interval_ms. Default: 500.
+func WithBlinkIntervalMs(blinkIntervalMs *uint32) Option {
+	return func(cfg *options) {
+		cfg.blinkIntervalMs = blinkIntervalMs
+	}
+}
+
 // NewTerminal creates a caller-owned Terminal.
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.
 func NewTerminal(initialCols uint16, opts ...Option) (*Terminal, error) {
+	var zigoDefaultBlinkIntervalMs uint32 = 500
 	cfg := options{
 		rows:               24,
 		maxScrollbackBytes: 1048576,
+		blinkIntervalMs:    &zigoDefaultBlinkIntervalMs,
 	}
 	for _, opt := range opts {
 		opt(&cfg)
 	}
-	result, code := raw.TerminalInit(initialCols, cfg.rows, cfg.maxScrollbackBytes)
+	result, code := raw.TerminalInit(initialCols, cfg.rows, cfg.maxScrollbackBytes, cfg.blinkIntervalMs)
 	if code != 0 {
 		return nil, zigoErrorForCode("NewTerminal", code)
 	}
@@ -1052,6 +1062,26 @@ func NewTerminal(initialCols uint16, opts ...Option) (*Terminal, error) {
 func MustNewTerminal(initialCols uint16, opts ...Option) *Terminal {
 	return zigoMust(NewTerminal(initialCols, opts...))
 }
+
+// BlinkIntervalMs: 0 when the option was turned off, so the Go test can tell the default
+// apart from an explicit `nil`.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (t *Terminal) BlinkIntervalMs() (uint32, error) {
+	ptr, err := zigoCheckedPointer("Terminal.BlinkIntervalMs receiver", t)
+	if err != nil {
+		return 0, err
+	}
+	defer t.zigoRelease()
+	result, code := raw.TerminalBlinkIntervalMs(ptr)
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Terminal.BlinkIntervalMs", code), t)
+	}
+	return result, nil
+}
+
+// MustBlinkIntervalMs calls BlinkIntervalMs and panics with its typed error on failure.
+func (t *Terminal) MustBlinkIntervalMs() uint32 { return zigoMust(t.BlinkIntervalMs()) }
 
 // Cols calls the Zig function Terminal.cols.
 // It returns *HandleError if a required handle is nil or closed.

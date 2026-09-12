@@ -46,6 +46,10 @@ pub const Limits = extern struct {
 pub const TerminalOptions = struct {
     rows: u16 = 24,
     max_scrollback_bytes: usize = 1024 * 1024,
+    /// An optional with a default that is a value rather than `null`: Go
+    /// spells the option `*uint32`, and the generated constructor has to point
+    /// it at this number when the caller says nothing.
+    blink_interval_ms: ?u32 = 500,
     title: []const u8 = "zigo",
 };
 
@@ -53,6 +57,7 @@ pub const Terminal = struct {
     cols_value: u16,
     rows_value: u16,
     scrollback_value: usize,
+    blink_value: ?u32,
 
     pub fn init(gpa: std.mem.Allocator, initial_cols: u16, options: TerminalOptions) error{Invalid}!Terminal {
         _ = gpa;
@@ -61,7 +66,14 @@ pub const Terminal = struct {
             .cols_value = initial_cols,
             .rows_value = options.rows,
             .scrollback_value = options.max_scrollback_bytes,
+            .blink_value = options.blink_interval_ms,
         };
+    }
+
+    /// 0 when the option was turned off, so the Go test can tell the default
+    /// apart from an explicit `nil`.
+    pub fn blinkIntervalMs(self: *const Terminal) u32 {
+        return self.blink_value orelse 0;
     }
 
     pub fn cols(self: *const Terminal) u16 {

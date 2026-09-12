@@ -624,10 +624,23 @@ func BorrowChildDeinit(self unsafe.Pointer) int32 {
 }
 
 // TerminalInit calls the generated C ABI wrapper for zg_terminal_init.
-func TerminalInit(initialCols uint16, rows uint16, maxScrollbackBytes uint) (unsafe.Pointer, int32) {
+func TerminalInit(initialCols uint16, rows uint16, maxScrollbackBytes uint, blinkIntervalMs *uint32) (unsafe.Pointer, int32) {
+	var blinkIntervalMsValue C.uint32_t
+	var blinkIntervalMsPtr *C.uint32_t
+	if blinkIntervalMs != nil {
+		blinkIntervalMsValue = C.uint32_t(*blinkIntervalMs)
+		blinkIntervalMsPtr = &blinkIntervalMsValue
+	}
 	var outResult *C.zg_terminal
-	code := int32(C.zg_terminal_init(C.uint16_t(initialCols), C.uint16_t(rows), C.size_t(maxScrollbackBytes), &outResult))
+	code := int32(C.zg_terminal_init(C.uint16_t(initialCols), C.uint16_t(rows), C.size_t(maxScrollbackBytes), blinkIntervalMsPtr, &outResult))
 	return unsafe.Pointer(outResult), code
+}
+
+// TerminalBlinkIntervalMs calls the generated C ABI wrapper for zg_terminal_blink_interval_ms.
+func TerminalBlinkIntervalMs(self unsafe.Pointer) (uint32, int32) {
+	var outResult C.uint32_t
+	code := int32(C.zg_terminal_blink_interval_ms((*C.zg_terminal)(self), &outResult))
+	return uint32(outResult), code
 }
 
 // TerminalCols calls the generated C ABI wrapper for zg_terminal_cols.

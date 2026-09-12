@@ -15,20 +15,107 @@
         {
           "name": "options",
           "flatten": [
-            {"name": "cols", "type": {"bits": 16, "is_usize": false, "kind": "int", "signed": false}},
-            {"name": "rows", "type": {"bits": 16, "is_usize": false, "kind": "int", "signed": false}},
-            {"default": {"int": 1048576}, "name": "max_scrollback_bytes", "type": {"bits": 64, "is_usize": true, "kind": "int", "signed": false}},
-            {"default": {"enum": "normal"}, "name": "mode", "type": {"kind": "enum", "ref": "Mode"}},
-            {"default": {"null": {}}, "name": "limit", "type": {"child": {"bits": 32, "is_usize": false, "kind": "int", "signed": false}, "kind": "optional"}}
+            {
+              "name": "cols",
+              "type": {
+                "bits": 16,
+                "is_usize": false,
+                "kind": "int",
+                "signed": false
+              }
+            },
+            {
+              "name": "rows",
+              "type": {
+                "bits": 16,
+                "is_usize": false,
+                "kind": "int",
+                "signed": false
+              }
+            },
+            {
+              "default": {
+                "int": 1048576
+              },
+              "name": "max_scrollback_bytes",
+              "type": {
+                "bits": 64,
+                "is_usize": true,
+                "kind": "int",
+                "signed": false
+              }
+            },
+            {
+              "default": {
+                "enum": "normal"
+              },
+              "name": "mode",
+              "type": {
+                "kind": "enum",
+                "ref": "Mode"
+              }
+            },
+            {
+              "default": {
+                "null": {}
+              },
+              "name": "limit",
+              "type": {
+                "child": {
+                  "bits": 32,
+                  "is_usize": false,
+                  "kind": "int",
+                  "signed": false
+                },
+                "kind": "optional"
+              }
+            },
+            {
+              "default": {
+                "int": 10000
+              },
+              "name": "max_lines",
+              "type": {
+                "child": {
+                  "bits": 64,
+                  "is_usize": true,
+                  "kind": "int",
+                  "signed": false
+                },
+                "kind": "optional"
+              }
+            },
+            {
+              "default": {
+                "bool": true
+              },
+              "name": "blink",
+              "type": {
+                "child": {
+                  "kind": "bool"
+                },
+                "kind": "optional"
+              }
+            }
           ],
-          "go": {"options": {}},
-          "type": {"kind": "value_struct", "ref": "TerminalOptions"}
+          "go": {
+            "options": {}
+          },
+          "type": {
+            "kind": "value_struct",
+            "ref": "TerminalOptions"
+          }
         }
       ],
       "return": {
         "error_set": [],
         "kind": "error_union",
-        "payload": {"const": false, "kind": "opaque_ptr", "nullable": false, "ref": "Terminal"}
+        "payload": {
+          "const": false,
+          "kind": "opaque_ptr",
+          "nullable": false,
+          "ref": "Terminal"
+        }
       },
       "symbol": "ignored"
     },
@@ -38,42 +125,144 @@
         {
           "name": "options",
           "flatten": [
-            {"name": "enabled", "type": {"kind": "bool"}},
-            {"default": {"float": 1.5}, "name": "scale", "type": {"bits": 32, "kind": "float"}}
+            {
+              "name": "enabled",
+              "type": {
+                "kind": "bool"
+              }
+            },
+            {
+              "default": {
+                "float": 1.5
+              },
+              "name": "scale",
+              "type": {
+                "bits": 32,
+                "kind": "float"
+              }
+            }
           ],
-          "go": {"options": {}},
-          "type": {"kind": "value_struct", "ref": "ConfigureOptions"}
+          "go": {
+            "options": {}
+          },
+          "type": {
+            "kind": "value_struct",
+            "ref": "ConfigureOptions"
+          }
         }
       ],
-      "return": {"kind": "void"},
+      "return": {
+        "kind": "void"
+      },
       "symbol": "ignored"
     },
     {
       "name": "freeTerminal",
       "params": [],
       "receiver": "Terminal",
-      "return": {"kind": "void"},
+      "return": {
+        "kind": "void"
+      },
       "symbol": "ignored"
     }
   ],
   "package": "options_required_fields",
   "prefix": "zg",
   "types": [
-    {"kind": "opaque", "name": "Terminal"},
+    {
+      "kind": "opaque",
+      "name": "Terminal"
+    },
     {
       "exhaustive": true,
-      "fields": [{"name": "normal", "value": 0}, {"name": "alternate", "value": 1}],
+      "fields": [
+        {
+          "name": "normal",
+          "value": 0
+        },
+        {
+          "name": "alternate",
+          "value": 1
+        }
+      ],
       "kind": "enum",
       "name": "Mode",
-      "tag_type": {"bits": 8, "is_usize": false, "kind": "int", "signed": false}
+      "tag_type": {
+        "bits": 8,
+        "is_usize": false,
+        "kind": "int",
+        "signed": false
+      }
     },
     {
       "fields": [
-        {"name": "cols", "type": {"bits": 16, "is_usize": false, "kind": "int", "signed": false}},
-        {"name": "rows", "type": {"bits": 16, "is_usize": false, "kind": "int", "signed": false}},
-        {"name": "max_scrollback_bytes", "type": {"bits": 64, "is_usize": true, "kind": "int", "signed": false}},
-        {"name": "mode", "type": {"kind": "enum", "ref": "Mode"}},
-        {"name": "limit", "type": {"child": {"bits": 32, "is_usize": false, "kind": "int", "signed": false}, "kind": "optional"}}
+        {
+          "name": "cols",
+          "type": {
+            "bits": 16,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        },
+        {
+          "name": "rows",
+          "type": {
+            "bits": 16,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        },
+        {
+          "name": "max_scrollback_bytes",
+          "type": {
+            "bits": 64,
+            "is_usize": true,
+            "kind": "int",
+            "signed": false
+          }
+        },
+        {
+          "name": "mode",
+          "type": {
+            "kind": "enum",
+            "ref": "Mode"
+          }
+        },
+        {
+          "name": "limit",
+          "type": {
+            "child": {
+              "bits": 32,
+              "is_usize": false,
+              "kind": "int",
+              "signed": false
+            },
+            "kind": "optional"
+          }
+        },
+        {
+          "name": "max_lines",
+          "type": {
+            "child": {
+              "bits": 64,
+              "is_usize": true,
+              "kind": "int",
+              "signed": false
+            },
+            "kind": "optional"
+          }
+        },
+        {
+          "name": "blink",
+          "type": {
+            "child": {
+              "kind": "bool"
+            },
+            "kind": "optional"
+          }
+        }
       ],
       "kind": "value_struct",
       "name": "TerminalOptions",
@@ -81,8 +270,19 @@
     },
     {
       "fields": [
-        {"name": "enabled", "type": {"kind": "bool"}},
-        {"name": "scale", "type": {"bits": 32, "kind": "float"}}
+        {
+          "name": "enabled",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "scale",
+          "type": {
+            "bits": 32,
+            "kind": "float"
+          }
+        }
       ],
       "kind": "value_struct",
       "name": "ConfigureOptions",

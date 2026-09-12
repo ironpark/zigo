@@ -13,6 +13,8 @@ type terminalOptions struct {
 	maxScrollbackBytes uint
 	mode Mode
 	limit *uint32
+	maxLines *uint
+	blink *bool
 }
 
 // WithTerminalMaxScrollbackBytes configures max_scrollback_bytes. Default: 1048576.
@@ -36,19 +38,42 @@ func WithTerminalLimit(limit *uint32) TerminalOption {
 	}
 }
 
+// WithTerminalMaxLines configures max_lines. Default: 10000.
+func WithTerminalMaxLines(maxLines *uint) TerminalOption {
+	return func(cfg *terminalOptions) {
+		cfg.maxLines = maxLines
+	}
+}
+
+// WithTerminalBlink configures blink. Default: true.
+func WithTerminalBlink(blink *bool) TerminalOption {
+	return func(cfg *terminalOptions) {
+		cfg.blink = blink
+	}
+}
+
 // NewTerminal creates a caller-owned Terminal.
 // The caller must call Close on the returned handle.
 // A native panic is returned as *NativePanicError.
 func NewTerminal(cols uint16, rows uint16, opts ...TerminalOption) (*Terminal, error) {
+	var zigoDefaultMaxLines uint = 10000
+	var zigoDefaultBlink bool = true
 	cfg := terminalOptions{
 		maxScrollbackBytes: 1048576,
 		mode: ModeNormal,
 		limit: nil,
+		maxLines: &zigoDefaultMaxLines,
+		blink: &zigoDefaultBlink,
 	}
 	for _, opt := range opts {
 		opt(&cfg)
 	}
-	result, code := raw.TerminalInit(cols, rows, cfg.maxScrollbackBytes, uint8(cfg.mode), cfg.limit)
+	var blinkRaw *uint8
+	if cfg.blink != nil {
+		blinkRawValue := zigoBoolToUint8(*cfg.blink)
+		blinkRaw = &blinkRawValue
+	}
+	result, code := raw.TerminalInit(cols, rows, cfg.maxScrollbackBytes, uint8(cfg.mode), cfg.limit, cfg.maxLines, blinkRaw)
 	if code != 0 {
 		return nil, zigoErrorForCode("NewTerminal", code)
 	}

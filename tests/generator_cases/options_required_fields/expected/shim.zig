@@ -8,8 +8,8 @@ fn panicHandler(message: []const u8, _: ?usize) noreturn {
 }
 pub const panic = std.debug.FullPanic(panicHandler);
 
-export fn zg_terminal_init_impl(cols: u16, rows: u16, max_scrollback_bytes: usize, mode: u8, limit: ?*const u32, out_result: **target.Terminal) i32 {
-    const result = target.Terminal.init(target.TerminalOptions{ .cols = cols, .rows = rows, .max_scrollback_bytes = max_scrollback_bytes, .mode = @enumFromInt(mode), .limit = if (limit) |zigo_limit| zigo_limit.* else null });
+export fn zg_terminal_init_impl(cols: u16, rows: u16, max_scrollback_bytes: usize, mode: u8, limit: ?*const u32, max_lines: ?*const usize, blink: ?*const u8, out_result: **target.Terminal) i32 {
+    const result = target.Terminal.init(target.TerminalOptions{ .cols = cols, .rows = rows, .max_scrollback_bytes = max_scrollback_bytes, .mode = @enumFromInt(mode), .limit = if (limit) |zigo_limit| zigo_limit.* else null, .max_lines = if (max_lines) |zigo_max_lines| zigo_max_lines.* else null, .blink = if (blink) |zigo_blink| zigo_blink.* != 0 else null });
     out_result.* = result;
     return 0;
 }

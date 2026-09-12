@@ -21,7 +21,7 @@ typedef uint8_t zg_mode;
 #endif
 #endif
 
-ZIGO_EXPORT int32_t zg_terminal_init(uint16_t cols, uint16_t rows, size_t max_scrollback_bytes, uint8_t mode, const uint32_t * limit, zg_terminal * * out_result);
+ZIGO_EXPORT int32_t zg_terminal_init(uint16_t cols, uint16_t rows, size_t max_scrollback_bytes, uint8_t mode, const uint32_t * limit, const size_t * max_lines, const uint8_t * blink, zg_terminal * * out_result);
 ZIGO_EXPORT void zg_configure(uint8_t enabled, float scale);
 ZIGO_EXPORT int32_t zg_terminal_free_terminal(zg_terminal * self);
 ZIGO_EXPORT const char *zg_last_error_message(void);

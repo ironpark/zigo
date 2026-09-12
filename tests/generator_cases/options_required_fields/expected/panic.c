@@ -71,14 +71,14 @@ ZIGO_EXPORT const char *zg_caught_panic_message(int32_t code) {
     return zg_panic_slots[slot];
 }
 
-int32_t zg_terminal_init_impl(uint16_t cols, uint16_t rows, size_t max_scrollback_bytes, uint8_t mode, const uint32_t * limit, zg_terminal * * out_result);
-ZIGO_EXPORT int32_t zg_terminal_init(uint16_t cols, uint16_t rows, size_t max_scrollback_bytes, uint8_t mode, const uint32_t * limit, zg_terminal * * out_result) {
+int32_t zg_terminal_init_impl(uint16_t cols, uint16_t rows, size_t max_scrollback_bytes, uint8_t mode, const uint32_t * limit, const size_t * max_lines, const uint8_t * blink, zg_terminal * * out_result);
+ZIGO_EXPORT int32_t zg_terminal_init(uint16_t cols, uint16_t rows, size_t max_scrollback_bytes, uint8_t mode, const uint32_t * limit, const size_t * max_lines, const uint8_t * blink, zg_terminal * * out_result) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
         return zg_panic_publish();
     }
-    int32_t result = zg_terminal_init_impl(cols, rows, max_scrollback_bytes, mode, limit, out_result);
+    int32_t result = zg_terminal_init_impl(cols, rows, max_scrollback_bytes, mode, limit, max_lines, blink, out_result);
     zg_panic_active = 0;
     return result;
 }

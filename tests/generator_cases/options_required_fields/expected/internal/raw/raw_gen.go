@@ -19,15 +19,27 @@ func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
 func PanicMessage(code int32) string { return C.GoString(C.zg_caught_panic_message(C.int32_t(code))) }
 
 // TerminalInit calls the generated C ABI wrapper for zg_terminal_init.
-func TerminalInit(cols uint16, rows uint16, maxScrollbackBytes uint, mode uint8, limit *uint32) (unsafe.Pointer, int32) {
+func TerminalInit(cols uint16, rows uint16, maxScrollbackBytes uint, mode uint8, limit *uint32, maxLines *uint, blink *uint8) (unsafe.Pointer, int32) {
 	var limitValue C.uint32_t
 	var limitPtr *C.uint32_t
 	if limit != nil {
 		limitValue = C.uint32_t(*limit)
 		limitPtr = &limitValue
 	}
+	var maxLinesValue C.size_t
+	var maxLinesPtr *C.size_t
+	if maxLines != nil {
+		maxLinesValue = C.size_t(*maxLines)
+		maxLinesPtr = &maxLinesValue
+	}
+	var blinkValue C.uint8_t
+	var blinkPtr *C.uint8_t
+	if blink != nil {
+		blinkValue = C.uint8_t(*blink)
+		blinkPtr = &blinkValue
+	}
 	var outResult *C.zg_terminal
-	code := int32(C.zg_terminal_init(C.uint16_t(cols), C.uint16_t(rows), C.size_t(maxScrollbackBytes), C.uint8_t(mode), limitPtr, &outResult))
+	code := int32(C.zg_terminal_init(C.uint16_t(cols), C.uint16_t(rows), C.size_t(maxScrollbackBytes), C.uint8_t(mode), limitPtr, maxLinesPtr, blinkPtr, &outResult))
 	return unsafe.Pointer(outResult), code
 }
 // Configure calls the generated C ABI wrapper for zg_configure.

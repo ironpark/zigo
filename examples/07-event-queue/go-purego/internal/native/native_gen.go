@@ -101,7 +101,8 @@ type nativeBindings struct {
 	fnBorrowViewExplode                 func(unsafe.Pointer) int32
 	fnBorrowChildGet                    func(unsafe.Pointer, *int32) int32
 	fnBorrowChildDeinit                 func(unsafe.Pointer) int32
-	fnTerminalInit                      func(uint16, uint16, uintptr, *unsafe.Pointer) int32
+	fnTerminalInit                      func(uint16, uint16, uintptr, *uint32, *unsafe.Pointer) int32
+	fnTerminalBlinkIntervalMs           func(unsafe.Pointer, *uint32) int32
 	fnTerminalCols                      func(unsafe.Pointer, *uint16) int32
 	fnTerminalRows                      func(unsafe.Pointer, *uint16) int32
 	fnTerminalMaxScrollbackBytes        func(unsafe.Pointer, *uintptr) int32
@@ -560,6 +561,10 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_terminal_init", err)
 	}
+	addrTerminalBlinkIntervalMs, err := resolveSymbol(handle, "zg_terminal_blink_interval_ms")
+	if err != nil {
+		return fail("zg_terminal_blink_interval_ms", err)
+	}
 	addrTerminalCols, err := resolveSymbol(handle, "zg_terminal_cols")
 	if err != nil {
 		return fail("zg_terminal_cols", err)
@@ -681,6 +686,7 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnBorrowChildGet, addrBorrowChildGet)
 	purego.RegisterFunc(&next.fnBorrowChildDeinit, addrBorrowChildDeinit)
 	purego.RegisterFunc(&next.fnTerminalInit, addrTerminalInit)
+	purego.RegisterFunc(&next.fnTerminalBlinkIntervalMs, addrTerminalBlinkIntervalMs)
 	purego.RegisterFunc(&next.fnTerminalCols, addrTerminalCols)
 	purego.RegisterFunc(&next.fnTerminalRows, addrTerminalRows)
 	purego.RegisterFunc(&next.fnTerminalMaxScrollbackBytes, addrTerminalMaxScrollbackBytes)
@@ -1278,9 +1284,16 @@ func BorrowChildDeinit(self unsafe.Pointer) int32 {
 }
 
 // TerminalInit calls the generated purego ABI wrapper for zg_terminal_init.
-func TerminalInit(initialCols uint16, rows uint16, maxScrollbackBytes uint) (unsafe.Pointer, int32) {
+func TerminalInit(initialCols uint16, rows uint16, maxScrollbackBytes uint, blinkIntervalMs *uint32) (unsafe.Pointer, int32) {
 	var outResult unsafe.Pointer
-	code := bindings().fnTerminalInit(initialCols, rows, uintptr(maxScrollbackBytes), &outResult)
+	code := bindings().fnTerminalInit(initialCols, rows, uintptr(maxScrollbackBytes), blinkIntervalMs, &outResult)
+	return outResult, code
+}
+
+// TerminalBlinkIntervalMs calls the generated purego ABI wrapper for zg_terminal_blink_interval_ms.
+func TerminalBlinkIntervalMs(self unsafe.Pointer) (uint32, int32) {
+	var outResult uint32
+	code := bindings().fnTerminalBlinkIntervalMs(self, &outResult)
 	return outResult, code
 }
 

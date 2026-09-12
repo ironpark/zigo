@@ -4,6 +4,16 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Fixed
+
+- `.options`의 optional 필드가 `null`이 아닌 Zig 기본값(`?u32 = 500`)을 가질 때 생성된 Go가
+  컴파일되지 않던 문제를 고쳤습니다. 설정 구조체의 필드는 포인터인데 초기화가 값 리터럴을
+  그대로 써서 `cannot use 500 as *uint32 value`가 났습니다. 이제 생성자가 그 기본값을
+  지역 변수에 두고 그 주소를 넣습니다. `= null` 기본값과 optional이 아닌 필드의 출력은
+  바뀌지 않습니다.
+
 ## [0.24.0] - 2026-09-12
 
 ### Changed

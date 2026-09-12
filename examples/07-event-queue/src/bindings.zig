@@ -150,9 +150,10 @@ pub const bindings = zigo.define(.{
         Terminal.define(&.{
             Terminal.func("init", .{
                 .params = &.{
-                    zigo.param.options(2, &.{ "rows", "max_scrollback_bytes" }, .{ .prefix = "" }),
+                    zigo.param.options(2, &.{ "rows", "max_scrollback_bytes", "blink_interval_ms" }, .{ .prefix = "" }),
                 },
             }),
+            Terminal.func("blinkIntervalMs", .{}),
             Terminal.func("cols", .{}),
             Terminal.func("rows", .{}),
             Terminal.func("maxScrollbackBytes", .{}),

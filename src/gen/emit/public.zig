@@ -377,6 +377,14 @@ fn renderFunctionOptions(
     }
 }
 
+/// The variable a pointer-typed default points at. Field names are unique
+/// within one options struct, so the name is too.
+fn defaultVariableNameAlloc(allocator: std.mem.Allocator, field_go_name: []const u8) ![]u8 {
+    const pascal = try naming.pascalAlloc(allocator, field_go_name);
+    defer allocator.free(pascal);
+    return std.fmt.allocPrint(allocator, "zigoDefault{s}", .{pascal});
+}
+
 fn renderFunctionOptionsInit(
     scope: public_writers.PublicScope,
     allocator: std.mem.Allocator,
@@ -403,9 +411,31 @@ fn renderFunctionOptionsInit(
     const field_go_names = try targets.go.paramNamesAlloc(allocator, zig_field_names);
     defer naming.freeParamNames(allocator, field_go_names);
 
+    // An optional field is a pointer in Go, and Go has no address of a
+    // literal: a default that is a value rather than `null` needs a variable
+    // to point at. It lives as long as `cfg` does, and an option that
+    // replaces the field simply leaves it unused.
+    for (options_info.fields, 0..) |field, i| {
+        const default_value = field.default orelse continue;
+        if (field.type != .optional or default_value == .null) continue;
+        const child = field.type.optional.child.*;
+        const default_str = try formatGoDefaultAlloc(allocator, scope, child, default_value);
+        defer allocator.free(default_str);
+        const variable = try defaultVariableNameAlloc(allocator, field_go_names[i]);
+        defer allocator.free(variable);
+        try writer.print("\tvar {s} ", .{variable});
+        try public_writers.writePublicGoType(scope, writer, child);
+        try writer.print(" = {s}\n", .{default_str});
+    }
     try writer.print("\tcfg := {s}{{\n", .{config_type_name});
     for (options_info.fields, 0..) |field, i| {
         const default_value = field.default orelse continue;
+        if (field.type == .optional and default_value != .null) {
+            const variable = try defaultVariableNameAlloc(allocator, field_go_names[i]);
+            defer allocator.free(variable);
+            try writer.print("\t\t{s}: &{s},\n", .{ field_go_names[i], variable });
+            continue;
+        }
         const default_str = try formatGoDefaultAlloc(allocator, scope, field.type, default_value);
         defer allocator.free(default_str);
         try writer.print("\t\t{s}: {s},\n", .{ field_go_names[i], default_str });

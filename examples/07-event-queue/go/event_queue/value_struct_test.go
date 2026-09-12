@@ -17,7 +17,36 @@ func TestFunctionalOptionsDefault(t *testing.T) {
 	if got := must(terminal.MaxScrollbackBytes()); got != 1024*1024 {
 		t.Fatalf("MaxScrollbackBytes() = %d, want default %d", got, 1024*1024)
 	}
+	// An optional field whose Zig default is a value, not null: the caller
+	// said nothing, so the default has to cross as a pointer to 500.
+	if got := must(terminal.BlinkIntervalMs()); got != 500 {
+		t.Fatalf("BlinkIntervalMs() = %d, want default 500", got)
+	}
 }
+
+// The same field with the option given both ways: a value replaces the
+// default, and nil turns the option off rather than restoring it.
+func TestFunctionalOptionsOptionalOverride(t *testing.T) {
+	terminal, err := NewTerminal(80, WithBlinkIntervalMs(zigoTestPtr(uint32(120))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer terminal.Close()
+	if got := must(terminal.BlinkIntervalMs()); got != 120 {
+		t.Fatalf("BlinkIntervalMs() = %d, want 120", got)
+	}
+
+	off, err := NewTerminal(80, WithBlinkIntervalMs(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer off.Close()
+	if got := must(off.BlinkIntervalMs()); got != 0 {
+		t.Fatalf("BlinkIntervalMs() = %d, want 0 for a nil option", got)
+	}
+}
+
+func zigoTestPtr[T any](value T) *T { return &value }
 
 func TestFunctionalOptionsPartial(t *testing.T) {
 	terminal, err := NewTerminal(80, WithRows(50))
