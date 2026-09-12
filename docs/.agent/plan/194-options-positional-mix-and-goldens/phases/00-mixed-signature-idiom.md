@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-12T05:06:53Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `zig build test`가 통과하고, 옵션 검증 테스트가 새 hint 문구를 확인한다.
 > NEXT: none

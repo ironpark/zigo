@@ -9,7 +9,7 @@ registered_at: "2026-09-12T05:02:27Z"
 
 # Phases
 
-- [ ] [Phase 00: 혼합 시그니처 관용구와 hint 정정](phases/00-mixed-signature-idiom.md)
+- [x] [Phase 00: 혼합 시그니처 관용구와 hint 정정](phases/00-mixed-signature-idiom.md)
 - [ ] [Phase 01: 기본 접두사와 혼합 시그니처 골든](phases/01-default-prefix-golden.md)
 
 # Shared Verification
