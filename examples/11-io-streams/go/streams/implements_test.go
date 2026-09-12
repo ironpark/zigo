@@ -18,6 +18,10 @@ var (
 	_ io.WriterTo     = (*Document)(nil)
 	_ io.ReaderFrom   = (*Document)(nil)
 	_ io.StringWriter = (*Document)(nil)
+	// Sink takes opaque bytes, so its WriteString lends the string's own
+	// bytes rather than converting them; the interface is satisfied either
+	// way.
+	_ io.StringWriter = (*Sink)(nil)
 )
 
 // io.ReadWriteCloser is not restated here: the satisfies plugin writes that
@@ -192,5 +196,60 @@ func TestWriteStringOnAClosedDocument(t *testing.T) {
 	var handleErr *HandleError
 	if _, err := doc.WriteString("alpha"); !errors.As(err, &handleErr) {
 		t.Fatalf("WriteString after Close = %v, want a HandleError", err)
+	}
+}
+
+// A byte parameter reaches Go as []byte, and the generated WriteString hands
+// it the string's own bytes. Nothing about the string has to be valid UTF-8:
+// the loan is bytes, and native gets exactly the ones the caller held.
+func TestSinkWriteStringLendsBytes(t *testing.T) {
+	sink, err := NewSink()
+	if err != nil {
+		t.Fatalf("NewSink: %v", err)
+	}
+	defer sink.Close()
+
+	const invalid = "\xff\xfe head"
+	n, err := sink.WriteString(invalid)
+	if err != nil || n != len(invalid) {
+		t.Fatalf("WriteString = %d, %v; want %d, nil", n, err, len(invalid))
+	}
+	// io.WriteString prefers WriteString over Write when a type has both.
+	if _, err := io.WriteString(sink, " tail"); err != nil {
+		t.Fatalf("io.WriteString: %v", err)
+	}
+	count, err := sink.Count()
+	if err != nil {
+		t.Fatalf("Count: %v", err)
+	}
+	if want := uint(len(invalid) + len(" tail")); count != want {
+		t.Fatalf("Count = %d, want %d", count, want)
+	}
+
+	// The empty string lends a zero-length slice, which native accepts the
+	// way Write accepts an empty p.
+	if n, err := sink.WriteString(""); err != nil || n != 0 {
+		t.Fatalf("WriteString(\"\") = %d, %v; want 0, nil", n, err)
+	}
+
+	// The bound method is still there under its own name, taking bytes.
+	if err := sink.Push([]byte("!")); err != nil {
+		t.Fatalf("Push: %v", err)
+	}
+}
+
+// The wrapper adds no path of its own: a closed handle reports through it
+// exactly as the method does.
+func TestSinkWriteStringOnAClosedSink(t *testing.T) {
+	sink, err := NewSink()
+	if err != nil {
+		t.Fatalf("NewSink: %v", err)
+	}
+	if err := sink.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	var handleErr *HandleError
+	if _, err := sink.WriteString("x"); !errors.As(err, &handleErr) {
+		t.Fatalf("WriteString on a closed handle: %v", err)
 	}
 }

@@ -279,6 +279,35 @@ func (s *Sink) Count() (uint, error) {
 	return result, nil
 }
 
+// Push: Bytes with no promise of being UTF-8, which is why the binding leaves
+// the parameter opaque. The generated `WriteString` still takes a Go
+// `string` and lends its bytes here without copying them.
+// It returns *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
+func (s *Sink) Push(bytes []byte) error {
+	ptr, err := zigoCheckedPointer("Sink.Push receiver", s)
+	if err != nil {
+		return err
+	}
+	defer s.zigoRelease()
+	code := raw.SinkPush(ptr, bytes)
+	if code != 0 {
+		return zigoPoisonAfterPanic(zigoErrorForCode("Sink.Push", code), s)
+	}
+	return nil
+}
+
+// WriteString calls Push, satisfying io.StringWriter.
+// The method takes the whole of str, so the count is len(str) whenever it succeeds.
+// The method takes bytes, so str lends its own, without a copy; native reads them during the call only.
+func (s *Sink) WriteString(str string) (int, error) {
+	zigoBytes := unsafe.Slice(unsafe.StringData(str), len(str))
+	if err := s.Push(zigoBytes); err != nil {
+		return 0, err
+	}
+	return len(str), nil
+}
+
 // NewSource creates a caller-owned Source.
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.

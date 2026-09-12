@@ -55,64 +55,73 @@ pub fn renderImplementsWrapper(
     const method = implements.methodName();
     const interface = implements.interfaceName();
 
+    // The interface fixes the parameter's type, not its name, so the wrapper
+    // renames it out of the way when the receiver already took the letter.
+    const name = switch (implements) {
+        .writer, .reader => wrapperParamName(receiver_name, "p", "buf"),
+        .string_writer => wrapperParamName(receiver_name, "s", "str"),
+        .writer_to => wrapperParamName(receiver_name, "w", "dst"),
+        .reader_from => wrapperParamName(receiver_name, "r", "src"),
+    };
+
     try writer.print("\n// {s} calls {s}, satisfying {s}.\n", .{ method, go_name, interface });
     switch (implements) {
         .writer => {
             if (counts)
-                try writer.writeAll("// The count is what the method reports; a count short of len(p) without an error is io.ErrShortWrite.\n")
+                try writer.print("// The count is what the method reports; a count short of len({s}) without an error is io.ErrShortWrite.\n", .{name})
             else
-                try writer.writeAll("// The method takes the whole of p, so the count is len(p) whenever it succeeds.\n");
-            try writer.print("func ({s} *{s}) Write(p []byte) (int, error) {{\n", .{ receiver_name, receiver });
+                try writer.print("// The method takes the whole of {0s}, so the count is len({0s}) whenever it succeeds.\n", .{name});
+            try writer.print("func ({s} *{s}) Write({s} []byte) (int, error) {{\n", .{ receiver_name, receiver, name });
             if (counts) {
-                try writeCall(writer, receiver_name, go_name, "p", with_error, true);
-                try writer.writeAll("\tif int(n) < len(p) {\n\t\treturn int(n), io.ErrShortWrite\n\t}\n\treturn int(n), nil\n}\n");
+                try writeCall(writer, receiver_name, go_name, name, with_error, true);
+                try writer.print("\tif int(n) < len({s}) {{\n\t\treturn int(n), io.ErrShortWrite\n\t}}\n\treturn int(n), nil\n}}\n", .{name});
             } else {
-                try writeCall(writer, receiver_name, go_name, "p", with_error, false);
-                try writer.writeAll("\treturn len(p), nil\n}\n");
+                try writeCall(writer, receiver_name, go_name, name, with_error, false);
+                try writer.print("\treturn len({s}), nil\n}}\n", .{name});
             }
         },
         .string_writer => {
             // Neither shape copies, which is the whole reason this kind
             // exists rather than a Write wrapper. A method whose own Go
-            // parameter is a `string` is handed `s` as it stands; a method
-            // that takes bytes is lent the string's own bytes for the length
-            // of the call, the same loan `.writer` makes with `p`.
+            // parameter is a `string` is handed the argument as it stands; a
+            // method that takes bytes is lent the string's own bytes for the
+            // length of the call, the same loan `.writer` makes with `p`.
             const passes_string = stringWriterPassesString(function.origin.*);
-            const argument: []const u8 = if (passes_string) "s" else "zigoBytes";
+            const argument: []const u8 = if (passes_string) name else "zigoBytes";
             if (counts)
-                try writer.writeAll("// The count is what the method reports; a count short of len(s) without an error is io.ErrShortWrite.\n")
+                try writer.print("// The count is what the method reports; a count short of len({s}) without an error is io.ErrShortWrite.\n", .{name})
             else
-                try writer.writeAll("// The method takes the whole of s, so the count is len(s) whenever it succeeds.\n");
+                try writer.print("// The method takes the whole of {0s}, so the count is len({0s}) whenever it succeeds.\n", .{name});
             if (!passes_string)
-                try writer.writeAll("// The method takes bytes, so s lends its own, without a copy; native reads them during the call only.\n");
-            try writer.print("func ({s} *{s}) WriteString(s string) (int, error) {{\n", .{ receiver_name, receiver });
+                try writer.print("// The method takes bytes, so {s} lends its own, without a copy; native reads them during the call only.\n", .{name});
+            try writer.print("func ({s} *{s}) WriteString({s} string) (int, error) {{\n", .{ receiver_name, receiver, name });
             if (!passes_string)
-                try writer.writeAll("\tzigoBytes := unsafe.Slice(unsafe.StringData(s), len(s))\n");
+                try writer.print("\tzigoBytes := unsafe.Slice(unsafe.StringData({0s}), len({0s}))\n", .{name});
             if (counts) {
                 try writeCall(writer, receiver_name, go_name, argument, with_error, true);
-                try writer.writeAll("\tif int(n) < len(s) {\n\t\treturn int(n), io.ErrShortWrite\n\t}\n\treturn int(n), nil\n}\n");
+                try writer.print("\tif int(n) < len({s}) {{\n\t\treturn int(n), io.ErrShortWrite\n\t}}\n\treturn int(n), nil\n}}\n", .{name});
             } else {
                 try writeCall(writer, receiver_name, go_name, argument, with_error, false);
-                try writer.writeAll("\treturn len(s), nil\n}\n");
+                try writer.print("\treturn len({s}), nil\n}}\n", .{name});
             }
         },
         .reader => {
-            try writer.writeAll("// A call that fills nothing while p has room reports io.EOF.\n");
-            try writer.print("func ({s} *{s}) Read(p []byte) (int, error) {{\n", .{ receiver_name, receiver });
-            try writeCall(writer, receiver_name, go_name, "p", with_error, true);
-            try writer.writeAll("\tif n == 0 && len(p) > 0 {\n\t\treturn 0, io.EOF\n\t}\n\treturn int(n), nil\n}\n");
+            try writer.print("// A call that fills nothing while {s} has room reports io.EOF.\n", .{name});
+            try writer.print("func ({s} *{s}) Read({s} []byte) (int, error) {{\n", .{ receiver_name, receiver, name });
+            try writeCall(writer, receiver_name, go_name, name, with_error, true);
+            try writer.print("\tif n == 0 && len({s}) > 0 {{\n\t\treturn 0, io.EOF\n\t}}\n\treturn int(n), nil\n}}\n", .{name});
         },
         .writer_to => {
             if (counts)
                 try writer.writeAll("// The count is what the method reports.\n")
             else
-                try writer.writeAll("// The count is what w received during the call.\n");
-            try writer.print("func ({s} *{s}) WriteTo(w io.Writer) (int64, error) {{\n", .{ receiver_name, receiver });
+                try writer.print("// The count is what {s} received during the call.\n", .{name});
+            try writer.print("func ({s} *{s}) WriteTo({s} io.Writer) (int64, error) {{\n", .{ receiver_name, receiver, name });
             if (counts) {
-                try writeCall(writer, receiver_name, go_name, "w", with_error, true);
+                try writeCall(writer, receiver_name, go_name, name, with_error, true);
                 try writer.writeAll("\treturn int64(n), nil\n}\n");
             } else {
-                try writer.writeAll("\tcounting := &zigoCountingWriter{w: w}\n");
+                try writer.print("\tcounting := &zigoCountingWriter{{w: {s}}}\n", .{name});
                 try writeCallCounting(writer, receiver_name, go_name, "counting", with_error);
             }
         },
@@ -120,17 +129,27 @@ pub fn renderImplementsWrapper(
             if (counts)
                 try writer.writeAll("// The count is what the method reports.\n")
             else
-                try writer.writeAll("// The count is what r handed over during the call.\n");
-            try writer.print("func ({s} *{s}) ReadFrom(r io.Reader) (int64, error) {{\n", .{ receiver_name, receiver });
+                try writer.print("// The count is what {s} handed over during the call.\n", .{name});
+            try writer.print("func ({s} *{s}) ReadFrom({s} io.Reader) (int64, error) {{\n", .{ receiver_name, receiver, name });
             if (counts) {
-                try writeCall(writer, receiver_name, go_name, "r", with_error, true);
+                try writeCall(writer, receiver_name, go_name, name, with_error, true);
                 try writer.writeAll("\treturn int64(n), nil\n}\n");
             } else {
-                try writer.writeAll("\tcounting := &zigoCountingReader{r: r}\n");
+                try writer.print("\tcounting := &zigoCountingReader{{r: {s}}}\n", .{name});
                 try writeCallCounting(writer, receiver_name, go_name, "counting", with_error);
             }
         },
     }
+}
+
+/// The interface's own spelling for the argument, unless the receiver took
+/// that name first: a method on a `Stream` is written `s`, and a `WriteString`
+/// taking another `s` would shadow it. The word after it is a reader's name
+/// for the same thing, and the generated one is what is left when even that
+/// is spoken for.
+fn wrapperParamName(receiver_name: []const u8, preferred: []const u8, fallback: []const u8) []const u8 {
+    if (!std.mem.eql(u8, receiver_name, preferred)) return preferred;
+    return if (std.mem.eql(u8, receiver_name, fallback)) "zigoArg" else fallback;
 }
 
 /// Whether the bound method's own Go parameter is already a `string`. Without

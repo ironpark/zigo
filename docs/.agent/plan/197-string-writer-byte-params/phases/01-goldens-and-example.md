@@ -2,7 +2,7 @@
 depends_on:
 - "197-string-writer-byte-params#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `zig build test`가 갱신된 골든과 함께 통과한다.
 > NEXT: none

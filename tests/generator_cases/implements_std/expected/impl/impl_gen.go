@@ -5,6 +5,7 @@ package impl
 
 import (
 	"io"
+	"unsafe"
 
 	"example.com/zigo/impl/internal/raw"
 )
@@ -59,6 +60,62 @@ func (b *Buffer) Write(p []byte) (int, error) {
 		return 0, err
 	}
 	if int(n) < len(p) {
+		return int(n), io.ErrShortWrite
+	}
+	return int(n), nil
+}
+
+// AppendString calls the Zig function Stream.appendString.
+// It returns *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
+func (s *Stream) AppendString(text string) error {
+	ptr, err := zigoCheckedPointer("Stream.AppendString receiver", s)
+	if err != nil {
+		return err
+	}
+	defer s.zigoRelease()
+	code := raw.StreamAppendString(ptr, text)
+	if code != 0 {
+		return zigoPoisonAfterPanic(zigoErrorForCode("Stream.AppendString", code), s)
+	}
+	return nil
+}
+
+// WriteString calls AppendString, satisfying io.StringWriter.
+// The method takes the whole of str, so the count is len(str) whenever it succeeds.
+func (s *Stream) WriteString(str string) (int, error) {
+	if err := s.AppendString(str); err != nil {
+		return 0, err
+	}
+	return len(str), nil
+}
+
+// PushString calls the Zig function Buffer.pushString.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (b *Buffer) PushString(bytes []byte) (uint, error) {
+	ptr, err := zigoCheckedPointer("Buffer.PushString receiver", b)
+	if err != nil {
+		return 0, err
+	}
+	defer b.zigoRelease()
+	result, code := raw.BufferPushString(ptr, bytes)
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Buffer.PushString", code), b)
+	}
+	return result, nil
+}
+
+// WriteString calls PushString, satisfying io.StringWriter.
+// The count is what the method reports; a count short of len(s) without an error is io.ErrShortWrite.
+// The method takes bytes, so s lends its own, without a copy; native reads them during the call only.
+func (b *Buffer) WriteString(s string) (int, error) {
+	zigoBytes := unsafe.Slice(unsafe.StringData(s), len(s))
+	n, err := b.PushString(zigoBytes)
+	if err != nil {
+		return 0, err
+	}
+	if int(n) < len(s) {
 		return int(n), io.ErrShortWrite
 	}
 	return int(n), nil

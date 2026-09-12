@@ -34,7 +34,16 @@ pub const bindings = zigo.define(.{
                 },
             }).use(zigo.features.implements, .{ .kind = .reader }),
         }),
-        Sink.select(.{ .names = &.{ "create", "writer", "count", "deinit" } }),
+        Sink.define(&.{
+            Sink.func("create", .{}),
+            Sink.func("writer", .{}),
+            Sink.func("count", .{}),
+            Sink.func("deinit", .{}),
+            // Opaque bytes, so the Go method takes `[]byte`; `.string_writer`
+            // adds the `WriteString` that lends a string's bytes instead of
+            // copying them.
+            Sink.func("push", .{}).use(zigo.features.implements, .{ .kind = .string_writer }),
+        }),
         Source.select(.{ .names = &.{ "create", "reader", "deinit" } }),
         api.func("banner", .{}),
         api.func("tee", .{}),

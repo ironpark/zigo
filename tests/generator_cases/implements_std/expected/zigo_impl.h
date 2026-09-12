@@ -20,6 +20,8 @@ typedef struct zg_buffer zg_buffer;
 
 ZIGO_EXPORT int32_t zg_stream_feed(zg_stream * self, const uint8_t * bytes_ptr, size_t bytes_len);
 ZIGO_EXPORT int32_t zg_buffer_push(zg_buffer * self, const uint8_t * bytes_ptr, size_t bytes_len, size_t * out_result);
+ZIGO_EXPORT int32_t zg_stream_append_string(zg_stream * self, const uint8_t * text_ptr, size_t text_len);
+ZIGO_EXPORT int32_t zg_buffer_push_string(zg_buffer * self, const uint8_t * bytes_ptr, size_t bytes_len, size_t * out_result);
 ZIGO_EXPORT int32_t zg_buffer_drain(zg_buffer * self, uint8_t * dst_ptr, size_t dst_len, size_t * out_result);
 ZIGO_EXPORT int32_t zg_stream_dump(zg_stream * self, size_t w_userdata);
 ZIGO_EXPORT int32_t zg_stream_load(zg_stream * self, const uint8_t * r_data, size_t r_data_len, size_t r_userdata, size_t * out_result);

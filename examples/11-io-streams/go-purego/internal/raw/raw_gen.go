@@ -66,6 +66,7 @@ type nativeBindings struct {
 	fnSinkFlush            func(unsafe.Pointer) int32
 	fnSinkCount            func(unsafe.Pointer, *uintptr) int32
 	fnSinkDeinit           func(unsafe.Pointer) int32
+	fnSinkPush             func(unsafe.Pointer, unsafe.Pointer, uintptr) int32
 	fnSourceCreate         func(unsafe.Pointer, uintptr, *unsafe.Pointer) int32
 	fnSourceRead           func(unsafe.Pointer, unsafe.Pointer, uintptr, *int) int32
 	fnSourceDeinit         func(unsafe.Pointer) int32
@@ -456,6 +457,10 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_sink_deinit", err)
 	}
+	addrSinkPush, err := resolveSymbol(handle, "zg_sink_push")
+	if err != nil {
+		return fail("zg_sink_push", err)
+	}
 	addrSourceCreate, err := resolveSymbol(handle, "zg_source_create")
 	if err != nil {
 		return fail("zg_source_create", err)
@@ -508,6 +513,7 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnSinkFlush, addrSinkFlush)
 	purego.RegisterFunc(&next.fnSinkCount, addrSinkCount)
 	purego.RegisterFunc(&next.fnSinkDeinit, addrSinkDeinit)
+	purego.RegisterFunc(&next.fnSinkPush, addrSinkPush)
 	purego.RegisterFunc(&next.fnSourceCreate, addrSourceCreate)
 	purego.RegisterFunc(&next.fnSourceRead, addrSourceRead)
 	purego.RegisterFunc(&next.fnSourceDeinit, addrSourceDeinit)
@@ -667,6 +673,16 @@ func SinkCount(self unsafe.Pointer) (uint, int32) {
 // SinkDeinit calls the generated purego ABI wrapper for zg_sink_deinit.
 func SinkDeinit(self unsafe.Pointer) int32 {
 	code := bindings().fnSinkDeinit(self)
+	return code
+}
+
+// SinkPush calls the generated purego ABI wrapper for zg_sink_push.
+func SinkPush(self unsafe.Pointer, bytes []uint8) int32 {
+	var bytesPtr unsafe.Pointer
+	if len(bytes) != 0 {
+		bytesPtr = unsafe.Pointer(&bytes[0])
+	}
+	code := bindings().fnSinkPush(self, bytesPtr, uintptr(len(bytes)))
 	return code
 }
 

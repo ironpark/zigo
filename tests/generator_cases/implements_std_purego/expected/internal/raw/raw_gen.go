@@ -49,6 +49,8 @@ type nativeBindings struct {
 	panicMessage func(int32) unsafe.Pointer
 	fnStreamFeed func(unsafe.Pointer, unsafe.Pointer, uintptr) int32
 	fnBufferPush func(unsafe.Pointer, unsafe.Pointer, uintptr, *uintptr) int32
+	fnStreamAppendString func(unsafe.Pointer, unsafe.Pointer, uintptr) int32
+	fnBufferPushString func(unsafe.Pointer, unsafe.Pointer, uintptr, *uintptr) int32
 	fnBufferDrain func(unsafe.Pointer, unsafe.Pointer, uintptr, *uintptr) int32
 	fnStreamDump func(unsafe.Pointer, uintptr, uintptr) int32
 	fnStreamLoad func(unsafe.Pointer, uintptr, unsafe.Pointer, uintptr, uintptr, *uintptr) int32
@@ -299,6 +301,10 @@ func loadCandidate(path string) error {
 	if err != nil { return fail("zg_stream_feed", err) }
 	addrBufferPush, err := resolveSymbol(handle, "zg_buffer_push")
 	if err != nil { return fail("zg_buffer_push", err) }
+	addrStreamAppendString, err := resolveSymbol(handle, "zg_stream_append_string")
+	if err != nil { return fail("zg_stream_append_string", err) }
+	addrBufferPushString, err := resolveSymbol(handle, "zg_buffer_push_string")
+	if err != nil { return fail("zg_buffer_push_string", err) }
 	addrBufferDrain, err := resolveSymbol(handle, "zg_buffer_drain")
 	if err != nil { return fail("zg_buffer_drain", err) }
 	addrStreamDump, err := resolveSymbol(handle, "zg_stream_dump_purego_v2")
@@ -314,6 +320,8 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.panicMessage, addrPanicMessage)
 	purego.RegisterFunc(&next.fnStreamFeed, addrStreamFeed)
 	purego.RegisterFunc(&next.fnBufferPush, addrBufferPush)
+	purego.RegisterFunc(&next.fnStreamAppendString, addrStreamAppendString)
+	purego.RegisterFunc(&next.fnBufferPushString, addrBufferPushString)
 	purego.RegisterFunc(&next.fnBufferDrain, addrBufferDrain)
 	purego.RegisterFunc(&next.fnStreamDump, addrStreamDump)
 	purego.RegisterFunc(&next.fnStreamLoad, addrStreamLoad)
@@ -366,6 +374,23 @@ func BufferPush(self unsafe.Pointer, bytes []uint8) (uint, int32) {
 	if len(bytes) != 0 { bytesPtr = unsafe.Pointer(&bytes[0]) }
 	var outResult uintptr
 	code := bindings().fnBufferPush(self, bytesPtr, uintptr(len(bytes)), &outResult)
+	return uint(outResult), code
+}
+
+// StreamAppendString calls the generated purego ABI wrapper for zg_stream_append_string.
+func StreamAppendString(self unsafe.Pointer, text string) int32 {
+	var textPtr unsafe.Pointer
+	if len(text) != 0 { textPtr = unsafe.Pointer(unsafe.StringData(text)) }
+	code := bindings().fnStreamAppendString(self, textPtr, uintptr(len(text)))
+	return code
+}
+
+// BufferPushString calls the generated purego ABI wrapper for zg_buffer_push_string.
+func BufferPushString(self unsafe.Pointer, bytes []uint8) (uint, int32) {
+	var bytesPtr unsafe.Pointer
+	if len(bytes) != 0 { bytesPtr = unsafe.Pointer(&bytes[0]) }
+	var outResult uintptr
+	code := bindings().fnBufferPushString(self, bytesPtr, uintptr(len(bytes)), &outResult)
 	return uint(outResult), code
 }
 

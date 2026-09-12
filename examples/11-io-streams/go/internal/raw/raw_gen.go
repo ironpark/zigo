@@ -285,6 +285,13 @@ func SinkDeinit(self unsafe.Pointer) int32 {
 	return code
 }
 
+// SinkPush calls the generated C ABI wrapper for zg_sink_push.
+func SinkPush(self unsafe.Pointer, bytes []uint8) int32 {
+	bytesPtr := (*C.uint8_t)(zigoSlicePtr(bytes))
+	code := int32(C.zg_sink_push((*C.zg_sink)(self), bytesPtr, C.size_t(len(bytes))))
+	return code
+}
+
 // SourceCreate calls the generated C ABI wrapper for zg_source_create.
 func SourceCreate(bytes []uint8) (unsafe.Pointer, int32) {
 	bytesPtr := (*C.uint8_t)(zigoSlicePtr(bytes))

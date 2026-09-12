@@ -58,6 +58,64 @@
       "symbol": "ignored"
     },
     {
+      "implements": "string_writer",
+      "name": "appendString",
+      "params": [
+        {
+          "name": "text",
+          "semantic": "utf8_string",
+          "type": {
+            "const": true,
+            "element": {
+              "bits": 8,
+              "is_usize": false,
+              "kind": "int",
+              "signed": false
+            },
+            "kind": "slice"
+          }
+        }
+      ],
+      "receiver": "Stream",
+      "return": {
+        "error_set": [
+          "OutOfMemory"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "kind": "void"
+        }
+      },
+      "symbol": "ignored"
+    },
+    {
+      "implements": "string_writer",
+      "name": "pushString",
+      "params": [
+        {
+          "name": "bytes",
+          "type": {
+            "const": true,
+            "element": {
+              "bits": 8,
+              "is_usize": false,
+              "kind": "int",
+              "signed": false
+            },
+            "kind": "slice"
+          }
+        }
+      ],
+      "receiver": "Buffer",
+      "return": {
+        "bits": 64,
+        "is_usize": true,
+        "kind": "int",
+        "signed": false
+      },
+      "symbol": "ignored"
+    },
+    {
       "implements": "reader",
       "name": "drain",
       "params": [

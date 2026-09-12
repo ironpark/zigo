@@ -95,6 +95,30 @@ ZIGO_EXPORT int32_t zg_buffer_push(zg_buffer * self, const uint8_t * bytes_ptr, 
     return result;
 }
 
+int32_t zg_stream_append_string_impl(zg_stream * self, const uint8_t * text_ptr, size_t text_len);
+ZIGO_EXPORT int32_t zg_stream_append_string(zg_stream * self, const uint8_t * text_ptr, size_t text_len) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        return zg_panic_publish();
+    }
+    int32_t result = zg_stream_append_string_impl(self, text_ptr, text_len);
+    zg_panic_active = 0;
+    return result;
+}
+
+int32_t zg_buffer_push_string_impl(zg_buffer * self, const uint8_t * bytes_ptr, size_t bytes_len, size_t * out_result);
+ZIGO_EXPORT int32_t zg_buffer_push_string(zg_buffer * self, const uint8_t * bytes_ptr, size_t bytes_len, size_t * out_result) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        return zg_panic_publish();
+    }
+    int32_t result = zg_buffer_push_string_impl(self, bytes_ptr, bytes_len, out_result);
+    zg_panic_active = 0;
+    return result;
+}
+
 int32_t zg_buffer_drain_impl(zg_buffer * self, uint8_t * dst_ptr, size_t dst_len, size_t * out_result);
 ZIGO_EXPORT int32_t zg_buffer_drain(zg_buffer * self, uint8_t * dst_ptr, size_t dst_len, size_t * out_result) {
     zg_panic_active = 1;

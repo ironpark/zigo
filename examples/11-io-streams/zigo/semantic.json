@@ -348,7 +348,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 124,
+        "line": 131,
         "column": 12
       },
       "symbol": "zg_sink_count"
@@ -369,6 +369,52 @@
       "symbol": "zg_sink_deinit"
     },
     {
+      "doc": "Bytes with no promise of being UTF-8, which is why the binding leaves\nthe parameter opaque. The generated `WriteString` still takes a Go\n`string` and lends its bytes here without copying them.",
+      "go": {
+        "implements": "string_writer"
+      },
+      "name": "push",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "bytes",
+          "name_source": "ast",
+          "retention": "borrowed",
+          "source": {
+            "line": 127,
+            "column": 30
+          },
+          "type": {
+            "const": true,
+            "element": {
+              "bits": 8,
+              "is_usize": false,
+              "kind": "int",
+              "signed": false
+            },
+            "kind": "slice"
+          }
+        }
+      ],
+      "receiver": "Sink",
+      "return": {
+        "error_set": [
+          "WriteFailed"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "kind": "void"
+        }
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 127,
+        "column": 12
+      },
+      "symbol": "zg_sink_push"
+    },
+    {
       "name": "create",
       "namespace": "Source",
       "ownership": "caller",
@@ -379,7 +425,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 135,
+            "line": 142,
             "column": 19
           },
           "type": {
@@ -408,7 +454,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 135,
+        "line": 142,
         "column": 12
       },
       "symbol": "zg_source_create"
@@ -423,7 +469,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 148,
+        "line": 155,
         "column": 12
       },
       "symbol": "zg_source_reader"
@@ -438,7 +484,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 143,
+        "line": 150,
         "column": 12
       },
       "symbol": "zg_source_deinit"
@@ -454,7 +500,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 155,
+            "line": 162,
             "column": 15
           },
           "type": {
@@ -467,7 +513,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 155,
+            "line": 162,
             "column": 34
           },
           "type": {
@@ -489,7 +535,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 155,
+        "line": 162,
         "column": 8
       },
       "symbol": "zg_banner"
@@ -505,7 +551,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 163,
+            "line": 170,
             "column": 12
           },
           "type": {
@@ -518,7 +564,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 163,
+            "line": 170,
             "column": 31
           },
           "type": {
@@ -541,7 +587,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 163,
+        "line": 170,
         "column": 8
       },
       "symbol": "zg_tee"
@@ -558,7 +604,7 @@
           "retention": "borrowed",
           "semantic": "codepoint",
           "source": {
-            "line": 172,
+            "line": 179,
             "column": 22
           },
           "type": {
@@ -581,7 +627,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 172,
+        "line": 179,
         "column": 8
       },
       "symbol": "zg_sum_codepoints"
@@ -598,7 +644,7 @@
           "retention": "borrowed",
           "semantic": "codepoint",
           "source": {
-            "line": 179,
+            "line": 186,
             "column": 23
           },
           "type": {
@@ -618,7 +664,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 179,
+        "line": 186,
         "column": 8
       },
       "symbol": "zg_fill_codepoints"
@@ -642,7 +688,7 @@
       "return_semantic": "codepoint",
       "source": {
         "path": "root.zig",
-        "line": 186,
+        "line": 193,
         "column": 8
       },
       "symbol": "zg_take_codepoints"
@@ -658,7 +704,7 @@
           "retention": "borrowed",
           "semantic": "codepoint",
           "source": {
-            "line": 194,
+            "line": 201,
             "column": 23
           },
           "type": {
@@ -678,7 +724,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 194,
+        "line": 201,
         "column": 8
       },
       "symbol": "zg_free_codepoints"

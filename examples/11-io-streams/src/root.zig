@@ -121,6 +121,13 @@ pub const Sink = struct {
         return &self.inner.writer;
     }
 
+    /// Bytes with no promise of being UTF-8, which is why the binding leaves
+    /// the parameter opaque. The generated `WriteString` still takes a Go
+    /// `string` and lends its bytes here without copying them.
+    pub fn push(self: *Sink, bytes: []const u8) DumpError!void {
+        self.inner.writer.writeAll(bytes) catch return error.WriteFailed;
+    }
+
     pub fn count(self: *Sink) usize {
         return self.inner.written().len;
     }

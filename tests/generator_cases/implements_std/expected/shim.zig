@@ -153,6 +153,17 @@ export fn zg_buffer_push_impl(self: *target.Buffer, bytes_ptr: [*c]const u8, byt
     out_result.* = result;
     return 0;
 }
+export fn zg_stream_append_string_impl(self: *target.Stream, text_ptr: [*c]const u8, text_len: usize) i32 {
+    target.Stream.appendString(self, if (text_len == 0) &.{} else text_ptr[0..text_len]) catch |err| return switch (err) {
+        error.OutOfMemory => 1,
+    };
+    return 0;
+}
+export fn zg_buffer_push_string_impl(self: *target.Buffer, bytes_ptr: [*c]const u8, bytes_len: usize, out_result: *usize) i32 {
+    const result = target.Buffer.pushString(self, if (bytes_len == 0) &.{} else bytes_ptr[0..bytes_len]);
+    out_result.* = result;
+    return 0;
+}
 export fn zg_buffer_drain_impl(self: *target.Buffer, dst_ptr: [*c]u8, dst_len: usize, out_result: *usize) i32 {
     const result = target.Buffer.drain(self, if (dst_len == 0) &.{} else dst_ptr[0..dst_len]);
     out_result.* = result;

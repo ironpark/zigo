@@ -43,6 +43,15 @@ func zigoSlicePtr[T any](values []T) unsafe.Pointer {
 	return unsafe.Pointer(&values[0])
 }
 
+// zigoStringPtr is the address of a string's bytes, read in place, or of
+// zigoZeroSlot for an empty string.
+func zigoStringPtr(value string) unsafe.Pointer {
+	if len(value) == 0 {
+		return unsafe.Pointer(&zigoZeroSlot)
+	}
+	return unsafe.Pointer(unsafe.StringData(value))
+}
+
 // CallbackState carries one Go callback across the native boundary, and
 // the panic it raises there until the generated caller rethrows it. The
 // trampoline has to recover: a panic cannot unwind native frames.
@@ -180,6 +189,19 @@ func BufferPush(self unsafe.Pointer, bytes []uint8) (uint, int32) {
 	bytesPtr := (*C.uint8_t)(zigoSlicePtr(bytes))
 	var outResult C.size_t
 	code := int32(C.zg_buffer_push((*C.zg_buffer)(self), bytesPtr, C.size_t(len(bytes)), &outResult))
+	return uint(outResult), code
+}
+// StreamAppendString calls the generated C ABI wrapper for zg_stream_append_string.
+func StreamAppendString(self unsafe.Pointer, text string) int32 {
+	textPtr := (*C.uint8_t)(zigoStringPtr(text))
+	code := int32(C.zg_stream_append_string((*C.zg_stream)(self), textPtr, C.size_t(len(text))))
+	return code
+}
+// BufferPushString calls the generated C ABI wrapper for zg_buffer_push_string.
+func BufferPushString(self unsafe.Pointer, bytes []uint8) (uint, int32) {
+	bytesPtr := (*C.uint8_t)(zigoSlicePtr(bytes))
+	var outResult C.size_t
+	code := int32(C.zg_buffer_push_string((*C.zg_buffer)(self), bytesPtr, C.size_t(len(bytes)), &outResult))
 	return uint(outResult), code
 }
 // BufferDrain calls the generated C ABI wrapper for zg_buffer_drain.
