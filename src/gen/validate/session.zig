@@ -178,16 +178,92 @@ test "a constructor name colliding with a package function is refused" {
     );
 }
 
-test "a member whose accessor is named Close is refused" {
-    const types = [_]semantic.TypeDecl{
-        .{ .kind = .@"opaque", .name = "Queue" },
-        .{ .kind = .@"opaque", .name = "Close" },
+test "a session whose primary accessor is named Close is refused" {
+    // The primary's accessor is its type name, so a handle actually called
+    // `Close` is the one shape that clashes with the session's own `Close`.
+    // A child cannot: its accessor carries the plural `s`.
+    var close_ref: semantic.TypeNode = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "Close" } };
+    const functions = [_]semantic.SemanticFn{
+        .{ .name = "create", .namespace = "Close", .ownership = .caller, .params = &.{}, .@"return" = .{ .error_union = .{ .error_set = &.{"OutOfMemory"}, .payload = &close_ref } }, .symbol = "zg_close_create" },
+        .{ .name = "deinit", .receiver = "Close", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_close_deinit" },
+        .{ .child_of_receiver = true, .go = .{ .owner = "Stream" }, .name = "newStream", .ownership = .caller, .receiver = "Close", .params = &.{}, .@"return" = .{ .error_union = .{ .error_set = &.{"OutOfMemory"}, .payload = &stream_ref } }, .symbol = "zg_close_new_stream" },
+        .{ .name = "freeStream", .receiver = "Stream", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_stream_free" },
     };
-    const close_session = [_]semantic.Session{.{ .children = &.{"Close"}, .name = "Session", .primary = "Queue" }};
+    const constructors = [_]semantic.Constructor{
+        .{ .deinit = "deinit", .init = "create", .type = "Close" },
+        .{ .deinit = "freeStream", .init = "newStream", .type = "Stream" },
+    };
+    const types = [_]semantic.TypeDecl{
+        .{ .kind = .@"opaque", .name = "Close" },
+        .{ .kind = .@"opaque", .name = "Stream" },
+    };
+    const sessions = [_]semantic.Session{.{ .children = &.{"Stream"}, .name = "Session", .primary = "Close" }};
     try expectSessionIssue(
-        sessionDocument(.{ .sessions = &close_session, .types = &types }),
+        sessionDocument(.{ .constructors = &constructors, .functions = &functions, .sessions = &sessions, .types = &types }),
         "ZIGO024",
         "collides between the accessor for `Close`",
-        "closes its members itself",
+        "one accessor per member",
     );
+}
+
+test "a session primary without a destructor is refused" {
+    // The primary is closed last, so it needs a `Close` as much as a child
+    // does. A borrowed view has none, and emitting the call anyway would
+    // produce Go that does not compile.
+    var box_ref: semantic.TypeNode = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "Box" } };
+    const functions = [_]semantic.SemanticFn{
+        .{ .name = "create", .namespace = "Box", .ownership = .caller, .params = &.{}, .@"return" = .{ .error_union = .{ .error_set = &.{"OutOfMemory"}, .payload = &box_ref } }, .symbol = "zg_box_create" },
+        .{ .name = "deinit", .receiver = "Box", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_box_deinit" },
+        .{ .borrowed_return = true, .name = "view", .receiver = "Box", .params = &.{}, .@"return" = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "View" } }, .symbol = "zg_box_view" },
+        .{ .child_of_receiver = true, .go = .{ .owner = "Stream" }, .name = "newStream", .ownership = .caller, .receiver = "View", .params = &.{}, .@"return" = .{ .error_union = .{ .error_set = &.{"OutOfMemory"}, .payload = &stream_ref } }, .symbol = "zg_view_new_stream" },
+        .{ .name = "freeStream", .receiver = "Stream", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_stream_free" },
+    };
+    const constructors = [_]semantic.Constructor{
+        .{ .deinit = "deinit", .init = "create", .type = "Box" },
+        .{ .deinit = "freeStream", .init = "newStream", .type = "Stream" },
+    };
+    const types = [_]semantic.TypeDecl{
+        .{ .kind = .@"opaque", .name = "Box" },
+        .{ .kind = .@"opaque", .name = "View" },
+        .{ .kind = .@"opaque", .name = "Stream" },
+    };
+    const sessions = [_]semantic.Session{.{ .children = &.{"Stream"}, .name = "Session", .primary = "View" }};
+    try expectSessionIssue(
+        sessionDocument(.{ .constructors = &constructors, .functions = &functions, .sessions = &sessions, .types = &types }),
+        "ZIGO062",
+        "primary `View` has no Close method",
+        "borrowed views",
+    );
+}
+
+test "a child two handles hand out is accepted through either primary" {
+    // Nothing stops two handles from each handing out the same child type.
+    // Answering with whichever constructor the document lists first would
+    // refuse a session over the other one.
+    var other_ref: semantic.TypeNode = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "Other" } };
+    const functions = [_]semantic.SemanticFn{
+        .{ .name = "create", .namespace = "Other", .ownership = .caller, .params = &.{}, .@"return" = .{ .error_union = .{ .error_set = &.{"OutOfMemory"}, .payload = &other_ref } }, .symbol = "zg_other_create" },
+        .{ .name = "deinitOther", .receiver = "Other", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_other_deinit" },
+        // Listed before the queue's, so a first-match answer would name `Other`.
+        .{ .child_of_receiver = true, .go = .{ .owner = "Stream" }, .name = "otherStream", .ownership = .caller, .receiver = "Other", .params = &.{}, .@"return" = .{ .error_union = .{ .error_set = &.{"OutOfMemory"}, .payload = &stream_ref } }, .symbol = "zg_other_new_stream" },
+        .{ .name = "create", .namespace = "Queue", .ownership = .caller, .params = &.{}, .@"return" = .{ .error_union = .{ .error_set = &.{"OutOfMemory"}, .payload = &queue_ref } }, .symbol = "zg_queue_create" },
+        .{ .name = "deinit", .receiver = "Queue", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_queue_deinit" },
+        .{ .child_of_receiver = true, .go = .{ .owner = "Stream" }, .name = "newStream", .ownership = .caller, .receiver = "Queue", .params = &.{}, .@"return" = .{ .error_union = .{ .error_set = &.{"OutOfMemory"}, .payload = &stream_ref } }, .symbol = "zg_queue_new_stream" },
+        .{ .name = "freeStream", .receiver = "Stream", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_stream_free" },
+    };
+    const constructors = [_]semantic.Constructor{
+        .{ .deinit = "deinitOther", .init = "create", .type = "Other" },
+        .{ .deinit = "freeStream", .init = "otherStream", .type = "Stream" },
+        .{ .deinit = "deinit", .init = "create", .type = "Queue" },
+        .{ .deinit = "freeStream", .init = "newStream", .type = "Stream" },
+    };
+    const types = [_]semantic.TypeDecl{
+        .{ .kind = .@"opaque", .name = "Other" },
+        .{ .kind = .@"opaque", .name = "Queue" },
+        .{ .kind = .@"opaque", .name = "Stream" },
+    };
+    var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer scratch.deinit();
+    const document = sessionDocument(.{ .constructors = &constructors, .functions = &functions, .types = &types });
+    try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try sessionIssue(scratch.allocator(), document, targets.default));
 }

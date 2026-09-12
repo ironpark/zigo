@@ -9,37 +9,89 @@ import (
 )
 
 // Session owns a queue and every stream it handed out.
-// Session owns Queue and the child handles it adopted, and closes them in that
-// order: children first, then the primary.
+//
+// Session adopts one Queue and the child handles that primary handed out, and
+// closes them in that order: the children it adopted, most recent first,
+// then the primary.
 type Session struct {
 	queue     *Queue
-	stream    *Stream
-	ticker    *Ticker
+	streams   []*Stream
+	tickers   []*Ticker
+	mu        sync.Mutex
+	closed    bool
 	closeOnce sync.Once
 	closeErr  error
 }
 
-// NewSession adopts the primary handle and every child it handed out.
-// A nil member is skipped when the session closes.
-func NewSession(queue *Queue, stream *Stream, ticker *Ticker) *Session {
-	return &Session{queue: queue, stream: stream, ticker: ticker}
+// NewSession adopts the primary handle. Adopt the children it hands out with the
+// Add methods below. A nil primary is skipped when the session closes.
+func NewSession(queue *Queue) *Session {
+	return &Session{queue: queue}
 }
 
-// Close closes every child handle the session adopted and then the primary.
-// It is idempotent and safe to call from several goroutines: a later call
-// returns the first result without closing anything again. A member that
-// fails to close does not stop the others, and the failures are reported
-// together.
+// AddStream adopts Stream handles the primary handed out and returns the session,
+// so calls chain. A nil handle is ignored. A handle adopted after Close has
+// run is closed immediately rather than leaked.
+func (s *Session) AddStream(streams ...*Stream) *Session {
+	for _, handle := range streams {
+		if handle == nil {
+			continue
+		}
+		s.mu.Lock()
+		if s.closed {
+			s.mu.Unlock()
+			_ = handle.Close()
+			continue
+		}
+		s.streams = append(s.streams, handle)
+		s.mu.Unlock()
+	}
+	return s
+}
+
+// AddTicker adopts Ticker handles the primary handed out and returns the session,
+// so calls chain. A nil handle is ignored. A handle adopted after Close has
+// run is closed immediately rather than leaked.
+func (s *Session) AddTicker(tickers ...*Ticker) *Session {
+	for _, handle := range tickers {
+		if handle == nil {
+			continue
+		}
+		s.mu.Lock()
+		if s.closed {
+			s.mu.Unlock()
+			_ = handle.Close()
+			continue
+		}
+		s.tickers = append(s.tickers, handle)
+		s.mu.Unlock()
+	}
+	return s
+}
+
+// Close closes every child handle the session adopted, most recent first,
+// and then the primary. It is idempotent and safe to call from several
+// goroutines: a later call returns the first result without closing anything
+// again. A member that fails to close does not stop the others, and the
+// failures are reported together.
 func (s *Session) Close() error {
 	s.closeOnce.Do(func() {
+		s.mu.Lock()
+		s.closed = true
+		streams := s.streams
+		s.streams = nil
+		tickers := s.tickers
+		s.tickers = nil
+		s.mu.Unlock()
+
 		var failures []error
-		if s.stream != nil {
-			if err := s.stream.Close(); err != nil {
+		for index := len(streams) - 1; index >= 0; index-- {
+			if err := streams[index].Close(); err != nil {
 				failures = append(failures, err)
 			}
 		}
-		if s.ticker != nil {
-			if err := s.ticker.Close(); err != nil {
+		for index := len(tickers) - 1; index >= 0; index-- {
+			if err := tickers[index].Close(); err != nil {
 				failures = append(failures, err)
 			}
 		}
@@ -56,10 +108,18 @@ func (s *Session) Close() error {
 // Queue returns the primary handle the session owns.
 func (s *Session) Queue() *Queue { return s.queue }
 
-// Stream returns the child handle the session owns.
-func (s *Session) Stream() *Stream { return s.stream }
+// Streams returns the Stream handles the session adopted, oldest first.
+func (s *Session) Streams() []*Stream {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]*Stream(nil), s.streams...)
+}
 
-// Ticker returns the child handle the session owns.
-func (s *Session) Ticker() *Ticker { return s.ticker }
+// Tickers returns the Ticker handles the session adopted, oldest first.
+func (s *Session) Tickers() []*Ticker {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]*Ticker(nil), s.tickers...)
+}
 
 var _ io.Closer = (*Session)(nil)

@@ -123,23 +123,33 @@ zigo.session(.{
 ```
 
 ```go
-session := event_queue.NewSession(queue, stream)
+session := event_queue.NewSession(queue)
 defer session.Close() // Stream.Close() 다음 EventQueue.Close()
 
-queue := session.EventQueue() // 멤버 타입 이름이 접근자다
+stream, err := queue.NewStream()
+if err != nil {
+    return err
+}
+session.AddStream(stream)
+
+queue := session.EventQueue()   // primary 접근자는 타입 이름이다
+open := session.Streams()       // 자식 접근자는 복수형이다
 ```
 
-- 생성자는 primary를 먼저, 자식을 선언 순서대로 받습니다. `nil` 멤버는 허용하고 `Close`가
-  건너뜁니다.
-- `Close`는 자식을 먼저, primary를 마지막에 닫습니다. 멱등이고 동시 호출에 안전하며, 멤버
-  하나가 실패해도 나머지를 계속 닫고 모든 오류를 `errors.Join`으로 합쳐 돌려줍니다.
-- 멤버는 `.parent = .receiver`로 선언된 자식이어야 하고, `Close`를 가진 constructed
-  핸들이어야 하며, 모두 같은 생성 패키지에 있어야 합니다. 어긋나면 `ZIGO062`가 나옵니다.
+- 생성자는 primary만 받습니다. 자식은 `Add<Type>`으로 입양하며, 이 메서드는 session을
+  돌려주므로 `NewSession(queue).AddStream(a, b)`처럼 이어 쓸 수 있습니다.
+- 자식은 타입마다 **여러 개**를 입양할 수 있습니다. primary가 `NewStream`을 몇 번 부르든
+  전부 한 session에 넣을 수 있습니다.
+- `nil` 핸들은 무시하므로, 조건부로 만들어지지 않은 자식에 분기를 두지 않아도 됩니다.
+- `Close`는 자식을 입양 역순으로 먼저, primary를 마지막에 닫습니다. 멱등이고 동시 호출에
+  안전하며, 멤버 하나가 실패해도 나머지를 계속 닫고 모든 오류를 `errors.Join`으로 합쳐
+  돌려줍니다.
+- `Close`가 끝난 뒤 입양한 핸들은 누수 대신 즉시 닫힙니다.
+- primary와 자식 모두 `Close`를 가진 constructed 핸들이어야 하고, 자식은
+  `.parent = .receiver`로 선언된 primary의 자식이어야 하며, 모두 같은 생성 패키지에
+  있어야 합니다. 어긋나면 `ZIGO062`가 나옵니다.
 - session은 수명만 다룹니다. 멤버 메서드를 자동으로 올리지 않으므로 `Write`/`Read` 같은
   호출을 위임하려면 `zigo.interface`나 `satisfies` 플러그인을 함께 쓰세요.
-
-여러 자식을 가진 session이 필요하면 `.children`에 나열하면 됩니다. 선언 순서가 닫는
-순서입니다.
 
 ## 동시 호출과 `Close`
 

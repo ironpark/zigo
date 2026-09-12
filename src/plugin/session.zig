@@ -19,26 +19,28 @@ pub fn sessionIssue(allocator: std.mem.Allocator, document: semantic.Semantic, t
             try std.fmt.allocPrint(allocator, "give the session a `.name` that is a valid exported {s} identifier", .{target.display_name}),
         );
         if (try collisionIssue(allocator, document, sessions[0..index], session, target)) |found| return found;
-        if (try accessorIssue(allocator, session)) |found| return found;
         if (session.children.len == 0) return issue(
             session,
             "session lists no child handles",
             "list at least one dependent child in `.children`, or use the primary handle on its own",
         );
-        if (semantic.typeDecl(document.types, session.primary)) |declaration| {
-            if (declaration.kind != .@"opaque") return try issueFmt(
-                allocator,
-                session,
-                "session primary `{s}` is not a registered handle",
-                .{session.primary},
-                "name a type registered with `.handle` as the primary",
-            );
-        } else return try issueFmt(
+        const primary_declaration = semantic.typeDecl(document.types, session.primary);
+        if (primary_declaration == null or primary_declaration.?.kind != .@"opaque") return try issueFmt(
             allocator,
             session,
             "session primary `{s}` is not a registered handle",
             .{session.primary},
             "name a type registered with `.handle` as the primary",
+        );
+        // The primary is closed last, so it needs a `Close` exactly as much as
+        // a child does. Without this the session would emit a call to a method
+        // a borrowed view never generates.
+        if (semantic.constructorForType(document.constructors, session.primary) == null) return try issueFmt(
+            allocator,
+            session,
+            "session primary `{s}` has no Close method",
+            .{session.primary},
+            "a session primary must be a constructed handle with a destructor; borrowed views and Ref types are not closeable",
         );
         for (session.children, 0..) |child, child_index| {
             const declaration = semantic.typeDecl(document.types, child) orelse return try issueFmt(
@@ -77,21 +79,31 @@ pub fn sessionIssue(allocator: std.mem.Allocator, document: semantic.Semantic, t
             // A session closes children before the primary, which only works
             // if the native side agrees that is the order: a child is one the
             // primary handed out, not any handle that happens to be listed.
-            const parent = dependentParent(document, child) orelse return try issueFmt(
+            const parents = try dependentParentsAlloc(allocator, document, child);
+            defer allocator.free(parents);
+            if (parents.len == 0) return try issueFmt(
                 allocator,
                 session,
                 "`{s}` is not a dependent child of any handle",
                 .{child},
                 "declare its constructor with `.parent = .receiver` so the parent tracks it",
             );
-            if (!std.mem.eql(u8, parent, session.primary)) return try issueFmt(
+            var claimed = false;
+            for (parents) |parent| {
+                if (std.mem.eql(u8, parent, session.primary)) claimed = true;
+            }
+            if (!claimed) return try issueFmt(
                 allocator,
                 session,
-                "`{s}` is a dependent child of `{s}`, not of `{s}`",
-                .{ child, parent, session.primary },
+                "`{s}` is a dependent child of {s}, not of `{s}`",
+                .{ child, try joinNamesAlloc(allocator, parents), session.primary },
                 "list only handles the primary itself hands out",
             );
         }
+        // The generated method set is checked once the members are known to be
+        // well formed, so a structural mistake speaks before a name clash the
+        // mistake itself caused.
+        if (try methodIssue(allocator, session)) |found| return found;
         if (document.packages != null) {
             const primary_package = if (semantic.typeDecl(document.types, session.primary)) |declaration| declaration.package else null;
             for (session.children) |child| {
@@ -110,17 +122,38 @@ pub fn sessionIssue(allocator: std.mem.Allocator, document: semantic.Semantic, t
     return null;
 }
 
-/// The handle whose `Close` waits for `type_name`, read from the IR the same
+/// Every handle whose `Close` waits for `type_name`, read from the IR the same
 /// way the emitters read it: a constructor declared with `.parent = .receiver`
 /// whose constructed type is this one.
-fn dependentParent(document: semantic.Semantic, type_name: []const u8) ?[]const u8 {
+///
+/// All of them, not the first one: nothing stops two handles from each handing
+/// out the same child type, and answering with whichever constructor the
+/// document happens to list first would refuse a session over the other one.
+fn dependentParentsAlloc(allocator: std.mem.Allocator, document: semantic.Semantic, type_name: []const u8) ![]const []const u8 {
+    var parents: std.ArrayList([]const u8) = .empty;
+    errdefer parents.deinit(allocator);
     for (document.functions) |function| {
         if (!function.childOfReceiver()) continue;
         const constructor = semantic.constructorForInit(document.constructors, function) orelse continue;
         if (!std.mem.eql(u8, constructor.type, type_name)) continue;
-        return function.receiver;
+        const receiver = function.receiver orelse continue;
+        for (parents.items) |seen| {
+            if (std.mem.eql(u8, seen, receiver)) break;
+        } else try parents.append(allocator, receiver);
     }
-    return null;
+    return parents.toOwnedSlice(allocator);
+}
+
+/// `` `A` `` or `` `A` and `B` ``: the parents a diagnostic names, so the
+/// message reads the same whether one handle or several hand the child out.
+fn joinNamesAlloc(allocator: std.mem.Allocator, names: []const []const u8) ![]u8 {
+    var joined: std.ArrayList(u8) = .empty;
+    errdefer joined.deinit(allocator);
+    for (names, 0..) |name, index| {
+        if (index != 0) try joined.appendSlice(allocator, if (index + 1 == names.len) " and " else ", ");
+        try joined.print(allocator, "`{s}`", .{name});
+    }
+    return joined.toOwnedSlice(allocator);
 }
 
 /// A session name reaches Go as a `type` declaration in its package, so it
@@ -155,22 +188,43 @@ fn collisionIssue(allocator: std.mem.Allocator, document: semantic.Semantic, pre
     return null;
 }
 
-/// An accessor is named after its member type, and the session type declares
-/// `Close` itself. A member spelled the same way would give the type two
-/// methods with one name, so the declaration is refused rather than emitted
-/// as Go that does not compile.
-fn accessorIssue(allocator: std.mem.Allocator, session: semantic.Session) !?diagnostic.Diagnostic {
-    const clashing = if (std.mem.eql(u8, session.primary, "Close")) session.primary else for (session.children) |child| {
-        if (std.mem.eql(u8, child, "Close")) break child;
-    } else null;
-    const member = clashing orelse return null;
-    return .{
-        .severity = .@"error",
-        .code = "ZIGO024",
-        .message = try std.fmt.allocPrint(allocator, "public Go name `Close` collides between the accessor for `{s}` and the session's own Close method", .{member}),
-        .site = .{ .path = "semantic.json", .declaration = session.name },
-        .hint = "a session closes its members itself; name the type something else or leave it out of `.children`",
-    };
+/// The session type's whole method set, checked against itself. The primary's
+/// accessor is its type name, a child contributes `<Child>s` and `Add<Child>`,
+/// and the session always declares `Close`. Two members that resolve to one
+/// name would give the type two methods with that name, so the declaration is
+/// refused rather than emitted as Go that does not compile.
+fn methodIssue(allocator: std.mem.Allocator, session: semantic.Session) !?diagnostic.Diagnostic {
+    const Method = struct { name: []const u8, owner: []const u8 };
+    var methods: std.ArrayList(Method) = .empty;
+    defer methods.deinit(allocator);
+    try methods.append(allocator, .{ .name = "Close", .owner = "the session's own Close method" });
+    try methods.append(allocator, .{
+        .name = session.primary,
+        .owner = try std.fmt.allocPrint(allocator, "the accessor for `{s}`", .{session.primary}),
+    });
+    for (session.children) |child| {
+        try methods.append(allocator, .{
+            .name = try std.fmt.allocPrint(allocator, "{s}s", .{child}),
+            .owner = try std.fmt.allocPrint(allocator, "the accessor for `{s}`", .{child}),
+        });
+        try methods.append(allocator, .{
+            .name = try std.fmt.allocPrint(allocator, "Add{s}", .{child}),
+            .owner = try std.fmt.allocPrint(allocator, "the adopt method for `{s}`", .{child}),
+        });
+    }
+    for (methods.items, 0..) |method, index| {
+        for (methods.items[0..index]) |previous| {
+            if (!std.mem.eql(u8, previous.name, method.name)) continue;
+            return .{
+                .severity = .@"error",
+                .code = "ZIGO024",
+                .message = try std.fmt.allocPrint(allocator, "public Go name `{s}` collides between {s} and {s}", .{ method.name, method.owner, previous.owner }),
+                .site = .{ .path = "semantic.json", .declaration = session.name },
+                .hint = "a session closes its members itself and names one accessor per member; rename the type or leave it out of `.children`",
+            };
+        }
+    }
+    return null;
 }
 
 fn collision(allocator: std.mem.Allocator, session: semantic.Session, between: []const u8) !diagnostic.Diagnostic {

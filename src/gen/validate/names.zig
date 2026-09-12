@@ -1114,6 +1114,49 @@ fn optionsCollisionIssue(allocator: std.mem.Allocator, document: semantic.Semant
                     }
                 }
             }
+
+            // 4. Check collision against declared sessions. A session reaches
+            // Go as a type and a `New<Name>` constructor, and neither is in
+            // `document.types` for the checks above to find.
+            for (document.sessions orelse &.{}) |session| {
+                const session_package = if (semantic.typeDecl(document.types, session.primary)) |declaration| declaration.package else null;
+                if (!semantic.optionalStringEqual(session_package, function.package)) continue;
+                const constructor_name = try std.fmt.allocPrint(allocator, "New{s}", .{session.name});
+                defer allocator.free(constructor_name);
+                var clashing: ?[]const u8 = null;
+                var owner: []const u8 = "session";
+                if (std.mem.eql(u8, options_names.type_name, session.name)) {
+                    clashing = options_names.type_name;
+                } else if (std.mem.eql(u8, options_names.type_name, constructor_name)) {
+                    clashing = options_names.type_name;
+                    owner = "the constructor for session";
+                }
+                for (fields) |field| {
+                    if (clashing != null) break;
+                    const with_name = try options_names.withNameAlloc(allocator, field.name);
+                    defer allocator.free(with_name);
+                    if (std.mem.eql(u8, with_name, session.name)) {
+                        clashing = try allocator.dupe(u8, with_name);
+                    } else if (std.mem.eql(u8, with_name, constructor_name)) {
+                        clashing = try allocator.dupe(u8, with_name);
+                        owner = "the constructor for session";
+                    }
+                }
+                if (clashing) |clashing_name| {
+                    const function_path = try site.functionDeclarationAlloc(allocator, function);
+                    return .{
+                        .severity = .@"error",
+                        .code = "ZIGO024",
+                        .message = try std.fmt.allocPrint(
+                            allocator,
+                            "public Go name `{s}` collides between {s} `{s}` and generated option for `{s}`",
+                            .{ clashing_name, owner, session.name, function_path },
+                        ),
+                        .site = site.functionSiteFor(function, function_path),
+                        .hint = "rename the session or configure a different `.prefix` or `.type_name` in `.options`",
+                    };
+                }
+            }
         }
     }
     return null;
@@ -1181,6 +1224,26 @@ test "functional options name collisions report ZIGO024 with colliding declarati
         try std.testing.expectEqualStrings("ZIGO024", issue.code);
         try std.testing.expect(std.mem.indexOf(u8, issue.message, "WithTerminalRows") != null);
         try std.testing.expect(std.mem.indexOf(u8, issue.message, "withTerminalRows") != null);
+        try std.testing.expect(std.mem.indexOf(u8, issue.message, "generated option for `Terminal.init`") != null);
+    }
+
+    // 4. Collision with a declared session
+    {
+        var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+        defer scratch.deinit();
+        const document: semantic.Semantic = .{
+            .functions = &.{terminal_init},
+            .package = "term",
+            .prefix = "zg",
+            // A session is neither a registered type nor a function, so only
+            // the session-aware rule can see this clash.
+            .sessions = &.{.{ .children = &.{"Stream"}, .name = "TerminalOption", .primary = "Queue" }},
+            .types = &.{},
+            .zig_version = "0.16.0",
+        };
+        const issue = (try publicNameCollisionIssue(scratch.allocator(), document, targets.default)) orelse return error.MissingDiagnostic;
+        try std.testing.expectEqualStrings("ZIGO024", issue.code);
+        try std.testing.expect(std.mem.indexOf(u8, issue.message, "session `TerminalOption`") != null);
         try std.testing.expect(std.mem.indexOf(u8, issue.message, "generated option for `Terminal.init`") != null);
     }
 
