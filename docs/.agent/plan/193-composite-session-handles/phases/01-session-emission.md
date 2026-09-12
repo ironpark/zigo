@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-12T05:36:08Z"
 depends_on:
 - "193-composite-session-handles#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 선언한 세션마다 Go 파일이 생성되고 구조체, 생성자, 접근자가 들어 있다.
 > NEXT: none

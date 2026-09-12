@@ -8,7 +8,7 @@ registered_at: "2026-09-12T03:59:14Z"
 # Phases
 
 - [x] [Phase 00: 선언 표면과 관계 검증](phases/00-session-declaration.md)
-- [ ] [Phase 01: Session 타입과 접근자 방출](phases/01-session-emission.md)
+- [x] [Phase 01: Session 타입과 접근자 방출](phases/01-session-emission.md)
 - [ ] [Phase 02: Close 의미론](phases/02-session-close.md)
 - [ ] [Phase 03: 예제와 ABI 불변 확인](phases/03-example-and-abi.md)
 - [ ] [Phase 04: 문서와 CHANGELOG](phases/04-docs-and-changelog.md)
