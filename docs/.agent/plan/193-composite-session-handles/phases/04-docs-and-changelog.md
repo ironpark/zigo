@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-12T05:41:32Z"
 depends_on:
 - "193-composite-session-handles#3"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 위 문서 세 곳과 CHANGELOG가 갱신되어 있다.
 > NEXT: none
