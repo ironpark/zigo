@@ -508,26 +508,6 @@ test "implemented diagnostic snapshots are stable" {
             .functions = &.{.{
                 .name = "configure",
                 .params = &.{.{
-                    .flatten = &.{
-                        .{ .default = null, .name = "cols", .type = .{ .int = .{ .bits = 16, .signed = false } } },
-                        .{ .default = .{ .int = 24 }, .name = "rows", .type = .{ .int = .{ .bits = 16, .signed = false } } },
-                    },
-                    .go = .{ .options = .{} },
-                    .name = "options",
-                    .type = .{ .value_struct = .{ .ref = "Options" } },
-                }},
-                .@"return" = .{ .void = {} },
-                .symbol = "zg_configure",
-            }},
-            .package = "bad",
-            .prefix = "zg",
-            .types = &.{.{ .kind = .value_struct, .layout = .@"extern", .name = "Options" }},
-            .zig_version = "0.16.0",
-        }, .snapshot = "error[ZIGO061]: option field `cols` has no default value\n  --> semantic.json (configure)\n  hint: give field `cols` a Zig default value, or take it as a parameter of the Zig function instead of a struct field\n" },
-        .{ .document = .{
-            .functions = &.{.{
-                .name = "configure",
-                .params = &.{.{
                     .flatten = &.{},
                     .go = .{ .options = .{} },
                     .name = "options",

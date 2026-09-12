@@ -1000,6 +1000,7 @@ fn optionsCollisionIssue(allocator: std.mem.Allocator, document: semantic.Semant
                     };
                 }
                 for (fields) |field| {
+                    if (field.default == null) continue; // a required field is positional, not a `With*`
                     const with_name = try options_names.withNameAlloc(allocator, field.name);
                     defer allocator.free(with_name);
                     if (std.mem.eql(u8, with_name, declaration.name)) {
@@ -1042,6 +1043,7 @@ fn optionsCollisionIssue(allocator: std.mem.Allocator, document: semantic.Semant
                     };
                 }
                 for (fields) |field| {
+                    if (field.default == null) continue; // a required field is positional, not a `With*`
                     const with_name = try options_names.withNameAlloc(allocator, field.name);
                     defer allocator.free(with_name);
                     if (std.mem.eql(u8, with_name, other_name)) {
@@ -1085,9 +1087,11 @@ fn optionsCollisionIssue(allocator: std.mem.Allocator, document: semantic.Semant
                     }
                     for (fields) |field| {
                         if (clashing != null) break;
+                        if (field.default == null) continue;
                         const with_name = try options_names.withNameAlloc(allocator, field.name);
                         defer allocator.free(with_name);
                         for (prev_fields) |prev_field| {
+                            if (prev_field.default == null) continue;
                             const prev_with = try prev_names.withNameAlloc(allocator, prev_field.name);
                             defer allocator.free(prev_with);
                             if (std.mem.eql(u8, with_name, prev_with)) {
@@ -1133,6 +1137,7 @@ fn optionsCollisionIssue(allocator: std.mem.Allocator, document: semantic.Semant
                 }
                 for (fields) |field| {
                     if (clashing != null) break;
+                    if (field.default == null) continue;
                     const with_name = try options_names.withNameAlloc(allocator, field.name);
                     defer allocator.free(with_name);
                     if (std.mem.eql(u8, with_name, session.name)) {

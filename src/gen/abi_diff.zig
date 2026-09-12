@@ -159,6 +159,12 @@ pub fn diffForTarget(allocator: std.mem.Allocator, base: semantic.Semantic, base
             // gains or loses a second result, and every caller's function
             // literal stops compiling. Breaking on the surface consumers
             // actually write.
+            // Which fields of an options parameter carry a Zig default is Go
+            // surface of its own: a field without one is a positional
+            // parameter, a field with one is a `With*`. Neither moves a C
+            // declaration, so nothing above speaks for it.
+            if (!optionsSurfaceEqual(old.params, new.params))
+                try add(allocator, &report, .breaking, identity, "Go options surface changed");
             if (!goErrorEqual(old.params, new.params))
                 try add(allocator, &report, .breaking, identity, "callback Go error surface changed");
             if (!callbackFailureEqual(old.params, new.params))
@@ -623,7 +629,9 @@ fn goSurfaceEqual(lhs: semantic.SemanticFn, rhs: semantic.SemanticFn) bool {
 
 /// Walks the parameters a generated Go signature carries: one entry per field of
 /// a flattened struct, which is what Go callers spell out, and one entry for an
-/// options struct, the variadic that replaces all of its fields. Comparing these
+/// options struct, the variadic that replaces its defaulted fields, plus one
+/// entry for each of its fields that has no default and so stays positional.
+/// Comparing these
 /// rather than the declarations behind them is what lets a regrouping that
 /// leaves the Go surface alone go unreported, and what makes a field leaving an
 /// options struct report exactly the Go call sites it moves.
@@ -648,9 +656,23 @@ const GoParams = struct {
                 self.index += 1;
                 return .{ .parameter = parameter, .type = parameter.type };
             };
-            if (parameter.goOptions() != null or fields.len == 0) {
+            if (fields.len == 0) {
                 self.index += 1;
                 self.field = 0;
+                return .{ .parameter = parameter, .type = parameter.type };
+            }
+            // An options parameter hides its defaulted fields behind one
+            // variadic token, but a field without a default is a positional
+            // Go parameter and changing it changes the Go signature.
+            if (parameter.goOptions() != null) {
+                while (self.field < fields.len) {
+                    const field = fields[self.field];
+                    self.field += 1;
+                    if (field.default != null) continue;
+                    return .{ .parameter = parameter, .type = field.type };
+                }
+                self.field = 0;
+                self.index += 1;
                 return .{ .parameter = parameter, .type = parameter.type };
             }
             if (self.field < fields.len) {
@@ -699,6 +721,22 @@ fn goTypeEqual(lhs: semantic.TypeNode, rhs: semantic.TypeNode) bool {
         },
         else => true,
     };
+}
+
+fn optionsSurfaceEqual(lhs: []const semantic.Parameter, rhs: []const semantic.Parameter) bool {
+    return exposedParamsMatch(lhs, rhs, struct {
+        fn matches(a: semantic.Parameter, b: semantic.Parameter) bool {
+            if ((a.goOptions() == null) != (b.goOptions() == null)) return false;
+            if (a.goOptions() == null) return true;
+            const a_fields: []const semantic.FlattenedField = a.flatten orelse &.{};
+            const b_fields: []const semantic.FlattenedField = b.flatten orelse &.{};
+            if (a_fields.len != b_fields.len) return false;
+            for (a_fields, b_fields) |x, y| {
+                if ((x.default == null) != (y.default == null)) return false;
+            }
+            return true;
+        }
+    }.matches);
 }
 
 fn goErrorEqual(lhs: []const semantic.Parameter, rhs: []const semantic.Parameter) bool {
@@ -1013,6 +1051,65 @@ test "a field leaving an options struct reports the Go surface, not the C one" {
     try std.testing.expectEqual(@as(usize, 1), report.changes.items.len);
     try std.testing.expectEqual(ChangeKind.breaking, report.changes.items[0].kind);
     try std.testing.expectEqualStrings("Go parameter surface changed", report.changes.items[0].detail);
+}
+
+test "an options field losing its default becomes a positional Go parameter" {
+    const u16_node: semantic.TypeNode = .{ .int = .{ .bits = 16, .signed = false } };
+    const options_type: semantic.TypeNode = .{ .value_struct = .{ .ref = "Options" } };
+    const base_fields = [_]semantic.FlattenedField{
+        .{ .default = .{ .int = 80 }, .name = "cols", .type = u16_node },
+        .{ .default = .{ .int = 24 }, .name = "rows", .type = u16_node },
+    };
+    const current_fields = [_]semantic.FlattenedField{
+        .{ .name = "cols", .type = u16_node },
+        .{ .default = .{ .int = 24 }, .name = "rows", .type = u16_node },
+    };
+    const base_fn: semantic.SemanticFn = .{
+        .name = "init",
+        .params = &.{.{ .name = "options", .flatten = &base_fields, .type = options_type, .go = .{ .options = .{} } }},
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_init",
+    };
+    var current_fn = base_fn;
+    current_fn.params = &.{.{ .name = "options", .flatten = &current_fields, .type = options_type, .go = .{ .options = .{} } }};
+    const base: semantic.Semantic = .{ .package = "demo", .prefix = "zg", .zig_version = "0.16.0", .functions = &.{base_fn} };
+    const current: semantic.Semantic = .{ .package = "demo", .prefix = "zg", .zig_version = "0.16.0", .functions = &.{current_fn} };
+    // C sees the same two `uint16_t` declarations either way, but the Go call
+    // site gained a required argument where a `With*` option used to be.
+    var report = try diff(std.testing.allocator, base, current);
+    defer report.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(usize, 1), report.changes.items.len);
+    try std.testing.expectEqual(ChangeKind.breaking, report.changes.items[0].kind);
+    try std.testing.expectEqualStrings("Go options surface changed", report.changes.items[0].detail);
+}
+
+test "a required options field changing its Go type is a Go surface change" {
+    const u16_node: semantic.TypeNode = .{ .int = .{ .bits = 16, .signed = false } };
+    const u32_node: semantic.TypeNode = .{ .int = .{ .bits = 32, .signed = false } };
+    const options_type: semantic.TypeNode = .{ .value_struct = .{ .ref = "Options" } };
+    const base_fields = [_]semantic.FlattenedField{
+        .{ .name = "cols", .type = u16_node },
+        .{ .default = .{ .int = 24 }, .name = "rows", .type = u16_node },
+    };
+    const current_fields = [_]semantic.FlattenedField{
+        .{ .name = "cols", .type = u32_node },
+        .{ .default = .{ .int = 24 }, .name = "rows", .type = u16_node },
+    };
+    const base_fn: semantic.SemanticFn = .{
+        .name = "init",
+        .params = &.{.{ .name = "options", .flatten = &base_fields, .type = options_type, .go = .{ .options = .{} } }},
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_init",
+    };
+    var current_fn = base_fn;
+    current_fn.params = &.{.{ .name = "options", .flatten = &current_fields, .type = options_type, .go = .{ .options = .{} } }};
+    const base: semantic.Semantic = .{ .package = "demo", .prefix = "zg", .zig_version = "0.16.0", .functions = &.{base_fn} };
+    const current: semantic.Semantic = .{ .package = "demo", .prefix = "zg", .zig_version = "0.16.0", .functions = &.{current_fn} };
+    var report = try diff(std.testing.allocator, base, current);
+    defer report.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(usize, 1), report.changes.items.len);
+    try std.testing.expectEqual(ChangeKind.breaking, report.changes.items[0].kind);
+    try std.testing.expectEqualStrings("signature changed", report.changes.items[0].detail);
 }
 
 test "regrouping a flattened struct without moving the Go surface is not a change" {

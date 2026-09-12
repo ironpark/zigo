@@ -191,6 +191,10 @@ pub fn functionIssue(allocator: std.mem.Allocator, document: semantic.Semantic, 
                     .site = site.functionSite(function),
                     .hint = "flatten only bool, integer, float, registered enum, or optional scalar fields",
                 };
+                // A listed field without a Zig default is a required value: it
+                // reaches Go as a positional parameter instead of a `With*`
+                // option. Only a declaration with no option field at all is
+                // asking for `.flatten`.
                 if (parameter.goOptions()) |_| {
                     var default_count: usize = 0;
                     for (fields) |field| {
@@ -203,15 +207,6 @@ pub fn functionIssue(allocator: std.mem.Allocator, document: semantic.Semantic, 
                         .site = site.functionSite(function),
                         .hint = "give at least one field a Zig default value, or use `.flatten` instead of `.options`",
                     };
-                    for (fields) |field| {
-                        if (field.default == null) return .{
-                            .severity = .@"error",
-                            .code = "ZIGO061",
-                            .message = try std.fmt.allocPrint(allocator, "option field `{s}` has no default value", .{field.name}),
-                            .site = site.functionSite(function),
-                            .hint = try std.fmt.allocPrint(allocator, "give field `{s}` a Zig default value, or take it as a parameter of the Zig function instead of a struct field", .{field.name}),
-                        };
-                    }
                 }
             } else if (parameter.goOptions()) |_| return .{
                 .severity = .@"error",
@@ -1328,7 +1323,8 @@ test "functional options validation rules reject multiple option params, missing
         try std.testing.expect(std.mem.indexOf(u8, issue.hint, "at most one options parameter") != null);
     }
 
-    // 3. Option field with no default value (when other field has default)
+    // 3. A field without a default is a required value, not an error: it
+    //    becomes a positional Go parameter next to the `With*` options.
     {
         var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
         defer scratch.deinit();
@@ -1354,11 +1350,7 @@ test "functional options validation rules reject multiple option params, missing
             .types = &.{opt_decl},
             .zig_version = "0.16.0",
         };
-        const issue = (try validate.findIssue(scratch.allocator(), document)) orelse return error.MissingDiagnostic;
-        try std.testing.expectEqualStrings("ZIGO061", issue.code);
-        try std.testing.expectEqualStrings("option field `cols` has no default value", issue.message);
-        try std.testing.expect(std.mem.indexOf(u8, issue.hint, "Zig default value") != null);
-        try std.testing.expect(std.mem.indexOf(u8, issue.hint, "parameter of the Zig function") != null);
+        try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try validate.findIssue(scratch.allocator(), document));
     }
 
     // 4. Options parameter with no option fields (all fields without default)
