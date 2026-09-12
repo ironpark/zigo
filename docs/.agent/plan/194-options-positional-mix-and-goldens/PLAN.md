@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-12T05:08:59Z"
 depends_on:
 - go-functional-options
 description: 옵션 생성자의 위치 인자 혼합을 정본 관용구로 확정하고, 기본 접두사와 혼합 시그니처를 골든·예제로 검증한다
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-12T05:02:27Z"
 ---
 > NEXT: phase 0(`mixed-signature-idiom`)부터 시작합니다: `ZIGO061` hint를 실행 가능한 해법으로 ([Phase 0](phases/00-mixed-signature-idiom.md))
@@ -10,7 +11,7 @@ registered_at: "2026-09-12T05:02:27Z"
 # Phases
 
 - [x] [Phase 00: 혼합 시그니처 관용구와 hint 정정](phases/00-mixed-signature-idiom.md)
-- [ ] [Phase 01: 기본 접두사와 혼합 시그니처 골든](phases/01-default-prefix-golden.md)
+- [x] [Phase 01: 기본 접두사와 혼합 시그니처 골든](phases/01-default-prefix-golden.md)
 
 # Shared Verification
 
