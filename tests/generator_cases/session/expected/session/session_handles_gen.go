@@ -294,3 +294,144 @@ func (s *Stream) zigoTakeLocked() (zigoStreamCleanupState, bool) {
 	}
 	return state, true
 }
+
+// Ticker is a caller-owned native handle. Call Close when it is no longer needed.
+type Ticker struct {
+	ptr     unsafe.Pointer
+	mu      sync.Mutex
+	active  int
+	closed  bool
+	poison  *NativePanicError
+	parent  zigoChildHandle
+	cleanup runtime.Cleanup
+}
+
+// zigoAcquire pins t and its parent open for one native call.
+func (t *Ticker) zigoAcquire(operation string) (unsafe.Pointer, error) {
+	if t == nil {
+		return nil, &HandleError{Operation: operation}
+	}
+	t.mu.Lock()
+	parent := t.parent
+	t.mu.Unlock()
+	if parent != nil {
+		if _, err := parent.zigoAcquire(operation); err != nil {
+			return nil, err
+		}
+	}
+	t.mu.Lock()
+	var err error
+	switch {
+	case t.closed || t.ptr == nil:
+		err = &HandleError{Operation: operation}
+	case t.poison != nil:
+		err = t.poison.poisoned(operation)
+	default:
+		t.active++
+	}
+	ptr := t.ptr
+	t.mu.Unlock()
+	if err != nil {
+		if parent != nil {
+			parent.zigoRelease()
+		}
+		return nil, err
+	}
+	return ptr, nil
+}
+
+func (t *Ticker) zigoRelease() {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	t.active--
+	parent := t.parent
+	state, release := t.zigoTakeLocked()
+	t.mu.Unlock()
+	if release {
+		zigoCleanupTicker(state)
+	}
+	if parent != nil {
+		parent.zigoRelease()
+	}
+}
+
+// zigoPoison marks t unusable: a Zig panic unwound through native frames
+// without running their defers, so the state behind it is unknown.
+func (t *Ticker) zigoPoison(cause *NativePanicError) {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	parent := t.parent
+	if t.poison == nil {
+		t.poison = cause
+		t.cleanup.Stop()
+	}
+	t.mu.Unlock()
+	if parent != nil {
+		parent.zigoPoison(cause)
+	}
+}
+
+type zigoTickerCleanupState struct {
+	ptr    unsafe.Pointer
+	parent zigoChildHandle
+}
+
+func zigoNewTicker(ptr unsafe.Pointer, parent zigoChildHandle) *Ticker {
+	value := &Ticker{ptr: ptr, parent: parent}
+	state := zigoTickerCleanupState{ptr: ptr, parent: parent}
+	value.cleanup = runtime.AddCleanup(value, zigoCleanupTicker, state)
+	return value
+}
+
+func zigoCleanupTicker(state zigoTickerCleanupState) {
+	if state.ptr != nil {
+		raw.TickerFreeTicker(state.ptr)
+	}
+	if state.parent != nil {
+		state.parent.zigoDropChild()
+	}
+}
+
+// Close releases the native Ticker resources. It is safe to call more than once.
+// The error result is always nil; it exists so Ticker satisfies io.Closer.
+// Close does not wait: a call still inside native keeps the resources until it
+// returns, and every call made after Close fails with *HandleError.
+func (t *Ticker) Close() error {
+	if t == nil {
+		return nil
+	}
+	t.mu.Lock()
+	if t.closed {
+		t.mu.Unlock()
+		return nil
+	}
+	t.closed = true
+	t.cleanup.Stop()
+	state, release := t.zigoTakeLocked()
+	t.mu.Unlock()
+	if release {
+		zigoCleanupTicker(state)
+	}
+	runtime.KeepAlive(t)
+	return nil
+}
+
+// zigoTakeLocked hands out what is left to release once t is closed and no
+// call is inside native; mu must be held. A poisoned handle keeps its native
+// object: releasing state a panic left half-changed could fault, so it leaks.
+func (t *Ticker) zigoTakeLocked() (zigoTickerCleanupState, bool) {
+	if !t.closed || t.active != 0 || t.ptr == nil {
+		return zigoTickerCleanupState{}, false
+	}
+	state := zigoTickerCleanupState{ptr: t.ptr, parent: t.parent}
+	t.ptr = nil
+	t.parent = nil
+	if t.poison != nil {
+		state.ptr = nil
+	}
+	return state, true
+}

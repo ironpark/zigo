@@ -9,6 +9,11 @@
       "deinit": "freeStream",
       "init": "newStream",
       "type": "Stream"
+    },
+    {
+      "deinit": "freeTicker",
+      "init": "newTicker",
+      "type": "Ticker"
     }
   ],
   "functions": [
@@ -67,6 +72,36 @@
         "kind": "void"
       },
       "symbol": "ignored"
+    },
+    {
+      "child_of_receiver": true,
+      "go": {
+        "owner": "Ticker"
+      },
+      "name": "newTicker",
+      "ownership": "caller",
+      "params": [],
+      "receiver": "Queue",
+      "return": {
+        "error_set": [],
+        "kind": "error_union",
+        "payload": {
+          "const": false,
+          "kind": "opaque_ptr",
+          "nullable": false,
+          "ref": "Ticker"
+        }
+      },
+      "symbol": "ignored"
+    },
+    {
+      "name": "freeTicker",
+      "params": [],
+      "receiver": "Ticker",
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "ignored"
     }
   ],
   "package": "session",
@@ -74,7 +109,8 @@
   "sessions": [
     {
       "children": [
-        "Stream"
+        "Stream",
+        "Ticker"
       ],
       "doc": "Session owns a queue and every stream it handed out.",
       "name": "Session",
@@ -89,6 +125,10 @@
     {
       "kind": "opaque",
       "name": "Stream"
+    },
+    {
+      "kind": "opaque",
+      "name": "Ticker"
     }
   ],
   "zig_version": "0.16.0"

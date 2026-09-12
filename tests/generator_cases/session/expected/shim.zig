@@ -26,3 +26,12 @@ export fn zg_stream_free_stream_impl(self: *target.Stream) i32 {
     target.Stream.freeStream(self);
     return 0;
 }
+export fn zg_queue_new_ticker_impl(self: *target.Queue, out_result: **target.Ticker) i32 {
+    const result = target.Queue.newTicker(self);
+    out_result.* = result;
+    return 0;
+}
+export fn zg_ticker_free_ticker_impl(self: *target.Ticker) i32 {
+    target.Ticker.freeTicker(self);
+    return 0;
+}

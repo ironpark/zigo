@@ -40,3 +40,27 @@ func (q *Queue) NewStream() (*Stream, error) {
 	zigoChildCreated = true
 	return zigoNewStream(result, zigoChildParent), nil
 }
+
+// NewTicker creates a caller-owned Ticker.
+// The caller must call Close on the returned handle.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (q *Queue) NewTicker() (*Ticker, error) {
+	ptr, zigoChildParent, err := q.zigoAcquireChild("Queue.NewTicker receiver")
+	if err != nil {
+		return nil, err
+	}
+	zigoChildCreated := false
+	defer func() {
+		q.zigoRelease()
+		if !zigoChildCreated {
+			zigoChildParent.zigoDropChild()
+		}
+	}()
+	result, code := raw.QueueNewTicker(ptr)
+	if code != 0 {
+		return nil, zigoPoisonAfterPanic(zigoErrorForCode("Queue.NewTicker", code), q)
+	}
+	zigoChildCreated = true
+	return zigoNewTicker(result, zigoChildParent), nil
+}

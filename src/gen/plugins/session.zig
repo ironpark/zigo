@@ -16,8 +16,18 @@ const targets = @import("targets");
 pub const plugin: plugin_api.Plugin = .{
     .name = "SESSION",
     .validate = validateDocument,
-    .source_files = &.{.{ .pathAlloc = sessionsPath, .render = renderSessionsBody }},
+    .source_files = &.{.{ .imports = sessionImports, .pathAlloc = sessionsPath, .render = renderSessionsBody }},
 };
+
+/// Every session file closes handles, joins the failures and guards the whole
+/// thing with a `sync.Once`, so the three standard packages are always used.
+fn sessionImports(_: plugin_api.Context) anyerror![]const plugin_api.Import {
+    return &.{
+        .{ .path = "errors", .qualifier = "errors" },
+        .{ .path = "io", .qualifier = "io" },
+        .{ .path = "sync", .qualifier = "sync" },
+    };
+}
 
 /// The declaration rules live with the other validation rules; the plugin is
 /// what runs them, so `.sessions` has one owner.
@@ -60,8 +70,20 @@ fn renderSession(context: plugin_api.Context, writer: *std.Io.Writer, session: a
         "// {s} owns {s} and the child handles it adopted, and closes them in that\n// order: children first, then the primary.\ntype {s} struct {{\n",
         .{ session.name, session.primary, session.name },
     );
-    for (members.items) |member| try writer.print("\t{s} *{s}\n", .{ member.field, member.type_name });
-    try writer.writeAll("}\n");
+    // One column for every field, so the block reads the way gofmt lays it out
+    // whether or not the consumer runs the formatter over generated files.
+    var width: usize = "closeOnce".len;
+    for (members.items) |member| width = @max(width, member.field.len);
+    for (members.items) |member| {
+        try writeStructField(writer, member.field, width);
+        try writer.print("*{s}\n", .{member.type_name});
+    }
+    // The once and the error it keeps are what make Close idempotent, and what
+    // make a second call answer with the first call's result.
+    try writeStructField(writer, "closeOnce", width);
+    try writer.writeAll("sync.Once\n");
+    try writeStructField(writer, "closeErr", width);
+    try writer.writeAll("error\n}\n");
 
     try writer.print("\n// {s} adopts the primary handle and every child it handed out.\n// A nil member is skipped when the session closes.\n", .{constructor_name});
     try writer.print("func {s}(", .{constructor_name});
@@ -76,11 +98,32 @@ fn renderSession(context: plugin_api.Context, writer: *std.Io.Writer, session: a
     }
     try writer.writeAll("}\n}\n");
 
+    // Children first, then the primary: that is the order the native side
+    // insists on, since a parent refuses to close while a child it handed out
+    // is still open.
+    try writer.writeAll("\n// Close closes every child handle the session adopted and then the primary.\n// It is idempotent and safe to call from several goroutines: a later call\n// returns the first result without closing anything again. A member that\n// fails to close does not stop the others, and the failures are reported\n// together.\n");
+    try writer.print("func (s *{s}) Close() error {{\n\ts.closeOnce.Do(func() {{\n", .{session.name});
+    try writer.writeAll("\t\tvar failures []error\n");
+    for (members.items[1..]) |member| try writeCloseMember(writer, member);
+    try writeCloseMember(writer, members.items[0]);
+    try writer.writeAll("\t\ts.closeErr = errors.Join(failures...)\n\t})\n\treturn s.closeErr\n}\n");
+
     for (members.items, 0..) |member, index| {
         const role = if (index == 0) "primary" else "child";
         try writer.print("\n// {s} returns the {s} handle the session owns.\n", .{ member.type_name, role });
         try writer.print("func (s *{s}) {s}() *{s} {{ return s.{s} }}\n", .{ session.name, member.type_name, member.type_name, member.field });
     }
+    try writer.print("\nvar _ io.Closer = (*{s})(nil)\n", .{session.name});
+}
+
+fn writeStructField(writer: *std.Io.Writer, name: []const u8, width: usize) !void {
+    try writer.writeByte('\t');
+    try writer.writeAll(name);
+    try writer.splatByteAll(' ', width - name.len + 1);
+}
+
+fn writeCloseMember(writer: *std.Io.Writer, member: Member) !void {
+    try writer.print("\t\tif s.{s} != nil {{\n\t\t\tif err := s.{s}.Close(); err != nil {{\n\t\t\t\tfailures = append(failures, err)\n\t\t\t}}\n\t\t}}\n", .{ member.field, member.field });
 }
 
 /// One Go field per member: the primary first, then the children in

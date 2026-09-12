@@ -40,3 +40,14 @@ func StreamFreeStream(self unsafe.Pointer) int32 {
 	code := int32(C.zg_stream_free_stream((*C.zg_stream)(self)))
 	return code
 }
+// QueueNewTicker calls the generated C ABI wrapper for zg_queue_new_ticker.
+func QueueNewTicker(self unsafe.Pointer) (unsafe.Pointer, int32) {
+	var outResult *C.zg_ticker
+	code := int32(C.zg_queue_new_ticker((*C.zg_queue)(self), &outResult))
+	return unsafe.Pointer(outResult), code
+}
+// TickerFreeTicker calls the generated C ABI wrapper for zg_ticker_free_ticker.
+func TickerFreeTicker(self unsafe.Pointer) int32 {
+	code := int32(C.zg_ticker_free_ticker((*C.zg_ticker)(self)))
+	return code
+}

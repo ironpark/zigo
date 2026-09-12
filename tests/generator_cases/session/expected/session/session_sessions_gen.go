@@ -2,18 +2,55 @@
 
 package session
 
+import (
+	"errors"
+	"io"
+	"sync"
+)
+
 // Session owns a queue and every stream it handed out.
 // Session owns Queue and the child handles it adopted, and closes them in that
 // order: children first, then the primary.
 type Session struct {
-	queue *Queue
-	stream *Stream
+	queue     *Queue
+	stream    *Stream
+	ticker    *Ticker
+	closeOnce sync.Once
+	closeErr  error
 }
 
 // NewSession adopts the primary handle and every child it handed out.
 // A nil member is skipped when the session closes.
-func NewSession(queue *Queue, stream *Stream) *Session {
-	return &Session{queue: queue, stream: stream}
+func NewSession(queue *Queue, stream *Stream, ticker *Ticker) *Session {
+	return &Session{queue: queue, stream: stream, ticker: ticker}
+}
+
+// Close closes every child handle the session adopted and then the primary.
+// It is idempotent and safe to call from several goroutines: a later call
+// returns the first result without closing anything again. A member that
+// fails to close does not stop the others, and the failures are reported
+// together.
+func (s *Session) Close() error {
+	s.closeOnce.Do(func() {
+		var failures []error
+		if s.stream != nil {
+			if err := s.stream.Close(); err != nil {
+				failures = append(failures, err)
+			}
+		}
+		if s.ticker != nil {
+			if err := s.ticker.Close(); err != nil {
+				failures = append(failures, err)
+			}
+		}
+		if s.queue != nil {
+			if err := s.queue.Close(); err != nil {
+				failures = append(failures, err)
+			}
+		}
+		s.closeErr = errors.Join(failures...)
+	})
+	return s.closeErr
 }
 
 // Queue returns the primary handle the session owns.
@@ -21,3 +58,8 @@ func (s *Session) Queue() *Queue { return s.queue }
 
 // Stream returns the child handle the session owns.
 func (s *Session) Stream() *Stream { return s.stream }
+
+// Ticker returns the child handle the session owns.
+func (s *Session) Ticker() *Ticker { return s.ticker }
+
+var _ io.Closer = (*Session)(nil)
