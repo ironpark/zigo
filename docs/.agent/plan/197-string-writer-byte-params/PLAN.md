@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-12T07:48:33Z"
 description: 바이트 매개변수에도 .string_writer를 허용하고 복사 없는 WriteString 래퍼를 생성한다
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-12T07:31:18Z"
 ---
 > NEXT: phase 0(`borrowed-bytes-wrapper`)부터 시작합니다: `ZIGO058`이 string 도달이 아니라 빌려 온 바이트를 묻게 고칩니다. ([Phase 0](phases/00-borrowed-bytes-wrapper.md))
@@ -9,7 +10,7 @@ registered_at: "2026-09-12T07:31:18Z"
 
 - [x] [Phase 00: 바이트 매개변수 허용과 빌려 넘기는 래퍼](phases/00-borrowed-bytes-wrapper.md)
 - [x] [Phase 01: 골든과 예제](phases/01-goldens-and-example.md)
-- [ ] [Phase 02: 문서](phases/02-docs.md)
+- [x] [Phase 02: 문서](phases/02-docs.md)
 
 # Shared Verification
 
