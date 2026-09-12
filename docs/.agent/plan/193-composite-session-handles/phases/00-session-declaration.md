@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-12T05:30:34Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `zigo.session(.{ .name = "Session", .primary = EventQueue.typeRef(), .children = &.{Stream.typeRef()} })`가
 > NEXT: none
