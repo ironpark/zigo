@@ -7,7 +7,7 @@ const std = @import("std");
 /// shape, is an ordinary Zig compile error at the declaration rather than a
 /// diagnostic long afterwards.
 pub const Extension = struct {
-    builtin: union(enum) { none, iterator: Iterator, implements: Implements, text } = .none,
+    builtin: union(enum) { none, iterator: Iterator, implements: []const Implements, text } = .none,
     /// The plugin's name. It is the key the options travel under in
     /// `semantic.json`, so two plugins cannot collide silently.
     plugin: []const u8,
@@ -143,7 +143,7 @@ pub const FunctionOptions = struct {
     destroys: ?type = null,
     child_of_receiver: ?bool = null,
     iterator: ?Iterator = null,
-    implements: ?Implements = null,
+    implements: ?[]const Implements = null,
     cancel: ?Cancel = null,
     covers: ?[]const []const u8 = null,
     symbol: ?[]const u8 = null,
@@ -171,8 +171,9 @@ pub const Function = struct {
     destroys: ?type = null,
     child_of_receiver: bool = false,
     iterator: ?Iterator = null,
-    /// A Go standard interface this method also satisfies through a wrapper.
-    implements: ?Implements = null,
+    /// The Go standard interfaces this method also satisfies, each through a
+    /// wrapper of its own.
+    implements: ?[]const Implements = null,
     cancel: ?Cancel = null,
     /// Declarations this function stands in for in `go-coverage`.
     covers: []const []const u8 = &.{},

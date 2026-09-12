@@ -555,7 +555,7 @@ fn valueReceiverIssue(
         if (function.childOfReceiver()) break :blk "`.child_of_receiver`";
         if (function.returnsBorrowedHandle()) break :blk "`.returns.ownership = .borrowed`";
         if (function.goIterator() != null) break :blk "`.iterator`";
-        if (function.goImplements() != null) break :blk "`.implements`";
+        if (function.goImplements().len != 0) break :blk "`.implements`";
         if (function.boxed != null) break :blk "a boxed constructor";
         // `.destroys` already needs the destroyed type as its receiver, so
         // only the constructor side can reach a value receiver.
@@ -1130,28 +1130,32 @@ test "implements accepts one-step shapes and rejects the rest" {
     const base: semantic.SemanticFn = .{ .name = "feed", .params = &.{bytes_in}, .receiver = "Stream", .@"return" = void_node, .symbol = "zg_stream_feed" };
 
     var writer = base;
-    writer.setGoImplements(.writer);
+    writer.setGoImplements(&.{.writer});
     var reader = base;
-    reader.setGoImplements(.reader);
+    reader.setGoImplements(&.{.reader});
     reader.params = &.{buffer_out};
     reader.@"return" = count_node;
     var writer_to = base;
-    writer_to.setGoImplements(.writer_to);
+    writer_to.setGoImplements(&.{.writer_to});
     writer_to.params = &.{writer_in};
     var reader_from = base;
-    reader_from.setGoImplements(.reader_from);
+    reader_from.setGoImplements(&.{.reader_from});
     reader_from.params = &.{reader_in};
     reader_from.@"return" = count_node;
     // `.string_writer` takes the same parameter as `.writer`, with or without
     // a string semantic: the hint decides whether the wrapper passes the Go
     // `string` through or lends its bytes, not whether the shape is allowed.
     var string_writer_bytes = base;
-    string_writer_bytes.setGoImplements(.string_writer);
+    string_writer_bytes.setGoImplements(&.{.string_writer});
     var string_writer_text = string_writer_bytes;
     var text_param = bytes_in;
     text_param.semantic = .utf8_string;
     string_writer_text.params = &.{text_param};
-    for ([_]semantic.SemanticFn{ writer, reader, writer_to, reader_from, string_writer_bytes, string_writer_text }) |function| {
+    // One method, two interfaces: each kind is judged on its own, and the
+    // same shape satisfies both.
+    var writer_and_string_writer = base;
+    writer_and_string_writer.setGoImplements(&.{ .writer, .string_writer });
+    for ([_]semantic.SemanticFn{ writer, reader, writer_to, reader_from, string_writer_bytes, string_writer_text, writer_and_string_writer }) |function| {
         var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
         defer scratch.deinit();
         const document: semantic.Semantic = .{ .functions = &.{function}, .package = "vt", .prefix = "zg", .types = &.{handle}, .zig_version = "0.16.0" };
@@ -1180,12 +1184,15 @@ test "implements accepts one-step shapes and rejects the rest" {
     reader_void.@"return" = void_node;
     var wrong_stream = writer_to;
     wrong_stream.params = &.{reader_in};
+    // Two wrappers of one kind would declare one Go method twice.
+    var repeated_kind = base;
+    repeated_kind.setGoImplements(&.{ .writer, .writer });
     // The rejections are asserted against the rule itself. Some of these
     // shapes are faulty for a second reason as well -- a `.cancel` that names
     // nothing is also ZIGO026 -- and plugin rules run after the core ones, so
     // going through `findIssue` would ask which fault is reported first
     // rather than what this rule says.
-    for ([_]semantic.SemanticFn{ free_function, iterating, cancelling, bool_result, two_params, text_hinted, reader_all, reader_void, wrong_stream }) |function| {
+    for ([_]semantic.SemanticFn{ free_function, iterating, cancelling, bool_result, two_params, text_hinted, reader_all, reader_void, wrong_stream, repeated_kind }) |function| {
         var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
         defer scratch.deinit();
         const issue = (try implements_plugin.implementsIssue(scratch.allocator(), function)) orelse return error.MissingDiagnostic;

@@ -760,9 +760,10 @@ pub const FnGo = struct {
     /// Set by `.iterator`: the method is a `next()` and Go also gets an
     /// `iter.Seq` wrapper. Go surface only; the C symbol is unchanged.
     iterator: ?Iterator = null,
-    /// Set by `.implements`: Go also gets the named `io` interface's method,
-    /// calling this one. Go surface only; the C symbol is unchanged.
-    implements: ?Implements = null,
+    /// Set by `.implements`: Go also gets each named `io` interface's method,
+    /// every one of them calling this one, in the order they were named. Go
+    /// surface only; the C symbol is unchanged.
+    implements: ?[]const Implements = null,
 
     fn compact(self: FnGo) ?FnGo {
         return if (self.name == null and self.owner == null and self.return_adapter == null and
@@ -1049,15 +1050,16 @@ pub const SemanticFn = struct {
         self.go = go.compact();
     }
 
-    /// The Go standard interface this method also satisfies, if any.
-    pub fn goImplements(self: SemanticFn) ?Implements {
-        return (self.go orelse FnGo{}).implements;
+    /// The Go standard interfaces this method also satisfies, in declaration
+    /// order. Empty when it satisfies none, so callers can walk it either way.
+    pub fn goImplements(self: SemanticFn) []const Implements {
+        return (self.go orelse FnGo{}).implements orelse &.{};
     }
 
-    /// Record the Go standard interface this method also satisfies.
-    pub fn setGoImplements(self: *SemanticFn, value: ?Implements) void {
+    /// Record the Go standard interfaces this method also satisfies.
+    pub fn setGoImplements(self: *SemanticFn, value: ?[]const Implements) void {
         var go = self.go orelse FnGo{};
-        go.implements = value;
+        go.implements = if (value) |kinds| (if (kinds.len == 0) null else kinds) else null;
         self.go = go.compact();
     }
 
@@ -1289,6 +1291,16 @@ fn migrate(allocator: std.mem.Allocator, root: *std.json.Value) !void {
                 .{ "iterator", "iterator" },
                 .{ "implements", "implements" },
             });
+            // `implements` named one kind before a method could satisfy more
+            // than one interface. A string is that one kind; a list is already
+            // current, which is what makes the rule idempotent.
+            if (function.object.getPtr("go")) |go| if (go.* == .object) {
+                if (go.object.getPtr("implements")) |implements| if (implements.* == .string) {
+                    var kinds: std.json.Array = .init(allocator);
+                    try kinds.append(implements.*);
+                    implements.* = .{ .array = kinds };
+                };
+            };
             if (function.object.getPtr("params")) |params| if (params.* == .array) {
                 for (params.array.items) |*param| {
                     if (param.* != .object) continue;
@@ -1809,17 +1821,43 @@ test "implements is omitted by default and round trips when present" {
     try std.testing.expect(std.mem.indexOf(u8, plain_bytes, "\"implements\"") == null);
 
     const declared: Semantic = .{
-        .functions = &.{.{ .go = .{ .implements = .writer_to }, .name = "dump", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_dump" }},
+        .functions = &.{.{ .go = .{ .implements = &.{ .writer, .string_writer } }, .name = "dump", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_dump" }},
         .package = "sample",
         .prefix = "zg",
         .zig_version = "0.16.0",
     };
     const bytes = try declared.serialize(std.testing.allocator);
     defer std.testing.allocator.free(bytes);
-    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"implements\": \"writer_to\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"writer\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"string_writer\"") != null);
     var parsed = try Semantic.parse(std.testing.allocator, bytes);
     defer parsed.deinit();
-    try std.testing.expectEqual(Implements.writer_to, parsed.value.functions[0].goImplements().?);
+    try std.testing.expectEqualSlices(Implements, &.{ .writer, .string_writer }, parsed.value.functions[0].goImplements());
+}
+
+test "a single implements written as a string is read as a one-kind list" {
+    // The field was one kind before it was a list, and a document written then
+    // says `"implements": "writer_to"`. Migration is keyed on the shape, so a
+    // document already holding a list passes through untouched.
+    const legacy =
+        \\{
+        \\  "functions": [
+        \\    {
+        \\      "go": { "implements": "writer_to" },
+        \\      "name": "dump",
+        \\      "params": [],
+        \\      "return": { "kind": "void" },
+        \\      "symbol": "zg_dump"
+        \\    }
+        \\  ],
+        \\  "package": "sample",
+        \\  "prefix": "zg",
+        \\  "zig_version": "0.16.0"
+        \\}
+    ;
+    var parsed = try Semantic.parse(std.testing.allocator, legacy);
+    defer parsed.deinit();
+    try std.testing.expectEqualSlices(Implements, &.{.writer_to}, parsed.value.functions[0].goImplements());
 }
 
 test "package metadata is omitted by default and round trips when present" {

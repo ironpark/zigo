@@ -234,7 +234,7 @@ pub const Entry = union(enum) {
         if (@hasField(@TypeOf(P), "builtin")) {
             captured.builtin = switch (P.builtin) {
                 .iterator => .{ .iterator = options },
-                .implements => .{ .implements = options.kind },
+                .implements => .{ .implements = implementsKinds(options) },
                 .text => .text,
             };
         }
@@ -266,6 +266,16 @@ pub const Entry = union(enum) {
         return result.use(P, options);
     }
 };
+
+/// The kinds an `.implements` attachment names. One declaration says it with
+/// `.kind` or with `.kinds`, never with both: two spellings of the same list
+/// on one attachment would leave the order and the winner unstated.
+fn implementsKinds(comptime options: anytype) []const ir.Implements {
+    if (options.kind != null and options.kinds.len != 0) @compileError("zigo implements takes `.kind` or `.kinds`, not both");
+    if (options.kind) |one| return &[_]ir.Implements{one};
+    if (options.kinds.len == 0) @compileError("zigo implements needs `.kind` or a non-empty `.kinds`");
+    return options.kinds;
+}
 
 fn pluginOptions(comptime P: anytype, comptime entry: Entry) type {
     return if (entry == .function) P.FunctionOptions else P.TypeOptions;

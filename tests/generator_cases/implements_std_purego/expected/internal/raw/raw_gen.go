@@ -386,9 +386,9 @@ func StreamAppendString(self unsafe.Pointer, text string) int32 {
 }
 
 // BufferPushString calls the generated purego ABI wrapper for zg_buffer_push_string.
-func BufferPushString(self unsafe.Pointer, bytes []uint8) (uint, int32) {
+func BufferPushString(self unsafe.Pointer, bytes string) (uint, int32) {
 	var bytesPtr unsafe.Pointer
-	if len(bytes) != 0 { bytesPtr = unsafe.Pointer(&bytes[0]) }
+	if len(bytes) != 0 { bytesPtr = unsafe.Pointer(unsafe.StringData(bytes)) }
 	var outResult uintptr
 	code := bindings().fnBufferPushString(self, bytesPtr, uintptr(len(bytes)), &outResult)
 	return uint(outResult), code

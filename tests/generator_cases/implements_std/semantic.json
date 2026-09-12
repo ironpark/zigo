@@ -1,7 +1,10 @@
 {
   "functions": [
     {
-      "implements": "writer",
+      "implements": [
+        "writer",
+        "string_writer"
+      ],
       "name": "feed",
       "params": [
         {
@@ -58,7 +61,6 @@
       "symbol": "ignored"
     },
     {
-      "implements": "string_writer",
       "name": "appendString",
       "params": [
         {
@@ -103,7 +105,8 @@
               "signed": false
             },
             "kind": "slice"
-          }
+          },
+          "semantic": "utf8_string"
         }
       ],
       "receiver": "Buffer",

@@ -113,7 +113,7 @@ test "migration is idempotent and does not depend on the declared version" {
     defer parsed.deinit();
     const function = parsed.value.functions[0];
     try std.testing.expectEqualStrings("All", function.goIterator().?.name);
-    try std.testing.expectEqual(semantic.Implements.writer, function.goImplements().?);
+    try std.testing.expectEqualSlices(semantic.Implements, &.{.writer}, function.goImplements());
     try std.testing.expectEqualStrings("Cursor", function.goOwnerOverride().?);
 
     // Parsing what it serializes has to give the same document back.

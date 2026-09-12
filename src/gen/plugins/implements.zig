@@ -19,9 +19,12 @@ pub const plugin: plugin_api.Plugin = .{
 };
 
 fn methodHook(context: plugin_api.Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
-    if (function.origin.goImplements() == null) return;
+    const kinds = function.origin.goImplements();
+    if (kinds.len == 0) return;
     const method = context.method.?;
-    try renderImplementsWrapper(writer, function, method.receiver_name.?, method.public_name, method.needs_check);
+    // One wrapper per named interface, in the order the declaration named
+    // them; every one of them calls the same public method.
+    for (kinds) |kind| try renderImplementsWrapper(writer, function, kind, method.receiver_name.?, method.public_name, method.needs_check);
 }
 
 fn validateDocument(context: plugin_api.ValidateContext) !void {
@@ -39,11 +42,11 @@ fn validateDocument(context: plugin_api.ValidateContext) !void {
 pub fn renderImplementsWrapper(
     writer: *std.Io.Writer,
     function: abi.AbiFn,
+    implements: semantic.Implements,
     receiver_name: []const u8,
     go_name: []const u8,
     needs_check: bool,
 ) !void {
-    const implements = function.origin.goImplements().?;
     const receiver = function.origin.receiver.?;
     const result = function.origin.@"return".errorPayload();
     const counts = result == .int;
@@ -208,7 +211,8 @@ pub fn renderCountingStreams(writer: *std.Io.Writer, program: abi.Program) !void
 
 fn programNeedsCountingStream(program: abi.Program, kind: semantic.Implements) bool {
     for (program.functions) |function| {
-        if (function.origin.goImplements() == kind and function.origin.@"return".errorPayload() == .void) return true;
+        if (function.origin.@"return".errorPayload() != .void) continue;
+        for (function.origin.goImplements()) |declared| if (declared == kind) return true;
     }
     return false;
 }
@@ -217,7 +221,22 @@ fn programNeedsCountingStream(program: abi.Program, kind: semantic.Implements) b
 /// whose Go shape is one step from the interface: the single parameter the
 /// interface passes, and a `void` or integer result.
 pub fn implementsIssue(allocator: std.mem.Allocator, function: semantic.SemanticFn) !?diagnostic.Diagnostic {
-    const implements = function.goImplements() orelse return null;
+    const kinds = function.goImplements();
+    for (kinds, 0..) |kind, index| {
+        // Two wrappers of the same kind would be one Go method declared twice.
+        for (kinds[0..index]) |earlier| if (earlier == kind) return .{
+            .severity = .@"error",
+            .code = "ZIGO058",
+            .message = try std.fmt.allocPrint(allocator, "`.implements` names `.{s}` twice on `{s}`", .{ @tagName(kind), function.name }),
+            .site = site.functionSite(function),
+            .hint = "name each interface once; one method cannot carry the same wrapper twice",
+        };
+        if (try kindIssue(allocator, function, kind)) |issue| return issue;
+    }
+    return null;
+}
+
+fn kindIssue(allocator: std.mem.Allocator, function: semantic.SemanticFn, implements: semantic.Implements) !?diagnostic.Diagnostic {
     const interface = implements.interfaceName();
     if (function.receiver == null) return .{
         .severity = .@"error",

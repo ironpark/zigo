@@ -198,8 +198,8 @@ func StreamAppendString(self unsafe.Pointer, text string) int32 {
 	return code
 }
 // BufferPushString calls the generated C ABI wrapper for zg_buffer_push_string.
-func BufferPushString(self unsafe.Pointer, bytes []uint8) (uint, int32) {
-	bytesPtr := (*C.uint8_t)(zigoSlicePtr(bytes))
+func BufferPushString(self unsafe.Pointer, bytes string) (uint, int32) {
+	bytesPtr := (*C.uint8_t)(zigoStringPtr(bytes))
 	var outResult C.size_t
 	code := int32(C.zg_buffer_push_string((*C.zg_buffer)(self), bytesPtr, C.size_t(len(bytes)), &outResult))
 	return uint(outResult), code

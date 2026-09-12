@@ -119,32 +119,38 @@ pub fn publicNameCollisionIssue(allocator: std.mem.Allocator, document: semantic
     // the interface, so a receiver carries each interface once and no bound
     // method may already own that name.
     for (document.functions, 0..) |function, index| {
-        const implements = function.goImplements() orelse continue;
         const receiver = function.receiver orelse continue;
-        const wrapper = implements.methodName();
-        for (document.functions, 0..) |other, other_index| {
-            if (!std.mem.eql(u8, other.receiver orelse "", receiver)) continue;
-            if (!semantic.optionalStringEqual(function.package, other.package)) continue;
-            const other_name = try target.publicFunctionNameAlloc(allocator, document, other);
-            defer allocator.free(other_name);
-            const clashes_method = std.mem.eql(u8, wrapper, other_name);
-            const clashes_iterator = other.goIterator() != null and std.mem.eql(u8, wrapper, other.goIterator().?.name);
-            const clashes_wrapper = other_index < index and other.goImplements() != null and std.mem.eql(u8, wrapper, other.goImplements().?.methodName());
-            if (!clashes_method and !clashes_iterator and !clashes_wrapper) continue;
-            const function_path = try site.functionDeclarationAlloc(allocator, function);
-            const other_path = try site.functionDeclarationAlloc(allocator, other);
-            defer allocator.free(other_path);
-            return .{
-                .severity = .@"error",
-                .code = "ZIGO024",
-                .message = try std.fmt.allocPrint(
-                    allocator,
-                    "public Go name `{s}.{s}` collides between the {s} wrapper of `{s}` and `{s}`",
-                    .{ receiver, wrapper, implements.interfaceName(), function_path, other_path },
-                ),
-                .site = site.functionSiteFor(function, function_path),
-                .hint = "a handle satisfies each interface through one method; drop one `.implements`, or rename the other declaration",
-            };
+        // A method may name several interfaces, so each wrapper it adds is
+        // checked on its own.
+        for (function.goImplements()) |implements| {
+            const wrapper = implements.methodName();
+            for (document.functions, 0..) |other, other_index| {
+                if (!std.mem.eql(u8, other.receiver orelse "", receiver)) continue;
+                if (!semantic.optionalStringEqual(function.package, other.package)) continue;
+                const other_name = try target.publicFunctionNameAlloc(allocator, document, other);
+                defer allocator.free(other_name);
+                const clashes_method = std.mem.eql(u8, wrapper, other_name);
+                const clashes_iterator = other.goIterator() != null and std.mem.eql(u8, wrapper, other.goIterator().?.name);
+                var clashes_wrapper = false;
+                if (other_index < index) for (other.goImplements()) |earlier| {
+                    if (std.mem.eql(u8, wrapper, earlier.methodName())) clashes_wrapper = true;
+                };
+                if (!clashes_method and !clashes_iterator and !clashes_wrapper) continue;
+                const function_path = try site.functionDeclarationAlloc(allocator, function);
+                const other_path = try site.functionDeclarationAlloc(allocator, other);
+                defer allocator.free(other_path);
+                return .{
+                    .severity = .@"error",
+                    .code = "ZIGO024",
+                    .message = try std.fmt.allocPrint(
+                        allocator,
+                        "public Go name `{s}.{s}` collides between the {s} wrapper of `{s}` and `{s}`",
+                        .{ receiver, wrapper, implements.interfaceName(), function_path, other_path },
+                    ),
+                    .site = site.functionSiteFor(function, function_path),
+                    .hint = "a handle satisfies each interface through one method; drop one `.implements`, or rename the other declaration",
+                };
+            }
         }
     }
     // A method bound onto a registered enum shares a namespace with the
@@ -624,7 +630,7 @@ test "an implements wrapper collides with a same-named method or a second implem
     const handle: semantic.TypeDecl = .{ .kind = .@"opaque", .name = "Stream" };
     var byte: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
     const bytes_in: semantic.Parameter = .{ .name = "bytes", .type = .{ .slice = .{ .@"const" = true, .element = &byte } } };
-    const feed: semantic.SemanticFn = .{ .go = .{ .implements = .writer }, .name = "feed", .params = &.{bytes_in}, .receiver = "Stream", .@"return" = .{ .void = {} }, .symbol = "zg_stream_feed" };
+    const feed: semantic.SemanticFn = .{ .go = .{ .implements = &.{.writer} }, .name = "feed", .params = &.{bytes_in}, .receiver = "Stream", .@"return" = .{ .void = {} }, .symbol = "zg_stream_feed" };
     var write = feed;
     write.setGoImplements(null);
     write.name = "write";

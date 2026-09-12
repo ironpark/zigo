@@ -49,6 +49,17 @@ func (s *Stream) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// WriteString calls Feed, satisfying io.StringWriter.
+// The method takes the whole of str, so the count is len(str) whenever it succeeds.
+// The method takes bytes, so str lends its own, without a copy; native reads them during the call only.
+func (s *Stream) WriteString(str string) (int, error) {
+	zigoBytes := unsafe.Slice(unsafe.StringData(str), len(str))
+	if err := s.Feed(zigoBytes); err != nil {
+		return 0, err
+	}
+	return len(str), nil
+}
+
 // Push calls the Zig function Buffer.push.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
@@ -94,19 +105,10 @@ func (s *Stream) AppendString(text string) error {
 	return nil
 }
 
-// WriteString calls AppendString, satisfying io.StringWriter.
-// The method takes the whole of str, so the count is len(str) whenever it succeeds.
-func (s *Stream) WriteString(str string) (int, error) {
-	if err := s.AppendString(str); err != nil {
-		return 0, err
-	}
-	return len(str), nil
-}
-
 // PushString calls the Zig function Buffer.pushString.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
-func (b *Buffer) PushString(bytes []byte) (uint, error) {
+func (b *Buffer) PushString(bytes string) (uint, error) {
 	ptr, err := zigoCheckedPointer("Buffer.PushString receiver", b)
 	if err != nil {
 		return 0, err
@@ -121,10 +123,8 @@ func (b *Buffer) PushString(bytes []byte) (uint, error) {
 
 // WriteString calls PushString, satisfying io.StringWriter.
 // The count is what the method reports; a count short of len(s) without an error is io.ErrShortWrite.
-// The method takes bytes, so s lends its own, without a copy; native reads them during the call only.
 func (b *Buffer) WriteString(s string) (int, error) {
-	zigoBytes := unsafe.Slice(unsafe.StringData(s), len(s))
-	n, err := b.PushString(zigoBytes)
+	n, err := b.PushString(s)
 	if err != nil {
 		return 0, err
 	}

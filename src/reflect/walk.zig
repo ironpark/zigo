@@ -1162,7 +1162,11 @@ fn appendFunction(
     if (metadata.iterator) |iterator| reflected_function.setGoIterator(.{ .name = iterator.name });
     // `.implements` names a Go standard interface; the shape the interface
     // needs is checked by validation, where the whole signature is in hand.
-    if (metadata.implements) |implements| reflected_function.setGoImplements(ir(semantic.Implements, implements));
+    if (metadata.implements) |implements| {
+        const kinds = try allocator.alloc(semantic.Implements, implements.len);
+        for (implements, kinds) |declared, *kind| kind.* = ir(semantic.Implements, declared);
+        reflected_function.setGoImplements(kinds);
+    }
     // `extend` captured each plugin's options at the declaration; here they
     // become the `ext` object the generator hands back to that plugin.
     if (metadata.ext.len != 0) reflected_function.ext = try extensionsAlloc(allocator, metadata.ext);
@@ -3653,13 +3657,13 @@ test "an implements opt-in records the interface" {
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
         .types = &.{.{ .handle = .{ .type = Stream } }},
-        .functions = &.{.{ .path = "Stream.feed", .params = &.{.{ .name = "bytes" }}, .implements = .writer }},
+        .functions = &.{.{ .path = "Stream.feed", .params = &.{.{ .name = "bytes" }}, .implements = &.{.writer} }},
     }, "terminal", "zg");
 
-    try std.testing.expectEqual(semantic.Implements.writer, document.functions[0].goImplements().?);
+    try std.testing.expectEqualSlices(semantic.Implements, &.{.writer}, document.functions[0].goImplements());
     const bytes = try document.serialize(std.testing.allocator);
     defer std.testing.allocator.free(bytes);
-    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"implements\": \"writer\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"writer\"") != null);
 }
 
 test "registered callbacks record positional codepoint hints" {
