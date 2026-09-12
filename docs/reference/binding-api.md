@@ -130,6 +130,11 @@ role:
 | `zigo.param.callback(index, options)` | 콜백 수명과 오류 |
 | `zigo.param.cancel(index, error_name)` | context cancellation |
 | `zigo.param.flatten(index, fields)` | 구조체 필드를 Go 매개변수로 펼침 |
+| `zigo.param.options(index, fields, options)` | 구조체 필드를 Go functional options로 펼침 |
+
+`zigo.param.options`의 `options` 사양:
+- `.prefix: ?[]const u8 = null`: `With*` 함수 이름 및 옵션 타입 접두사 (`""` 지정 시 접두사 생략)
+- `.type_name: ?[]const u8 = null`: 옵션 함수 타입 이름 명시적 지정
 
 `Param.named(name)`은 도우미가 만든 매개변수의 Go 이름을 바꿉니다.
 

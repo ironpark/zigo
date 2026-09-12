@@ -12,7 +12,7 @@ registered_at: "2026-09-12T03:37:08Z"
 - [x] [Phase 02: 옵션 계약 진단](phases/02-options-diagnostics.md)
 - [x] [Phase 03: 옵션 타입과 `With*` 이름](phases/03-options-naming.md)
 - [x] [Phase 04: 공개 Go 생성자 방출](phases/04-options-emission.md)
-- [ ] [Phase 05: 예제와 ABI 불변 확인](phases/05-example-and-abi.md)
+- [x] [Phase 05: 예제와 ABI 불변 확인](phases/05-example-and-abi.md)
 - [ ] [Phase 06: 문서와 CHANGELOG](phases/06-docs-and-changelog.md)
 
 # Shared Verification

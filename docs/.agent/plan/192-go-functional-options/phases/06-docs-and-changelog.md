@@ -2,7 +2,7 @@
 depends_on:
 - "192-go-functional-options#5"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: 위 문서 네 곳과 CHANGELOG가 갱신되어 있다.
 > NEXT: none

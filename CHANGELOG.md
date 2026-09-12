@@ -4,6 +4,26 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Added
+
+- `zigo.param.options(index, fields, options)`로 구조체 매개변수를 Go functional options
+  생성자로 노출합니다. 옵션 타입, 비공개 설정 구조체, 필드별 `With*`와 이를 가변 인자로
+  받는 생성자가 생성되고 `Must*` 변형도 옵션을 받습니다. 접두사 기본값은 소유 타입
+  (자유 함수면 함수 이름)이고 `.prefix`가 이를 대체하며 `.prefix = ""`는 `Option`,
+  `With<Field>`처럼 접두사 없는 이름을 만듭니다. 기본값은 Zig 필드 기본값에서 오고 각
+  `With*`의 doc comment에 `Default: <값>`으로 실립니다.
+- 옵션 계약 위반을 `ZIGO061`로 보고합니다. 기본값 없는 필드, 함수당 둘 이상의 옵션
+  매개변수와 옵션 필드가 하나도 없는 선언을 거절하고 고치는 방법을 hint로 안내합니다.
+  옵션 이름이 같은 패키지의 다른 선언과 겹치면 기존 `ZIGO024` 충돌 검사가 잡습니다.
+
+### Changed
+
+- `.options`는 `.flatten`과 같은 lowering을 씁니다. C 심볼, shim 시그니처와 인자 순서가
+  같아 **C ABI가 바뀌지 않고**, `.flatten` 선언의 `semantic.json`과 생성 Go도 그대로입니다.
+  `semantic.json`에는 선택적인 `go.options`만 추가됩니다.
+
 ## [0.22.0] - 2026-09-11
 
 ### Breaking
@@ -1298,7 +1318,7 @@
 - 생성된 Go doc이 식별자로 시작하지 않는 문장을 두 줄 형식으로 내고, `//` 그룹 주석과
   빈 줄 없이 이어진 선언의 doc 공유를 지원합니다. 모든 생성 패키지에 패키지 doc이 있습니다.
 
-[Unreleased]: https://github.com/ironpark/zigo/compare/0.20.0...HEAD
+[Unreleased]: https://github.com/ironpark/zigo/compare/0.22.0...HEAD
 [0.13.1]: https://github.com/ironpark/zigo/compare/0.13.0...0.13.1
 [0.13.0]: https://github.com/ironpark/zigo/compare/0.12.1...0.13.0
 [0.12.1]: https://github.com/ironpark/zigo/compare/0.12.0...0.12.1

@@ -109,6 +109,103 @@ pub fn echoPoint(value: Point) Point {
 변경하지 않습니다. 실제 값·배열 전달 검증은
 [이벤트 큐 예제](../../examples/07-event-queue/README.md)에 있습니다.
 
+## 옵션 구조체와 functional options
+
+기본값을 가진 필드를 포함하는 Zig 구조체 매개변수는 `zigo.param.options`를 통해 Go의 functional options 생성자 패턴으로 노출할 수 있습니다.
+
+### 대상
+
+Zig에서 설정이나 옵션을 전달할 때 기본값이 있는 struct를 매개변수로 받는 패턴입니다.
+
+```zig
+pub const TerminalOptions = struct {
+    cols: u16 = 80,
+    rows: u16 = 24,
+    max_scrollback_bytes: usize = 1024 * 1024,
+};
+
+pub fn init(gpa: std.mem.Allocator, options: TerminalOptions) error{Invalid}!Terminal {
+    // ...
+}
+```
+
+> [!IMPORTANT]
+> `zigo.param.options`로 지정된 모든 필드는 반드시 Zig 기본값을 가져야 합니다. 기본값이 없는 필드는 오류(`ZIGO061`)가 발생하므로 위치 매개변수(`.flatten`)로 분리하거나 Zig에서 기본값을 지정해야 합니다.
+
+### 선언 조각
+
+바인딩에서 `zigo.param.options`를 사용해 펼칠 필드와 옵션 사양을 선언합니다.
+
+```zig
+Terminal.define(&.{
+    Terminal.func("init", .{
+        .params = &.{
+            zigo.param.options(1, &.{ "cols", "rows", "max_scrollback_bytes" }, .{ .prefix = "" }),
+        },
+    }),
+})
+```
+
+- `.prefix`: `With*` 함수 이름 및 옵션 타입 접두사입니다. 생략 시 소유 타입(`Terminal`) 이름이 사용되며, `""`를 주면 접두사 없이 `Option`, `WithCols` 등으로 방출됩니다.
+- `.type_name`: 방출할 옵션 함수 타입의 이름입니다.
+
+### 생성 Go
+
+공개 Go API에는 `Option` 타입, `With*` 함수들, 그리고 가변 인자(`opts ...Option`)를 받는 생성자가 생성됩니다.
+
+```go
+// Option configures NewTerminal.
+type Option func(*options)
+
+type options struct {
+	cols               uint16
+	rows               uint16
+	maxScrollbackBytes uint
+}
+
+// WithCols configures cols. Default: 80.
+func WithCols(cols uint16) Option { ... }
+
+// WithRows configures rows. Default: 24.
+func WithRows(rows uint16) Option { ... }
+
+// WithMaxScrollbackBytes configures max_scrollback_bytes. Default: 1048576.
+func WithMaxScrollbackBytes(maxScrollbackBytes uint) Option { ... }
+
+func NewTerminal(opts ...Option) (*Terminal, error) {
+	cfg := options{
+		cols:               80,
+		rows:               24,
+		maxScrollbackBytes: 1048576,
+	}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+	// ...
+}
+```
+
+### 호출 예
+
+Go 호출자는 옵션을 생략하거나, 필요한 옵션만 지정하거나, 전체를 지정할 수 있습니다.
+
+```go
+// 1. 기본값으로 생성 (cols: 80, rows: 24, maxScrollbackBytes: 1MiB)
+term1, err := event_queue.NewTerminal()
+
+// 2. 일부 옵션만 변경
+term2, err := event_queue.NewTerminal(event_queue.WithRows(50))
+
+// 3. 모든 옵션 지정
+term3, err := event_queue.NewTerminal(
+	event_queue.WithCols(120),
+	event_queue.WithRows(40),
+	event_queue.WithMaxScrollbackBytes(8<<20),
+)
+```
+
+이 패턴은 Go 계층에서만 펼쳐지며, C ABI와 네이티브 shim 함수 시그니처는 `.flatten`과 완전히 동일하게 유지됩니다(ABI 불변). 실제 동작은 [이벤트 큐 예제](../../examples/07-event-queue/README.md)를 참고하세요.
+
 ## Go 타입 어댑터
 
 공개 Go API에서 기존 타입을 사용하려면 변환 함수와 함께 어댑터를 선언합니다.

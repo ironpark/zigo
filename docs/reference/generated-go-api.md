@@ -62,6 +62,34 @@ defer resource.Close()
 않습니다. borrowed 객체는 `Ref` 타입처럼 별도 표현을 사용할 수 있고 부모보다 오래 사용할
 수 없습니다.
 
+## functional options
+
+구조체 매개변수를 `zigo.param.options`로 선언하면 생성자 인자가 Go의 functional options
+패턴으로 바뀝니다. 옵션 타입, 비공개 설정 구조체, 필드별 `With*` 생성자와 가변 인자
+생성자가 함께 생성됩니다.
+
+```go
+type Option func(*options)
+
+type options struct{ ... }
+
+func WithRows(rows uint16) Option
+func NewTerminal(opts ...Option) (*Terminal, error)
+func MustNewTerminal(opts ...Option) *Terminal
+```
+
+- 기본 접두사는 소유 타입 이름(자유 함수면 함수 이름)입니다. `.prefix`가 이를 대체하고,
+  `.prefix = ""`는 `Option`·`With<Field>`처럼 접두사 없는 이름을 만듭니다.
+- 옵션 타입 이름은 `<접두사>Option`이고 `.type_name`이 이를 대체합니다.
+- 설정 구조체는 비공개입니다. 옵션 타입의 이름만 공개 API에 남습니다.
+- 각 `With*`의 doc comment가 Zig 기본값을 `Default: <값>`으로 싣습니다.
+- 생성자는 옵션을 주지 않은 호출에서 Zig 기본값을 그대로 네이티브로 보냅니다.
+- 옵션 필드가 여러 개여도 Go 가변 인자는 하나이므로, 한 함수에 옵션 매개변수는 하나만
+  둘 수 있습니다.
+
+이 변환은 Go 계층에만 적용됩니다. C 심볼, shim 시그니처와 인자 순서는 `.flatten`과
+동일하므로 ABI가 바뀌지 않습니다.
+
 ## 콜백
 
 등록 콜백은 이름이 있는 Go 함수 타입이 됩니다. `.go_error` 호출 site에서는 마지막에

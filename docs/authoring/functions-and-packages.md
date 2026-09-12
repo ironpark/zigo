@@ -161,6 +161,10 @@ Terminal.func("init", .{
 index는 receiver나 주입된 매개변수를 제거하기 전의 원래 Zig 시그니처 기준입니다.
 `go-report`에서 최종 매개변수 구성을 확인하세요.
 
+모든 필드에 기본값이 있고 호출자가 필요한 것만 지정하게 하려면 Go functional options로
+노출하는 편이 낫습니다. `zigo.param.options`는 [값과 데이터](values-and-data.md#옵션-구조체와-functional-options)에서
+설명합니다.
+
 ## 공개 Go 하위 패키지
 
 관련 선언을 별도 패키지 entry로 묶습니다.
