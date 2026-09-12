@@ -567,6 +567,18 @@ pub const Parameter = struct {
         self.go = go.compact();
     }
 
+    /// Go functional options configuration for a flattened parameter.
+    pub fn goOptions(self: Parameter) ?OptionsSpec {
+        return (self.go orelse ParamGo{}).options;
+    }
+
+    /// Record Go functional options configuration.
+    pub fn setGoOptions(self: *Parameter, value: ?OptionsSpec) void {
+        var go = self.go orelse ParamGo{};
+        go.options = value;
+        self.go = go.compact();
+    }
+
     /// The written hint a parameter was declared with. Parameters that keep
     /// the default never carry the field.
     pub fn writtenHint(self: Parameter) Written {
@@ -694,6 +706,11 @@ pub const GoAdapter = struct {
     }
 };
 
+pub const OptionsSpec = struct {
+    prefix: ?[]const u8 = null,
+    type_name: ?[]const u8 = null,
+};
+
 /// What only the Go backend reads about a parameter. The IR describes the
 /// bound Zig API; anything that describes the projection instead lives in a
 /// namespace, so a second output language adds a sibling rather than more
@@ -712,9 +729,11 @@ pub const ParamGo = struct {
     /// rather than a plain `bool` so a binding that never asks for it keeps
     /// the field out of `semantic.json` entirely.
     callback_error: ?bool = null,
+    /// Go functional options configuration for a flattened struct parameter.
+    options: ?OptionsSpec = null,
 
     fn compact(self: ParamGo) ?ParamGo {
-        return if (self.adapter == null and self.callback_error == null) null else self;
+        return if (self.adapter == null and self.callback_error == null and self.options == null) null else self;
     }
 };
 

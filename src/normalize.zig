@@ -291,6 +291,10 @@ fn normalizeFunction(comptime f: a.Function, comptime state: State, comptime par
                     },
                     .stream => |o| out.buffer = o.buffer,
                     .flatten => |fields| out.flatten = fields,
+                    .options => |opt| {
+                        out.flatten = opt.fields;
+                        out.options = opt.options;
+                    },
                     .callback => |c| {
                         out.retention = c.retention;
                         out.reentrancy = c.reentrancy;
@@ -329,6 +333,7 @@ fn validateContract(comptime p: a.Param, comptime T: type, comptime path: []cons
         .callback => info == .pointer and @typeInfo(info.pointer.child) == .@"fn",
         .cancel => T == *const std.atomic.Value(u32),
         .flatten => |fields| info == .@"struct" and fields.len != 0,
+        .options => |opt| info == .@"struct" and opt.fields.len != 0,
     };
     if (!valid) @compileError("zigo " ++ @tagName(p.contract) ++ " contract does not match Zig argument " ++ std.fmt.comptimePrint("{d}", .{p.index}) ++ ": " ++ path);
 }
@@ -485,6 +490,8 @@ test "contract helpers and explicit constructor context normalize once" {
     try std.testing.expectEqual(@as(?usize, 3), p.callback(2, .{ .userdata = 3 }).contract.callback.userdata);
     try std.testing.expectEqualStrings("Canceled", p.cancel(4, "Canceled").contract.cancel.canceled.?);
     try std.testing.expectEqualStrings("x", p.flatten(5, &.{"x"}).contract.flatten[0]);
+    try std.testing.expectEqualStrings("x", p.options(5, &.{"x"}, .{}).contract.options.fields[0]);
+    try std.testing.expectEqualStrings("Terminal", p.options(5, &.{"x"}, .{ .prefix = "Terminal" }).contract.options.options.prefix.?);
 }
 
 fn callbackParams(comptime T: type, comptime options: a.CallbackOptions, comptime path: []const u8) []const ir.CallbackParam {

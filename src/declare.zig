@@ -70,6 +70,11 @@ pub const GoAdapter = struct {
 /// The value handed back to native code when a Go callback panics or fails.
 pub const CallbackFailure = struct { result: i128 };
 
+pub const OptionsSpec = struct {
+    prefix: ?[]const u8 = null,
+    type_name: ?[]const u8 = null,
+};
+
 /// One parameter Go passes, in the position it has in the Zig signature
 /// once the receiver and injected arguments are removed. Every field is
 /// optional: `.{}` keeps the source name and the defaults, `.{ .name = "n" }`
@@ -86,6 +91,7 @@ pub const Param = struct {
     /// Fields of a struct parameter Go passes individually; the rest keep
     /// their Zig defaults.
     flatten: []const []const u8 = &.{},
+    options: ?OptionsSpec = null,
     retention: ?Retention = null,
     /// The callback may return a Go `error` (its Zig result is `i32`).
     go_error: bool = false,

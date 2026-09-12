@@ -4,6 +4,7 @@ const ir = @import("declare.zig");
 
 pub const SemanticHint = ir.SemanticHint;
 pub const GoAdapter = ir.GoAdapter;
+pub const OptionsSpec = ir.OptionsSpec;
 pub const Injection = ir.Injection;
 pub const Defaults = struct {
     codepoints: ?ir.Codepoints = null,
@@ -71,6 +72,10 @@ pub const ParamContract = union(enum) {
     callback: CallbackContract,
     cancel: struct { canceled: ?[]const u8 = null },
     flatten: []const []const u8,
+    options: struct {
+        fields: []const []const u8,
+        options: ir.OptionsSpec = .{},
+    },
 };
 pub const Param = struct {
     /// Original Zig argument index, including receiver, injection and userdata.

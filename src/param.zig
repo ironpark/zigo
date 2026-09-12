@@ -14,12 +14,15 @@ pub fn inout(index: usize, written: ir.Written) a.Param {
 pub fn stream(index: usize, buffer: ?u32) a.Param {
     return .{ .index = index, .contract = .{ .stream = .{ .buffer = buffer } } };
 }
-pub fn callback(index: usize, options: a.CallbackContract) a.Param {
-    return .{ .index = index, .contract = .{ .callback = options } };
+pub fn callback(index: usize, contract: a.CallbackContract) a.Param {
+    return .{ .index = index, .contract = .{ .callback = contract } };
 }
 pub fn cancel(index: usize, canceled: ?[]const u8) a.Param {
     return .{ .index = index, .contract = .{ .cancel = .{ .canceled = canceled } } };
 }
 pub fn flatten(index: usize, fields: []const []const u8) a.Param {
     return .{ .index = index, .contract = .{ .flatten = fields } };
+}
+pub fn options(index: usize, fields: []const []const u8, options_spec: a.OptionsSpec) a.Param {
+    return .{ .index = index, .contract = .{ .options = .{ .fields = fields, .options = options_spec } } };
 }

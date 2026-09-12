@@ -972,6 +972,10 @@ fn appendFunction(
             if (spec.thread) |value| reflected.thread = ir(semantic.CallbackThread, value);
             if (spec.userdata) |userdata| reflected.userdata = userdata.param;
             if (spec.flatten.len != 0) reflected.flatten = flattened_fields;
+            if (spec.options) |options| reflected.setGoOptions(.{
+                .prefix = options.prefix,
+                .type_name = options.type_name,
+            });
             if (spec.go) |adapter| reflected.setGoAdapter(comptime goAdapterValue(adapter));
         }
         // A cancel parameter whose spelling did not match keeps the `void`
@@ -4750,6 +4754,74 @@ test "flattened struct parameters record Zig defaults including null for optiona
     try std.testing.expect(std.mem.indexOf(u8, json, "\"name\": \"no_default\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"null\": {}") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"int\": 24") != null);
+}
+
+test "zigo.param.options reflects functional options metadata under go" {
+    const Fixture = struct {
+        const Options = struct { cols: u16, rows: u16 = 24 };
+        pub fn initOpts(options: Options) void {
+            _ = options;
+        }
+        pub fn initPrefixed(options: Options) void {
+            _ = options;
+        }
+        pub fn initFlatten(options: Options) void {
+            _ = options;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .functions = &.{
+            .{
+                .path = "root.initOpts",
+                .params = &.{
+                    .{ .name = "options", .flatten = &.{ "cols", "rows" }, .options = .{} },
+                },
+            },
+            .{
+                .path = "root.initPrefixed",
+                .params = &.{
+                    .{ .name = "options", .flatten = &.{ "cols", "rows" }, .options = .{ .prefix = "Terminal", .type_name = "TerminalConfig" } },
+                },
+            },
+            .{
+                .path = "root.initFlatten",
+                .params = &.{
+                    .{ .name = "options", .flatten = &.{ "cols", "rows" } },
+                },
+            },
+        },
+    }, "opts", "zg");
+
+    // 1. initOpts: zigo.param.options with .{}
+    const p0 = document.functions[0].params[0];
+    try std.testing.expect(p0.flatten != null);
+    try std.testing.expectEqual(@as(usize, 2), p0.flatten.?.len);
+    try std.testing.expect(p0.go != null);
+    try std.testing.expect(p0.go.?.options != null);
+    try std.testing.expect(p0.go.?.options.?.prefix == null);
+    try std.testing.expect(p0.go.?.options.?.type_name == null);
+
+    // 2. initPrefixed: zigo.param.options with .prefix and .type_name
+    const p1 = document.functions[1].params[0];
+    try std.testing.expect(p1.flatten != null);
+    try std.testing.expect(p1.go != null);
+    try std.testing.expect(p1.go.?.options != null);
+    try std.testing.expectEqualStrings("Terminal", p1.go.?.options.?.prefix.?);
+    try std.testing.expectEqualStrings("TerminalConfig", p1.go.?.options.?.type_name.?);
+
+    // 3. initFlatten: zigo.param.flatten without options
+    const p2 = document.functions[2].params[0];
+    try std.testing.expect(p2.flatten != null);
+    try std.testing.expect(p2.go == null);
+
+    // Verify serialized semantic.json:
+    const json = try document.serialize(arena.allocator());
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"options\": {}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"prefix\": \"Terminal\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"type_name\": \"TerminalConfig\"") != null);
 }
 
 test "atomic values reflect as marked scalar leaves in every value position" {
