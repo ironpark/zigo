@@ -111,7 +111,7 @@ pub fn echoPoint(value: Point) Point {
 
 ## 옵션 구조체와 functional options
 
-기본값을 가진 필드를 포함하는 Zig 구조체 매개변수는 `zigo.param.options`를 통해 Go의 functional options 생성자 패턴으로 노출할 수 있습니다.
+설정 구조체를 매개변수로 받는 Zig 함수는 `zigo.param.options`를 통해 Go의 functional options 생성자 패턴으로 노출할 수 있습니다.
 
 ### 대상
 
@@ -128,10 +128,20 @@ pub fn init(gpa: std.mem.Allocator, initial_cols: u16, options: TerminalOptions)
 }
 ```
 
+구조체 밖에 있는 값(`initial_cols`)은 Go에서도 위치 인자로 남습니다.
+
 > [!IMPORTANT]
-> 옵션 구조체의 모든 필드는 Zig 기본값을 가져야 합니다. 기본값이 없는 값을 노출하려면 그 값을 구조체가 아니라 **함수의 별도 매개변수**로 두세요. 위 예에서 `initial_cols`가 그렇습니다.
+> 나열한 필드의 Zig 기본값 유무가 그 필드의 Go 표현을 정합니다. 기본값이 있는 필드는
+> `With*` 옵션이 되고, **기본값이 없는 필드는 호출자가 반드시 주어야 하는 값이므로 Go
+> 위치 인자**가 됩니다. 터미널 크기처럼 옳은 기본값이 없는 값을 위해 바인딩 대상의 Zig
+> 시그니처를 고칠 필요는 없습니다.
 >
-> 구조체 안에 기본값 없는 필드를 남겨 두면 오류(`ZIGO061`)가 납니다. 네이티브 경계는 나열된 필드만 실어 나르고 shim이 그것으로 구조체를 재조립하므로, 그 필드에 담을 값이 존재할 수 없기 때문입니다.
+> 나열한 필드가 전부 기본값이 없으면 옵션이 하나도 남지 않으므로 오류(`ZIGO061`)가 납니다.
+> 그 선언이 원하는 것은 `.options`가 아니라 `.flatten`입니다.
+>
+> 나열하지 **않은** 필드는 여전히 Zig 기본값을 가져야 합니다. 네이티브 경계는 나열된
+> 필드만 실어 나르고 shim이 그것으로 구조체를 재조립하므로, 나열되지 않은 필드에 담을
+> 값이 존재하지 않기 때문입니다.
 
 ### 선언 조각
 
@@ -204,6 +214,24 @@ term3, err := event_queue.NewTerminal(
 ```
 
 이 패턴은 Go 계층에서만 펼쳐지며, C ABI와 네이티브 shim 함수 시그니처는 `.flatten`과 완전히 동일하게 유지됩니다(ABI 불변). 실제 동작은 [이벤트 큐 예제](../../examples/07-event-queue/README.md)를 참고하세요.
+
+### 필수 값과 옵션을 한 선언으로 섞기
+
+기본값이 없는 필드를 함께 나열하면 그 필드는 위치 인자로, 나머지는 옵션으로 나옵니다.
+`cols`와 `rows`에 기본값이 없는 구조체라면 다음과 같습니다.
+
+```zig
+zigo.param.options(2, &.{ "cols", "rows", "max_scrollback_bytes" }, .{}),
+```
+
+```go
+func NewTerminal(cols uint16, rows uint16, opts ...TerminalOption) (*Terminal, error)
+```
+
+위치 인자는 나열한 필드 순서를 따르고 `opts ...`는 언제나 마지막입니다. 설정 구조체와
+`With*` 함수에는 기본값이 있는 필드만 나타납니다. `.flatten`으로 같은 구조체를 내리면 모든
+필드가 위치 인자가 되므로, 둘의 차이는 "기본값이 있는 필드를 호출자가 생략할 수 있는가"
+하나입니다.
 
 ## Go 타입 어댑터
 

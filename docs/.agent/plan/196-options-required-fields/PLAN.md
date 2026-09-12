@@ -8,7 +8,7 @@ registered_at: "2026-09-12T07:29:52Z"
 # Phases
 
 - [x] [Phase 00: 필수 필드와 선택 필드를 나누는 계약](phases/00-required-field-contract.md)
-- [ ] [Phase 01: 혼합 시그니처 방출](phases/01-mixed-signature-emit.md)
+- [x] [Phase 01: 혼합 시그니처 방출](phases/01-mixed-signature-emit.md)
 - [ ] [Phase 02: 골든과 문서](phases/02-golden-and-docs.md)
 
 # Shared Verification

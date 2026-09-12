@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-12T07:39:51Z"
 depends_on:
 - "196-options-required-fields#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `zig build test`가 통과한다.
 > NEXT: none

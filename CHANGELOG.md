@@ -4,6 +4,17 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Changed
+
+- `zigo.param.options`가 Zig 기본값이 없는 필드를 거절하는 대신 Go 위치 인자로 냅니다.
+  한 선언 안에서 기본값이 없는 필드는 호출자가 반드시 주는 위치 인자가 되고, 기본값이
+  있는 필드만 설정 구조체와 `With*`에 남습니다. 위치 인자는 나열한 필드 순서를 따르고
+  `opts ...`는 마지막에 옵니다. 터미널 크기처럼 옳은 기본값이 없는 값 때문에 바인딩 대상의
+  Zig 시그니처를 고칠 필요가 없어집니다. `ZIGO061`은 나열한 필드에 기본값이 하나도 없을
+  때만 나고 `.flatten`을 안내합니다. C ABI는 `.flatten`과 동일하게 유지됩니다.
+
 ## [0.23.0] - 2026-09-12
 
 ### Added

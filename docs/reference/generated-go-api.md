@@ -78,14 +78,20 @@ func NewTerminal(initialCols uint16, opts ...Option) (*Terminal, error)
 func MustNewTerminal(initialCols uint16, opts ...Option) *Terminal
 ```
 
-옵션으로 바뀌지 않은 매개변수는 위치 인자로 남고 가변 인자는 마지막에 옵니다. 기본값이 없는
-값은 옵션 구조체가 아니라 Zig 함수의 별도 매개변수로 두세요. 옵션 구조체의 필드는 모두
-Zig 기본값을 가져야 합니다.
+옵션으로 바뀌지 않은 매개변수는 위치 인자로 남고 가변 인자는 마지막에 옵니다. 나열한 필드
+중 Zig 기본값이 없는 것도 위치 인자가 되며, 나열한 필드 순서대로 가변 인자 앞에 놓입니다.
+
+```go
+// cols와 rows에 Zig 기본값이 없는 구조체를 한 선언으로 나열한 결과
+func NewTerminal(cols uint16, rows uint16, opts ...TerminalOption) (*Terminal, error)
+```
 
 - 기본 접두사는 소유 타입 이름(자유 함수면 함수 이름)입니다. `.prefix`가 이를 대체하고,
   `.prefix = ""`는 `Option`·`With<Field>`처럼 접두사 없는 이름을 만듭니다.
 - 옵션 타입 이름은 `<접두사>Option`이고 `.type_name`이 이를 대체합니다.
 - 설정 구조체는 비공개입니다. 옵션 타입의 이름만 공개 API에 남습니다.
+- 설정 구조체와 `With*` 생성자에는 Zig 기본값이 있는 필드만 나타납니다. 기본값이 하나도
+  없으면 옵션이 남지 않으므로 `ZIGO061`이 나고, 그 선언은 `.flatten`으로 씁니다.
 - 각 `With*`의 doc comment가 Zig 기본값을 `Default: <값>`으로 싣습니다.
 - 생성자는 옵션을 주지 않은 호출에서 Zig 기본값을 그대로 네이티브로 보냅니다.
 - 옵션 필드가 여러 개여도 Go 가변 인자는 하나이므로, 한 함수에 옵션 매개변수는 하나만
