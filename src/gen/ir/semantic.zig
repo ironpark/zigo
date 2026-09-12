@@ -466,8 +466,19 @@ pub const ParamSourceLocation = struct {
 /// `Param.flatten`. The original parameter type remains on
 /// `Parameter.type`; this list describes the Go/C arguments that replace it.
 pub const FlattenedField = struct {
+    pub const Value = union(enum) {
+        bool: bool,
+        @"enum": []const u8,
+        float: f64,
+        int: i128,
+        null: void,
+    };
+
     /// The Zig field is `std.atomic.Value(T)` while the public/ABI type is T.
     atomic: ?bool = null,
+    /// Default value declared on the Zig struct field. Omitted when the field
+    /// has no default; present as `.null` when an optional field defaults to null.
+    default: ?Value = null,
     name: []const u8,
     type: TypeNode,
 };
@@ -1235,6 +1246,10 @@ pub const current_ir_version: u32 = 2;
 /// The generator cases check in their `semantic.json` inputs at version 1, so
 /// this path is exercised by the ordinary test run rather than by a fixture
 /// alone.
+///
+/// `default` on `FlattenedField` is purely additive and defaults to null when
+/// absent, preserving backward compatibility with existing version 1 and 2
+/// documents. No migration rule is required, and `ir_version` remains 2.
 fn migrate(allocator: std.mem.Allocator, root: *std.json.Value) !void {
     if (root.* != .object) return;
 
@@ -1996,6 +2011,97 @@ test "enum value ranges cover unsorted and full-width domains" {
     }).?;
     try std.testing.expectEqual(std.math.minInt(i64), range.min);
     try std.testing.expectEqual(@as(u128, 1) << 64, range.span);
+}
+
+test "flattened field defaults round-trip through semantic json serialize and parse" {
+    const allocator = std.testing.allocator;
+    var int_node: TypeNode = .{ .int = .{ .bits = 32, .signed = false } };
+    const void_node: TypeNode = .{ .void = {} };
+    const bool_node: TypeNode = .{ .bool = {} };
+    const float_node: TypeNode = .{ .float = .{ .bits = 32 } };
+    const enum_node: TypeNode = .{ .@"enum" = .{ .ref = "Mode" } };
+    const opt_node: TypeNode = .{ .optional = .{ .child = &int_node } };
+
+    const fields = [_]FlattenedField{
+        .{ .name = "no_default", .type = int_node },
+        .{ .default = .{ .int = 24 }, .name = "int_default", .type = int_node },
+        .{ .default = .{ .bool = true }, .name = "bool_default", .type = bool_node },
+        .{ .default = .{ .float = 1.5 }, .name = "float_default", .type = float_node },
+        .{ .default = .{ .@"enum" = "normal" }, .name = "enum_default", .type = enum_node },
+        .{ .default = .{ .null = {} }, .name = "null_default", .type = opt_node },
+    };
+
+    const doc: Semantic = .{
+        .functions = &.{.{
+            .name = "init",
+            .params = &.{.{
+                .name = "options",
+                .flatten = &fields,
+                .type = .{ .value_struct = .{ .ref = "Options" } },
+            }},
+            .@"return" = void_node,
+            .symbol = "zg_init",
+        }},
+        .package = "demo",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+
+    const bytes = try doc.serialize(allocator);
+    defer allocator.free(bytes);
+
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"name\": \"no_default\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"int\": 24") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"bool\": true") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"float\": 1.5") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"enum\": \"normal\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"null\": {}") != null);
+
+    const parsed = try Semantic.parse(allocator, bytes);
+    defer parsed.deinit();
+
+    const parsed_fields = parsed.value.functions[0].params[0].flatten.?;
+    try std.testing.expectEqual(@as(usize, 6), parsed_fields.len);
+
+    try std.testing.expectEqualStrings("no_default", parsed_fields[0].name);
+    try std.testing.expect(parsed_fields[0].default == null);
+
+    try std.testing.expectEqualStrings("int_default", parsed_fields[1].name);
+    try std.testing.expectEqual(FlattenedField.Value{ .int = 24 }, parsed_fields[1].default.?);
+
+    try std.testing.expectEqualStrings("bool_default", parsed_fields[2].name);
+    try std.testing.expectEqual(FlattenedField.Value{ .bool = true }, parsed_fields[2].default.?);
+
+    try std.testing.expectEqualStrings("float_default", parsed_fields[3].name);
+    try std.testing.expectEqual(FlattenedField.Value{ .float = 1.5 }, parsed_fields[3].default.?);
+
+    try std.testing.expectEqualStrings("enum_default", parsed_fields[4].name);
+    try std.testing.expectEqualStrings("normal", parsed_fields[4].default.?.@"enum");
+
+    try std.testing.expectEqualStrings("null_default", parsed_fields[5].name);
+    try std.testing.expectEqual(FlattenedField.Value{ .null = {} }, parsed_fields[5].default.?);
+
+    const legacy_json =
+        \\{
+        \\  "ir_version": 2,
+        \\  "package": "demo",
+        \\  "prefix": "zg",
+        \\  "zig_version": "0.16.0",
+        \\  "functions": [{
+        \\    "name": "init",
+        \\    "params": [{
+        \\      "name": "options",
+        \\      "flatten": [{"name": "cols", "type": {"kind": "int", "bits": 16, "signed": false}}],
+        \\      "type": {"kind": "value_struct", "ref": "Options"}
+        \\    }],
+        \\    "return": {"kind": "void"},
+        \\    "symbol": "zg_init"
+        \\  }]
+        \\}
+    ;
+    const parsed_legacy = try Semantic.parse(allocator, legacy_json);
+    defer parsed_legacy.deinit();
+    try std.testing.expect(parsed_legacy.value.functions[0].params[0].flatten.?[0].default == null);
 }
 
 pub fn constructorForDeinit(constructors: []const Constructor, function: SemanticFn) ?Constructor {

@@ -1720,6 +1720,9 @@
               }
             },
             {
+              "default": {
+                "int": 24
+              },
               "name": "rows",
               "type": {
                 "bits": 16,
@@ -1729,6 +1732,9 @@
               }
             },
             {
+              "default": {
+                "int": 1048576
+              },
               "name": "max_scrollback_bytes",
               "type": {
                 "bits": 64,

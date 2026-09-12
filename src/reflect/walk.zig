@@ -1120,6 +1120,44 @@ fn appendFunction(
     try functions.append(allocator, reflected_function);
 }
 
+fn reflectDefault(comptime FieldType: type, comptime default_ptr: ?*const anyopaque) ?semantic.FlattenedField.Value {
+    if (default_ptr == null) return null;
+    const typed_ptr: *const FieldType = @ptrCast(@alignCast(default_ptr.?));
+    const val = typed_ptr.*;
+
+    if (@typeInfo(FieldType) == .optional) {
+        if (val) |unwrapped| {
+            return reflectScalarDefault(@TypeOf(unwrapped), unwrapped);
+        } else {
+            return .{ .null = {} };
+        }
+    } else {
+        return reflectScalarDefault(FieldType, val);
+    }
+}
+
+fn reflectScalarDefault(comptime T: type, val: T) semantic.FlattenedField.Value {
+    if (comptime atomicScalar(T)) |Scalar| {
+        return reflectScalarDefault(Scalar, val.raw);
+    }
+    const info = @typeInfo(T);
+    switch (info) {
+        .bool => return .{ .bool = val },
+        .int => return .{ .int = @intCast(val) },
+        .float => return .{ .float = @floatCast(val) },
+        .@"enum" => return .{ .@"enum" = @tagName(val) },
+        .@"struct" => |s| {
+            if (s.layout == .@"packed" and s.backing_integer != null) {
+                const Backing = s.backing_integer.?;
+                const int_val: Backing = @bitCast(val);
+                return .{ .int = @intCast(int_val) };
+            }
+            unreachable;
+        },
+        else => unreachable,
+    }
+}
+
 fn reflectFlattenedFields(
     allocator: std.mem.Allocator,
     comptime declaration: zigo.Binding,
@@ -1148,6 +1186,7 @@ fn reflectFlattenedFields(
         if (!allowed) return flattenIssue(allocator, "`{s}` parameter `{s}` field `{s}` is not a supported scalar, registered enum, or registered packed value", .{ function_label, parameter_label, field_name });
         result[selected_index] = .{
             .atomic = if (comptime atomicScalar(leaf) != null) true else null,
+            .default = comptime reflectDefault(field.type, field.default_value_ptr),
             .name = field_name,
             .type = try typeNode(allocator, declaration, field.type, types, "flattened field `" ++ field_name ++ "`"),
         };
@@ -4554,6 +4593,13 @@ test "a value-returning init is boxed into a caller-owned handle" {
     try std.testing.expectEqual(@as(usize, 6), init_fn.params[1].flatten.?.len);
     try std.testing.expectEqualStrings("columns", init_fn.params[1].flatten.?[0].name);
     try std.testing.expect(init_fn.params[1].flatten.?[5].type == .optional);
+    const flattened = init_fn.params[1].flatten.?;
+    try std.testing.expect(flattened[0].default == null);
+    try std.testing.expectEqual(semantic.FlattenedField.Value{ .int = 24 }, flattened[1].default.?);
+    try std.testing.expectEqual(semantic.FlattenedField.Value{ .bool = true }, flattened[2].default.?);
+    try std.testing.expectEqual(semantic.FlattenedField.Value{ .float = 1 }, flattened[3].default.?);
+    try std.testing.expectEqualStrings("normal", flattened[4].default.?.@"enum");
+    try std.testing.expectEqual(semantic.FlattenedField.Value{ .null = {} }, flattened[5].default.?);
     try std.testing.expectEqual(semantic.Boxed.destroy, document.functions[1].boxed.?);
     try std.testing.expectEqualStrings("Terminal", document.constructors[0].type);
 }
@@ -4609,6 +4655,101 @@ test "flattened struct parameters skip unselected fields that C cannot carry" {
         try std.testing.expectEqualStrings("Options", declaration.name);
         try std.testing.expectEqual(@as(usize, 2), declaration.fields.len);
     }
+}
+
+test "flattened struct parameters record Zig defaults including null for optional scalars" {
+    const Fixture = struct {
+        const Mode = enum { fast, slow };
+        const Flags = packed struct(u8) {
+            flag: bool,
+            _pad: u7 = 0,
+        };
+        const Options = struct {
+            no_default: u16,
+            rows: u16 = 24,
+            max_bytes: usize = 1024 * 1024,
+            scale: f32 = 2.5,
+            enabled: bool = false,
+            mode: Mode = .fast,
+            null_opt: ?u32 = null,
+            val_opt: ?u32 = 99,
+            no_default_opt: ?u32,
+            atomic_count: std.atomic.Value(u32) = .init(7),
+            flags: Flags = .{ .flag = true },
+        };
+        pub fn run(options: Options) void {
+            _ = options;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = &.{
+            .{ .enumeration = .{ .type = Fixture.Mode } },
+            .{ .value = .{ .type = Fixture.Flags } },
+        },
+        .functions = &.{.{
+            .path = "root.run",
+            .params = &.{.{
+                .name = "options",
+                .flatten = &.{
+                    "no_default",
+                    "rows",
+                    "max_bytes",
+                    "scale",
+                    "enabled",
+                    "mode",
+                    "null_opt",
+                    "val_opt",
+                    "no_default_opt",
+                    "atomic_count",
+                    "flags",
+                },
+            }},
+        }},
+    }, "defaults", "zg");
+
+    const flattened = document.functions[0].params[0].flatten.?;
+    try std.testing.expectEqual(@as(usize, 11), flattened.len);
+
+    try std.testing.expectEqualStrings("no_default", flattened[0].name);
+    try std.testing.expect(flattened[0].default == null);
+
+    try std.testing.expectEqualStrings("rows", flattened[1].name);
+    try std.testing.expectEqual(semantic.FlattenedField.Value{ .int = 24 }, flattened[1].default.?);
+
+    try std.testing.expectEqualStrings("max_bytes", flattened[2].name);
+    try std.testing.expectEqual(semantic.FlattenedField.Value{ .int = 1048576 }, flattened[2].default.?);
+
+    try std.testing.expectEqualStrings("scale", flattened[3].name);
+    try std.testing.expectEqual(semantic.FlattenedField.Value{ .float = 2.5 }, flattened[3].default.?);
+
+    try std.testing.expectEqualStrings("enabled", flattened[4].name);
+    try std.testing.expectEqual(semantic.FlattenedField.Value{ .bool = false }, flattened[4].default.?);
+
+    try std.testing.expectEqualStrings("mode", flattened[5].name);
+    try std.testing.expectEqualStrings("fast", flattened[5].default.?.@"enum");
+
+    try std.testing.expectEqualStrings("null_opt", flattened[6].name);
+    try std.testing.expectEqual(semantic.FlattenedField.Value{ .null = {} }, flattened[6].default.?);
+
+    try std.testing.expectEqualStrings("val_opt", flattened[7].name);
+    try std.testing.expectEqual(semantic.FlattenedField.Value{ .int = 99 }, flattened[7].default.?);
+
+    try std.testing.expectEqualStrings("no_default_opt", flattened[8].name);
+    try std.testing.expect(flattened[8].default == null);
+
+    try std.testing.expectEqualStrings("atomic_count", flattened[9].name);
+    try std.testing.expectEqual(semantic.FlattenedField.Value{ .int = 7 }, flattened[9].default.?);
+
+    try std.testing.expectEqualStrings("flags", flattened[10].name);
+    try std.testing.expectEqual(semantic.FlattenedField.Value{ .int = 1 }, flattened[10].default.?);
+
+    const json = try document.serialize(arena.allocator());
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"name\": \"no_default\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"null\": {}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"int\": 24") != null);
 }
 
 test "atomic values reflect as marked scalar leaves in every value position" {
