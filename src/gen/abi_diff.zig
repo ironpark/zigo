@@ -103,18 +103,30 @@ pub fn diffForTarget(allocator: std.mem.Allocator, base: semantic.Semantic, base
             else
                 try add(allocator, &report, .breaking, identity, "exported C symbol changed");
         }
-        // The written hint decides whether the C signature carries a
-        // `{name}_written` out parameter, so it explains a lowered difference
-        // rather than adding one; naming it is more use than the generic
-        // message, and reporting both would say the same thing twice.
-        const written_hint_kept = writtenEqual(old.params, new.params);
-        if (!written_hint_kept)
-            try add(allocator, &report, .breaking, identity, "parameter written hint changed (C signature)")
-        else if (!signaturesEqual(
+        // The C shape is what a caller linked against the old library sees, so
+        // it decides the verdict first. The written hint decides whether the C
+        // signature carries a `{name}_written` out parameter, so it explains a
+        // lowered difference rather than adding one; naming it is more use than
+        // the generic message, and reporting both would say the same thing
+        // twice.
+        const shape_kept = exposedParamsMatch(old.params, new.params, sameParameterShape);
+        const go_surface_kept = goSurfaceEqual(old, new);
+        if (!cSignaturesEqual(
             base_program.functions[base_spans[old_index]..base_spans[old_index + 1]],
             current_program.functions[current_spans[new_index]..current_spans[new_index + 1]],
-        ))
-            try add(allocator, &report, .breaking, identity, "signature changed");
+        )) {
+            if (shape_kept and !writtenEqual(old.params, new.params))
+                try add(allocator, &report, .breaking, identity, "parameter written hint changed (C signature)")
+            else
+                try add(allocator, &report, .breaking, identity, "signature changed");
+        } else if (!shape_kept and !go_surface_kept) {
+            // The parameters were regrouped without moving a single C
+            // declaration: a field left a flattened struct and became a
+            // parameter of its own, or the reverse. The C surface stays put
+            // while every Go call site moves, and saying so beats reporting
+            // every annotation as if it had changed alongside.
+            try add(allocator, &report, .breaking, identity, "Go parameter surface changed");
+        }
         if (!nativeOrderEqual(old, new))
             try add(allocator, &report, .breaking, identity, "native parameter order changed");
         if (!semantic.optionalStringEqual(old.release, new.release))
@@ -133,17 +145,27 @@ pub fn diffForTarget(allocator: std.mem.Allocator, base: semantic.Semantic, base
         if (old.ownership != new.ownership or old.returnsBorrowedHandle() != new.returnsBorrowedHandle() or
             !optionalHintEqual(old.return_semantic, new.return_semantic))
             try add(allocator, &report, .breaking, identity, "return ownership or semantics changed");
-        if (!retentionEqual(old.params, new.params))
-            try add(allocator, &report, .breaking, identity, "parameter retention changed");
-        if (!paramAdaptersEqual(old.params, new.params) or !goAdapterEqual(old.returnGoAdapter(), new.returnGoAdapter()))
+        // The comparisons below pair the two parameter lists position by
+        // position, which only means anything while they line up. A regrouping
+        // is already spoken for by the C and Go verdicts above, so letting
+        // these run against a misaligned pair would report every annotation as
+        // changed at once.
+        if (shape_kept) {
+            if (!retentionEqual(old.params, new.params))
+                try add(allocator, &report, .breaking, identity, "parameter retention changed");
+            if (!paramAdaptersEqual(old.params, new.params))
+                try add(allocator, &report, .breaking, identity, "Go adapter changed");
+            // The C signature does not move, but the Go callback type does: it
+            // gains or loses a second result, and every caller's function
+            // literal stops compiling. Breaking on the surface consumers
+            // actually write.
+            if (!goErrorEqual(old.params, new.params))
+                try add(allocator, &report, .breaking, identity, "callback Go error surface changed");
+            if (!callbackFailureEqual(old.params, new.params))
+                try add(allocator, &report, .compatible, identity, "callback failure result changed");
+        }
+        if (!goAdapterEqual(old.returnGoAdapter(), new.returnGoAdapter()))
             try add(allocator, &report, .breaking, identity, "Go adapter changed");
-        // The C signature does not move, but the Go callback type does: it
-        // gains or loses a second result, and every caller's function literal
-        // stops compiling. Breaking on the surface consumers actually write.
-        if (!goErrorEqual(old.params, new.params))
-            try add(allocator, &report, .breaking, identity, "callback Go error surface changed");
-        if (!callbackFailureEqual(old.params, new.params))
-            try add(allocator, &report, .compatible, identity, "callback failure result changed");
         // The C signature keeps its flag parameter either way, but the Go one
         // gains or loses its leading `ctx`, so every call site moves.
         if (!semantic.optionalStringEqual(old.cancel, new.cancel))
@@ -162,7 +184,7 @@ pub fn diffForTarget(allocator: std.mem.Allocator, base: semantic.Semantic, base
         // the parent/child Close ordering contract.
         if (old.childOfReceiver() != new.childOfReceiver())
             try add(allocator, &report, .compatible, identity, "dependent handle lifetime Go surface changed");
-        if (!streamBufferEqual(old.params, new.params))
+        if (shape_kept and !streamBufferEqual(old.params, new.params))
             try add(allocator, &report, .compatible, identity, "stream staging buffer resized");
         try compareExtensions(allocator, &report, identity, old.ext, new.ext);
         try compareErrors(allocator, &report, identity, old.@"return", new.@"return");
@@ -507,28 +529,57 @@ fn exposedParamsMatch(
     }
 }
 
-/// Two functions have the same signature when their lowered C shapes match
-/// and the Go surface lowering does not carry matches too. The lowered
-/// comparison answers everything about the C ABI -- parameter roles, pointer
-/// constness and nullability, promoted integer widths, callback wire shapes,
-/// struct mirrors -- so nothing about which annotations reach C is restated
-/// here.
-fn signaturesEqual(lhs: []const abi.AbiFn, rhs: []const abi.AbiFn) bool {
+/// Two functions have the same C signature when their lowered shapes match.
+/// The lowered comparison answers everything about the C ABI -- parameter
+/// roles, pointer constness and nullability, promoted integer widths, callback
+/// wire shapes, struct mirrors -- so nothing about which annotations reach C is
+/// restated here. The Go surface is judged on its own by `goSurfaceEqual`,
+/// since a regrouping can move one without the other.
+fn cSignaturesEqual(lhs: []const abi.AbiFn, rhs: []const abi.AbiFn) bool {
     if (lhs.len != rhs.len) return false;
-    for (lhs, rhs) |a, b| if (!signatureEqual(a, b)) return false;
+    for (lhs, rhs) |a, b| if (!cSignatureEqual(a, b)) return false;
     return true;
 }
 
-fn signatureEqual(lhs: abi.AbiFn, rhs: abi.AbiFn) bool {
+fn cSignatureEqual(lhs: abi.AbiFn, rhs: abi.AbiFn) bool {
     if (lhs.params.len != rhs.params.len) return false;
     for (lhs.params, rhs.params) |a, b| {
-        if (a.role != b.role or a.field_index != b.field_index or !scalarEqual(a.scalar, b.scalar)) return false;
+        if (!cRoleEqual(a.role, b.role) or !scalarEqual(a.scalar, b.scalar)) return false;
     }
     if (!scalarEqual(lhs.ret, rhs.ret) or lhs.ret_optional != rhs.ret_optional or
         lhs.value_union_return != rhs.value_union_return) return false;
     if (!structMirrorEqual(lhs.ret_struct, rhs.ret_struct) or
         !structMirrorEqual(lhs.payload_struct, rhs.payload_struct)) return false;
-    return goSurfaceEqual(lhs.origin.*, rhs.origin.*);
+    return true;
+}
+
+/// Whether two C parameters are declared the same way. A value is a value
+/// whether it arrived as a parameter of its own or as one field of a flattened
+/// struct: both spell the same declaration, and which one it was is bookkeeping
+/// the shim uses to rebuild the struct, not something C can see. Every other
+/// role names a distinct declaration -- a slice's pointer and its length, a
+/// written count, a union tag -- so those compare exactly.
+fn cRoleEqual(lhs: abi.AbiParam.Role, rhs: abi.AbiParam.Role) bool {
+    const lhs_value = lhs == .value or lhs == .flattened_field;
+    const rhs_value = rhs == .value or rhs == .flattened_field;
+    if (lhs_value and rhs_value) return true;
+    return lhs == rhs;
+}
+
+/// Whether two exposed parameters occupy the same place in the surface: a plain
+/// parameter pairs with a plain one of the same Go type, and a flattened struct
+/// with one carrying the same number of fields of the same types. Annotations
+/// and field names are compared separately, so this says how many parameters
+/// the entry stands for rather than how it is spelled, and a hint change on an
+/// otherwise unchanged parameter leaves the lists aligned for the comparisons
+/// that read those hints.
+fn sameParameterShape(lhs: semantic.Parameter, rhs: semantic.Parameter) bool {
+    const lhs_fields = lhs.flatten orelse &.{};
+    const rhs_fields = rhs.flatten orelse &.{};
+    if (lhs_fields.len != rhs_fields.len) return false;
+    if (lhs_fields.len == 0) return goTypeEqual(lhs.type, rhs.type);
+    for (lhs_fields, rhs_fields) |a, b| if (!goTypeEqual(a.type, b.type)) return false;
+    return true;
 }
 
 fn scalarEqual(lhs: abi.AbiScalar, rhs: abi.AbiScalar) bool {
@@ -567,11 +618,64 @@ fn structMirrorEqual(lhs: ?*const abi.AbiStruct, rhs: ?*const abi.AbiStruct) boo
 fn goSurfaceEqual(lhs: semantic.SemanticFn, rhs: semantic.SemanticFn) bool {
     if (!optionalHintEqual(lhs.return_semantic, rhs.return_semantic)) return false;
     if (!goTypeEqual(lhs.@"return", rhs.@"return")) return false;
-    return exposedParamsMatch(lhs.params, rhs.params, struct {
-        fn matches(a: semantic.Parameter, b: semantic.Parameter) bool {
-            return a.direction == b.direction and a.semantic == b.semantic and goTypeEqual(a.type, b.type);
+    return goParamsMatch(lhs.params, rhs.params);
+}
+
+/// Walks the parameters a generated Go signature carries: one entry per field of
+/// a flattened struct, which is what Go callers spell out, and one entry for an
+/// options struct, the variadic that replaces all of its fields. Comparing these
+/// rather than the declarations behind them is what lets a regrouping that
+/// leaves the Go surface alone go unreported, and what makes a field leaving an
+/// options struct report exactly the Go call sites it moves.
+const GoParams = struct {
+    params: []const semantic.Parameter,
+    index: usize = 0,
+    field: usize = 0,
+
+    const Token = struct {
+        parameter: semantic.Parameter,
+        type: semantic.TypeNode,
+    };
+
+    fn next(self: *GoParams) ?Token {
+        while (self.index < self.params.len) {
+            const parameter = self.params[self.index];
+            if (parameter.injected != null) {
+                self.index += 1;
+                continue;
+            }
+            const fields = parameter.flatten orelse {
+                self.index += 1;
+                return .{ .parameter = parameter, .type = parameter.type };
+            };
+            if (parameter.goOptions() != null or fields.len == 0) {
+                self.index += 1;
+                self.field = 0;
+                return .{ .parameter = parameter, .type = parameter.type };
+            }
+            if (self.field < fields.len) {
+                const field = fields[self.field];
+                self.field += 1;
+                return .{ .parameter = parameter, .type = field.type };
+            }
+            self.field = 0;
+            self.index += 1;
         }
-    }.matches);
+        return null;
+    }
+};
+
+fn goParamsMatch(lhs: []const semantic.Parameter, rhs: []const semantic.Parameter) bool {
+    var old: GoParams = .{ .params = lhs };
+    var new: GoParams = .{ .params = rhs };
+    while (true) {
+        const a = old.next();
+        const b = new.next();
+        if (a == null or b == null) return a == null and b == null;
+        if (a.?.parameter.direction != b.?.parameter.direction) return false;
+        if (a.?.parameter.semantic != b.?.parameter.semantic) return false;
+        if (!goTypeEqual(a.?.type, b.?.type)) return false;
+    }
 }
 
 fn goTypeEqual(lhs: semantic.TypeNode, rhs: semantic.TypeNode) bool {
@@ -866,6 +970,84 @@ test "adding a flattened struct field is breaking" {
     defer report.deinit(std.testing.allocator);
     try std.testing.expect(report.hasBreaking());
     try std.testing.expectEqualStrings("signature changed", report.changes.items[0].detail);
+}
+
+test "a field leaving an options struct reports the Go surface, not the C one" {
+    const u16_node: semantic.TypeNode = .{ .int = .{ .bits = 16, .signed = false } };
+    const options_type: semantic.TypeNode = .{ .value_struct = .{ .ref = "Options" } };
+    const base_fields = [_]semantic.FlattenedField{
+        .{ .default = .{ .int = 80 }, .name = "cols", .type = u16_node },
+        .{ .default = .{ .int = 24 }, .name = "rows", .type = u16_node },
+    };
+    const current_fields = [_]semantic.FlattenedField{
+        .{ .default = .{ .int = 24 }, .name = "rows", .type = u16_node },
+    };
+    const base_fn: semantic.SemanticFn = .{
+        .name = "init",
+        .params = &.{.{
+            .name = "options",
+            .flatten = &base_fields,
+            .type = options_type,
+            .go = .{ .options = .{} },
+        }},
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_init",
+    };
+    const current_fn: semantic.SemanticFn = .{
+        .name = "init",
+        .params = &.{
+            .{ .name = "initial_cols", .type = u16_node },
+            .{ .name = "options", .flatten = &current_fields, .type = options_type, .go = .{ .options = .{} } },
+        },
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_init",
+    };
+    const base: semantic.Semantic = .{ .package = "demo", .prefix = "zg", .zig_version = "0.16.0", .functions = &.{base_fn} };
+    const current: semantic.Semantic = .{ .package = "demo", .prefix = "zg", .zig_version = "0.16.0", .functions = &.{current_fn} };
+    // Every C declaration keeps its place and type -- a `uint16_t` whether it
+    // crosses as a field of the struct or on its own -- while the Go call site
+    // gains a leading argument. Reporting one Go line beats reporting the
+    // written hint, the retention and the adapters as if each had moved.
+    var report = try diff(std.testing.allocator, base, current);
+    defer report.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(usize, 1), report.changes.items.len);
+    try std.testing.expectEqual(ChangeKind.breaking, report.changes.items[0].kind);
+    try std.testing.expectEqualStrings("Go parameter surface changed", report.changes.items[0].detail);
+}
+
+test "regrouping a flattened struct without moving the Go surface is not a change" {
+    const u16_node: semantic.TypeNode = .{ .int = .{ .bits = 16, .signed = false } };
+    const options_type: semantic.TypeNode = .{ .value_struct = .{ .ref = "Options" } };
+    const base_fields = [_]semantic.FlattenedField{
+        .{ .name = "cols", .type = u16_node },
+        .{ .name = "rows", .type = u16_node },
+    };
+    const current_fields = [_]semantic.FlattenedField{
+        .{ .name = "rows", .type = u16_node },
+    };
+    const base_fn: semantic.SemanticFn = .{
+        .name = "configure",
+        .params = &.{.{ .name = "options", .flatten = &base_fields, .type = options_type }},
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_configure",
+    };
+    const current_fn: semantic.SemanticFn = .{
+        .name = "configure",
+        .params = &.{
+            .{ .name = "cols", .type = u16_node },
+            .{ .name = "options", .flatten = &current_fields, .type = options_type },
+        },
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_configure",
+    };
+    const base: semantic.Semantic = .{ .package = "demo", .prefix = "zg", .zig_version = "0.16.0", .functions = &.{base_fn} };
+    const current: semantic.Semantic = .{ .package = "demo", .prefix = "zg", .zig_version = "0.16.0", .functions = &.{current_fn} };
+    // Without `.options` both spellings hand Go the same two parameters in the
+    // same order, and C the same two declarations, so nothing a caller writes
+    // changed.
+    var report = try diff(std.testing.allocator, base, current);
+    defer report.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(usize, 0), report.changes.items.len);
 }
 
 test "adding a field accessor is a compatible function append" {

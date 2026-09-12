@@ -24,6 +24,14 @@
   같아 **C ABI가 바뀌지 않고**, `.flatten` 선언의 `semantic.json`과 생성 Go도 그대로입니다.
   `semantic.json`에는 선택적인 `go.options`만 추가됩니다.
 
+### Fixed
+
+- `abi-check`가 파라미터 목록이 재구성된 경우(옵션 구조체의 필드가 구조체 밖 매개변수로
+  나가는 등) written hint·retention·adapter가 모두 바뀐 것처럼 보고하던 문제를 고쳤습니다.
+  C 선언이 그대로면 `Go parameter surface changed` 한 줄로 보고하고, 재구성이 Go 표면까지
+  그대로 두면 아무것도 보고하지 않습니다. flattened 필드를 값 매개변수로 옮겨도 C가 보는
+  선언은 같으므로 C 시그니처 비교는 더 이상 이를 변경으로 보지 않습니다.
+
 ## [0.22.0] - 2026-09-11
 
 ### Breaking
