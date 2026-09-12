@@ -2,7 +2,7 @@
 depends_on:
 - "199-implements-multiple-kinds#1"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `cd examples/11-io-streams && zig build test go-check go-lib abi-check`가 통과하고
 > NEXT: none

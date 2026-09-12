@@ -19,10 +19,12 @@ pub const bindings = zigo.define(.{
         Document.define(&.{
             Document.func("create", .{}),
             Document.func("deinit", .{}),
-            Document.func("append", .{}).use(zigo.features.implements, .{ .kind = .writer }),
+            // One method, two interfaces: Write hands the bytes over, and
+            // WriteString lends the string's own bytes to the same method.
+            Document.func("append", .{}).use(zigo.features.implements, .{ .kinds = &.{ .writer, .string_writer } }),
             Document.func("appendString", .{
                 .params = &.{.{ .index = 1, .semantic = .utf8_string }},
-            }).use(zigo.features.implements, .{ .kind = .string_writer }),
+            }),
             Document.func("count", .{}),
             Document.func("dump", .{}).use(zigo.features.implements, .{ .kind = .writer_to }),
             Document.func("load", .{ .params = &.{

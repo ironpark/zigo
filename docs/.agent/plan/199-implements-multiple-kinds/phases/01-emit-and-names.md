@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-12T18:18:26Z"
 depends_on:
 - "199-implements-multiple-kinds#0"
 perf_phase: false
-status: planned
+status: done
 ---
 > DONE-WHEN: `zig build test`가 갱신된 골든과 함께 통과한다.
 > NEXT: none

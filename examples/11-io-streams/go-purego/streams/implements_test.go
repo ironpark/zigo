@@ -146,9 +146,10 @@ func TestImplementsWrappersRefuseAClosedHandle(t *testing.T) {
 	}
 }
 
-// WriteString is the string-shaped Write: it hands the Go string to the method
-// without a []byte conversion, and reports the length it consumed. io.WriteString
-// prefers it over Write when a type has it, which is the point of satisfying it.
+// WriteString is the string-shaped Write, and on Document it comes from the
+// same bound method as Write: one `.kinds` declaration, two interfaces. The
+// string lends its own bytes rather than being converted, and io.WriteString
+// prefers this method over Write, which is the point of satisfying it.
 func TestDocumentIsAnIoStringWriter(t *testing.T) {
 	doc, err := NewDocument()
 	if err != nil {
@@ -251,5 +252,35 @@ func TestSinkWriteStringOnAClosedSink(t *testing.T) {
 	var handleErr *HandleError
 	if _, err := sink.WriteString("x"); !errors.As(err, &handleErr) {
 		t.Fatalf("WriteString on a closed handle: %v", err)
+	}
+}
+
+// Write and WriteString on Document are two wrappers over one bound method, so
+// bytes written either way land in the same document in call order.
+func TestDocumentWriteAndWriteStringShareOneMethod(t *testing.T) {
+	doc, err := NewDocument()
+	if err != nil {
+		t.Fatalf("NewDocument: %v", err)
+	}
+	defer doc.Close()
+
+	if _, err := doc.Write([]byte("bytes")); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if _, err := doc.WriteString("string"); err != nil {
+		t.Fatalf("WriteString: %v", err)
+	}
+	// Not valid UTF-8, and it still arrives byte for byte: the wrapper lends
+	// the string's bytes rather than reinterpreting them.
+	if _, err := doc.WriteString("\xff\xfe"); err != nil {
+		t.Fatalf("WriteString(invalid utf-8): %v", err)
+	}
+
+	var out bytes.Buffer
+	if _, err := doc.WriteTo(&out); err != nil {
+		t.Fatalf("WriteTo: %v", err)
+	}
+	if got, want := out.String(), "bytes\nstring\n\xff\xfe\n"; got != want {
+		t.Fatalf("document = %q, want %q", got, want)
 	}
 }

@@ -127,6 +127,18 @@ Document.func("appendString", .{
 Sink.func("push", .{}).use(zigo.features.implements, .{ .kind = .string_writer }),
 ```
 
+한 메서드가 여러 인터페이스를 만족시킬 때는 `.kind` 대신 `.kinds`로 나열합니다. 래퍼는
+나열한 순서대로 나오고 모두 같은 공개 메서드를 부릅니다. 바이트를 받는 메서드 하나로
+`fmt.Fprintf`와 `io.WriteString`을 함께 받으려면 다음과 같이 씁니다.
+
+```zig
+Document.func("append", .{}).use(zigo.features.implements, .{ .kinds = &.{ .writer, .string_writer } }),
+```
+
+`.kind`와 `.kinds`는 한 선언에 하나만 씁니다. 같은 kind를 두 번 나열하면 Go 메서드가 두 번
+선언되므로 `ZIGO058`이 납니다. 래퍼 이름이 그 타입의 다른 메서드나 다른 래퍼와 겹치면
+`ZIGO024`가 납니다.
+
 원래 bound 메서드도 유지됩니다. 생성 시그니처가 해당 인터페이스 계약과 호환되지 않으면
 진단으로 거부됩니다.
 

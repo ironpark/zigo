@@ -60,7 +60,10 @@
     },
     {
       "go": {
-        "implements": "writer"
+        "implements": [
+          "writer",
+          "string_writer"
+        ]
       },
       "name": "append",
       "ownership": "borrowed",
@@ -104,10 +107,7 @@
       "symbol": "zg_document_append"
     },
     {
-      "doc": "The string-shaped twin of `append`. The binding gives its parameter a\nstring semantic, so the Go surface takes a `string` and the generated\n`WriteString` hands it straight over: no `[]byte(s)` copy on the way in.",
-      "go": {
-        "implements": "string_writer"
-      },
+      "doc": "The string-shaped twin of `append`. The binding gives its parameter a\nstring semantic, so the Go surface takes a `string` rather than bytes.\n`WriteString` comes from `append` instead, which takes both interfaces.",
       "name": "appendString",
       "ownership": "borrowed",
       "params": [
@@ -171,7 +171,9 @@
     {
       "doc": "Writes every line out, newline separated. The output is far larger than\nthe shim's staging buffer for a document of any size, which is the\npoint: the buffer is what keeps the crossings proportional to the\npayload rather than to the number of `writeAll` calls.",
       "go": {
-        "implements": "writer_to"
+        "implements": [
+          "writer_to"
+        ]
       },
       "name": "dump",
       "ownership": "borrowed",
@@ -210,7 +212,9 @@
     {
       "doc": "Reads newline-terminated lines until the stream ends, and reports how\nmany bytes it consumed. A trailing fragment with no newline is not a\nline: `dump` always terminates, so a stream this can read always does.",
       "go": {
-        "implements": "reader_from"
+        "implements": [
+          "reader_from"
+        ]
       },
       "name": "load",
       "ownership": "borrowed",
@@ -254,7 +258,9 @@
     {
       "doc": "Copies the newline-terminated lines into `dst`, continuing where the\nlast call stopped, and reports how many bytes it copied. Zero means\neverything has been read. It is the `io.Reader` shape: an out buffer\nand a count, with nothing streamed through Zig.",
       "go": {
-        "implements": "reader"
+        "implements": [
+          "reader"
+        ]
       },
       "name": "readInto",
       "ownership": "borrowed",
@@ -371,7 +377,9 @@
     {
       "doc": "Bytes with no promise of being UTF-8, which is why the binding leaves\nthe parameter opaque. The generated `WriteString` still takes a Go\n`string` and lends its bytes here without copying them.",
       "go": {
-        "implements": "string_writer"
+        "implements": [
+          "string_writer"
+        ]
       },
       "name": "push",
       "ownership": "borrowed",

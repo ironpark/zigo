@@ -33,8 +33,8 @@ pub const Document = struct {
     }
 
     /// The string-shaped twin of `append`. The binding gives its parameter a
-    /// string semantic, so the Go surface takes a `string` and the generated
-    /// `WriteString` hands it straight over: no `[]byte(s)` copy on the way in.
+    /// string semantic, so the Go surface takes a `string` rather than bytes.
+    /// `WriteString` comes from `append` instead, which takes both interfaces.
     pub fn appendString(self: *Document, text: []const u8) error{OutOfMemory}!void {
         return self.append(text);
     }

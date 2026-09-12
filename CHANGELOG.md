@@ -6,6 +6,19 @@
 
 ## [Unreleased]
 
+### Added
+
+- `.use(zigo.features.implements, .{ .kinds = &.{ .writer, .string_writer } })`로 한 메서드가
+  여러 Go 표준 인터페이스를 구현합니다. 래퍼는 나열한 순서대로 나오고 모두 같은 공개
+  메서드를 부릅니다. `.kind`는 그대로 두었고, 한 선언에는 `.kind`나 `.kinds` 중 하나만
+  씁니다. 같은 kind를 두 번 나열하면 `ZIGO058`이 납니다.
+
+### Changed
+
+- `semantic.json`의 `go.implements`가 문자열에서 문자열 배열이 되었습니다. 문자열로 적힌
+  기존 문서는 한 원소 배열로 읽히므로 재생성 없이 그대로 동작합니다. 전체 schema 선언의
+  `.implements`도 목록(`&.{.writer}`)을 받습니다.
+
 ### Fixed
 
 - `.options`의 optional 필드가 `null`이 아닌 Zig 기본값(`?u32 = 500`)을 가질 때 생성된 Go가
