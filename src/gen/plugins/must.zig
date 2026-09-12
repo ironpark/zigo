@@ -3,6 +3,7 @@ const std = @import("std");
 const abi = @import("abi");
 const semantic = @import("semantic");
 const plugin_api = @import("plugin");
+const naming = @import("naming");
 
 pub const Config = struct { enabled: bool = false };
 pub const Variant = struct { enabled: bool };
@@ -52,6 +53,45 @@ fn analyze(context: plugin_api.AnalyzeContext) !void {
                 .site = plugin_api.site.functionSiteFor(origin, path),
                 .hint = "rename one declaration so the generated Must name is unique",
             });
+        }
+        if (origin.receiver == null) {
+            for (functions) |other| {
+                const other_origin = other.origin.*;
+                if (!semantic.optionalStringEqual(origin.package, other_origin.package)) continue;
+                for (other_origin.params) |param| {
+                    const opt_spec = param.goOptions() orelse continue;
+                    const fields = param.flatten orelse continue;
+                    const prefix_source = other_origin.goOwner() orelse other_origin.receiver;
+                    const opt_names = try naming.resolveOptionsNamesAlloc(
+                        allocator,
+                        opt_spec.prefix,
+                        opt_spec.type_name,
+                        prefix_source,
+                        other_origin.goName() orelse other_origin.name,
+                    );
+                    defer opt_names.deinit(allocator);
+                    const clashes_type = std.mem.eql(u8, must_name, opt_names.type_name);
+                    var clashes_field = false;
+                    for (fields) |f| {
+                        const with_name = try opt_names.withNameAlloc(allocator, f.name);
+                        defer allocator.free(with_name);
+                        if (std.mem.eql(u8, must_name, with_name)) {
+                            clashes_field = true;
+                            break;
+                        }
+                    }
+                    if (clashes_type or clashes_field) {
+                        const other_path = try plugin_api.site.functionDeclarationAlloc(allocator, other_origin);
+                        try context.diagnose(.{
+                            .severity = .@"error",
+                            .code = "ZIGO024",
+                            .message = try std.fmt.allocPrint(allocator, "public Go name `{s}` collides between `{s}` and generated Must variant for `{s}`", .{ must_name, other_path, path }),
+                            .site = plugin_api.site.functionSiteFor(origin, path),
+                            .hint = "rename one declaration so the generated Must name is unique",
+                        });
+                    }
+                }
+            }
         }
     }
 }

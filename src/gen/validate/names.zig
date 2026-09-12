@@ -200,6 +200,7 @@ pub fn publicNameCollisionIssue(allocator: std.mem.Allocator, document: semantic
             }
         }
     }
+    if (try optionsCollisionIssue(allocator, document, target)) |issue| return issue;
     return null;
 }
 
@@ -963,5 +964,244 @@ test "an enum method cannot take a name zigo generates on that enum" {
             continue;
         }
         try std.testing.expectEqualStrings("ZIGO024", (issue orelse return error.MissingDiagnostic).code);
+    }
+}
+
+fn optionsCollisionIssue(allocator: std.mem.Allocator, document: semantic.Semantic, target: targets.Target) !?diagnostic.Diagnostic {
+    for (document.functions, 0..) |function, index| {
+        for (function.params) |param| {
+            const opt_spec = param.goOptions() orelse continue;
+            const fields = param.flatten orelse continue;
+            const prefix_source = function.goOwner() orelse function.receiver;
+            const options_names = try naming.resolveOptionsNamesAlloc(
+                allocator,
+                opt_spec.prefix,
+                opt_spec.type_name,
+                prefix_source,
+                function.goName() orelse function.name,
+            );
+            defer options_names.deinit(allocator);
+
+            // 1. Check collision against document.types
+            for (document.types) |declaration| {
+                if (!semantic.optionalStringEqual(declaration.package, function.package)) continue;
+                if (std.mem.eql(u8, options_names.type_name, declaration.name)) {
+                    const function_path = try site.functionDeclarationAlloc(allocator, function);
+                    return .{
+                        .severity = .@"error",
+                        .code = "ZIGO024",
+                        .message = try std.fmt.allocPrint(
+                            allocator,
+                            "public Go name `{s}` collides between type `{s}` and generated option for `{s}`",
+                            .{ options_names.type_name, declaration.zig_path orelse declaration.name, function_path },
+                        ),
+                        .site = site.functionSiteFor(function, function_path),
+                        .hint = "rename the type or configure a different `.prefix` or `.type_name` in `.options`",
+                    };
+                }
+                for (fields) |field| {
+                    const with_name = try options_names.withNameAlloc(allocator, field.name);
+                    defer allocator.free(with_name);
+                    if (std.mem.eql(u8, with_name, declaration.name)) {
+                        const function_path = try site.functionDeclarationAlloc(allocator, function);
+                        return .{
+                            .severity = .@"error",
+                            .code = "ZIGO024",
+                            .message = try std.fmt.allocPrint(
+                                allocator,
+                                "public Go name `{s}` collides between type `{s}` and generated option for `{s}`",
+                                .{ with_name, declaration.zig_path orelse declaration.name, function_path },
+                            ),
+                            .site = site.functionSiteFor(function, function_path),
+                            .hint = "rename the type or configure a different `.prefix` in `.options`",
+                        };
+                    }
+                }
+            }
+
+            // 2. Check collision against receiverless functions
+            for (document.functions) |other| {
+                if (other.receiver != null) continue;
+                if (!semantic.optionalStringEqual(other.package, function.package)) continue;
+                const other_name = try target.publicFunctionNameAlloc(allocator, document, other);
+                defer allocator.free(other_name);
+                if (std.mem.eql(u8, options_names.type_name, other_name)) {
+                    const function_path = try site.functionDeclarationAlloc(allocator, function);
+                    const other_path = try site.functionDeclarationAlloc(allocator, other);
+                    defer allocator.free(other_path);
+                    return .{
+                        .severity = .@"error",
+                        .code = "ZIGO024",
+                        .message = try std.fmt.allocPrint(
+                            allocator,
+                            "public Go name `{s}` collides between `{s}` and generated option for `{s}`",
+                            .{ options_names.type_name, other_path, function_path },
+                        ),
+                        .site = site.functionSiteFor(function, function_path),
+                        .hint = "rename the function or configure a different `.prefix` in `.options`",
+                    };
+                }
+                for (fields) |field| {
+                    const with_name = try options_names.withNameAlloc(allocator, field.name);
+                    defer allocator.free(with_name);
+                    if (std.mem.eql(u8, with_name, other_name)) {
+                        const function_path = try site.functionDeclarationAlloc(allocator, function);
+                        const other_path = try site.functionDeclarationAlloc(allocator, other);
+                        defer allocator.free(other_path);
+                        return .{
+                            .severity = .@"error",
+                            .code = "ZIGO024",
+                            .message = try std.fmt.allocPrint(
+                                allocator,
+                                "public Go name `{s}` collides between `{s}` and generated option for `{s}`",
+                                .{ with_name, other_path, function_path },
+                            ),
+                            .site = site.functionSiteFor(function, function_path),
+                            .hint = "rename the function or configure a different `.prefix` in `.options`",
+                        };
+                    }
+                }
+            }
+
+            // 3. Check collision against previous functions' options
+            for (document.functions[0..index]) |previous| {
+                if (!semantic.optionalStringEqual(previous.package, function.package)) continue;
+                for (previous.params) |prev_param| {
+                    const prev_opt = prev_param.goOptions() orelse continue;
+                    const prev_fields = prev_param.flatten orelse continue;
+                    const prev_prefix_source = previous.goOwner() orelse previous.receiver;
+                    const prev_names = try naming.resolveOptionsNamesAlloc(
+                        allocator,
+                        prev_opt.prefix,
+                        prev_opt.type_name,
+                        prev_prefix_source,
+                        previous.goName() orelse previous.name,
+                    );
+                    defer prev_names.deinit(allocator);
+
+                    var clashing: ?[]const u8 = null;
+                    if (std.mem.eql(u8, options_names.type_name, prev_names.type_name)) {
+                        clashing = options_names.type_name;
+                    }
+                    for (fields) |field| {
+                        if (clashing != null) break;
+                        const with_name = try options_names.withNameAlloc(allocator, field.name);
+                        defer allocator.free(with_name);
+                        for (prev_fields) |prev_field| {
+                            const prev_with = try prev_names.withNameAlloc(allocator, prev_field.name);
+                            defer allocator.free(prev_with);
+                            if (std.mem.eql(u8, with_name, prev_with)) {
+                                clashing = try allocator.dupe(u8, with_name);
+                                break;
+                            }
+                        }
+                    }
+                    if (clashing) |clashing_name| {
+                        const function_path = try site.functionDeclarationAlloc(allocator, function);
+                        const prev_path = try site.functionDeclarationAlloc(allocator, previous);
+                        defer allocator.free(prev_path);
+                        return .{
+                            .severity = .@"error",
+                            .code = "ZIGO024",
+                            .message = try std.fmt.allocPrint(
+                                allocator,
+                                "public Go name `{s}` collides between generated option for `{s}` and generated option for `{s}`",
+                                .{ clashing_name, prev_path, function_path },
+                            ),
+                            .site = site.functionSiteFor(function, function_path),
+                            .hint = "configure distinct `.prefix` or `.type_name` on each options parameter",
+                        };
+                    }
+                }
+            }
+        }
+    }
+    return null;
+}
+
+test "functional options name collisions report ZIGO024 with colliding declarations" {
+    const u16_type: semantic.TypeNode = .{ .int = .{ .bits = 16, .is_usize = false, .signed = false } };
+    const opt_fields = [_]semantic.FlattenedField{
+        .{ .name = "rows", .type = u16_type, .default = .{ .int = 24 } },
+    };
+    const opt_param: semantic.Parameter = .{
+        .name = "options",
+        .type = .{ .value_struct = .{ .ref = "Options" } },
+        .flatten = &opt_fields,
+        .go = .{ .options = .{} },
+    };
+    const terminal_init: semantic.SemanticFn = .{
+        .name = "init",
+        .namespace = "Terminal",
+        .params = &.{opt_param},
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_terminal_init",
+    };
+
+    // 1. Collision with registered type
+    {
+        var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+        defer scratch.deinit();
+        const document: semantic.Semantic = .{
+            .functions = &.{terminal_init},
+            .package = "term",
+            .prefix = "zg",
+            .types = &.{
+                .{ .kind = .value_struct, .name = "TerminalOption" },
+            },
+            .zig_version = "0.16.0",
+        };
+        const issue = (try publicNameCollisionIssue(scratch.allocator(), document, targets.default)) orelse return error.MissingDiagnostic;
+        try std.testing.expectEqualStrings("ZIGO024", issue.code);
+        try std.testing.expect(std.mem.indexOf(u8, issue.message, "TerminalOption") != null);
+        try std.testing.expect(std.mem.indexOf(u8, issue.message, "type `TerminalOption`") != null);
+        try std.testing.expect(std.mem.indexOf(u8, issue.message, "generated option for `Terminal.init`") != null);
+    }
+
+    // 2. Collision with free function
+    {
+        var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+        defer scratch.deinit();
+        const document: semantic.Semantic = .{
+            .functions = &.{
+                terminal_init,
+                .{
+                    .name = "withTerminalRows",
+                    .params = &.{},
+                    .@"return" = .{ .void = {} },
+                    .symbol = "zg_with_terminal_rows",
+                },
+            },
+            .package = "term",
+            .prefix = "zg",
+            .types = &.{},
+            .zig_version = "0.16.0",
+        };
+        const issue = (try publicNameCollisionIssue(scratch.allocator(), document, targets.default)) orelse return error.MissingDiagnostic;
+        try std.testing.expectEqualStrings("ZIGO024", issue.code);
+        try std.testing.expect(std.mem.indexOf(u8, issue.message, "WithTerminalRows") != null);
+        try std.testing.expect(std.mem.indexOf(u8, issue.message, "withTerminalRows") != null);
+        try std.testing.expect(std.mem.indexOf(u8, issue.message, "generated option for `Terminal.init`") != null);
+    }
+
+    // 3. Collision between two functions' options
+    {
+        var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+        defer scratch.deinit();
+        var terminal_config = terminal_init;
+        terminal_config.name = "configure";
+        terminal_config.symbol = "zg_terminal_configure";
+        const document: semantic.Semantic = .{
+            .functions = &.{ terminal_init, terminal_config },
+            .package = "term",
+            .prefix = "zg",
+            .types = &.{},
+            .zig_version = "0.16.0",
+        };
+        const issue = (try publicNameCollisionIssue(scratch.allocator(), document, targets.default)) orelse return error.MissingDiagnostic;
+        try std.testing.expectEqualStrings("ZIGO024", issue.code);
+        try std.testing.expect(std.mem.indexOf(u8, issue.message, "TerminalOption") != null);
+        try std.testing.expect(std.mem.indexOf(u8, issue.message, "generated option for `Terminal.init`") != null);
+        try std.testing.expect(std.mem.indexOf(u8, issue.message, "generated option for `Terminal.configure`") != null);
     }
 }

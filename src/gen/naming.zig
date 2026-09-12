@@ -324,3 +324,103 @@ pub fn ownerPascalAlloc(allocator: std.mem.Allocator, owner: []const u8) ![]u8 {
     }
     return name.toOwnedSlice(allocator);
 }
+
+pub const OptionsNames = struct {
+    type_name: []const u8,
+    prefix: []const u8,
+
+    pub fn deinit(self: OptionsNames, allocator: std.mem.Allocator) void {
+        allocator.free(self.type_name);
+        allocator.free(self.prefix);
+    }
+
+    pub fn withNameAlloc(self: OptionsNames, allocator: std.mem.Allocator, field_name: []const u8) ![]u8 {
+        const field_pascal = try pascalAlloc(allocator, field_name);
+        defer allocator.free(field_pascal);
+        return if (self.prefix.len == 0)
+            std.fmt.allocPrint(allocator, "With{s}", .{field_pascal})
+        else
+            std.fmt.allocPrint(allocator, "With{s}{s}", .{ self.prefix, field_pascal });
+    }
+};
+
+pub fn resolveOptionsPrefixAlloc(
+    allocator: std.mem.Allocator,
+    explicit_prefix: ?[]const u8,
+    owner: ?[]const u8,
+    function_name: []const u8,
+) ![]u8 {
+    if (explicit_prefix) |p| return allocator.dupe(u8, p);
+    if (owner) |o| {
+        if (o.len > 0) return ownerPascalAlloc(allocator, o);
+    }
+    return pascalAlloc(allocator, function_name);
+}
+
+pub fn resolveOptionTypeNameAlloc(
+    allocator: std.mem.Allocator,
+    explicit_type_name: ?[]const u8,
+    prefix: []const u8,
+) ![]u8 {
+    if (explicit_type_name) |t| return allocator.dupe(u8, t);
+    return if (prefix.len == 0) allocator.dupe(u8, "Option") else std.fmt.allocPrint(allocator, "{s}Option", .{prefix});
+}
+
+pub fn resolveOptionsNamesAlloc(
+    allocator: std.mem.Allocator,
+    explicit_prefix: ?[]const u8,
+    explicit_type_name: ?[]const u8,
+    owner: ?[]const u8,
+    function_name: []const u8,
+) !OptionsNames {
+    const prefix = try resolveOptionsPrefixAlloc(allocator, explicit_prefix, owner, function_name);
+    errdefer allocator.free(prefix);
+    const type_name = try resolveOptionTypeNameAlloc(allocator, explicit_type_name, prefix);
+    errdefer allocator.free(type_name);
+    return .{
+        .type_name = type_name,
+        .prefix = prefix,
+    };
+}
+
+test "functional options naming creates expected type and With* function names" {
+    // 1. Default declaration on Terminal -> TerminalOption, WithTerminalRows
+    {
+        const names = try resolveOptionsNamesAlloc(std.testing.allocator, null, null, "Terminal", "init");
+        defer names.deinit(std.testing.allocator);
+        try std.testing.expectEqualStrings("TerminalOption", names.type_name);
+        const with_rows = try names.withNameAlloc(std.testing.allocator, "rows");
+        defer std.testing.allocator.free(with_rows);
+        try std.testing.expectEqualStrings("WithTerminalRows", with_rows);
+    }
+
+    // 2. Explicit prefix = "" -> Option, WithRows
+    {
+        const names = try resolveOptionsNamesAlloc(std.testing.allocator, "", null, "Terminal", "init");
+        defer names.deinit(std.testing.allocator);
+        try std.testing.expectEqualStrings("Option", names.type_name);
+        const with_rows = try names.withNameAlloc(std.testing.allocator, "rows");
+        defer std.testing.allocator.free(with_rows);
+        try std.testing.expectEqualStrings("WithRows", with_rows);
+    }
+
+    // 3. Free function without owner -> OpenOption, WithOpenRows
+    {
+        const names = try resolveOptionsNamesAlloc(std.testing.allocator, null, null, null, "open");
+        defer names.deinit(std.testing.allocator);
+        try std.testing.expectEqualStrings("OpenOption", names.type_name);
+        const with_rows = try names.withNameAlloc(std.testing.allocator, "rows");
+        defer std.testing.allocator.free(with_rows);
+        try std.testing.expectEqualStrings("WithOpenRows", with_rows);
+    }
+
+    // 4. Explicit type_name and prefix
+    {
+        const names = try resolveOptionsNamesAlloc(std.testing.allocator, "Terminal", "TerminalConfig", null, "init");
+        defer names.deinit(std.testing.allocator);
+        try std.testing.expectEqualStrings("TerminalConfig", names.type_name);
+        const with_rows = try names.withNameAlloc(std.testing.allocator, "rows");
+        defer std.testing.allocator.free(with_rows);
+        try std.testing.expectEqualStrings("WithTerminalRows", with_rows);
+    }
+}
