@@ -201,6 +201,7 @@ pub fn addRepositorySteps(
         "tests/generator_cases/complex/expected",
         "tests/generator_cases/dependent_handle/expected",
         "tests/generator_cases/dependent_handle_purego/expected",
+        "tests/generator_cases/functional_options/expected",
         "tests/generator_cases/injection/expected",
         "tests/generator_cases/interfaces/expected",
         "tests/generator_cases/interfaces_purego/expected",

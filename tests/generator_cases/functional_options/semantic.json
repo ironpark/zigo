@@ -1,0 +1,183 @@
+{
+  "constructors": [
+    {
+      "deinit": "freeTerminal",
+      "init": "init",
+      "type": "Terminal"
+    }
+  ],
+  "functions": [
+    {
+      "name": "init",
+      "namespace": "Terminal",
+      "ownership": "caller",
+      "params": [
+        {
+          "name": "initial_cols",
+          "type": {
+            "bits": 16,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        },
+        {
+          "name": "options",
+          "flatten": [
+            {
+              "default": {
+                "int": 24
+              },
+              "name": "rows",
+              "type": {
+                "bits": 16,
+                "is_usize": false,
+                "kind": "int",
+                "signed": false
+              }
+            },
+            {
+              "default": {
+                "int": 1048576
+              },
+              "name": "max_scrollback_bytes",
+              "type": {
+                "bits": 64,
+                "is_usize": true,
+                "kind": "int",
+                "signed": false
+              }
+            }
+          ],
+          "go": {
+            "options": {}
+          },
+          "type": {
+            "kind": "value_struct",
+            "ref": "TerminalOptions"
+          }
+        }
+      ],
+      "return": {
+        "error_set": [],
+        "kind": "error_union",
+        "payload": {
+          "const": false,
+          "kind": "opaque_ptr",
+          "nullable": false,
+          "ref": "Terminal"
+        }
+      },
+      "symbol": "ignored"
+    },
+    {
+      "name": "configure",
+      "params": [
+        {
+          "name": "options",
+          "flatten": [
+            {
+              "default": {
+                "int": 24
+              },
+              "name": "rows",
+              "type": {
+                "bits": 16,
+                "is_usize": false,
+                "kind": "int",
+                "signed": false
+              }
+            },
+            {
+              "default": {
+                "float": 1.5
+              },
+              "name": "scale",
+              "type": {
+                "bits": 32,
+                "kind": "float"
+              }
+            }
+          ],
+          "go": {
+            "options": {}
+          },
+          "type": {
+            "kind": "value_struct",
+            "ref": "ConfigureOptions"
+          }
+        }
+      ],
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "ignored"
+    },
+    {
+      "name": "freeTerminal",
+      "params": [],
+      "receiver": "Terminal",
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "ignored"
+    }
+  ],
+  "package": "functional_options",
+  "prefix": "zg",
+  "types": [
+    {
+      "kind": "opaque",
+      "name": "Terminal"
+    },
+    {
+      "fields": [
+        {
+          "name": "rows",
+          "type": {
+            "bits": 16,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        },
+        {
+          "name": "max_scrollback_bytes",
+          "type": {
+            "bits": 64,
+            "is_usize": true,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "kind": "value_struct",
+      "name": "TerminalOptions",
+      "zig_path": "root.TerminalOptions"
+    },
+    {
+      "fields": [
+        {
+          "name": "rows",
+          "type": {
+            "bits": 16,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        },
+        {
+          "name": "scale",
+          "type": {
+            "bits": 32,
+            "kind": "float"
+          }
+        }
+      ],
+      "kind": "value_struct",
+      "name": "ConfigureOptions",
+      "zig_path": "root.ConfigureOptions"
+    }
+  ],
+  "zig_version": "0.16.0"
+}
