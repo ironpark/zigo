@@ -189,6 +189,21 @@ pub const AbiInterface = struct {
     };
 };
 
+/// A declared Go type over one primary handle and the dependent children it
+/// handed out. Nothing here reaches C: the session is a Go container, and the
+/// handles it adopts cross the boundary exactly as they did before.
+pub const AbiSession = struct {
+    name: []const u8,
+    doc: ?[]const u8 = null,
+    /// Public sub-package the session is declared in, following its primary.
+    package: ?[]const u8 = null,
+    /// Registered opaque type name of the handle the children belong to.
+    primary: []const u8,
+    /// Registered opaque type names of the dependent children, in declaration
+    /// order. Closing goes the other way round: children first.
+    children: []const []const u8,
+};
+
 /// The function a `.release` name resolves to and the one exposed parameter
 /// it frees through. Both the release lookup in lowering and the validation
 /// of that lookup read this, so the rule has one home.
@@ -701,6 +716,7 @@ pub const Program = struct {
     packages: ?[]const semantic.Package = null,
     prefix: []const u8,
     projections: []const AbiProjection = &.{},
+    sessions: []const AbiSession = &.{},
     snapshots: []const AbiSnapshot = &.{},
     structs: []const AbiStruct = &.{},
     types: []const semantic.TypeDecl = &.{},

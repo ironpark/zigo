@@ -201,7 +201,7 @@ pub fn reflect(
     const reflected_packages = try packages.reflectPackages(allocator, declaration, types.items, functions.items, pairings.items);
     // After the packages, so an interface can follow its types into theirs.
     const interfaces = try reflectInterfaces(allocator, declaration, types.items);
-    const sessions = try reflectSessions(allocator, declaration);
+    const sessions = try reflectSessions(allocator, declaration, types.items);
 
     return .{
         .allocator = comptime injectionExpression(declaration.allocator),
@@ -815,6 +815,7 @@ fn reflectInterfaces(
 fn reflectSessions(
     allocator: std.mem.Allocator,
     comptime declaration: zigo.Binding,
+    types: []const semantic.TypeDecl,
 ) ![]const semantic.Session {
     var sessions: std.ArrayList(semantic.Session) = .empty;
     inline for (declaration.sessions) |entry| {
@@ -822,12 +823,14 @@ fn reflectSessions(
         const child_names = try allocator.alloc([]const u8, entry.children.len);
         inline for (entry.children, 0..) |T, index| child_names[index] = comptime registeredOpaqueName(declaration, T) orelse
             @compileError("zigo session members must be registered in `.types` as `.handle`: " ++ @typeName(T));
+        const primary = comptime registeredOpaqueName(declaration, entry.primary) orelse
+            @compileError("zigo session members must be registered in `.types` as `.handle`: " ++ @typeName(entry.primary));
         try sessions.append(allocator, .{
             .children = child_names,
             .doc = entry.doc,
             .name = entry.name,
-            .primary = comptime registeredOpaqueName(declaration, entry.primary) orelse
-                @compileError("zigo session members must be registered in `.types` as `.handle`: " ++ @typeName(entry.primary)),
+            .package = if (semantic.typeDecl(types, primary)) |decl| decl.package else null,
+            .primary = primary,
         });
     }
     return sessions.toOwnedSlice(allocator);

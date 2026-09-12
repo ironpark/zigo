@@ -1363,6 +1363,9 @@ pub const Session = struct {
     children: []const []const u8,
     doc: ?[]const u8 = null,
     name: []const u8,
+    /// Public sub-package name, following the primary. Absent means the
+    /// binding's default package.
+    package: ?[]const u8 = null,
     /// Registered opaque type name of the handle the children belong to.
     primary: []const u8,
 };

@@ -112,6 +112,7 @@ pub fn createGeneratorModules(
             .{ .name = "semantic", .module = semantic_module },
             .{ .name = "diagnostic", .module = diagnostic_module },
             .{ .name = "naming", .module = naming_module },
+            .{ .name = "targets", .module = targets_module },
         },
     });
     // A plugin is taken as a source path, not as a module: the generator

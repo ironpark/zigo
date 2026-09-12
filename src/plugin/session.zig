@@ -19,6 +19,7 @@ pub fn sessionIssue(allocator: std.mem.Allocator, document: semantic.Semantic, t
             try std.fmt.allocPrint(allocator, "give the session a `.name` that is a valid exported {s} identifier", .{target.display_name}),
         );
         if (try collisionIssue(allocator, document, sessions[0..index], session, target)) |found| return found;
+        if (try accessorIssue(allocator, session)) |found| return found;
         if (session.children.len == 0) return issue(
             session,
             "session lists no child handles",
@@ -123,9 +124,10 @@ fn dependentParent(document: semantic.Semantic, type_name: []const u8) ?[]const 
 }
 
 /// A session name reaches Go as a `type` declaration in its package, so it
-/// collides with the same things a registered type name does. The accessors it
-/// generates are named after its members and are checked where the file is
-/// spelled out.
+/// collides with the same things a registered type name does. So does its
+/// `New<Name>` constructor, and the accessors it declares are methods on the
+/// session type: they can only collide with the methods that type generates
+/// itself, which is what `Close` is.
 fn collisionIssue(allocator: std.mem.Allocator, document: semantic.Semantic, previous: []const semantic.Session, session: semantic.Session, target: targets.Target) !?diagnostic.Diagnostic {
     for (previous) |other| {
         if (std.mem.eql(u8, other.name, session.name)) return try collision(allocator, session, "two sessions");
@@ -135,14 +137,40 @@ fn collisionIssue(allocator: std.mem.Allocator, document: semantic.Semantic, pre
         if (semantic.optionalStringEqual(declaration.package, session_package))
             return try collision(allocator, session, try std.fmt.allocPrint(allocator, "session `{s}` and type `{s}`", .{ session.name, declaration.zig_path orelse declaration.name }));
     }
+    const constructor_name = try std.fmt.allocPrint(allocator, "New{s}", .{session.name});
+    defer allocator.free(constructor_name);
+    if (semantic.typeDecl(document.types, constructor_name)) |declaration| {
+        if (semantic.optionalStringEqual(declaration.package, session_package))
+            return try collision(allocator, session, try std.fmt.allocPrint(allocator, "the constructor `{s}` and type `{s}`", .{ constructor_name, declaration.zig_path orelse declaration.name }));
+    }
     for (document.functions) |function| {
         if (function.receiver != null or !semantic.optionalStringEqual(function.package, session_package)) continue;
         const function_name = try target.publicFunctionNameAlloc(allocator, document, function);
         defer allocator.free(function_name);
+        if (std.mem.eql(u8, function_name, constructor_name))
+            return try collision(allocator, session, try std.fmt.allocPrint(allocator, "the constructor `{s}` and function `{s}`", .{ constructor_name, function.name }));
         if (!std.mem.eql(u8, function_name, session.name)) continue;
         return try collision(allocator, session, try std.fmt.allocPrint(allocator, "session `{s}` and function `{s}`", .{ session.name, function.name }));
     }
     return null;
+}
+
+/// An accessor is named after its member type, and the session type declares
+/// `Close` itself. A member spelled the same way would give the type two
+/// methods with one name, so the declaration is refused rather than emitted
+/// as Go that does not compile.
+fn accessorIssue(allocator: std.mem.Allocator, session: semantic.Session) !?diagnostic.Diagnostic {
+    const clashing = if (std.mem.eql(u8, session.primary, "Close")) session.primary else for (session.children) |child| {
+        if (std.mem.eql(u8, child, "Close")) break child;
+    } else null;
+    const member = clashing orelse return null;
+    return .{
+        .severity = .@"error",
+        .code = "ZIGO024",
+        .message = try std.fmt.allocPrint(allocator, "public Go name `Close` collides between the accessor for `{s}` and the session's own Close method", .{member}),
+        .site = .{ .path = "semantic.json", .declaration = session.name },
+        .hint = "a session closes its members itself; name the type something else or leave it out of `.children`",
+    };
 }
 
 fn collision(allocator: std.mem.Allocator, session: semantic.Session, between: []const u8) !diagnostic.Diagnostic {

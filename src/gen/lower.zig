@@ -535,6 +535,7 @@ pub fn semanticDocumentForBackend(
         .functions = functions,
         .interfaces = interfaces,
         .origins = document.functions,
+        .sessions = try lowerSessions(allocator, document),
         .live_fields = try lowerLiveFields(allocator, document),
         .materialized_layouts = materialized_layouts,
         .packed_structs = try lowerPackedStructs(allocator, document),
@@ -1258,6 +1259,23 @@ fn lowerInterfaces(allocator: std.mem.Allocator, document: semantic.Semantic, fu
         };
     }
     return interfaces;
+}
+
+/// A session crosses no boundary, so lowering it is a copy: the container and
+/// the handles it adopts already exist, and the emitters only need the names.
+fn lowerSessions(allocator: std.mem.Allocator, document: semantic.Semantic) ![]const abi.AbiSession {
+    const declared = document.sessions orelse return &.{};
+    const sessions = try allocator.alloc(abi.AbiSession, declared.len);
+    for (declared, sessions) |session, *lowered| {
+        lowered.* = .{
+            .name = session.name,
+            .doc = session.doc,
+            .package = session.package,
+            .primary = session.primary,
+            .children = session.children,
+        };
+    }
+    return sessions;
 }
 
 /// The members `omit` left standing, per declaration. Applying the rule here

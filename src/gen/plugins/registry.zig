@@ -9,6 +9,7 @@ const implements = @import("builtin_plugins").implements;
 const interfaces = @import("builtin_plugins").interfaces;
 const iterator = @import("builtin_plugins").iterator;
 const must = @import("builtin_plugins").must;
+const session = @import("builtin_plugins").session;
 const plugin = @import("plugin");
 const targets = @import("targets");
 const testing_plugin = @import("testing.zig");
@@ -19,6 +20,7 @@ pub const builtins: []const plugin.Plugin = &.{
     implements.plugin,
     iterator.plugin,
     interfaces.plugin,
+    session.plugin,
 };
 
 /// The plugins the consuming build compiled in, from the module its build

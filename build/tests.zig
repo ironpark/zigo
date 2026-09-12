@@ -222,6 +222,7 @@ pub fn addRepositorySteps(
         "tests/generator_cases/receiver_name_clash_purego/expected",
         "tests/generator_cases/root_constructor/expected",
         "tests/generator_cases/scalar/expected",
+        "tests/generator_cases/session/expected",
         "tests/generator_cases/sub_package_field_clash/expected",
         "tests/generator_cases/sub_packages/expected",
         "tests/generator_cases/sub_packages_purego/expected",

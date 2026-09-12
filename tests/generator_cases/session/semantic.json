@@ -1,0 +1,95 @@
+{
+  "constructors": [
+    {
+      "deinit": "deinit",
+      "init": "create",
+      "type": "Queue"
+    },
+    {
+      "deinit": "freeStream",
+      "init": "newStream",
+      "type": "Stream"
+    }
+  ],
+  "functions": [
+    {
+      "name": "create",
+      "namespace": "Queue",
+      "ownership": "caller",
+      "params": [],
+      "return": {
+        "error_set": [],
+        "kind": "error_union",
+        "payload": {
+          "const": false,
+          "kind": "opaque_ptr",
+          "nullable": false,
+          "ref": "Queue"
+        }
+      },
+      "symbol": "ignored"
+    },
+    {
+      "name": "deinit",
+      "params": [],
+      "receiver": "Queue",
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "ignored"
+    },
+    {
+      "child_of_receiver": true,
+      "go": {
+        "owner": "Stream"
+      },
+      "name": "newStream",
+      "ownership": "caller",
+      "params": [],
+      "receiver": "Queue",
+      "return": {
+        "error_set": [],
+        "kind": "error_union",
+        "payload": {
+          "const": false,
+          "kind": "opaque_ptr",
+          "nullable": false,
+          "ref": "Stream"
+        }
+      },
+      "symbol": "ignored"
+    },
+    {
+      "name": "freeStream",
+      "params": [],
+      "receiver": "Stream",
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "ignored"
+    }
+  ],
+  "package": "session",
+  "prefix": "zg",
+  "sessions": [
+    {
+      "children": [
+        "Stream"
+      ],
+      "doc": "Session owns a queue and every stream it handed out.",
+      "name": "Session",
+      "primary": "Queue"
+    }
+  ],
+  "types": [
+    {
+      "kind": "opaque",
+      "name": "Queue"
+    },
+    {
+      "kind": "opaque",
+      "name": "Stream"
+    }
+  ],
+  "zig_version": "0.16.0"
+}

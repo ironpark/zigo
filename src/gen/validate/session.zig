@@ -160,3 +160,34 @@ test "a session name colliding with a registered type is refused" {
     const colliding = [_]semantic.Session{.{ .children = &.{"Stream"}, .name = "Queue", .primary = "Queue" }};
     try expectSessionIssue(sessionDocument(.{ .sessions = &colliding }), "ZIGO024", "collides between session `Queue` and type `Queue`", "different Go identifier");
 }
+
+test "a constructor name colliding with a package function is refused" {
+    const colliding = [_]semantic.SemanticFn{
+        .{ .name = "create", .namespace = "Queue", .ownership = .caller, .params = &.{}, .@"return" = .{ .error_union = .{ .error_set = &.{"OutOfMemory"}, .payload = &queue_ref } }, .symbol = "zg_queue_create" },
+        .{ .name = "deinit", .receiver = "Queue", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_queue_deinit" },
+        .{ .child_of_receiver = true, .go = .{ .owner = "Stream" }, .name = "newStream", .ownership = .caller, .receiver = "Queue", .params = &.{}, .@"return" = .{ .error_union = .{ .error_set = &.{"OutOfMemory"}, .payload = &stream_ref } }, .symbol = "zg_queue_new_stream" },
+        .{ .name = "freeStream", .receiver = "Stream", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_stream_free" },
+        // A free function that already answers to the constructor's name.
+        .{ .name = "newSession", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_new_session" },
+    };
+    try expectSessionIssue(
+        sessionDocument(.{ .functions = &colliding }),
+        "ZIGO024",
+        "collides between the constructor `NewSession` and function `newSession`",
+        "different Go identifier",
+    );
+}
+
+test "a member whose accessor is named Close is refused" {
+    const types = [_]semantic.TypeDecl{
+        .{ .kind = .@"opaque", .name = "Queue" },
+        .{ .kind = .@"opaque", .name = "Close" },
+    };
+    const close_session = [_]semantic.Session{.{ .children = &.{"Close"}, .name = "Session", .primary = "Queue" }};
+    try expectSessionIssue(
+        sessionDocument(.{ .sessions = &close_session, .types = &types }),
+        "ZIGO024",
+        "collides between the accessor for `Close`",
+        "closes its members itself",
+    );
+}
