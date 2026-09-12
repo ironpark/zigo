@@ -2194,7 +2194,9 @@
   "sessions": [
     {
       "children": [
-        "Stream"
+        {
+          "type": "Stream"
+        }
       ],
       "doc": "Session owns an event queue and every stream it handed out.",
       "name": "Session",

@@ -162,7 +162,7 @@ pub const bindings = zigo.define(.{
         zigo.session(.{
             .name = "Session",
             .primary = EventQueue.typeRef(),
-            .children = &.{Stream.typeRef()},
+            .children = &.{.{ .type = Stream.typeRef() }},
             .doc = "Session owns an event queue and every stream it handed out.",
         }),
         api.func("liveBorrowChildren", .{}),

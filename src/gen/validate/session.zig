@@ -34,7 +34,7 @@ pub fn sessionDocument(overrides: SessionOverrides) semantic.Semantic {
     };
 }
 
-const session_declaration = [_]semantic.Session{.{ .children = &.{"Stream"}, .name = "Session", .primary = "Queue" }};
+const session_declaration = [_]semantic.Session{.{ .children = &.{.{ .type = "Stream" }}, .name = "Session", .primary = "Queue" }};
 
 const session_types = [_]semantic.TypeDecl{
     .{ .kind = .@"opaque", .name = "Queue" },
@@ -71,12 +71,12 @@ test "a session without children is refused" {
 }
 
 test "a session listing the same child twice is refused" {
-    const doubled = [_]semantic.Session{.{ .children = &.{ "Stream", "Stream" }, .name = "Session", .primary = "Queue" }};
+    const doubled = [_]semantic.Session{.{ .children = &.{ .{ .type = "Stream" }, .{ .type = "Stream" } }, .name = "Session", .primary = "Queue" }};
     try expectSessionIssue(sessionDocument(.{ .sessions = &doubled }), "ZIGO062", "lists `Stream` twice", "once");
 }
 
 test "a session listing its primary as a child is refused" {
-    const self_referential = [_]semantic.Session{.{ .children = &.{"Queue"}, .name = "Session", .primary = "Queue" }};
+    const self_referential = [_]semantic.Session{.{ .children = &.{.{ .type = "Queue" }}, .name = "Session", .primary = "Queue" }};
     try expectSessionIssue(sessionDocument(.{ .sessions = &self_referential }), "ZIGO062", "primary `Queue` as a child", "closes last");
 }
 
@@ -110,7 +110,7 @@ test "a child no handle hands out is refused" {
         .{ .kind = .@"opaque", .name = "Queue" },
         .{ .kind = .@"opaque", .name = "Loose" },
     };
-    const loose_session = [_]semantic.Session{.{ .children = &.{"Loose"}, .name = "Session", .primary = "Queue" }};
+    const loose_session = [_]semantic.Session{.{ .children = &.{.{ .type = "Loose" }}, .name = "Session", .primary = "Queue" }};
     try expectSessionIssue(
         sessionDocument(.{ .constructors = &constructors, .functions = &loose, .sessions = &loose_session, .types = &types }),
         "ZIGO062",
@@ -130,7 +130,7 @@ test "a child without a destructor is refused" {
         .{ .kind = .@"opaque", .name = "Queue" },
         .{ .kind = .@"opaque", .name = "View" },
     };
-    const view_session = [_]semantic.Session{.{ .children = &.{"View"}, .name = "Session", .primary = "Queue" }};
+    const view_session = [_]semantic.Session{.{ .children = &.{.{ .type = "View" }}, .name = "Session", .primary = "Queue" }};
     try expectSessionIssue(
         sessionDocument(.{ .constructors = &constructors, .functions = &view, .sessions = &view_session, .types = &types }),
         "ZIGO062",
@@ -157,7 +157,7 @@ test "session members in different packages are refused" {
 }
 
 test "a session name colliding with a registered type is refused" {
-    const colliding = [_]semantic.Session{.{ .children = &.{"Stream"}, .name = "Queue", .primary = "Queue" }};
+    const colliding = [_]semantic.Session{.{ .children = &.{.{ .type = "Stream" }}, .name = "Queue", .primary = "Queue" }};
     try expectSessionIssue(sessionDocument(.{ .sessions = &colliding }), "ZIGO024", "collides between session `Queue` and type `Queue`", "different Go identifier");
 }
 
@@ -197,7 +197,7 @@ test "a session whose primary accessor is named Close is refused" {
         .{ .kind = .@"opaque", .name = "Close" },
         .{ .kind = .@"opaque", .name = "Stream" },
     };
-    const sessions = [_]semantic.Session{.{ .children = &.{"Stream"}, .name = "Session", .primary = "Close" }};
+    const sessions = [_]semantic.Session{.{ .children = &.{.{ .type = "Stream" }}, .name = "Session", .primary = "Close" }};
     try expectSessionIssue(
         sessionDocument(.{ .constructors = &constructors, .functions = &functions, .sessions = &sessions, .types = &types }),
         "ZIGO024",
@@ -227,7 +227,7 @@ test "a session primary without a destructor is refused" {
         .{ .kind = .@"opaque", .name = "View" },
         .{ .kind = .@"opaque", .name = "Stream" },
     };
-    const sessions = [_]semantic.Session{.{ .children = &.{"Stream"}, .name = "Session", .primary = "View" }};
+    const sessions = [_]semantic.Session{.{ .children = &.{.{ .type = "Stream" }}, .name = "Session", .primary = "View" }};
     try expectSessionIssue(
         sessionDocument(.{ .constructors = &constructors, .functions = &functions, .sessions = &sessions, .types = &types }),
         "ZIGO062",

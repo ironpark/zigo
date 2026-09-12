@@ -199,9 +199,9 @@ pub const AbiSession = struct {
     package: ?[]const u8 = null,
     /// Registered opaque type name of the handle the children belong to.
     primary: []const u8,
-    /// Registered opaque type names of the dependent children, in declaration
-    /// order. Closing goes the other way round: children first.
-    children: []const []const u8,
+    /// The dependent children, in declaration order. Closing goes the other
+    /// way round: children first.
+    children: []const semantic.SessionChild,
 };
 
 /// The function a `.release` name resolves to and the one exposed parameter

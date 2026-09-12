@@ -109,8 +109,13 @@
   "sessions": [
     {
       "children": [
-        "Stream",
-        "Ticker"
+        {
+          "type": "Stream"
+        },
+        {
+          "name": "Tick",
+          "type": "Ticker"
+        }
       ],
       "doc": "Session owns a queue and every stream it handed out.",
       "name": "Session",

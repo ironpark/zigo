@@ -156,10 +156,19 @@ pub const Interface = struct {
 /// A Go type that adopts one handle and the dependent children it handed out,
 /// and closes them in that order. The primary is closed last, and every child
 /// must be a dependent child of it.
+/// One dependent child a session adopts. `name` replaces the registered type
+/// name in the generated `Add<Name>` and `<Name>s`, which is what an irregular
+/// plural needs: a `Stats` handle listed as `.{ .type = Stats.typeRef(),
+/// .name = "Stat" }` reads as `AddStat` and `Stats` rather than `Statss`.
+pub const SessionChild = struct {
+    type: TypeRef,
+    name: ?[]const u8 = null,
+};
+
 pub const Session = struct {
     name: []const u8,
     primary: TypeRef,
-    children: []const TypeRef,
+    children: []const SessionChild,
     doc: ?[]const u8 = null,
 };
 

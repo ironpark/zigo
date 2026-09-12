@@ -612,14 +612,17 @@ test "sessions record their primary and dependent children by registered name" {
             .{ .path = "Streams.free", .destroys = Api.Stream },
         },
         .sessions = &.{
-            .{ .name = "Session", .primary = Api.Queue, .children = &.{Api.Stream}, .doc = "Closes streams before the queue." },
+            .{ .name = "Session", .primary = Api.Queue, .children = &.{.{ .type = Api.Stream, .name = "Feed" }}, .doc = "Closes streams before the queue." },
         },
     }, "sample", "zg");
     const session = document.sessions.?[0];
     try std.testing.expectEqualStrings("Session", session.name);
     try std.testing.expectEqualStrings("Queue", session.primary);
-    // The child is spelled by its registered `.name`, not its Zig name.
-    try std.testing.expectEqualStrings("Streams", session.children[0]);
+    // The child is spelled by its registered `.name`, not its Zig name, and
+    // carries the override the binding gave it for the generated names.
+    try std.testing.expectEqualStrings("Streams", session.children[0].type);
+    try std.testing.expectEqualStrings("Feed", session.children[0].name.?);
+    try std.testing.expectEqualStrings("Feed", session.children[0].base());
     try std.testing.expectEqualStrings("Closes streams before the queue.", session.doc.?);
 }
 
@@ -820,9 +823,12 @@ fn reflectSessions(
     var sessions: std.ArrayList(semantic.Session) = .empty;
     inline for (declaration.sessions) |entry| {
         comptime validateSessionEntry(entry);
-        const child_names = try allocator.alloc([]const u8, entry.children.len);
-        inline for (entry.children, 0..) |T, index| child_names[index] = comptime registeredOpaqueName(declaration, T) orelse
-            @compileError("zigo session members must be registered in `.types` as `.handle`: " ++ @typeName(T));
+        const child_names = try allocator.alloc(semantic.SessionChild, entry.children.len);
+        inline for (entry.children, 0..) |child, index| child_names[index] = .{
+            .type = comptime registeredOpaqueName(declaration, child.type) orelse
+                @compileError("zigo session members must be registered in `.types` as `.handle`: " ++ @typeName(child.type)),
+            .name = child.name,
+        };
         const primary = comptime registeredOpaqueName(declaration, entry.primary) orelse
             @compileError("zigo session members must be registered in `.types` as `.handle`: " ++ @typeName(entry.primary));
         try sessions.append(allocator, .{

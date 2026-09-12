@@ -14,12 +14,13 @@ test "zigo.session takes a primary and its dependent children" {
     const entry = zigo.session(.{
         .name = "Session",
         .primary = Queue.typeRef(),
-        .children = &.{Stream.typeRef()},
+        .children = &.{.{ .type = Stream.typeRef(), .name = "Feed" }},
         .doc = "Session owns a Queue and every Stream it handed out.",
     });
     try std.testing.expectEqual(zigo.Entry.session, std.meta.activeTag(entry));
     try std.testing.expectEqualStrings("Session", entry.session.name);
-    try std.testing.expectEqualStrings("root.Stream", entry.session.children[0].path);
+    try std.testing.expectEqualStrings("root.Stream", entry.session.children[0].type.path);
+    try std.testing.expectEqualStrings("Feed", entry.session.children[0].name.?);
     try std.testing.expectEqualStrings("Session owns a Queue and every Stream it handed out.", entry.session.doc.?);
 }
 
@@ -27,7 +28,9 @@ test "zigo.session defaults its doc" {
     const entry = zigo.session(.{
         .name = "Session",
         .primary = Queue.typeRef(),
-        .children = &.{Stream.typeRef()},
+        .children = &.{.{ .type = Stream.typeRef() }},
     });
     try std.testing.expectEqual(@as(?[]const u8, null), entry.session.doc);
+    // Without an override the generated names follow the registered type.
+    try std.testing.expectEqual(@as(?[]const u8, null), entry.session.children[0].name);
 }

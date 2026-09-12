@@ -198,8 +198,8 @@ pub fn sessionMembers(allocator: std.mem.Allocator, session: abi.AbiSession) !Me
     @memset(members.adders, &.{});
     members.accessors[0] = try allocator.dupe(u8, session.primary);
     for (session.children, members.accessors[1..], members.adders[1..]) |child, *accessor, *adder| {
-        accessor.* = try std.fmt.allocPrint(allocator, "{s}s", .{child});
-        adder.* = try std.fmt.allocPrint(allocator, "Add{s}", .{child});
+        accessor.* = try std.fmt.allocPrint(allocator, "{s}s", .{child.base()});
+        adder.* = try std.fmt.allocPrint(allocator, "Add{s}", .{child.base()});
     }
     // The field is the accessor in lower camel case, so the plural travels to
     // the field with it and one rule answers for both.
@@ -207,7 +207,7 @@ pub fn sessionMembers(allocator: std.mem.Allocator, session: abi.AbiSession) !Me
     members.items = try allocator.alloc(Member, members.accessors.len);
     for (members.items, members.fields, members.accessors, members.adders, 0..) |*member, field, accessor, adder, index| {
         member.* = .{
-            .type_name = if (index == 0) session.primary else session.children[index - 1],
+            .type_name = if (index == 0) session.primary else session.children[index - 1].type,
             .field = field,
             .accessor = accessor,
             .adder = adder,

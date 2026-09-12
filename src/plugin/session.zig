@@ -42,7 +42,8 @@ pub fn sessionIssue(allocator: std.mem.Allocator, document: semantic.Semantic, t
             .{session.primary},
             "a session primary must be a constructed handle with a destructor; borrowed views and Ref types are not closeable",
         );
-        for (session.children, 0..) |child, child_index| {
+        for (session.children, 0..) |member, child_index| {
+            const child = member.type;
             const declaration = semantic.typeDecl(document.types, child) orelse return try issueFmt(
                 allocator,
                 session,
@@ -57,7 +58,7 @@ pub fn sessionIssue(allocator: std.mem.Allocator, document: semantic.Semantic, t
                 .{child},
                 "list only types registered with `.handle` in `.children`",
             );
-            for (session.children[0..child_index]) |previous| if (std.mem.eql(u8, previous, child))
+            for (session.children[0..child_index]) |previous| if (std.mem.eql(u8, previous.type, child))
                 return try issueFmt(allocator, session, "session lists `{s}` twice", .{child}, "list each child handle once");
             if (std.mem.eql(u8, child, session.primary)) return try issueFmt(
                 allocator,
@@ -107,13 +108,13 @@ pub fn sessionIssue(allocator: std.mem.Allocator, document: semantic.Semantic, t
         if (document.packages != null) {
             const primary_package = if (semantic.typeDecl(document.types, session.primary)) |declaration| declaration.package else null;
             for (session.children) |child| {
-                const child_package = if (semantic.typeDecl(document.types, child)) |declaration| declaration.package else null;
+                const child_package = if (semantic.typeDecl(document.types, child.type)) |declaration| declaration.package else null;
                 if (semantic.optionalStringEqual(primary_package, child_package)) continue;
                 return try issueFmt(
                     allocator,
                     session,
                     "session primary `{s}` and child `{s}` are in different public packages",
-                    .{ session.primary, child },
+                    .{ session.primary, child.type },
                     "assign every session member to one package",
                 );
             }
@@ -204,12 +205,12 @@ fn methodIssue(allocator: std.mem.Allocator, session: semantic.Session) !?diagno
     });
     for (session.children) |child| {
         try methods.append(allocator, .{
-            .name = try std.fmt.allocPrint(allocator, "{s}s", .{child}),
-            .owner = try std.fmt.allocPrint(allocator, "the accessor for `{s}`", .{child}),
+            .name = try std.fmt.allocPrint(allocator, "{s}s", .{child.base()}),
+            .owner = try std.fmt.allocPrint(allocator, "the accessor for `{s}`", .{child.type}),
         });
         try methods.append(allocator, .{
-            .name = try std.fmt.allocPrint(allocator, "Add{s}", .{child}),
-            .owner = try std.fmt.allocPrint(allocator, "the adopt method for `{s}`", .{child}),
+            .name = try std.fmt.allocPrint(allocator, "Add{s}", .{child.base()}),
+            .owner = try std.fmt.allocPrint(allocator, "the adopt method for `{s}`", .{child.type}),
         });
     }
     for (methods.items, 0..) |method, index| {

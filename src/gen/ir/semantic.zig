@@ -654,6 +654,10 @@ pub const Implements = enum {
     reader,
     writer_to,
     reader_from,
+    /// `io.StringWriter`, for a method whose byte slice already crosses as a
+    /// Go `string`. The wrapper hands the string straight to the method, so
+    /// the call costs no copy: the public layer reads a Go string in place.
+    string_writer,
 
     /// The Go interface the wrapper satisfies.
     pub fn interfaceName(self: Implements) []const u8 {
@@ -662,6 +666,7 @@ pub const Implements = enum {
             .reader => "io.Reader",
             .writer_to => "io.WriterTo",
             .reader_from => "io.ReaderFrom",
+            .string_writer => "io.StringWriter",
         };
     }
 
@@ -672,6 +677,7 @@ pub const Implements = enum {
             .reader => "Read",
             .writer_to => "WriteTo",
             .reader_from => "ReadFrom",
+            .string_writer => "WriteString",
         };
     }
 
@@ -682,6 +688,7 @@ pub const Implements = enum {
             .reader => "Read(p []byte) (int, error)",
             .writer_to => "WriteTo(w io.Writer) (int64, error)",
             .reader_from => "ReadFrom(r io.Reader) (int64, error)",
+            .string_writer => "WriteString(s string) (int, error)",
         };
     }
 };
@@ -1357,10 +1364,22 @@ pub const Interface = struct {
 /// every member has a `Close`, is checked by validation and generation, which
 /// also spell the type out. A session never crosses the C boundary, so nothing
 /// here reaches the shim or the header.
+/// One dependent child a session adopts: the registered opaque type name, and
+/// the name the generated accessor and adopt method are built from when the
+/// binding wants something other than the type name.
+pub const SessionChild = struct {
+    type: []const u8,
+    name: ?[]const u8 = null,
+
+    /// The base the generated `Add<Base>` and `<Base>s` are spelled from.
+    pub fn base(self: SessionChild) []const u8 {
+        return self.name orelse self.type;
+    }
+};
+
 pub const Session = struct {
-    /// Registered opaque type names of the dependent children, in the order
-    /// the binding listed them.
-    children: []const []const u8,
+    /// The dependent children, in the order the binding listed them.
+    children: []const SessionChild,
     doc: ?[]const u8 = null,
     name: []const u8,
     /// Public sub-package name, following the primary. Absent means the

@@ -16,7 +16,7 @@ import (
 type Session struct {
 	queue     *Queue
 	streams   []*Stream
-	tickers   []*Ticker
+	ticks     []*Ticker
 	mu        sync.Mutex
 	closed    bool
 	closeOnce sync.Once
@@ -49,11 +49,11 @@ func (s *Session) AddStream(streams ...*Stream) *Session {
 	return s
 }
 
-// AddTicker adopts Ticker handles the primary handed out and returns the session,
+// AddTick adopts Ticker handles the primary handed out and returns the session,
 // so calls chain. A nil handle is ignored. A handle adopted after Close has
 // run is closed immediately rather than leaked.
-func (s *Session) AddTicker(tickers ...*Ticker) *Session {
-	for _, handle := range tickers {
+func (s *Session) AddTick(ticks ...*Ticker) *Session {
+	for _, handle := range ticks {
 		if handle == nil {
 			continue
 		}
@@ -63,7 +63,7 @@ func (s *Session) AddTicker(tickers ...*Ticker) *Session {
 			_ = handle.Close()
 			continue
 		}
-		s.tickers = append(s.tickers, handle)
+		s.ticks = append(s.ticks, handle)
 		s.mu.Unlock()
 	}
 	return s
@@ -80,8 +80,8 @@ func (s *Session) Close() error {
 		s.closed = true
 		streams := s.streams
 		s.streams = nil
-		tickers := s.tickers
-		s.tickers = nil
+		ticks := s.ticks
+		s.ticks = nil
 		s.mu.Unlock()
 
 		var failures []error
@@ -90,8 +90,8 @@ func (s *Session) Close() error {
 				failures = append(failures, err)
 			}
 		}
-		for index := len(tickers) - 1; index >= 0; index-- {
-			if err := tickers[index].Close(); err != nil {
+		for index := len(ticks) - 1; index >= 0; index-- {
+			if err := ticks[index].Close(); err != nil {
 				failures = append(failures, err)
 			}
 		}
@@ -115,11 +115,11 @@ func (s *Session) Streams() []*Stream {
 	return append([]*Stream(nil), s.streams...)
 }
 
-// Tickers returns the Ticker handles the session adopted, oldest first.
-func (s *Session) Tickers() []*Ticker {
+// Ticks returns the Ticker handles the session adopted, oldest first.
+func (s *Session) Ticks() []*Ticker {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return append([]*Ticker(nil), s.tickers...)
+	return append([]*Ticker(nil), s.ticks...)
 }
 
 var _ io.Closer = (*Session)(nil)

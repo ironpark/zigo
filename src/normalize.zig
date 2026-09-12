@@ -180,10 +180,10 @@ fn flatten(comptime entries: []const a.Entry, state: *State, comptime package_in
         .session => |s| {
             if (parent != null) @compileError("zigo a session cannot be nested inside a type");
             _ = typeName(s.primary, state.*);
-            var children: []const type = &.{};
-            for (s.children) |ref| {
-                _ = typeName(ref, state.*);
-                children = children ++ [_]type{ref.type};
+            var children: []const ir.SessionChild = &.{};
+            for (s.children) |child| {
+                _ = typeName(child.type, state.*);
+                children = children ++ [_]ir.SessionChild{.{ .type = child.type.type, .name = child.name }};
             }
             state.sessions = state.sessions ++ [_]ir.Session{.{ .name = s.name, .primary = s.primary.type, .children = children, .doc = s.doc }};
         },

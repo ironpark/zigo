@@ -121,7 +121,7 @@ pub const Iterator = struct { name: []const u8 = "All" };
 /// `Read(p []byte) (int, error)`, `.writer_to` adds
 /// `WriteTo(w io.Writer) (int64, error)`, and `.reader_from` adds
 /// `ReadFrom(r io.Reader) (int64, error)`.
-pub const Implements = enum { writer, reader, writer_to, reader_from };
+pub const Implements = enum { writer, reader, writer_to, reader_from, string_writer };
 
 pub const Cancel = struct {
     /// The `*const std.atomic.Value(u32)` parameter, by its `Param.name`.
@@ -470,10 +470,18 @@ pub const Interface = struct {
 /// A session: the primary handle a Go container owns, and the dependent child
 /// handles it hands out. Resolved to Zig types, like every other declaration
 /// here; the reflector turns them into registered opaque names.
+/// One dependent child of a session, resolved to its Zig type. `name`
+/// overrides the registered type name the generated accessor and adopt method
+/// are built from.
+pub const SessionChild = struct {
+    type: type,
+    name: ?[]const u8 = null,
+};
+
 pub const Session = struct {
     name: []const u8,
     primary: type,
-    children: []const type,
+    children: []const SessionChild,
     doc: ?[]const u8 = null,
 };
 
