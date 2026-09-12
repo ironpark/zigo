@@ -1142,7 +1142,16 @@ test "implements accepts one-step shapes and rejects the rest" {
     reader_from.setGoImplements(.reader_from);
     reader_from.params = &.{reader_in};
     reader_from.@"return" = count_node;
-    for ([_]semantic.SemanticFn{ writer, reader, writer_to, reader_from }) |function| {
+    // `.string_writer` takes the same parameter as `.writer`, with or without
+    // a string semantic: the hint decides whether the wrapper passes the Go
+    // `string` through or lends its bytes, not whether the shape is allowed.
+    var string_writer_bytes = base;
+    string_writer_bytes.setGoImplements(.string_writer);
+    var string_writer_text = string_writer_bytes;
+    var text_param = bytes_in;
+    text_param.semantic = .utf8_string;
+    string_writer_text.params = &.{text_param};
+    for ([_]semantic.SemanticFn{ writer, reader, writer_to, reader_from, string_writer_bytes, string_writer_text }) |function| {
         var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
         defer scratch.deinit();
         const document: semantic.Semantic = .{ .functions = &.{function}, .package = "vt", .prefix = "zg", .types = &.{handle}, .zig_version = "0.16.0" };
@@ -1171,16 +1180,12 @@ test "implements accepts one-step shapes and rejects the rest" {
     reader_void.@"return" = void_node;
     var wrong_stream = writer_to;
     wrong_stream.params = &.{reader_in};
-    // The mirror of `text_hinted`: `.string_writer` needs the parameter to
-    // reach Go as a `string`, so a plain byte slice is the faulty shape here.
-    var string_writer_bytes = writer;
-    string_writer_bytes.setGoImplements(.string_writer);
     // The rejections are asserted against the rule itself. Some of these
     // shapes are faulty for a second reason as well -- a `.cancel` that names
     // nothing is also ZIGO026 -- and plugin rules run after the core ones, so
     // going through `findIssue` would ask which fault is reported first
     // rather than what this rule says.
-    for ([_]semantic.SemanticFn{ free_function, iterating, cancelling, bool_result, two_params, text_hinted, reader_all, reader_void, wrong_stream, string_writer_bytes }) |function| {
+    for ([_]semantic.SemanticFn{ free_function, iterating, cancelling, bool_result, two_params, text_hinted, reader_all, reader_void, wrong_stream }) |function| {
         var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
         defer scratch.deinit();
         const issue = (try implements_plugin.implementsIssue(scratch.allocator(), function)) orelse return error.MissingDiagnostic;

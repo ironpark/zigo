@@ -72,19 +72,27 @@ pub fn renderImplementsWrapper(
             }
         },
         .string_writer => {
-            // The method's own Go parameter is already a `string`, so the
-            // wrapper passes `s` through: no `[]byte(s)` conversion, which is
-            // the whole reason this kind exists rather than a Write wrapper.
+            // Neither shape copies, which is the whole reason this kind
+            // exists rather than a Write wrapper. A method whose own Go
+            // parameter is a `string` is handed `s` as it stands; a method
+            // that takes bytes is lent the string's own bytes for the length
+            // of the call, the same loan `.writer` makes with `p`.
+            const passes_string = stringWriterPassesString(function.origin.*);
+            const argument: []const u8 = if (passes_string) "s" else "zigoBytes";
             if (counts)
                 try writer.writeAll("// The count is what the method reports; a count short of len(s) without an error is io.ErrShortWrite.\n")
             else
                 try writer.writeAll("// The method takes the whole of s, so the count is len(s) whenever it succeeds.\n");
+            if (!passes_string)
+                try writer.writeAll("// The method takes bytes, so s lends its own, without a copy; native reads them during the call only.\n");
             try writer.print("func ({s} *{s}) WriteString(s string) (int, error) {{\n", .{ receiver_name, receiver });
+            if (!passes_string)
+                try writer.writeAll("\tzigoBytes := unsafe.Slice(unsafe.StringData(s), len(s))\n");
             if (counts) {
-                try writeCall(writer, receiver_name, go_name, "s", with_error, true);
+                try writeCall(writer, receiver_name, go_name, argument, with_error, true);
                 try writer.writeAll("\tif int(n) < len(s) {\n\t\treturn int(n), io.ErrShortWrite\n\t}\n\treturn int(n), nil\n}\n");
             } else {
-                try writeCall(writer, receiver_name, go_name, "s", with_error, false);
+                try writeCall(writer, receiver_name, go_name, argument, with_error, false);
                 try writer.writeAll("\treturn len(s), nil\n}\n");
             }
         },
@@ -123,6 +131,17 @@ pub fn renderImplementsWrapper(
             }
         },
     }
+}
+
+/// Whether the bound method's own Go parameter is already a `string`. Without
+/// a text hint it is a `[]byte`, and the wrapper lends the string's bytes
+/// rather than converting them.
+fn stringWriterPassesString(function: semantic.SemanticFn) bool {
+    for (function.params) |parameter| {
+        if (parameter.injected != null) continue;
+        return semantic.isTextHint(parameter.semantic);
+    }
+    return false;
 }
 
 /// `n, err := m(arg)` with the error returned first, in the shapes the
@@ -213,24 +232,23 @@ pub fn implementsIssue(allocator: std.mem.Allocator, function: semantic.Semantic
     }
     const expected: []const u8 = switch (implements) {
         .writer => "one `[]const u8` parameter",
-        .string_writer => "one `[]const u8` parameter with a string semantic",
+        .string_writer => "one `[]const u8` parameter",
         .reader => "one `.out` `[]u8` parameter with `.written = .result`",
         .writer_to => "one `*std.Io.Writer` parameter",
         .reader_from => "one `*std.Io.Reader` parameter",
     };
     const shape_ok = data_count == 1 and switch (implements) {
         .writer => data.?.direction == .in and data.?.type == .slice and semantic.isByte(data.?.type.slice.element.*) and !semantic.isTextHint(data.?.semantic),
-        // The mirror of `.writer`: the parameter has to reach Go as a
-        // `string`, which is what makes the wrapper a pass-through.
-        .string_writer => data.?.direction == .in and data.?.type == .slice and semantic.isByte(data.?.type.slice.element.*) and semantic.isTextHint(data.?.semantic),
+        // The same parameter `.writer` takes, read the other way around: a
+        // string hint makes the wrapper a pass-through, and without one the
+        // wrapper lends the string's bytes for the call.
+        .string_writer => data.?.direction == .in and data.?.type == .slice and semantic.isByte(data.?.type.slice.element.*),
         .reader => data.?.direction == .out and data.?.type == .slice and semantic.isByte(data.?.type.slice.element.*) and data.?.writtenHint() == .@"return" and result == .int,
         .writer_to => data.?.type == .io_stream and data.?.type.io_stream.direction == .writer,
         .reader_from => data.?.type == .io_stream and data.?.type.io_stream.direction == .reader,
     };
     if (!shape_ok) {
         const text_hinted = implements == .writer and data_count == 1 and data.?.type == .slice and semantic.isTextHint(data.?.semantic);
-        const byte_hinted = implements == .string_writer and data_count == 1 and data.?.type == .slice and
-            semantic.isByte(data.?.type.slice.element.*) and !semantic.isTextHint(data.?.semantic);
         return .{
             .severity = .@"error",
             .code = "ZIGO058",
@@ -238,8 +256,6 @@ pub fn implementsIssue(allocator: std.mem.Allocator, function: semantic.Semantic
             .site = site.functionSite(function),
             .hint = if (text_hinted)
                 "`Write(p []byte)` passes bytes; drop the string hint so the wrapper does not copy on every call"
-            else if (byte_hinted)
-                "`WriteString(s string)` passes a string; give the parameter a `.utf8_string` or `.c_string` semantic, or use `.writer` for bytes"
             else
                 try std.fmt.allocPrint(allocator, "`{s}` calls the method with exactly the argument `{s}` takes", .{ interface, implements.signature() }),
         };

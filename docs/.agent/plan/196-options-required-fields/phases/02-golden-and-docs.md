@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-12T07:41:06Z"
 depends_on:
 - "196-options-required-fields#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `zig build test`가 새 케이스를 포함해 통과한다.
 > NEXT: none

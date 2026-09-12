@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-12T07:41:06Z"
 description: 옵션 선언 안에서 기본값 없는 필드를 Go 위치 인자로 내보내 필수 값과 선택 값을 한 선언으로 섞는다
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-12T07:29:52Z"
 ---
 > NEXT: phase 0(`required-field-contract`)부터 시작합니다: `ZIGO061`을 필드가 아니라 선언 단위로 보게 고칩니다. ([Phase 0](phases/00-required-field-contract.md))
@@ -9,7 +10,7 @@ registered_at: "2026-09-12T07:29:52Z"
 
 - [x] [Phase 00: 필수 필드와 선택 필드를 나누는 계약](phases/00-required-field-contract.md)
 - [x] [Phase 01: 혼합 시그니처 방출](phases/01-mixed-signature-emit.md)
-- [ ] [Phase 02: 골든과 문서](phases/02-golden-and-docs.md)
+- [x] [Phase 02: 골든과 문서](phases/02-golden-and-docs.md)
 
 # Shared Verification
 
