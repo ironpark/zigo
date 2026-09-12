@@ -2,7 +2,7 @@
 depends_on:
 - "196-options-required-fields#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `zig build test`가 통과한다.
 > NEXT: none

@@ -206,12 +206,11 @@ pub fn renderRangeChecks(
 ) !void {
     for (function.origin.params, 0..) |parameter, parameter_index| {
         if (parameter.flatten) |fields| {
-            const is_options = parameter.goOptions() != null;
             for (fields, 0..) |field, field_index| {
                 const abi_parameter = function.flattenedParam(parameter_index, field_index);
                 const name = try common.flattenedGoNameAlloc(allocator, abi_parameter.name);
                 defer allocator.free(name);
-                if (is_options) {
+                if (common.isOptionField(parameter, field)) {
                     const raw_names = try targets.go.paramNamesAlloc(allocator, &.{field.name});
                     defer naming.freeParamNames(allocator, raw_names);
                     const expr = try std.fmt.allocPrint(allocator, "cfg.{s}", .{raw_names[0]});

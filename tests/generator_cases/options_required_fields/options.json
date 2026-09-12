@@ -1,0 +1,5 @@
+{
+  "package": "options_required_fields",
+  "prefix": "zg",
+  "go_module": "example.com/zigo/options-required-fields"
+}

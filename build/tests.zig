@@ -210,6 +210,7 @@ pub fn addRepositorySteps(
         "tests/generator_cases/plugin_disabled/expected",
         "tests/generator_cases/plugin_json/expected",
         "tests/generator_cases/plugin_satisfies/expected",
+        "tests/generator_cases/options_required_fields/expected",
         "tests/generator_cases/optional/expected",
         "tests/generator_cases/optional_purego/expected",
         "tests/generator_cases/optional_slice/expected",

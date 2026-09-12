@@ -41,6 +41,15 @@ pub fn flattenedGoNameAlloc(allocator: std.mem.Allocator, abi_name: []const u8) 
     return names[0];
 }
 
+/// Whether a flattened field reaches Go as a `With*` option rather than as a
+/// positional parameter. Only an options parameter has options at all, and
+/// only a field with a Zig default has a value to fall back on when the
+/// caller leaves it out; a field without one is required, so the caller has
+/// to spell it and Go takes it in the signature.
+pub fn isOptionField(parameter: semantic.Parameter, field: semantic.FlattenedField) bool {
+    return parameter.goOptions() != null and field.default != null;
+}
+
 pub fn flattenedField(parameter: semantic.Parameter, abi_parameter: abi.AbiParam) semantic.FlattenedField {
     return parameter.flatten.?[abi_parameter.field_index.?];
 }

@@ -341,9 +341,11 @@ fn renderFunctionOptions(
     const field_go_names = try targets.go.paramNamesAlloc(allocator, zig_field_names);
     defer naming.freeParamNames(allocator, field_go_names);
 
-    // 2. Unexported config struct
+    // 2. Unexported config struct. Only the defaulted fields are in it: a
+    // field without a default is a positional parameter, not an option.
     try writer.print("type {s} struct {{\n", .{config_type_name});
     for (options_info.fields, 0..) |field, i| {
+        if (field.default == null) continue;
         try writer.print("\t{s} ", .{field_go_names[i]});
         try public_writers.writePublicGoType(scope, writer, field.type);
         try writer.writeByte('\n');
@@ -352,13 +354,11 @@ fn renderFunctionOptions(
 
     // 3. With* constructor functions
     for (options_info.fields, 0..) |field, i| {
+        const default_value = field.default orelse continue;
         const with_name = try opt_names.withNameAlloc(allocator, field.name);
         defer allocator.free(with_name);
 
-        const default_str = if (field.default) |default_val|
-            try formatGoDefaultAlloc(allocator, scope, field.type, default_val)
-        else
-            try allocator.dupe(u8, "nil");
+        const default_str = try formatGoDefaultAlloc(allocator, scope, field.type, default_value);
         defer allocator.free(default_str);
 
         try writer.print("\n// {s} configures {s}. Default: {s}.\n", .{
@@ -405,10 +405,8 @@ fn renderFunctionOptionsInit(
 
     try writer.print("\tcfg := {s}{{\n", .{config_type_name});
     for (options_info.fields, 0..) |field, i| {
-        const default_str = if (field.default) |default_val|
-            try formatGoDefaultAlloc(allocator, scope, field.type, default_val)
-        else
-            try allocator.dupe(u8, "nil");
+        const default_value = field.default orelse continue;
+        const default_str = try formatGoDefaultAlloc(allocator, scope, field.type, default_value);
         defer allocator.free(default_str);
         try writer.print("\t\t{s}: {s},\n", .{ field_go_names[i], default_str });
     }
@@ -557,13 +555,12 @@ fn renderPublicBody(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
         }
         for (function.origin.params, 0..) |parameter, parameter_index| {
             if (parameter.flatten) |fields| {
-                const is_options = parameter.goOptions() != null;
                 for (fields, 0..) |field, field_index| {
                     if (field.type != .optional) continue;
                     const abi_parameter = function.flattenedParam(parameter_index, field_index);
                     const name = try common.flattenedGoNameAlloc(allocator, abi_parameter.name);
                     defer allocator.free(name);
-                    if (is_options) {
+                    if (common.isOptionField(parameter, field)) {
                         const raw_names = try targets.go.paramNamesAlloc(allocator, &.{field.name});
                         defer naming.freeParamNames(allocator, raw_names);
                         const source = try std.fmt.allocPrint(allocator, "cfg.{s}", .{raw_names[0]});
@@ -675,12 +672,13 @@ fn renderPublicBody(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
             if (function.userdataFor(parameter_index) != null) continue;
             if (parameter.injected != null) continue;
             if (parameter.flatten) |fields| {
-                const is_options = parameter.goOptions() != null;
                 for (fields, 0..) |field, field_index| {
                     const abi_parameter = function.flattenedParam(parameter_index, field_index);
                     const name = try common.flattenedGoNameAlloc(allocator, abi_parameter.name);
                     defer allocator.free(name);
-                    const field_source = if (is_options) blk: {
+                    // An option was collected into `cfg`; a required field is
+                    // still standing in the signature under its own name.
+                    const field_source = if (common.isOptionField(parameter, field)) blk: {
                         const raw_names = try targets.go.paramNamesAlloc(allocator, &.{field.name});
                         defer naming.freeParamNames(allocator, raw_names);
                         break :blk try std.fmt.allocPrint(allocator, "cfg.{s}", .{raw_names[0]});
@@ -1109,8 +1107,8 @@ pub fn writePublicCallArguments(allocator: std.mem.Allocator, writer: *std.Io.Wr
     for (function.origin.params, 0..) |parameter, parameter_index| {
         if (function.userdataFor(parameter_index) != null or parameter.injected != null or parameter.type == .cancel_flag) continue;
         if (parameter.flatten) |fields| {
-            if (parameter.goOptions() != null) continue;
-            for (fields, 0..) |_, field_index| {
+            for (fields, 0..) |field, field_index| {
+                if (common.isOptionField(parameter, field)) continue;
                 const abi_parameter = function.flattenedParam(parameter_index, field_index);
                 const name = try common.flattenedGoNameAlloc(allocator, abi_parameter.name);
                 defer allocator.free(name);
@@ -1155,8 +1153,10 @@ pub fn writePublicParameters(
         if (parameter.injected != null) continue;
         if (parameter.type == .cancel_flag) continue;
         if (parameter.flatten) |fields| {
-            if (parameter.goOptions() != null) continue;
             for (fields, 0..) |field, field_index| {
+                // An option is spelled `With*` at the call site; the fields
+                // left here are the ones the caller has to supply.
+                if (common.isOptionField(parameter, field)) continue;
                 const abi_parameter = function.flattenedParam(parameter_index, field_index);
                 const name = try common.flattenedGoNameAlloc(allocator, abi_parameter.name);
                 defer allocator.free(name);

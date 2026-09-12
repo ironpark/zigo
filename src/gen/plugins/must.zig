@@ -73,6 +73,7 @@ fn analyze(context: plugin_api.AnalyzeContext) !void {
                     const clashes_type = std.mem.eql(u8, must_name, opt_names.type_name);
                     var clashes_field = false;
                     for (fields) |f| {
+                        if (f.default == null) continue; // required fields are positional, not `With*`
                         const with_name = try opt_names.withNameAlloc(allocator, f.name);
                         defer allocator.free(with_name);
                         if (std.mem.eql(u8, must_name, with_name)) {

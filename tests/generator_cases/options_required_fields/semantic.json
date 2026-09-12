@@ -1,0 +1,93 @@
+{
+  "constructors": [
+    {
+      "deinit": "freeTerminal",
+      "init": "init",
+      "type": "Terminal"
+    }
+  ],
+  "functions": [
+    {
+      "name": "init",
+      "namespace": "Terminal",
+      "ownership": "caller",
+      "params": [
+        {
+          "name": "options",
+          "flatten": [
+            {"name": "cols", "type": {"bits": 16, "is_usize": false, "kind": "int", "signed": false}},
+            {"name": "rows", "type": {"bits": 16, "is_usize": false, "kind": "int", "signed": false}},
+            {"default": {"int": 1048576}, "name": "max_scrollback_bytes", "type": {"bits": 64, "is_usize": true, "kind": "int", "signed": false}},
+            {"default": {"enum": "normal"}, "name": "mode", "type": {"kind": "enum", "ref": "Mode"}},
+            {"default": {"null": {}}, "name": "limit", "type": {"child": {"bits": 32, "is_usize": false, "kind": "int", "signed": false}, "kind": "optional"}}
+          ],
+          "go": {"options": {}},
+          "type": {"kind": "value_struct", "ref": "TerminalOptions"}
+        }
+      ],
+      "return": {
+        "error_set": [],
+        "kind": "error_union",
+        "payload": {"const": false, "kind": "opaque_ptr", "nullable": false, "ref": "Terminal"}
+      },
+      "symbol": "ignored"
+    },
+    {
+      "name": "configure",
+      "params": [
+        {
+          "name": "options",
+          "flatten": [
+            {"name": "enabled", "type": {"kind": "bool"}},
+            {"default": {"float": 1.5}, "name": "scale", "type": {"bits": 32, "kind": "float"}}
+          ],
+          "go": {"options": {}},
+          "type": {"kind": "value_struct", "ref": "ConfigureOptions"}
+        }
+      ],
+      "return": {"kind": "void"},
+      "symbol": "ignored"
+    },
+    {
+      "name": "freeTerminal",
+      "params": [],
+      "receiver": "Terminal",
+      "return": {"kind": "void"},
+      "symbol": "ignored"
+    }
+  ],
+  "package": "options_required_fields",
+  "prefix": "zg",
+  "types": [
+    {"kind": "opaque", "name": "Terminal"},
+    {
+      "exhaustive": true,
+      "fields": [{"name": "normal", "value": 0}, {"name": "alternate", "value": 1}],
+      "kind": "enum",
+      "name": "Mode",
+      "tag_type": {"bits": 8, "is_usize": false, "kind": "int", "signed": false}
+    },
+    {
+      "fields": [
+        {"name": "cols", "type": {"bits": 16, "is_usize": false, "kind": "int", "signed": false}},
+        {"name": "rows", "type": {"bits": 16, "is_usize": false, "kind": "int", "signed": false}},
+        {"name": "max_scrollback_bytes", "type": {"bits": 64, "is_usize": true, "kind": "int", "signed": false}},
+        {"name": "mode", "type": {"kind": "enum", "ref": "Mode"}},
+        {"name": "limit", "type": {"child": {"bits": 32, "is_usize": false, "kind": "int", "signed": false}, "kind": "optional"}}
+      ],
+      "kind": "value_struct",
+      "name": "TerminalOptions",
+      "zig_path": "root.TerminalOptions"
+    },
+    {
+      "fields": [
+        {"name": "enabled", "type": {"kind": "bool"}},
+        {"name": "scale", "type": {"bits": 32, "kind": "float"}}
+      ],
+      "kind": "value_struct",
+      "name": "ConfigureOptions",
+      "zig_path": "root.ConfigureOptions"
+    }
+  ],
+  "zig_version": "0.16.0"
+}
