@@ -8,6 +8,7 @@ test {
     std.testing.refAllDecls(@import("reflect_walk"));
     std.testing.refAllDecls(@import("reflect_names"));
     std.testing.refAllDecls(@import("sync_check"));
+    _ = @import("session_reflection.zig");
     _ = @import("snapshot.zig");
     _ = @import("wide_api.zig");
     _ = @import("sync_check");

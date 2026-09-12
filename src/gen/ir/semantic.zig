@@ -1351,6 +1351,22 @@ pub const Interface = struct {
     types: []const []const u8,
 };
 
+/// A Go type the binding declares over one primary handle and the dependent
+/// child handles it hands out. The reflector records only what the binding
+/// said; that every child really is a dependent child of the primary, and that
+/// every member has a `Close`, is checked by validation and generation, which
+/// also spell the type out. A session never crosses the C boundary, so nothing
+/// here reaches the shim or the header.
+pub const Session = struct {
+    /// Registered opaque type names of the dependent children, in the order
+    /// the binding listed them.
+    children: []const []const u8,
+    doc: ?[]const u8 = null,
+    name: []const u8,
+    /// Registered opaque type name of the handle the children belong to.
+    primary: []const u8,
+};
+
 pub const Semantic = struct {
     /// The Zig expression the shim passes for `std.mem.Allocator` parameters.
     /// Set by the binding's `.allocator`; without it, a function that takes an
@@ -1376,6 +1392,10 @@ pub const Semantic = struct {
     /// Declared public sub-packages. Empty is omitted so legacy documents are unchanged.
     packages: ?[]const Package = null,
     prefix: []const u8,
+    /// Declared sessions over one primary handle and its dependent children.
+    /// Absent when the binding declares none, so every document written before
+    /// the field existed serializes the same.
+    sessions: ?[]const Session = null,
     types: []const TypeDecl = &.{},
     zig_version: []const u8,
 

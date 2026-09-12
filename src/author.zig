@@ -153,6 +153,15 @@ pub const Interface = struct {
     closer: bool = true,
     doc: ?[]const u8 = null,
 };
+/// A Go type that adopts one handle and the dependent children it handed out,
+/// and closes them in that order. The primary is closed last, and every child
+/// must be a dependent child of it.
+pub const Session = struct {
+    name: []const u8,
+    primary: TypeRef,
+    children: []const TypeRef,
+    doc: ?[]const u8 = null,
+};
 
 /// The authoring tree contains actual declarations, not package membership paths.
 pub const Entry = union(enum) {
@@ -160,6 +169,7 @@ pub const Entry = union(enum) {
     type: Type,
     package: Package,
     interface: Interface,
+    session: Session,
 
     /// Only explicitly supplied fields are replaced. Null clears a nullable field.
     /// Nested contracts are replaced as a whole; there is no implicit deep merge.
@@ -396,6 +406,9 @@ pub fn package(comptime options: Package) Entry {
 }
 pub fn interface(comptime options: Interface) Entry {
     return .{ .interface = options };
+}
+pub fn session(comptime options: Session) Entry {
+    return .{ .session = options };
 }
 
 pub const DiscoverySelection = struct { exclude: []const FunctionRef = &.{} };

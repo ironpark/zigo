@@ -11,6 +11,7 @@ const State = struct {
     function_refs: []const a.FunctionRef = &.{},
     packages: []const ir.Package = &.{},
     interfaces: []const ir.Interface = &.{},
+    sessions: []const ir.Session = &.{},
 };
 
 pub fn binding(comptime source: a.Binding) ir.Binding {
@@ -55,6 +56,7 @@ pub fn binding(comptime source: a.Binding) ir.Binding {
             .functions = state.functions,
             .packages = state.packages,
             .interfaces = state.interfaces,
+            .sessions = state.sessions,
         };
     };
 }
@@ -174,6 +176,16 @@ fn flatten(comptime entries: []const a.Entry, state: *State, comptime package_in
                 types = types ++ [_]type{ref.type};
             }
             state.interfaces = state.interfaces ++ [_]ir.Interface{.{ .name = i.name, .methods = i.methods, .types = types, .closer = i.closer, .doc = i.doc }};
+        },
+        .session => |s| {
+            if (parent != null) @compileError("zigo a session cannot be nested inside a type");
+            _ = typeName(s.primary, state.*);
+            var children: []const type = &.{};
+            for (s.children) |ref| {
+                _ = typeName(ref, state.*);
+                children = children ++ [_]type{ref.type};
+            }
+            state.sessions = state.sessions ++ [_]ir.Session{.{ .name = s.name, .primary = s.primary.type, .children = children, .doc = s.doc }};
         },
     };
 }

@@ -467,6 +467,16 @@ pub const Interface = struct {
     doc: ?[]const u8 = null,
 };
 
+/// A session: the primary handle a Go container owns, and the dependent child
+/// handles it hands out. Resolved to Zig types, like every other declaration
+/// here; the reflector turns them into registered opaque names.
+pub const Session = struct {
+    name: []const u8,
+    primary: type,
+    children: []const type,
+    doc: ?[]const u8 = null,
+};
+
 pub const Binding = struct {
     /// The module paths resolve against.
     root: type,
@@ -484,6 +494,7 @@ pub const Binding = struct {
     methods: []const Methods = &.{},
     packages: []const Package = &.{},
     interfaces: []const Interface = &.{},
+    sessions: []const Session = &.{},
 };
 
 pub fn shortTypeName(full_name: []const u8) []const u8 {

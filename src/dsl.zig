@@ -2,6 +2,7 @@
 pub const scope = @import("author.zig").scope;
 pub const package = @import("author.zig").package;
 pub const interface = @import("author.zig").interface;
+pub const session = @import("author.zig").session;
 pub const Selector = @import("author.zig").Selector;
 pub const features = @import("features.zig");
 

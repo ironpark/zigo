@@ -40,6 +40,7 @@ pub fn readConfig(comptime P: Plugin, allocator: std.mem.Allocator, configuratio
 }
 
 pub const interfaces = @import("plugin/interfaces.zig");
+pub const session = @import("plugin/session.zig");
 pub const site = @import("plugin/site.zig");
 pub const rename = @import("plugin/rename.zig");
 

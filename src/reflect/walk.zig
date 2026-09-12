@@ -201,6 +201,7 @@ pub fn reflect(
     const reflected_packages = try packages.reflectPackages(allocator, declaration, types.items, functions.items, pairings.items);
     // After the packages, so an interface can follow its types into theirs.
     const interfaces = try reflectInterfaces(allocator, declaration, types.items);
+    const sessions = try reflectSessions(allocator, declaration);
 
     return .{
         .allocator = comptime injectionExpression(declaration.allocator),
@@ -211,6 +212,7 @@ pub fn reflect(
         .package = package_name,
         .packages = if (reflected_packages.len == 0) null else reflected_packages,
         .prefix = prefix,
+        .sessions = if (sessions.len == 0) null else sessions,
         .types = try types.toOwnedSlice(allocator),
         .zig_version = @import("builtin").zig_version_string,
     };
@@ -575,6 +577,52 @@ test "interfaces record their methods and registered type names in order" {
     try std.testing.expectEqualStrings("batches", interface.package.?);
 }
 
+test "sessions record their primary and dependent children by registered name" {
+    const Api = struct {
+        pub const Queue = opaque {
+            pub fn create() error{OutOfMemory}!*Queue {
+                return error.OutOfMemory;
+            }
+            pub fn deinit(self: *Queue) void {
+                _ = self;
+            }
+            pub fn newStream(self: *Queue) error{OutOfMemory}!*Stream {
+                _ = self;
+                return error.OutOfMemory;
+            }
+        };
+        pub const Stream = opaque {
+            pub fn free(self: *Stream) void {
+                _ = self;
+            }
+        };
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Api,
+        .types = &.{
+            .{ .handle = .{ .type = Api.Queue } },
+            .{ .handle = .{ .name = "Streams", .type = Api.Stream } },
+        },
+        .functions = &.{
+            .{ .path = "Queue.create", .constructs = Api.Queue },
+            .{ .path = "Queue.deinit", .destroys = Api.Queue },
+            .{ .child_of_receiver = true, .path = "Queue.newStream", .constructs = Api.Stream, .receiver = Api.Queue },
+            .{ .path = "Streams.free", .destroys = Api.Stream },
+        },
+        .sessions = &.{
+            .{ .name = "Session", .primary = Api.Queue, .children = &.{Api.Stream}, .doc = "Closes streams before the queue." },
+        },
+    }, "sample", "zg");
+    const session = document.sessions.?[0];
+    try std.testing.expectEqualStrings("Session", session.name);
+    try std.testing.expectEqualStrings("Queue", session.primary);
+    // The child is spelled by its registered `.name`, not its Zig name.
+    try std.testing.expectEqualStrings("Streams", session.children[0]);
+    try std.testing.expectEqualStrings("Closes streams before the queue.", session.doc.?);
+}
+
 test "packages reject invalid paths and missing selectors" {
     const Api = struct {
         pub fn ping() void {}
@@ -758,6 +806,36 @@ fn reflectInterfaces(
         });
     }
     return interfaces.toOwnedSlice(allocator);
+}
+
+/// A session names registered handles only, like an interface does. Whether the
+/// listed children really are dependent children of the primary, and whether
+/// they can be closed, is validation's business: it can name the offending type
+/// in a diagnostic instead of failing the consumer's build.
+fn reflectSessions(
+    allocator: std.mem.Allocator,
+    comptime declaration: zigo.Binding,
+) ![]const semantic.Session {
+    var sessions: std.ArrayList(semantic.Session) = .empty;
+    inline for (declaration.sessions) |entry| {
+        comptime validateSessionEntry(entry);
+        const child_names = try allocator.alloc([]const u8, entry.children.len);
+        inline for (entry.children, 0..) |T, index| child_names[index] = comptime registeredOpaqueName(declaration, T) orelse
+            @compileError("zigo session members must be registered in `.types` as `.handle`: " ++ @typeName(T));
+        try sessions.append(allocator, .{
+            .children = child_names,
+            .doc = entry.doc,
+            .name = entry.name,
+            .primary = comptime registeredOpaqueName(declaration, entry.primary) orelse
+                @compileError("zigo session members must be registered in `.types` as `.handle`: " ++ @typeName(entry.primary)),
+        });
+    }
+    return sessions.toOwnedSlice(allocator);
+}
+
+fn validateSessionEntry(comptime entry: zigo.Session) void {
+    if (entry.children.len == 0)
+        @compileError("zigo session `" ++ entry.name ++ "` requires a non-empty `.children` list of registered handle types");
 }
 
 fn validateInterfaceEntry(comptime entry: zigo.Interface) void {

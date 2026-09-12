@@ -7,6 +7,7 @@ const lower = @import("lower");
 const functions = @import("functions.zig");
 const callbacks = @import("callbacks.zig");
 const interfaces = @import("interfaces.zig");
+const session = @import("session.zig");
 const materialized = @import("materialized.zig");
 const names = @import("names.zig");
 const plugin = @import("plugin");
@@ -377,6 +378,7 @@ fn documentHeaderIssue(_: std.mem.Allocator, document: semantic.Semantic, _: tar
 test {
     _ = functions;
     _ = interfaces;
+    _ = session;
     _ = materialized;
     _ = types;
     _ = names;
