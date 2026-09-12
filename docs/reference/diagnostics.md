@@ -78,6 +78,7 @@ zigo는 생성 전에 소스 reflection, semantic 계약과 최종 출력을 검
 | `ZIGO058` | 표준 I/O 인터페이스 래퍼가 요구하는 메서드 shape가 아닙니다. 매개변수/result를 맞춥니다. |
 | `ZIGO059` | 플러그인 출력 경로가 잘못되었거나 다른 emitter와 충돌합니다. context 경로 도우미를 사용합니다. |
 | `ZIGO060` | 플러그인 transform의 네이티브 매개변수 order가 순열이 아닙니다. `reorderParameters`를 사용합니다. |
+| `ZIGO061` | functional options 계약이 잘못되었습니다(기본값 없는 필드, 복수 옵션 매개변수, 옵션 필드 부재). 옵션 필드에 기본값을 주거나 위치 인자로 바꿉니다. |
 
 `ZIGO047`은 현재 할당되지 않았습니다. 진단 번호가 연속적이라고 가정하지 마세요.
 

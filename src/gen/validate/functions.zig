@@ -32,6 +32,13 @@ pub fn functionIssue(allocator: std.mem.Allocator, document: semantic.Semantic, 
             .site = site.functionSite(function),
             .hint = "use one materialized output slice per function",
         };
+        if (optionsParamCount(function) > 1) return .{
+            .severity = .@"error",
+            .code = "ZIGO061",
+            .message = "function has more than one options parameter",
+            .site = site.functionSite(function),
+            .hint = "use at most one options parameter per function; Go supports only a single variadic parameter",
+        };
         if (function.name.len == 0) return .{
             .severity = .@"error",
             .code = "ZIGO021",
@@ -184,6 +191,34 @@ pub fn functionIssue(allocator: std.mem.Allocator, document: semantic.Semantic, 
                     .site = site.functionSite(function),
                     .hint = "flatten only bool, integer, float, registered enum, or optional scalar fields",
                 };
+                if (parameter.goOptions()) |_| {
+                    var default_count: usize = 0;
+                    for (fields) |field| {
+                        if (field.default != null) default_count += 1;
+                    }
+                    if (fields.len == 0 or default_count == 0) return .{
+                        .severity = .@"error",
+                        .code = "ZIGO061",
+                        .message = "options parameter has no option fields",
+                        .site = site.functionSite(function),
+                        .hint = "give at least one field a Zig default value, or use `.flatten` instead of `.options`",
+                    };
+                    for (fields) |field| {
+                        if (field.default == null) return .{
+                            .severity = .@"error",
+                            .code = "ZIGO061",
+                            .message = try std.fmt.allocPrint(allocator, "option field `{s}` has no default value", .{field.name}),
+                            .site = site.functionSite(function),
+                            .hint = try std.fmt.allocPrint(allocator, "give field `{s}` a Zig default value, or expose it as a positional parameter", .{field.name}),
+                        };
+                    }
+                }
+            } else if (parameter.goOptions()) |_| return .{
+                .severity = .@"error",
+                .code = "ZIGO061",
+                .message = "options parameter has no option fields",
+                .site = site.functionSite(function),
+                .hint = "apply `.options` only to a struct parameter with flattened fields",
             } else if (tagged_union_value == null and unsupportedValueStruct(document, parameter.type) != null) return .{
                 .severity = .@"error",
                 .code = "ZIGO003",
@@ -1222,4 +1257,161 @@ fn validNativeOrder(function: semantic.SemanticFn) bool {
         for (function.params[0..index]) |previous| if (previous.native_index == native) return false;
     }
     return true;
+}
+
+fn optionsParamCount(function: semantic.SemanticFn) usize {
+    var count: usize = 0;
+    for (function.params) |param| {
+        if (param.goOptions() != null) count += 1;
+    }
+    return count;
+}
+
+test "functional options validation rules reject multiple option params, missing defaults, and empty options" {
+    const u16_type: semantic.TypeNode = .{ .int = .{ .bits = 16, .is_usize = false, .signed = false } };
+    const opt_decl: semantic.TypeDecl = .{
+        .kind = .value_struct,
+        .name = "Options",
+    };
+    const valid_fields = [_]semantic.FlattenedField{
+        .{ .name = "rows", .type = u16_type, .default = .{ .int = 24 } },
+    };
+    const valid_param: semantic.Parameter = .{
+        .name = "options",
+        .type = .{ .value_struct = .{ .ref = "Options" } },
+        .flatten = &valid_fields,
+        .go = .{ .options = .{} },
+    };
+
+    // 1. Valid declaration passes
+    {
+        var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+        defer scratch.deinit();
+        const document: semantic.Semantic = .{
+            .functions = &.{.{
+                .name = "open",
+                .params = &.{valid_param},
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_open",
+            }},
+            .package = "opts",
+            .prefix = "zg",
+            .types = &.{opt_decl},
+            .zig_version = "0.16.0",
+        };
+        try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try validate.findIssue(scratch.allocator(), document));
+    }
+
+    // 2. Multiple options parameters on a single function
+    {
+        var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+        defer scratch.deinit();
+        const document: semantic.Semantic = .{
+            .functions = &.{.{
+                .name = "open",
+                .params = &.{ valid_param, valid_param },
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_open",
+            }},
+            .package = "opts",
+            .prefix = "zg",
+            .types = &.{opt_decl},
+            .zig_version = "0.16.0",
+        };
+        const issue = (try validate.findIssue(scratch.allocator(), document)) orelse return error.MissingDiagnostic;
+        try std.testing.expectEqualStrings("ZIGO061", issue.code);
+        try std.testing.expectEqualStrings("function has more than one options parameter", issue.message);
+        try std.testing.expect(std.mem.indexOf(u8, issue.hint, "at most one options parameter") != null);
+    }
+
+    // 3. Option field with no default value (when other field has default)
+    {
+        var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+        defer scratch.deinit();
+        const mixed_fields = [_]semantic.FlattenedField{
+            .{ .name = "cols", .type = u16_type, .default = null },
+            .{ .name = "rows", .type = u16_type, .default = .{ .int = 24 } },
+        };
+        const mixed_param: semantic.Parameter = .{
+            .name = "options",
+            .type = .{ .value_struct = .{ .ref = "Options" } },
+            .flatten = &mixed_fields,
+            .go = .{ .options = .{} },
+        };
+        const document: semantic.Semantic = .{
+            .functions = &.{.{
+                .name = "open",
+                .params = &.{mixed_param},
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_open",
+            }},
+            .package = "opts",
+            .prefix = "zg",
+            .types = &.{opt_decl},
+            .zig_version = "0.16.0",
+        };
+        const issue = (try validate.findIssue(scratch.allocator(), document)) orelse return error.MissingDiagnostic;
+        try std.testing.expectEqualStrings("ZIGO061", issue.code);
+        try std.testing.expectEqualStrings("option field `cols` has no default value", issue.message);
+        try std.testing.expect(std.mem.indexOf(u8, issue.hint, "Zig default value") != null);
+        try std.testing.expect(std.mem.indexOf(u8, issue.hint, "positional parameter") != null);
+    }
+
+    // 4. Options parameter with no option fields (all fields without default)
+    {
+        var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+        defer scratch.deinit();
+        const no_default_fields = [_]semantic.FlattenedField{
+            .{ .name = "cols", .type = u16_type, .default = null },
+        };
+        const no_default_param: semantic.Parameter = .{
+            .name = "options",
+            .type = .{ .value_struct = .{ .ref = "Options" } },
+            .flatten = &no_default_fields,
+            .go = .{ .options = .{} },
+        };
+        const document: semantic.Semantic = .{
+            .functions = &.{.{
+                .name = "open",
+                .params = &.{no_default_param},
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_open",
+            }},
+            .package = "opts",
+            .prefix = "zg",
+            .types = &.{opt_decl},
+            .zig_version = "0.16.0",
+        };
+        const issue = (try validate.findIssue(scratch.allocator(), document)) orelse return error.MissingDiagnostic;
+        try std.testing.expectEqualStrings("ZIGO061", issue.code);
+        try std.testing.expectEqualStrings("options parameter has no option fields", issue.message);
+        try std.testing.expect(std.mem.indexOf(u8, issue.hint, "Zig default value") != null);
+    }
+
+    // 5. Options parameter with empty flatten fields
+    {
+        var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+        defer scratch.deinit();
+        const empty_param: semantic.Parameter = .{
+            .name = "options",
+            .type = .{ .value_struct = .{ .ref = "Options" } },
+            .flatten = &.{},
+            .go = .{ .options = .{} },
+        };
+        const document: semantic.Semantic = .{
+            .functions = &.{.{
+                .name = "open",
+                .params = &.{empty_param},
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_open",
+            }},
+            .package = "opts",
+            .prefix = "zg",
+            .types = &.{opt_decl},
+            .zig_version = "0.16.0",
+        };
+        const issue = (try validate.findIssue(scratch.allocator(), document)) orelse return error.MissingDiagnostic;
+        try std.testing.expectEqualStrings("ZIGO061", issue.code);
+        try std.testing.expectEqualStrings("options parameter has no option fields", issue.message);
+    }
 }
