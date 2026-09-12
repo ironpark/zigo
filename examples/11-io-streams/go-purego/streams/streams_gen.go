@@ -63,6 +63,33 @@ func (d *Document) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// AppendString: The string-shaped twin of `append`. The binding gives its parameter a
+// string semantic, so the Go surface takes a `string` and the generated
+// `WriteString` hands it straight over: no `[]byte(s)` copy on the way in.
+// It returns *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
+func (d *Document) AppendString(text string) error {
+	ptr, err := zigoCheckedPointer("Document.AppendString receiver", d)
+	if err != nil {
+		return err
+	}
+	defer d.zigoRelease()
+	code := raw.DocumentAppendString(ptr, text)
+	if code != 0 {
+		return zigoPoisonAfterPanic(zigoErrorForCode("Document.AppendString", code), d)
+	}
+	return nil
+}
+
+// WriteString calls AppendString, satisfying io.StringWriter.
+// The method takes the whole of s, so the count is len(s) whenever it succeeds.
+func (d *Document) WriteString(s string) (int, error) {
+	if err := d.AppendString(s); err != nil {
+		return 0, err
+	}
+	return len(s), nil
+}
+
 // Count calls the Zig function Document.count.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
