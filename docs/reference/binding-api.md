@@ -193,6 +193,22 @@ zigo.interface(.{
 })
 ```
 
+```zig
+zigo.session(.{
+    .name = "Session",
+    .primary = Parent.typeRef(),
+    .children = &.{Child.typeRef()},
+    .doc = null,
+})
+```
+
+| 필드 | 의미 |
+|---|---|
+| `name` | 생성할 Go 타입 이름. 접근자는 멤버 타입 이름을 그대로 씁니다 |
+| `primary` | 마지막에 닫히는 주 핸들. `.handle`로 등록된 타입이어야 합니다 |
+| `children` | primary가 `.parent = .receiver`로 내주는 자식 핸들. 선언 순서대로 닫힙니다 |
+| `doc` | 생성 타입의 doc comment. 닫는 순서는 생성기가 별도로 적습니다 |
+
 ## built-in feature
 
 | 연결 | 결과 |

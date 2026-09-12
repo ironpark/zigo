@@ -108,6 +108,39 @@ Parent.func("newChild", .{
 부모 `Close`는 진행 중인 호출과 child 사용이 끝날 때까지 조정됩니다. 부모와 child를 서로
 다른 goroutine에서 닫는 코드는 항상 반환 오류를 처리해야 합니다.
 
+## child를 묶는 session
+
+부모 `Close`는 자식이 열려 있으면 `*HandleInUseError`로 거절됩니다. 올바른 순서를 손으로
+지키는 대신, 부모와 자식을 한 객체로 묶어 그 순서를 생성기에 맡길 수 있습니다.
+
+```zig
+zigo.session(.{
+    .name = "Session",
+    .primary = Parent.typeRef(),
+    .children = &.{Child.typeRef()},
+    .doc = "Session owns a queue and every stream it handed out.",
+})
+```
+
+```go
+session := event_queue.NewSession(queue, stream)
+defer session.Close() // Stream.Close() 다음 EventQueue.Close()
+
+queue := session.EventQueue() // 멤버 타입 이름이 접근자다
+```
+
+- 생성자는 primary를 먼저, 자식을 선언 순서대로 받습니다. `nil` 멤버는 허용하고 `Close`가
+  건너뜁니다.
+- `Close`는 자식을 먼저, primary를 마지막에 닫습니다. 멱등이고 동시 호출에 안전하며, 멤버
+  하나가 실패해도 나머지를 계속 닫고 모든 오류를 `errors.Join`으로 합쳐 돌려줍니다.
+- 멤버는 `.parent = .receiver`로 선언된 자식이어야 하고, `Close`를 가진 constructed
+  핸들이어야 하며, 모두 같은 생성 패키지에 있어야 합니다. 어긋나면 `ZIGO062`가 나옵니다.
+- session은 수명만 다룹니다. 멤버 메서드를 자동으로 올리지 않으므로 `Write`/`Read` 같은
+  호출을 위임하려면 `zigo.interface`나 `satisfies` 플러그인을 함께 쓰세요.
+
+여러 자식을 가진 session이 필요하면 `.children`에 나열하면 됩니다. 선언 순서가 닫는
+순서입니다.
+
 ## 동시 호출과 `Close`
 
 생성 핸들은 호출이 진행 중인 동안 네이티브 포인터가 해제되지 않게 보호합니다. 같은 핸들의

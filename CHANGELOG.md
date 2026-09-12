@@ -14,12 +14,23 @@
   (자유 함수면 함수 이름)이고 `.prefix`가 이를 대체하며 `.prefix = ""`는 `Option`,
   `With<Field>`처럼 접두사 없는 이름을 만듭니다. 기본값은 Zig 필드 기본값에서 오고 각
   `With*`의 doc comment에 `Default: <값>`으로 실립니다.
+- `zigo.session(.{ .name, .primary, .children, .doc })`로 부모 핸들과 그가 내준 자식 핸들을
+  Go 타입 하나로 묶습니다. 멤버마다 접근자(멤버 타입 이름)와 이를 순서대로 받는
+  `New<Name>` 생성자가 생성되고, `Close`가 자식을 먼저 primary를 마지막에 닫습니다.
+  `Close`는 멱등이고 동시 호출에 안전하며, 멤버 하나가 실패해도 나머지를 닫고 오류를
+  `errors.Join`으로 합칩니다. `nil` 멤버는 건너뜁니다.
+- session 계약 위반을 `ZIGO062`로 보고합니다. 자식 없는 선언, 중복, primary를 자식으로
+  나열, primary의 dependent child가 아님, `Close` 없는 멤버, 멤버의 패키지 불일치를
+  거절합니다. 세션·생성자·접근자 이름 충돌은 `ZIGO024`가 잡습니다.
 - 옵션 계약 위반을 `ZIGO061`로 보고합니다. 기본값 없는 필드, 함수당 둘 이상의 옵션
   매개변수와 옵션 필드가 하나도 없는 선언을 거절하고 고치는 방법을 hint로 안내합니다.
   옵션 이름이 같은 패키지의 다른 선언과 겹치면 기존 `ZIGO024` 충돌 검사가 잡습니다.
 
 ### Changed
 
+- session은 Go 계층에만 존재합니다. 네이티브 호출을 하지 않으므로 **C ABI가 바뀌지 않고**
+  (`abi-check`가 아무것도 보고하지 않습니다), `semantic.json`에는 선택적인 `sessions`가,
+  생성 트리에는 `<package>_sessions_gen.go` 하나가 더해집니다.
 - `.options`는 `.flatten`과 같은 lowering을 씁니다. C 심볼, shim 시그니처와 인자 순서가
   같아 **C ABI가 바뀌지 않고**, `.flatten` 선언의 `semantic.json`과 생성 Go도 그대로입니다.
   `semantic.json`에는 선택적인 `go.options`만 추가됩니다.

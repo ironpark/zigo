@@ -112,6 +112,34 @@ tagged union 핸들은 `Tag()`, variant별 `As*()`와 `Variant()`를 제공합�
 설정되면 `Snapshot()`과 독립 Go 스냅샷 타입도 생성됩니다. 스냅샷 접근자는
 `Ticks()`처럼 variant 이름을 사용하며 핸들의 `AsTicks()`와 구분합니다.
 
+## session 타입
+
+`zigo.session`으로 선언한 조합마다 Go 타입 하나가 생성됩니다. 멤버 핸들은 이미 만들어져
+있어야 하고, session은 그것을 보관하고 순서대로 닫습니다.
+
+```go
+type Session struct{ ... }
+
+func NewSession(queue *EventQueue, stream *Stream) *Session
+func (s *Session) EventQueue() *EventQueue // 멤버 타입 이름이 접근자다
+func (s *Session) Stream() *Stream
+func (s *Session) Close() error
+```
+
+- 생성자는 primary를 먼저, 자식을 선언 순서대로 받습니다. `nil` 멤버는 허용하고 `Close`가
+  건너뜁니다.
+- `Close`는 자식을 먼저, primary를 마지막에 닫습니다. 부모의 네이티브 `Close`가 자식이 열려
+  있는 동안 거절하므로, 이 순서가 계약입니다.
+- `Close`는 멱등이고 동시 호출에 안전합니다. 두 번째 호출은 첫 번째의 결과를 그대로
+  돌려줍니다. 멤버 하나가 실패해도 나머지를 닫고 오류는 `errors.Join`으로 합쳐집니다.
+- 생성 파일은 `var _ io.Closer = (*Session)(nil)`을 함께 써서 계약이 깨지면 소비자 빌드가
+  아니라 이 패키지의 빌드가 먼저 실패하게 합니다.
+- 멤버의 접근자는 타입 이름을 그대로 쓰므로, 접근자 이름이 `Close`인 멤버는 선언할 수
+  없습니다(`ZIGO024`).
+
+session은 Go 계층에만 존재합니다. 네이티브 호출을 하지 않으므로 C 심볼, shim과 헤더는
+바뀌지 않습니다.
+
 ## 스트림과 context
 
 Zig `std.Io` 매개변수는 Go `io.Reader` 또는 `io.Writer`, cancel flag는
