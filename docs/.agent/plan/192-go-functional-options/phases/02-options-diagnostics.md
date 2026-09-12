@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-12T04:03:09Z"
 depends_on:
 - "192-go-functional-options#1"
 perf_phase: false
-status: planned
+status: done
 ---
 > DONE-WHEN: 세 규칙이 각각 오류 진단을 내고 hint가 고치는 방법을 말한다.
 > NEXT: none

@@ -204,6 +204,18 @@ fn writePublicOptionalRawSetup(
     child: semantic.TypeNode,
     name: []const u8,
 ) !void {
+    return writePublicOptionalRawSetupWithSource(allocator, writer, program, options, child, name, name);
+}
+
+fn writePublicOptionalRawSetupWithSource(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    program: abi.Program,
+    options: emit.Options,
+    child: semantic.TypeNode,
+    name: []const u8,
+    source: []const u8,
+) !void {
     if (!publicOptionalNeedsConversion(child)) return;
     try writer.print("\tvar {s}Raw *", .{name});
     if (child == .value_struct) {
@@ -219,21 +231,188 @@ fn writePublicOptionalRawSetup(
     } else {
         try public_writers.writeRawGoType(writer, program, child);
     }
-    try writer.print("\n\tif {0s} != nil {{\n\t\t{0s}RawValue := ", .{name});
+    try writer.print("\n\tif {s} != nil {{\n\t\t{s}RawValue := ", .{ source, name });
     switch (child) {
-        .bool => try writer.print("zigoBoolToUint8(*{s})", .{name}),
+        .bool => try writer.print("zigoBoolToUint8(*{s})", .{source}),
         .@"enum" => |value| {
-            const deref = try std.fmt.allocPrint(allocator, "*{s}", .{name});
+            const deref = try std.fmt.allocPrint(allocator, "*{s}", .{source});
             defer allocator.free(deref);
             try public_writers.writeEnumToRaw(program, writer, value.ref, deref);
         },
         .value_struct => |value| if (type_spelling.isPackedValue(program, child))
-            try writer.print("(*{s}).Backing()", .{name})
+            try writer.print("(*{s}).Backing()", .{source})
         else
-            try writer.print("zigo{s}ToRaw(*{s})", .{ value.ref, name }),
+            try writer.print("zigo{s}ToRaw(*{s})", .{ value.ref, source }),
         else => unreachable,
     }
     try writer.print("\n\t\t{0s}Raw = &{0s}RawValue\n\t}}\n", .{name});
+}
+
+pub fn functionOptions(function: semantic.SemanticFn) ?struct {
+    param_index: usize,
+    spec: semantic.OptionsSpec,
+    fields: []const semantic.FlattenedField,
+} {
+    for (function.params, 0..) |parameter, index| {
+        if (parameter.goOptions()) |spec| {
+            return .{
+                .param_index = index,
+                .spec = spec,
+                .fields = parameter.flatten orelse &.{},
+            };
+        }
+    }
+    return null;
+}
+
+fn formatGoDefaultAlloc(
+    allocator: std.mem.Allocator,
+    scope: public_writers.PublicScope,
+    field_type: semantic.TypeNode,
+    default_value: semantic.FlattenedField.Value,
+) ![]u8 {
+    switch (default_value) {
+        .null => return allocator.dupe(u8, "nil"),
+        .bool => |b| return allocator.dupe(u8, if (b) "true" else "false"),
+        .int => |i| return std.fmt.allocPrint(allocator, "{d}", .{i}),
+        .float => |f| {
+            const raw_str = try std.fmt.allocPrint(allocator, "{d}", .{f});
+            if (std.mem.indexOfScalar(u8, raw_str, '.') == null and
+                std.mem.indexOfScalar(u8, raw_str, 'e') == null and
+                std.mem.indexOfScalar(u8, raw_str, 'E') == null)
+            {
+                defer allocator.free(raw_str);
+                return std.fmt.allocPrint(allocator, "{s}.0", .{raw_str});
+            }
+            return raw_str;
+        },
+        .@"enum" => |tag| {
+            const enum_ref = switch (field_type) {
+                .@"enum" => |e| e.ref,
+                .optional => |opt| switch (opt.child.*) {
+                    .@"enum" => |e| e.ref,
+                    else => unreachable,
+                },
+                else => unreachable,
+            };
+            const pascal_tag = try naming.pascalAlloc(allocator, tag);
+            defer allocator.free(pascal_tag);
+            var expression: std.Io.Writer.Allocating = .init(allocator);
+            defer expression.deinit();
+            try scope.writeTypeName(&expression.writer, enum_ref);
+            try expression.writer.writeAll(pascal_tag);
+            return allocator.dupe(u8, expression.written());
+        },
+    }
+}
+
+fn renderFunctionOptions(
+    scope: public_writers.PublicScope,
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    function: abi.AbiFn,
+    options_info: anytype,
+    operation: []const u8,
+) !void {
+    const prefix_source = function.origin.goOwner() orelse function.origin.receiver;
+    const opt_names = try naming.resolveOptionsNamesAlloc(
+        allocator,
+        options_info.spec.prefix,
+        options_info.spec.type_name,
+        prefix_source,
+        function.origin.goName() orelse function.origin.name,
+    );
+    defer opt_names.deinit(allocator);
+
+    const config_type_name = try opt_names.configTypeNameAlloc(allocator);
+    defer allocator.free(config_type_name);
+
+    // 1. Option type
+    try writer.print("\n// {s} configures {s}.\ntype {s} func(*{s})\n\n", .{
+        opt_names.type_name,
+        operation,
+        opt_names.type_name,
+        config_type_name,
+    });
+
+    var zig_field_names = try allocator.alloc([]const u8, options_info.fields.len);
+    defer allocator.free(zig_field_names);
+    for (options_info.fields, 0..) |field, i| zig_field_names[i] = field.name;
+    const field_go_names = try targets.go.paramNamesAlloc(allocator, zig_field_names);
+    defer naming.freeParamNames(allocator, field_go_names);
+
+    // 2. Unexported config struct
+    try writer.print("type {s} struct {{\n", .{config_type_name});
+    for (options_info.fields, 0..) |field, i| {
+        try writer.print("\t{s} ", .{field_go_names[i]});
+        try public_writers.writePublicGoType(scope, writer, field.type);
+        try writer.writeByte('\n');
+    }
+    try writer.writeAll("}\n");
+
+    // 3. With* constructor functions
+    for (options_info.fields, 0..) |field, i| {
+        const with_name = try opt_names.withNameAlloc(allocator, field.name);
+        defer allocator.free(with_name);
+
+        const default_str = if (field.default) |default_val|
+            try formatGoDefaultAlloc(allocator, scope, field.type, default_val)
+        else
+            try allocator.dupe(u8, "nil");
+        defer allocator.free(default_str);
+
+        try writer.print("\n// {s} configures {s}. Default: {s}.\n", .{
+            with_name,
+            field.name,
+            default_str,
+        });
+        try writer.print("func {s}({s} ", .{ with_name, field_go_names[i] });
+        try public_writers.writePublicGoType(scope, writer, field.type);
+        try writer.print(") {s} {{\n", .{opt_names.type_name});
+        try writer.print("\treturn func(cfg *{s}) {{\n\t\tcfg.{s} = {s}\n\t}}\n}}\n", .{
+            config_type_name,
+            field_go_names[i],
+            field_go_names[i],
+        });
+    }
+}
+
+fn renderFunctionOptionsInit(
+    scope: public_writers.PublicScope,
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    function: abi.AbiFn,
+    options_info: anytype,
+) !void {
+    const prefix_source = function.origin.goOwner() orelse function.origin.receiver;
+    const opt_names = try naming.resolveOptionsNamesAlloc(
+        allocator,
+        options_info.spec.prefix,
+        options_info.spec.type_name,
+        prefix_source,
+        function.origin.goName() orelse function.origin.name,
+    );
+    defer opt_names.deinit(allocator);
+
+    const config_type_name = try opt_names.configTypeNameAlloc(allocator);
+    defer allocator.free(config_type_name);
+
+    var zig_field_names = try allocator.alloc([]const u8, options_info.fields.len);
+    defer allocator.free(zig_field_names);
+    for (options_info.fields, 0..) |field, i| zig_field_names[i] = field.name;
+    const field_go_names = try targets.go.paramNamesAlloc(allocator, zig_field_names);
+    defer naming.freeParamNames(allocator, field_go_names);
+
+    try writer.print("\tcfg := {s}{{\n", .{config_type_name});
+    for (options_info.fields, 0..) |field, i| {
+        const default_str = if (field.default) |default_val|
+            try formatGoDefaultAlloc(allocator, scope, field.type, default_val)
+        else
+            try allocator.dupe(u8, "nil");
+        defer allocator.free(default_str);
+        try writer.print("\t\t{s}: {s},\n", .{ field_go_names[i], default_str });
+    }
+    try writer.writeAll("\t}\n\tfor _, opt := range opts {\n\t\topt(&cfg)\n\t}\n");
 }
 
 fn publicNeedsUnsafe(program: abi.Program) bool {
@@ -320,6 +499,9 @@ fn renderPublicBody(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
         const has_stream = shape.has_stream;
         const has_callback_error = shape.has_callback_error;
         const needs_check = shape.needs_check;
+        if (functionOptions(function.origin.*)) |options_info| {
+            try renderFunctionOptions(scope, allocator, writer, function, options_info, operation);
+        }
         try docs.writePublicFunctionDoc(writer, function.origin.*, go_name, owned_type, public_writers.functionReachesCallbacks(program, function.origin.*), has_callback_error);
         if (function.origin.receiver) |receiver| {
             // A value receiver is spelled by value: there is no handle to
@@ -343,6 +525,9 @@ fn renderPublicBody(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
         // at all: nothing native has run, so there is no panic message to read
         // back off this thread.
         if (function.origin.cancel != null) try renderCancelSetup(writer, options);
+        if (functionOptions(function.origin.*)) |options_info| {
+            try renderFunctionOptionsInit(scope, allocator, writer, function, options_info);
+        }
         try renderAtomicPointerPins(writer, function, go_names, options);
         if (needs_range_check)
             try public_writers.renderRangeChecks(scope, allocator, writer, function, go_names, operation, constructor);
@@ -371,13 +556,25 @@ fn renderPublicBody(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
             try writePublicSliceRawSetup(allocator, writer, program, options, parameter, go_names[parameter_index]);
         }
         for (function.origin.params, 0..) |parameter, parameter_index| {
-            if (parameter.flatten) |fields| for (fields, 0..) |field, field_index| {
-                if (field.type != .optional) continue;
-                const abi_parameter = function.flattenedParam(parameter_index, field_index);
-                const name = try common.flattenedGoNameAlloc(allocator, abi_parameter.name);
-                defer allocator.free(name);
-                try writePublicOptionalRawSetup(allocator, writer, program, options, field.type.optional.child.*, name);
-            };
+            if (parameter.flatten) |fields| {
+                const is_options = parameter.goOptions() != null;
+                for (fields, 0..) |field, field_index| {
+                    if (field.type != .optional) continue;
+                    const abi_parameter = function.flattenedParam(parameter_index, field_index);
+                    const name = try common.flattenedGoNameAlloc(allocator, abi_parameter.name);
+                    defer allocator.free(name);
+                    if (is_options) {
+                        const raw_names = try targets.go.paramNamesAlloc(allocator, &.{field.name});
+                        defer naming.freeParamNames(allocator, raw_names);
+                        const source = try std.fmt.allocPrint(allocator, "cfg.{s}", .{raw_names[0]});
+                        defer allocator.free(source);
+                        try writePublicOptionalRawSetupWithSource(allocator, writer, program, options, field.type.optional.child.*, name, source);
+                    } else {
+                        try writePublicOptionalRawSetup(allocator, writer, program, options, field.type.optional.child.*, name);
+                    }
+                }
+                continue;
+            }
             if (parameter.type != .optional) continue;
             try writePublicOptionalRawSetup(allocator, writer, program, options, parameter.type.optional.child.*, go_names[parameter_index]);
         }
@@ -478,22 +675,30 @@ fn renderPublicBody(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
             if (function.userdataFor(parameter_index) != null) continue;
             if (parameter.injected != null) continue;
             if (parameter.flatten) |fields| {
+                const is_options = parameter.goOptions() != null;
                 for (fields, 0..) |field, field_index| {
                     const abi_parameter = function.flattenedParam(parameter_index, field_index);
                     const name = try common.flattenedGoNameAlloc(allocator, abi_parameter.name);
                     defer allocator.free(name);
+                    const field_source = if (is_options) blk: {
+                        const raw_names = try targets.go.paramNamesAlloc(allocator, &.{field.name});
+                        defer naming.freeParamNames(allocator, raw_names);
+                        break :blk try std.fmt.allocPrint(allocator, "cfg.{s}", .{raw_names[0]});
+                    } else try allocator.dupe(u8, name);
+                    defer allocator.free(field_source);
+
                     if (call_index != 0) try writer.writeAll(", ");
                     const node = if (field.type == .optional) field.type.optional.child.* else field.type;
                     if (field.type == .optional and publicOptionalNeedsConversion(node)) {
                         try writer.print("{s}Raw", .{name});
                     } else switch (node) {
-                        .bool => try writer.print("zigoBoolToUint8({s})", .{name}),
-                        .@"enum" => |value| try public_writers.writeEnumToRaw(program, writer, value.ref, name),
+                        .bool => try writer.print("zigoBoolToUint8({s})", .{field_source}),
+                        .@"enum" => |value| try public_writers.writeEnumToRaw(program, writer, value.ref, field_source),
                         .value_struct => if (type_spelling.isPackedValue(program, node))
-                            try writer.print("{s}.Backing()", .{name})
+                            try writer.print("{s}.Backing()", .{field_source})
                         else
-                            try writer.writeAll(name),
-                        else => try writer.writeAll(name),
+                            try writer.writeAll(field_source),
+                        else => try writer.writeAll(field_source),
                     }
                     call_index += 1;
                 }
@@ -904,6 +1109,7 @@ pub fn writePublicCallArguments(allocator: std.mem.Allocator, writer: *std.Io.Wr
     for (function.origin.params, 0..) |parameter, parameter_index| {
         if (function.userdataFor(parameter_index) != null or parameter.injected != null or parameter.type == .cancel_flag) continue;
         if (parameter.flatten) |fields| {
+            if (parameter.goOptions() != null) continue;
             for (fields, 0..) |_, field_index| {
                 const abi_parameter = function.flattenedParam(parameter_index, field_index);
                 const name = try common.flattenedGoNameAlloc(allocator, abi_parameter.name);
@@ -917,6 +1123,13 @@ pub fn writePublicCallArguments(allocator: std.mem.Allocator, writer: *std.Io.Wr
         if (index != 0) try writer.writeAll(", ");
         try writer.writeAll(go_names[parameter_index]);
         index += 1;
+    }
+    for (function.origin.params) |parameter| {
+        if (parameter.goOptions() != null) {
+            if (index != 0) try writer.writeAll(", ");
+            try writer.writeAll("opts...");
+            break;
+        }
     }
 }
 
@@ -942,6 +1155,7 @@ pub fn writePublicParameters(
         if (parameter.injected != null) continue;
         if (parameter.type == .cancel_flag) continue;
         if (parameter.flatten) |fields| {
+            if (parameter.goOptions() != null) continue;
             for (fields, 0..) |field, field_index| {
                 const abi_parameter = function.flattenedParam(parameter_index, field_index);
                 const name = try common.flattenedGoNameAlloc(allocator, abi_parameter.name);
@@ -961,6 +1175,25 @@ pub fn writePublicParameters(
             try public_writers.writePublicParameterType(scope, writer, parameter);
         }
         index += 1;
+    }
+    for (function.origin.params) |parameter| {
+        const opt_spec = parameter.goOptions() orelse continue;
+        const prefix_source = function.origin.goOwner() orelse function.origin.receiver;
+        const opt_names = try naming.resolveOptionsNamesAlloc(
+            allocator,
+            opt_spec.prefix,
+            opt_spec.type_name,
+            prefix_source,
+            function.origin.goName() orelse function.origin.name,
+        );
+        defer opt_names.deinit(allocator);
+        if (index != 0) try writer.writeAll(", ");
+        if (go_names != null) {
+            try writer.print("opts ...{s}", .{opt_names.type_name});
+        } else {
+            try writer.print("...{s}", .{opt_names.type_name});
+        }
+        break;
     }
 }
 

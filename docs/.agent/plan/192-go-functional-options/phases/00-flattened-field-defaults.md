@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-12T03:55:35Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 선택 필드의 기본값이 `semantic.json`에 나타나고, 기본값이 없는 필드는 키가 없다.
 > NEXT: none

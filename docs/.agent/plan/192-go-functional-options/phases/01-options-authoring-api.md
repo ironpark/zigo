@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-12T04:00:13Z"
 depends_on:
 - "192-go-functional-options#0"
 perf_phase: false
-status: planned
+status: done
 ---
 > DONE-WHEN: `zigo.param.options(1, &.{ "cols", "rows" }, .{})`가 컴파일되고 문서에
 > NEXT: none

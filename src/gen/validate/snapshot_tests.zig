@@ -479,6 +479,68 @@ test "implemented diagnostic snapshots are stable" {
             .prefix = "zg",
             .zig_version = "0.16.0",
         }, .snapshot = "error[ZIGO024]: public Go name `Open` collides between `File.open` and `Socket.open`\n  --> semantic.json (Socket.open)\n  hint: rename one declaration, or give it a `.name` that resolves to a different Go identifier\n  note: consider .name = \"OpenBinding\" on function Socket.open\n" },
+        .{ .document = .{
+            .functions = &.{.{
+                .name = "configure",
+                .params = &.{
+                    .{
+                        .flatten = &.{.{ .default = .{ .int = 1 }, .name = "a", .type = .{ .int = .{ .bits = 32, .signed = true } } }},
+                        .go = .{ .options = .{} },
+                        .name = "first",
+                        .type = .{ .value_struct = .{ .ref = "Options" } },
+                    },
+                    .{
+                        .flatten = &.{.{ .default = .{ .int = 2 }, .name = "b", .type = .{ .int = .{ .bits = 32, .signed = true } } }},
+                        .go = .{ .options = .{} },
+                        .name = "second",
+                        .type = .{ .value_struct = .{ .ref = "Options" } },
+                    },
+                },
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_configure",
+            }},
+            .package = "bad",
+            .prefix = "zg",
+            .types = &.{.{ .kind = .value_struct, .layout = .@"extern", .name = "Options" }},
+            .zig_version = "0.16.0",
+        }, .snapshot = "error[ZIGO061]: function has more than one options parameter\n  --> semantic.json (configure)\n  hint: use at most one options parameter per function; Go supports only a single variadic parameter\n" },
+        .{ .document = .{
+            .functions = &.{.{
+                .name = "configure",
+                .params = &.{.{
+                    .flatten = &.{
+                        .{ .default = null, .name = "cols", .type = .{ .int = .{ .bits = 16, .signed = false } } },
+                        .{ .default = .{ .int = 24 }, .name = "rows", .type = .{ .int = .{ .bits = 16, .signed = false } } },
+                    },
+                    .go = .{ .options = .{} },
+                    .name = "options",
+                    .type = .{ .value_struct = .{ .ref = "Options" } },
+                }},
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_configure",
+            }},
+            .package = "bad",
+            .prefix = "zg",
+            .types = &.{.{ .kind = .value_struct, .layout = .@"extern", .name = "Options" }},
+            .zig_version = "0.16.0",
+        }, .snapshot = "error[ZIGO061]: option field `cols` has no default value\n  --> semantic.json (configure)\n  hint: give field `cols` a Zig default value, or expose it as a positional parameter\n" },
+        .{ .document = .{
+            .functions = &.{.{
+                .name = "configure",
+                .params = &.{.{
+                    .flatten = &.{},
+                    .go = .{ .options = .{} },
+                    .name = "options",
+                    .type = .{ .value_struct = .{ .ref = "Options" } },
+                }},
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_configure",
+            }},
+            .package = "bad",
+            .prefix = "zg",
+            .types = &.{.{ .kind = .value_struct, .layout = .@"extern", .name = "Options" }},
+            .zig_version = "0.16.0",
+        }, .snapshot = "error[ZIGO061]: options parameter has no option fields\n  --> semantic.json (configure)\n  hint: give at least one field a Zig default value, or use `.flatten` instead of `.options`\n" },
     };
     // A located diagnostic names the declaration and the parameter it found,
     // so its strings come from the arena the caller is expected to pass.

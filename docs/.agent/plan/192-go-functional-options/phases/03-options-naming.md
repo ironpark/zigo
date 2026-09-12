@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-12T04:07:44Z"
 depends_on:
 - "192-go-functional-options#1"
 perf_phase: false
-status: planned
+status: done
 ---
 > DONE-WHEN: 기본 선언이 `TerminalOption`, `WithTerminalRows`를 만든다.
 > NEXT: none

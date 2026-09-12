@@ -5,6 +5,7 @@ const std = @import("std");
 const naming = @import("naming");
 const abi = @import("abi");
 const semantic = @import("semantic");
+const targets = @import("targets");
 const common = @import("common.zig");
 const docs = @import("docs.zig");
 const emit = @import("emit.zig");
@@ -143,6 +144,22 @@ fn writeRangeCheck(
     operation: []const u8,
     constructor: ?semantic.Constructor,
 ) !void {
+    return writeRangeCheckWithLabel(scope, allocator, writer, function, name, type_node, hint, operation, constructor, null);
+}
+
+fn writeRangeCheckWithLabel(
+    scope: PublicScope,
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    function: abi.AbiFn,
+    name: []const u8,
+    type_node: semantic.TypeNode,
+    hint: ?semantic.SemanticHint,
+    operation: []const u8,
+    constructor: ?semantic.Constructor,
+    label: ?[]const u8,
+) !void {
+    const report_name = label orelse name;
     const optional = type_node == .optional;
     const node = if (optional) type_node.optional.child.* else type_node;
     // A codepoint is checked against Unicode, whatever width carries it: a
@@ -151,7 +168,7 @@ fn writeRangeCheck(
         try writer.print("\tif {0s} < 0 || {0s} > {1d} {{\n\t\t", .{ name, semantic.max_codepoint });
         var expression: std.Io.Writer.Allocating = .init(allocator);
         defer expression.deinit();
-        try expression.writer.print("&RangeError{{Operation: \"{s}\", Parameter: \"{s}\", Type: \"codepoint\"}}", .{ operation, name });
+        try expression.writer.print("&RangeError{{Operation: \"{s}\", Parameter: \"{s}\", Type: \"codepoint\"}}", .{ operation, report_name });
         try writeCheckedErrorReturn(scope, writer, function.origin.*, constructor, expression.written());
         try writer.writeAll("\t}\n");
         return;
@@ -171,7 +188,7 @@ fn writeRangeCheck(
     defer expression.deinit();
     try expression.writer.print(
         "&RangeError{{Operation: \"{s}\", Parameter: \"{s}\", Type: \"{c}{d}\"}}",
-        .{ operation, name, spelling, narrow.bits },
+        .{ operation, report_name, spelling, narrow.bits },
     );
     try writeCheckedErrorReturn(scope, writer, function.origin.*, constructor, expression.written());
     try writer.writeAll("\t}\n");
@@ -189,11 +206,20 @@ pub fn renderRangeChecks(
 ) !void {
     for (function.origin.params, 0..) |parameter, parameter_index| {
         if (parameter.flatten) |fields| {
+            const is_options = parameter.goOptions() != null;
             for (fields, 0..) |field, field_index| {
                 const abi_parameter = function.flattenedParam(parameter_index, field_index);
                 const name = try common.flattenedGoNameAlloc(allocator, abi_parameter.name);
                 defer allocator.free(name);
-                try writeRangeCheck(scope, allocator, writer, function, name, field.type, null, operation, constructor);
+                if (is_options) {
+                    const raw_names = try targets.go.paramNamesAlloc(allocator, &.{field.name});
+                    defer naming.freeParamNames(allocator, raw_names);
+                    const expr = try std.fmt.allocPrint(allocator, "cfg.{s}", .{raw_names[0]});
+                    defer allocator.free(expr);
+                    try writeRangeCheckWithLabel(scope, allocator, writer, function, expr, field.type, null, operation, constructor, field.name);
+                } else {
+                    try writeRangeCheck(scope, allocator, writer, function, name, field.type, null, operation, constructor);
+                }
             }
             continue;
         }

@@ -342,6 +342,13 @@ pub const OptionsNames = struct {
         else
             std.fmt.allocPrint(allocator, "With{s}{s}", .{ self.prefix, field_pascal });
     }
+
+    pub fn configTypeNameAlloc(self: OptionsNames, allocator: std.mem.Allocator) ![]u8 {
+        if (self.prefix.len == 0) return allocator.dupe(u8, "options");
+        const camel_prefix = try camelAlloc(allocator, self.prefix);
+        defer allocator.free(camel_prefix);
+        return std.fmt.allocPrint(allocator, "{s}Options", .{camel_prefix});
+    }
 };
 
 pub fn resolveOptionsPrefixAlloc(
@@ -384,7 +391,7 @@ pub fn resolveOptionsNamesAlloc(
 }
 
 test "functional options naming creates expected type and With* function names" {
-    // 1. Default declaration on Terminal -> TerminalOption, WithTerminalRows
+    // 1. Default declaration on Terminal -> TerminalOption, WithTerminalRows, terminalOptions
     {
         const names = try resolveOptionsNamesAlloc(std.testing.allocator, null, null, "Terminal", "init");
         defer names.deinit(std.testing.allocator);
@@ -392,9 +399,12 @@ test "functional options naming creates expected type and With* function names" 
         const with_rows = try names.withNameAlloc(std.testing.allocator, "rows");
         defer std.testing.allocator.free(with_rows);
         try std.testing.expectEqualStrings("WithTerminalRows", with_rows);
+        const cfg_type = try names.configTypeNameAlloc(std.testing.allocator);
+        defer std.testing.allocator.free(cfg_type);
+        try std.testing.expectEqualStrings("terminalOptions", cfg_type);
     }
 
-    // 2. Explicit prefix = "" -> Option, WithRows
+    // 2. Explicit prefix = "" -> Option, WithRows, options
     {
         const names = try resolveOptionsNamesAlloc(std.testing.allocator, "", null, "Terminal", "init");
         defer names.deinit(std.testing.allocator);
@@ -402,9 +412,12 @@ test "functional options naming creates expected type and With* function names" 
         const with_rows = try names.withNameAlloc(std.testing.allocator, "rows");
         defer std.testing.allocator.free(with_rows);
         try std.testing.expectEqualStrings("WithRows", with_rows);
+        const cfg_type = try names.configTypeNameAlloc(std.testing.allocator);
+        defer std.testing.allocator.free(cfg_type);
+        try std.testing.expectEqualStrings("options", cfg_type);
     }
 
-    // 3. Free function without owner -> OpenOption, WithOpenRows
+    // 3. Free function without owner -> OpenOption, WithOpenRows, openOptions
     {
         const names = try resolveOptionsNamesAlloc(std.testing.allocator, null, null, null, "open");
         defer names.deinit(std.testing.allocator);
@@ -412,6 +425,9 @@ test "functional options naming creates expected type and With* function names" 
         const with_rows = try names.withNameAlloc(std.testing.allocator, "rows");
         defer std.testing.allocator.free(with_rows);
         try std.testing.expectEqualStrings("WithOpenRows", with_rows);
+        const cfg_type = try names.configTypeNameAlloc(std.testing.allocator);
+        defer std.testing.allocator.free(cfg_type);
+        try std.testing.expectEqualStrings("openOptions", cfg_type);
     }
 
     // 4. Explicit type_name and prefix
@@ -422,5 +438,8 @@ test "functional options naming creates expected type and With* function names" 
         const with_rows = try names.withNameAlloc(std.testing.allocator, "rows");
         defer std.testing.allocator.free(with_rows);
         try std.testing.expectEqualStrings("WithTerminalRows", with_rows);
+        const cfg_type = try names.configTypeNameAlloc(std.testing.allocator);
+        defer std.testing.allocator.free(cfg_type);
+        try std.testing.expectEqualStrings("terminalOptions", cfg_type);
     }
 }

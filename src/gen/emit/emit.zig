@@ -1361,6 +1361,160 @@ test "target type spelling follows registered ancestors across modules" {
     }
 }
 
+test "functional options emit Option type, unexported config struct, With constructors, and variadic signature" {
+    const document: semantic.Semantic = .{
+        .constructors = &.{.{ .deinit = "deinit", .init = "init", .type = "Terminal" }},
+        .functions = &.{
+            .{
+                .name = "init",
+                .namespace = "Terminal",
+                .ownership = .caller,
+                .params = &.{
+                    .{
+                        .name = "capacity",
+                        .type = .{ .int = .{ .bits = 32, .signed = false } },
+                    },
+                    .{
+                        .flatten = &.{
+                            .{
+                                .default = .{ .int = 1024 },
+                                .name = "buffer_size",
+                                .type = .{ .int = .{ .bits = 32, .signed = false } },
+                            },
+                            .{
+                                .default = .{ .bool = false },
+                                .name = "enable_logging",
+                                .type = .{ .bool = {} },
+                            },
+                        },
+                        .go = .{ .options = .{} },
+                        .name = "options",
+                        .type = .{ .value_struct = .{ .ref = "Options" } },
+                    },
+                },
+                .@"return" = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "Terminal" } },
+                .symbol = "zg_terminal_init",
+            },
+            .{
+                .name = "deinit",
+                .params = &.{},
+                .receiver = "Terminal",
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_terminal_deinit",
+            },
+        },
+        .package = "terminal",
+        .prefix = "zg",
+        .types = &.{
+            .{
+                .kind = .@"opaque",
+                .name = "Terminal",
+            },
+            .{
+                .fields = &.{
+                    .{ .name = "buffer_size", .type = .{ .int = .{ .bits = 32, .signed = false } } },
+                    .{ .name = "enable_logging", .type = .{ .bool = {} } },
+                },
+                .kind = .value_struct,
+                .layout = .@"extern",
+                .name = "Options",
+            },
+        },
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const program = try @import("lower").semanticDocument(arena.allocator(), document, "terminal", "zg", &.{});
+
+    const rendered = try renderForTest(public.renderPublic, program);
+    defer std.testing.allocator.free(rendered);
+
+    // 1. TerminalOption type definition
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "type TerminalOption func(*terminalOptions)") != null);
+    // 2. terminalOptions struct definition
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "type terminalOptions struct {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "\tbufferSize uint32") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "\tenableLogging bool") != null);
+    // 3. With constructors with defaults in doc comment
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "// WithTerminalBufferSize configures buffer_size. Default: 1024.") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "func WithTerminalBufferSize(bufferSize uint32) TerminalOption {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "// WithTerminalEnableLogging configures enable_logging. Default: false.") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "func WithTerminalEnableLogging(enableLogging bool) TerminalOption {") != null);
+    // 4. Constructor variadic signature
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "func NewTerminal(capacity uint32, opts ...TerminalOption) (*Terminal, error) {") != null);
+    // 5. Config initialization and option application
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "\tcfg := terminalOptions{") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "\t\tbufferSize: 1024,") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "\t\tenableLogging: false,") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "\tfor _, opt := range opts {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "\t\topt(&cfg)") != null);
+}
+
+test "functional options with empty prefix emit unprefixed Option and With* constructors" {
+    const document: semantic.Semantic = .{
+        .constructors = &.{.{ .deinit = "deinit", .init = "init", .type = "Terminal" }},
+        .functions = &.{
+            .{
+                .name = "init",
+                .namespace = "Terminal",
+                .ownership = .caller,
+                .params = &.{
+                    .{
+                        .flatten = &.{
+                            .{
+                                .default = .{ .int = 24 },
+                                .name = "rows",
+                                .type = .{ .int = .{ .bits = 16, .signed = false } },
+                            },
+                        },
+                        .go = .{ .options = .{ .prefix = "" } },
+                        .name = "options",
+                        .type = .{ .value_struct = .{ .ref = "Options" } },
+                    },
+                },
+                .@"return" = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "Terminal" } },
+                .symbol = "zg_terminal_init",
+            },
+            .{
+                .name = "deinit",
+                .params = &.{},
+                .receiver = "Terminal",
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_terminal_deinit",
+            },
+        },
+        .package = "terminal",
+        .prefix = "zg",
+        .types = &.{
+            .{
+                .kind = .@"opaque",
+                .name = "Terminal",
+            },
+            .{
+                .fields = &.{
+                    .{ .name = "rows", .type = .{ .int = .{ .bits = 16, .signed = false } } },
+                },
+                .kind = .value_struct,
+                .layout = .@"extern",
+                .name = "Options",
+            },
+        },
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const program = try @import("lower").semanticDocument(arena.allocator(), document, "terminal", "zg", &.{});
+
+    const rendered = try renderForTest(public.renderPublic, program);
+    defer std.testing.allocator.free(rendered);
+
+    // Unprefixed Option type and options struct
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "type Option func(*options)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "type options struct {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "func WithRows(rows uint16) Option {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "func NewTerminal(opts ...Option) (*Terminal, error) {") != null);
+}
+
 test {
     _ = references;
     _ = shim;
