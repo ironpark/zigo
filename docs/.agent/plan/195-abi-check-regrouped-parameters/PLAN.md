@@ -1,15 +1,16 @@
 ---
+completed_at: "2026-09-12T05:21:43Z"
 depends_on:
 - options-positional-mix-and-goldens
 description: abi-check가 파라미터 재구성을 여러 주석의 변경으로 오보하던 문제를 고치고 C와 Go 표면을 따로 판정한다
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-12T05:21:34Z"
 ---
 > NEXT: phase 0(`regrouped-parameter-reports`) 하나뿐이고, 그 작업과 검증이 끝나면 이 계획도 끝납니다. ([Phase 0](phases/00-regrouped-parameter-reports.md))
 
 # Phases
 
-- [ ] [Phase 00: 재구성된 파라미터 목록의 정확한 보고](phases/00-regrouped-parameter-reports.md)
+- [x] [Phase 00: 재구성된 파라미터 목록의 정확한 보고](phases/00-regrouped-parameter-reports.md)
 
 # Shared Verification
 

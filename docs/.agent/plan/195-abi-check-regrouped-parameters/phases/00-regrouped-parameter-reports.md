@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-12T05:21:43Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `zig build test`가 통과하고 새 테스트 두 개가 그 판정을 고정한다.
 > NEXT: none
