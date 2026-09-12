@@ -2,7 +2,7 @@
 depends_on:
 - "192-go-functional-options#4"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `zig build go-check abi-check`가 예제에서 통과하고 abi-check가 차이를 보고하지 않는다.
 > NEXT: none

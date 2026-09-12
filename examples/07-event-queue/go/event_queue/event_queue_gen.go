@@ -1008,11 +1008,49 @@ func (b *BorrowChild) Get() (int32, error) {
 // MustGet calls Get and panics with its typed error on failure.
 func (b *BorrowChild) MustGet() int32 { return zigoMust(b.Get()) }
 
+// Option configures NewTerminal.
+type Option func(*options)
+
+type options struct {
+	cols               uint16
+	rows               uint16
+	maxScrollbackBytes uint
+}
+
+// WithCols configures cols. Default: 80.
+func WithCols(cols uint16) Option {
+	return func(cfg *options) {
+		cfg.cols = cols
+	}
+}
+
+// WithRows configures rows. Default: 24.
+func WithRows(rows uint16) Option {
+	return func(cfg *options) {
+		cfg.rows = rows
+	}
+}
+
+// WithMaxScrollbackBytes configures max_scrollback_bytes. Default: 1048576.
+func WithMaxScrollbackBytes(maxScrollbackBytes uint) Option {
+	return func(cfg *options) {
+		cfg.maxScrollbackBytes = maxScrollbackBytes
+	}
+}
+
 // NewTerminal creates a caller-owned Terminal.
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.
-func NewTerminal(cols uint16, rows uint16, maxScrollbackBytes uint) (*Terminal, error) {
-	result, code := raw.TerminalInit(cols, rows, maxScrollbackBytes)
+func NewTerminal(opts ...Option) (*Terminal, error) {
+	cfg := options{
+		cols:               80,
+		rows:               24,
+		maxScrollbackBytes: 1048576,
+	}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+	result, code := raw.TerminalInit(cfg.cols, cfg.rows, cfg.maxScrollbackBytes)
 	if code != 0 {
 		return nil, zigoErrorForCode("NewTerminal", code)
 	}
@@ -1020,9 +1058,7 @@ func NewTerminal(cols uint16, rows uint16, maxScrollbackBytes uint) (*Terminal, 
 }
 
 // MustNewTerminal calls NewTerminal and panics with its typed error on failure.
-func MustNewTerminal(cols uint16, rows uint16, maxScrollbackBytes uint) *Terminal {
-	return zigoMust(NewTerminal(cols, rows, maxScrollbackBytes))
-}
+func MustNewTerminal(opts ...Option) *Terminal { return zigoMust(NewTerminal(opts...)) }
 
 // Cols calls the Zig function Terminal.cols.
 // It returns *HandleError if a required handle is nil or closed.

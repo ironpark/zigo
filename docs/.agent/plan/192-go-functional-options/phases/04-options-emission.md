@@ -1,9 +1,10 @@
 ---
+completed_at: "2026-09-12T04:27:48Z"
 depends_on:
 - "192-go-functional-options#2"
 - "192-go-functional-options#3"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 골든에 옵션 타입, `With*` 생성자와 가변 인자 생성자가 나타난다.
 > NEXT: none

@@ -1711,6 +1711,9 @@
           "direction": "in",
           "flatten": [
             {
+              "default": {
+                "int": 80
+              },
               "name": "cols",
               "type": {
                 "bits": 16,
@@ -1744,6 +1747,11 @@
               }
             }
           ],
+          "go": {
+            "options": {
+              "prefix": ""
+            }
+          },
           "name": "options",
           "name_source": "ast",
           "retention": "borrowed",

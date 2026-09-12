@@ -42,7 +42,7 @@ pub const Limits = extern struct {
 /// A plain Zig options struct. Only the selected scalar fields cross the Go
 /// boundary; the title remains at its Zig default.
 pub const TerminalOptions = struct {
-    cols: u16,
+    cols: u16 = 80,
     rows: u16 = 24,
     max_scrollback_bytes: usize = 1024 * 1024,
     title: []const u8 = "zigo",

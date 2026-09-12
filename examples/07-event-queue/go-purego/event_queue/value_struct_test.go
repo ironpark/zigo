@@ -2,8 +2,42 @@ package event_queue
 
 import "testing"
 
-func TestFlattenedOptionsConstructBoxedValue(t *testing.T) {
-	terminal, err := NewTerminal(120, 40, 8<<20)
+func TestFunctionalOptionsDefault(t *testing.T) {
+	terminal, err := NewTerminal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer terminal.Close()
+	if got := must(terminal.Cols()); got != 80 {
+		t.Fatalf("Cols() = %d, want default 80", got)
+	}
+	if got := must(terminal.Rows()); got != 24 {
+		t.Fatalf("Rows() = %d, want default 24", got)
+	}
+	if got := must(terminal.MaxScrollbackBytes()); got != 1024*1024 {
+		t.Fatalf("MaxScrollbackBytes() = %d, want default %d", got, 1024*1024)
+	}
+}
+
+func TestFunctionalOptionsPartial(t *testing.T) {
+	terminal, err := NewTerminal(WithRows(50))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer terminal.Close()
+	if got := must(terminal.Cols()); got != 80 {
+		t.Fatalf("Cols() = %d, want default 80", got)
+	}
+	if got := must(terminal.Rows()); got != 50 {
+		t.Fatalf("Rows() = %d, want 50", got)
+	}
+	if got := must(terminal.MaxScrollbackBytes()); got != 1024*1024 {
+		t.Fatalf("MaxScrollbackBytes() = %d, want default %d", got, 1024*1024)
+	}
+}
+
+func TestFunctionalOptionsAll(t *testing.T) {
+	terminal, err := NewTerminal(WithCols(120), WithRows(40), WithMaxScrollbackBytes(8<<20))
 	if err != nil {
 		t.Fatal(err)
 	}
