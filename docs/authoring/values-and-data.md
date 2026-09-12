@@ -119,18 +119,19 @@ Zig에서 설정이나 옵션을 전달할 때 기본값이 있는 struct를 매
 
 ```zig
 pub const TerminalOptions = struct {
-    cols: u16 = 80,
     rows: u16 = 24,
     max_scrollback_bytes: usize = 1024 * 1024,
 };
 
-pub fn init(gpa: std.mem.Allocator, options: TerminalOptions) error{Invalid}!Terminal {
+pub fn init(gpa: std.mem.Allocator, initial_cols: u16, options: TerminalOptions) error{Invalid}!Terminal {
     // ...
 }
 ```
 
 > [!IMPORTANT]
-> `zigo.param.options`로 지정된 모든 필드는 반드시 Zig 기본값을 가져야 합니다. 기본값이 없는 필드는 오류(`ZIGO061`)가 발생하므로 위치 매개변수(`.flatten`)로 분리하거나 Zig에서 기본값을 지정해야 합니다.
+> 옵션 구조체의 모든 필드는 Zig 기본값을 가져야 합니다. 기본값이 없는 값을 노출하려면 그 값을 구조체가 아니라 **함수의 별도 매개변수**로 두세요. 위 예에서 `initial_cols`가 그렇습니다.
+>
+> 구조체 안에 기본값 없는 필드를 남겨 두면 오류(`ZIGO061`)가 납니다. 네이티브 경계는 나열된 필드만 실어 나르고 shim이 그것으로 구조체를 재조립하므로, 그 필드에 담을 값이 존재할 수 없기 때문입니다.
 
 ### 선언 조각
 
@@ -140,31 +141,30 @@ pub fn init(gpa: std.mem.Allocator, options: TerminalOptions) error{Invalid}!Ter
 Terminal.define(&.{
     Terminal.func("init", .{
         .params = &.{
-            zigo.param.options(1, &.{ "cols", "rows", "max_scrollback_bytes" }, .{ .prefix = "" }),
+            zigo.param.options(2, &.{ "rows", "max_scrollback_bytes" }, .{ .prefix = "" }),
         },
     }),
 })
 ```
 
-- `.prefix`: `With*` 함수 이름 및 옵션 타입 접두사입니다. 생략 시 소유 타입(`Terminal`) 이름이 사용되며, `""`를 주면 접두사 없이 `Option`, `WithCols` 등으로 방출됩니다.
+index는 receiver나 주입된 매개변수를 제거하기 전의 원래 Zig 시그니처 기준으로, `.flatten`과
+같습니다. 위 선언에서 index `2`는 `options` 매개변수를 가리킵니다.
+
+- `.prefix`: `With*` 함수 이름 및 옵션 타입 접두사입니다. 생략 시 소유 타입(`Terminal`) 이름이 사용되며, `""`를 주면 접두사 없이 `Option`, `WithRows` 등으로 방출됩니다.
 - `.type_name`: 방출할 옵션 함수 타입의 이름입니다.
 
 ### 생성 Go
 
-공개 Go API에는 `Option` 타입, `With*` 함수들, 그리고 가변 인자(`opts ...Option`)를 받는 생성자가 생성됩니다.
+공개 Go API에는 `Option` 타입, `With*` 함수들, 그리고 가변 인자(`opts ...Option`)를 받는 생성자가 생성됩니다. 옵션으로 바뀌지 않은 매개변수는 위치 인자로 남고, 가변 인자는 항상 마지막에 옵니다.
 
 ```go
 // Option configures NewTerminal.
 type Option func(*options)
 
 type options struct {
-	cols               uint16
 	rows               uint16
 	maxScrollbackBytes uint
 }
-
-// WithCols configures cols. Default: 80.
-func WithCols(cols uint16) Option { ... }
 
 // WithRows configures rows. Default: 24.
 func WithRows(rows uint16) Option { ... }
@@ -172,9 +172,8 @@ func WithRows(rows uint16) Option { ... }
 // WithMaxScrollbackBytes configures max_scrollback_bytes. Default: 1048576.
 func WithMaxScrollbackBytes(maxScrollbackBytes uint) Option { ... }
 
-func NewTerminal(opts ...Option) (*Terminal, error) {
+func NewTerminal(initialCols uint16, opts ...Option) (*Terminal, error) {
 	cfg := options{
-		cols:               80,
 		rows:               24,
 		maxScrollbackBytes: 1048576,
 	}
@@ -190,15 +189,15 @@ func NewTerminal(opts ...Option) (*Terminal, error) {
 Go 호출자는 옵션을 생략하거나, 필요한 옵션만 지정하거나, 전체를 지정할 수 있습니다.
 
 ```go
-// 1. 기본값으로 생성 (cols: 80, rows: 24, maxScrollbackBytes: 1MiB)
-term1, err := event_queue.NewTerminal()
+// 1. 필수 값만 주고 나머지는 기본값 (rows: 24, maxScrollbackBytes: 1MiB)
+term1, err := event_queue.NewTerminal(80)
 
 // 2. 일부 옵션만 변경
-term2, err := event_queue.NewTerminal(event_queue.WithRows(50))
+term2, err := event_queue.NewTerminal(80, event_queue.WithRows(50))
 
 // 3. 모든 옵션 지정
 term3, err := event_queue.NewTerminal(
-	event_queue.WithCols(120),
+	120,
 	event_queue.WithRows(40),
 	event_queue.WithMaxScrollbackBytes(8<<20),
 )

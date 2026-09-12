@@ -150,7 +150,7 @@ pub const bindings = zigo.define(.{
         Terminal.define(&.{
             Terminal.func("init", .{
                 .params = &.{
-                    zigo.param.options(1, &.{ "cols", "rows", "max_scrollback_bytes" }, .{ .prefix = "" }),
+                    zigo.param.options(2, &.{ "rows", "max_scrollback_bytes" }, .{ .prefix = "" }),
                 },
             }),
             Terminal.func("cols", .{}),

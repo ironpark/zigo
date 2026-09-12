@@ -523,7 +523,7 @@ test "implemented diagnostic snapshots are stable" {
             .prefix = "zg",
             .types = &.{.{ .kind = .value_struct, .layout = .@"extern", .name = "Options" }},
             .zig_version = "0.16.0",
-        }, .snapshot = "error[ZIGO061]: option field `cols` has no default value\n  --> semantic.json (configure)\n  hint: give field `cols` a Zig default value, or expose it as a positional parameter\n" },
+        }, .snapshot = "error[ZIGO061]: option field `cols` has no default value\n  --> semantic.json (configure)\n  hint: give field `cols` a Zig default value, or take it as a parameter of the Zig function instead of a struct field\n" },
         .{ .document = .{
             .functions = &.{.{
                 .name = "configure",

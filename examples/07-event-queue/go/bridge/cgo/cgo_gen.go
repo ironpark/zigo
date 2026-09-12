@@ -624,9 +624,9 @@ func BorrowChildDeinit(self unsafe.Pointer) int32 {
 }
 
 // TerminalInit calls the generated C ABI wrapper for zg_terminal_init.
-func TerminalInit(cols uint16, rows uint16, maxScrollbackBytes uint) (unsafe.Pointer, int32) {
+func TerminalInit(initialCols uint16, rows uint16, maxScrollbackBytes uint) (unsafe.Pointer, int32) {
 	var outResult *C.zg_terminal
-	code := int32(C.zg_terminal_init(C.uint16_t(cols), C.uint16_t(rows), C.size_t(maxScrollbackBytes), &outResult))
+	code := int32(C.zg_terminal_init(C.uint16_t(initialCols), C.uint16_t(rows), C.size_t(maxScrollbackBytes), &outResult))
 	return unsafe.Pointer(outResult), code
 }
 

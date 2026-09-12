@@ -1278,9 +1278,9 @@ func BorrowChildDeinit(self unsafe.Pointer) int32 {
 }
 
 // TerminalInit calls the generated purego ABI wrapper for zg_terminal_init.
-func TerminalInit(cols uint16, rows uint16, maxScrollbackBytes uint) (unsafe.Pointer, int32) {
+func TerminalInit(initialCols uint16, rows uint16, maxScrollbackBytes uint) (unsafe.Pointer, int32) {
 	var outResult unsafe.Pointer
-	code := bindings().fnTerminalInit(cols, rows, uintptr(maxScrollbackBytes), &outResult)
+	code := bindings().fnTerminalInit(initialCols, rows, uintptr(maxScrollbackBytes), &outResult)
 	return outResult, code
 }
 

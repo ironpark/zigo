@@ -3,7 +3,7 @@ package event_queue
 import "testing"
 
 func TestFunctionalOptionsDefault(t *testing.T) {
-	terminal, err := NewTerminal()
+	terminal, err := NewTerminal(80)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -20,7 +20,7 @@ func TestFunctionalOptionsDefault(t *testing.T) {
 }
 
 func TestFunctionalOptionsPartial(t *testing.T) {
-	terminal, err := NewTerminal(WithRows(50))
+	terminal, err := NewTerminal(80, WithRows(50))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +37,7 @@ func TestFunctionalOptionsPartial(t *testing.T) {
 }
 
 func TestFunctionalOptionsAll(t *testing.T) {
-	terminal, err := NewTerminal(WithCols(120), WithRows(40), WithMaxScrollbackBytes(8<<20))
+	terminal, err := NewTerminal(120, WithRows(40), WithMaxScrollbackBytes(8<<20))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -40,9 +40,10 @@ pub const Limits = extern struct {
 };
 
 /// A plain Zig options struct. Only the selected scalar fields cross the Go
-/// boundary; the title remains at its Zig default.
+/// boundary; the title remains at its Zig default. A value the caller must
+/// supply has no default to fall back on, so `initial_cols` stays a plain
+/// parameter of `init` and reaches Go as a positional argument.
 pub const TerminalOptions = struct {
-    cols: u16 = 80,
     rows: u16 = 24,
     max_scrollback_bytes: usize = 1024 * 1024,
     title: []const u8 = "zigo",
@@ -53,11 +54,11 @@ pub const Terminal = struct {
     rows_value: u16,
     scrollback_value: usize,
 
-    pub fn init(gpa: std.mem.Allocator, options: TerminalOptions) error{Invalid}!Terminal {
+    pub fn init(gpa: std.mem.Allocator, initial_cols: u16, options: TerminalOptions) error{Invalid}!Terminal {
         _ = gpa;
-        if (options.cols == 0 or options.rows == 0) return error.Invalid;
+        if (initial_cols == 0 or options.rows == 0) return error.Invalid;
         return .{
-            .cols_value = options.cols,
+            .cols_value = initial_cols,
             .rows_value = options.rows,
             .scrollback_value = options.max_scrollback_bytes,
         };

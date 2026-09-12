@@ -74,9 +74,13 @@ type Option func(*options)
 type options struct{ ... }
 
 func WithRows(rows uint16) Option
-func NewTerminal(opts ...Option) (*Terminal, error)
-func MustNewTerminal(opts ...Option) *Terminal
+func NewTerminal(initialCols uint16, opts ...Option) (*Terminal, error)
+func MustNewTerminal(initialCols uint16, opts ...Option) *Terminal
 ```
+
+옵션으로 바뀌지 않은 매개변수는 위치 인자로 남고 가변 인자는 마지막에 옵니다. 기본값이 없는
+값은 옵션 구조체가 아니라 Zig 함수의 별도 매개변수로 두세요. 옵션 구조체의 필드는 모두
+Zig 기본값을 가져야 합니다.
 
 - 기본 접두사는 소유 타입 이름(자유 함수면 함수 이름)입니다. `.prefix`가 이를 대체하고,
   `.prefix = ""`는 `Option`·`With<Field>`처럼 접두사 없는 이름을 만듭니다.

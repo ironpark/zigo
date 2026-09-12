@@ -209,7 +209,7 @@ pub fn functionIssue(allocator: std.mem.Allocator, document: semantic.Semantic, 
                             .code = "ZIGO061",
                             .message = try std.fmt.allocPrint(allocator, "option field `{s}` has no default value", .{field.name}),
                             .site = site.functionSite(function),
-                            .hint = try std.fmt.allocPrint(allocator, "give field `{s}` a Zig default value, or expose it as a positional parameter", .{field.name}),
+                            .hint = try std.fmt.allocPrint(allocator, "give field `{s}` a Zig default value, or take it as a parameter of the Zig function instead of a struct field", .{field.name}),
                         };
                     }
                 }
@@ -1354,7 +1354,7 @@ test "functional options validation rules reject multiple option params, missing
         try std.testing.expectEqualStrings("ZIGO061", issue.code);
         try std.testing.expectEqualStrings("option field `cols` has no default value", issue.message);
         try std.testing.expect(std.mem.indexOf(u8, issue.hint, "Zig default value") != null);
-        try std.testing.expect(std.mem.indexOf(u8, issue.hint, "positional parameter") != null);
+        try std.testing.expect(std.mem.indexOf(u8, issue.hint, "parameter of the Zig function") != null);
     }
 
     // 4. Options parameter with no option fields (all fields without default)
