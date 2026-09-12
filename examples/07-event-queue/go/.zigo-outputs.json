@@ -46,6 +46,10 @@
       "kind": "go"
     },
     {
+      "path": "event_queue/event_queue_sessions_gen.go",
+      "kind": "go"
+    },
+    {
       "path": "event_queue/types/types_gen.go",
       "kind": "go"
     },

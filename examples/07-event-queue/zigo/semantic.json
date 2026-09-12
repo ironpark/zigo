@@ -2191,6 +2191,16 @@
     }
   ],
   "prefix": "zg",
+  "sessions": [
+    {
+      "children": [
+        "Stream"
+      ],
+      "doc": "Session owns an event queue and every stream it handed out.",
+      "name": "Session",
+      "primary": "EventQueue"
+    }
+  ],
   "types": [
     {
       "exhaustive": true,

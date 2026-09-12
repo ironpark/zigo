@@ -2,7 +2,7 @@
 depends_on:
 - "193-composite-session-handles#2"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `zig build go-check abi-check`가 예제에서 통과하고 abi-check가 차이를 보고하지 않는다.
 > NEXT: none
@@ -18,6 +18,17 @@ status: planned
 - 변경 전후로 `zig build abi-check`를 실행해 C 표면이 그대로임을 확인하고 그 결과를
   phase 기록에 남긴다.
 - `staticcheck -checks U1000`이 생성 접근자에 대해 깨끗한지 확인한다.
+
+## Recorded evidence
+
+- 예제 트리에서 바뀐 것은 `src/bindings.zig`, `zigo/semantic.json`(sessions 추가),
+  `.zigo-outputs.json`(새 파일 등록), 그리고 새로 생긴 `*_sessions_gen.go`와 Go 테스트뿐입니다.
+  헤더(`zigo_event_queue.h`), `shim.zig`, `panic.c`, raw 생성물, handles 생성물은 그대로입니다.
+- `zig build abi-check`가 차이를 보고하지 않습니다. `sessions`는 abi-diff가 비교하는 표면이
+  아니며, 그 사실 자체가 C 표면이 움직이지 않았다는 증거입니다.
+- `staticcheck -checks U1000`이 cgo·purego 두 모듈에서 깨끗합니다.
+- `go test -count=1 ./...`가 cgo·purego 두 트리에서 통과하고, 네 개의 세션 테스트가
+  순서·멱등성(동시 호출 포함)·`nil` 멤버·`io.Closer` 계약을 실제 핸들로 확인합니다.
 
 ## Done When
 

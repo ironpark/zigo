@@ -159,6 +159,12 @@ pub const bindings = zigo.define(.{
             Terminal.func("deinit", .{}),
         }),
         api.func("echoQueueSignal", .{}),
+        zigo.session(.{
+            .name = "Session",
+            .primary = EventQueue.typeRef(),
+            .children = &.{Stream.typeRef()},
+            .doc = "Session owns an event queue and every stream it handed out.",
+        }),
         api.func("liveBorrowChildren", .{}),
         api.func("inspectTicker", .{}),
         api.func("liveStreams", .{}),
