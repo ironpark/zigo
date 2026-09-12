@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-12T04:52:17Z"
 description: Zig 옵션 구조체를 Go functional options 생성자로 노출 (opt-in, ABI 불변)
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-12T03:37:08Z"
 ---
 > NEXT: phase 0에서 `FlattenedField.default`를 추가하고 reflection이 Zig 기본값을 싣게 합니다. ([Phase 0](phases/00-flattened-field-defaults.md))
@@ -13,7 +14,7 @@ registered_at: "2026-09-12T03:37:08Z"
 - [x] [Phase 03: 옵션 타입과 `With*` 이름](phases/03-options-naming.md)
 - [x] [Phase 04: 공개 Go 생성자 방출](phases/04-options-emission.md)
 - [x] [Phase 05: 예제와 ABI 불변 확인](phases/05-example-and-abi.md)
-- [ ] [Phase 06: 문서와 CHANGELOG](phases/06-docs-and-changelog.md)
+- [x] [Phase 06: 문서와 CHANGELOG](phases/06-docs-and-changelog.md)
 
 # Shared Verification
 

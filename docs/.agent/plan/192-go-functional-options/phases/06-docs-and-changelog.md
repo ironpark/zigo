@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-12T04:52:17Z"
 depends_on:
 - "192-go-functional-options#5"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 위 문서 네 곳과 CHANGELOG가 갱신되어 있다.
 > NEXT: none
