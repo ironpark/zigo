@@ -8,6 +8,14 @@
 
 ### Changed
 
+- `.implements = .string_writer`가 string semantic이 없는 `[]const u8` 매개변수에도
+  붙습니다. 메서드가 바이트를 받으면 생성된 `WriteString`이
+  `unsafe.Slice(unsafe.StringData(s), len(s))`로 그 string의 바이트를 호출 동안만 빌려
+  넘기므로, UTF-8이 보장되지 않는 입력(`.opaque_bytes`)에서도 `io.WriteString`이 복사 없이
+  지나갑니다. string semantic이 있는 기존 선언의 출력은 그대로입니다.
+- `.implements` 래퍼가 수신자 이름과 부딪히는 매개변수 이름을 피합니다. 이전에는
+  `func (s *Stream) WriteString(s string)`처럼 수신자를 가려 생성 코드가 컴파일되지
+  않았습니다.
 - `zigo.param.options`가 Zig 기본값이 없는 필드를 거절하는 대신 Go 위치 인자로 냅니다.
   한 선언 안에서 기본값이 없는 필드는 호출자가 반드시 주는 위치 인자가 되고, 기본값이
   있는 필드만 설정 구조체와 `With*`에 남습니다. 위치 인자는 나열한 필드 순서를 따르고

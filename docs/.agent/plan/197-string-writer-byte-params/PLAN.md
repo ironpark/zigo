@@ -8,7 +8,7 @@ registered_at: "2026-09-12T07:31:18Z"
 # Phases
 
 - [x] [Phase 00: 바이트 매개변수 허용과 빌려 넘기는 래퍼](phases/00-borrowed-bytes-wrapper.md)
-- [ ] [Phase 01: 골든과 예제](phases/01-goldens-and-example.md)
+- [x] [Phase 01: 골든과 예제](phases/01-goldens-and-example.md)
 - [ ] [Phase 02: 문서](phases/02-docs.md)
 
 # Shared Verification

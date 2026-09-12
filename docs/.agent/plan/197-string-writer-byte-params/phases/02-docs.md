@@ -2,7 +2,7 @@
 depends_on:
 - "197-string-writer-byte-params#1"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: 문서 세 곳이 코드와 같은 조건을 말하고, 예제 조각이 실제 선언과 일치한다.
 > NEXT: none

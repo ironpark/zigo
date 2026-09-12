@@ -102,15 +102,29 @@ Document.func("readInto", .{
 | `.reader_from` | `ReadFrom(io.Reader) (int64, error)` |
 | `.string_writer` | `WriteString(string) (int, error)` |
 
-`.writer`와 `.string_writer`는 같은 `[]const u8` 매개변수의 두 표현입니다. `.writer`는
-바이트를 그대로 받으므로 매개변수에 string semantic이 없어야 하고, `.string_writer`는
-Go `string`을 그대로 넘기므로 `.utf8_string`이나 `.c_string`이 있어야 합니다. 후자는
-변환 없이 호출하므로 `io.WriteString`이 `Write` 대신 이 메서드를 고릅니다.
+`.writer`와 `.string_writer`는 같은 `[]const u8` 매개변수의 두 표현입니다. 둘 다 복사를
+만들지 않으며, 매개변수의 semantic이 `WriteString`이 어느 쪽으로 넘길지를 정합니다.
+
+- `.utf8_string`이나 `.c_string`이면 메서드의 Go 매개변수가 이미 `string`이므로 래퍼가
+  인자를 그대로 넘깁니다.
+- semantic이 없으면(`.opaque_bytes`를 포함) 메서드는 `[]byte`를 받고, 래퍼가
+  `unsafe.Slice(unsafe.StringData(s), len(s))`로 그 string의 바이트를 빌려 넘깁니다.
+  빌린 바이트는 호출 동안만 유효하고 네이티브는 읽기만 합니다(`[]const u8`). 이는 `.writer`가
+  `p []byte`에 대해 맺는 계약과 같습니다. pty에서 온 VT 바이트처럼 UTF-8이 보장되지 않는
+  입력에는 이쪽이 맞습니다.
+
+어느 쪽이든 `io.WriteString`은 `Write` 대신 이 메서드를 고르고, 그것이 이 kind가 존재하는
+이유입니다. 반대로 `.writer`에 string semantic을 붙이면 `Write(p []byte)`가 호출마다 복사를
+만들게 되므로 `ZIGO058`이 거절합니다.
 
 ```zig
+// Go `string`을 그대로 넘기는 쪽
 Document.func("appendString", .{
     .params = &.{.{ .index = 1, .semantic = .utf8_string }},
 }).use(zigo.features.implements, .{ .kind = .string_writer }),
+
+// 바이트를 받는 메서드에 붙여, string의 바이트를 빌려 넘기는 쪽
+Sink.func("push", .{}).use(zigo.features.implements, .{ .kind = .string_writer }),
 ```
 
 원래 bound 메서드도 유지됩니다. 생성 시그니처가 해당 인터페이스 계약과 호환되지 않으면

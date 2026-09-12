@@ -222,7 +222,7 @@ zigo.session(.{
 | 연결 | 결과 |
 |---|---|
 | `.use(zigo.features.iterator, .{ .name = "All" })` | `iter.Seq`/`Seq2` 래퍼 |
-| `.use(zigo.features.implements, .{ .kind = .reader })` | 표준 I/O 메서드 래퍼. kind는 `.writer`, `.reader`, `.writer_to`, `.reader_from`, `.string_writer` |
+| `.use(zigo.features.implements, .{ .kind = .reader })` | 표준 I/O 메서드 래퍼. kind는 `.writer`, `.reader`, `.writer_to`, `.reader_from`, `.string_writer`. `.string_writer`는 string semantic이 있으면 인자를 그대로, 없으면 string의 바이트를 빌려 넘깁니다 |
 | `.use(zigo.features.text, .{})` | 열거형 text 인코딩 API |
 
 외부 플러그인의 연결과 옵션은 [플러그인 문서](../plugins/README.md)를 참고하세요.
