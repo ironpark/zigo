@@ -117,7 +117,7 @@ Parent.func("newChild", .{
 zigo.session(.{
     .name = "Session",
     .primary = Parent.typeRef(),
-    .children = &.{Child.typeRef()},
+    .children = &.{.{ .type = Child.typeRef() }},
     .doc = "Session owns a queue and every stream it handed out.",
 })
 ```
@@ -148,6 +148,9 @@ open := session.Streams()       // 자식 접근자는 복수형이다
 - primary와 자식 모두 `Close`를 가진 constructed 핸들이어야 하고, 자식은
   `.parent = .receiver`로 선언된 primary의 자식이어야 하며, 모두 같은 생성 패키지에
   있어야 합니다. 어긋나면 `ZIGO062`가 나옵니다.
+- 접근자와 입양 메서드 이름은 자식 타입 이름에서 만듭니다. 불규칙 복수는
+  `.{ .type = Stats.typeRef(), .name = "Stat" }`처럼 기준 이름을 지정해
+  `AddStat`·`Stats`로 바꿉니다.
 - session은 수명만 다룹니다. 멤버 메서드를 자동으로 올리지 않으므로 `Write`/`Read` 같은
   호출을 위임하려면 `zigo.interface`나 `satisfies` 플러그인을 함께 쓰세요.
 

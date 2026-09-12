@@ -197,24 +197,32 @@ zigo.interface(.{
 zigo.session(.{
     .name = "Session",
     .primary = Parent.typeRef(),
-    .children = &.{Child.typeRef()},
+    .children = &.{
+        .{ .type = Child.typeRef() },
+        .{ .type = Stats.typeRef(), .name = "Stat" },
+    },
     .doc = null,
 })
 ```
 
 | 필드 | 의미 |
 |---|---|
-| `name` | 생성할 Go 타입 이름. 접근자는 멤버 타입 이름을 그대로 씁니다 |
+| `name` | 생성할 Go 타입 이름. primary 접근자는 그 타입 이름을 그대로 씁니다 |
 | `primary` | 마지막에 닫히는 주 핸들. `.handle`로 등록된 타입이어야 합니다 |
-| `children` | primary가 `.parent = .receiver`로 내주는 자식 핸들. 선언 순서대로 닫힙니다 |
+| `children` | primary가 `.parent = .receiver`로 내주는 자식 핸들 목록 |
+| `children[].type` | 자식 핸들 타입. `.handle`로 등록되어 있어야 합니다 |
+| `children[].name` | `Add<Name>`과 `<Name>s`를 만들 기준 이름. 기본값은 타입 이름 |
 | `doc` | 생성 타입의 doc comment. 닫는 순서는 생성기가 별도로 적습니다 |
+
+`.name`은 불규칙 복수를 위한 것입니다. `Stats` 핸들을 그대로 두면 접근자가 `Statss`가
+되지만, `.name = "Stat"`이면 `AddStat`과 `Stats`가 됩니다.
 
 ## built-in feature
 
 | 연결 | 결과 |
 |---|---|
 | `.use(zigo.features.iterator, .{ .name = "All" })` | `iter.Seq`/`Seq2` 래퍼 |
-| `.use(zigo.features.implements, .{ .kind = .reader })` | 표준 I/O 메서드 래퍼 |
+| `.use(zigo.features.implements, .{ .kind = .reader })` | 표준 I/O 메서드 래퍼. kind는 `.writer`, `.reader`, `.writer_to`, `.reader_from`, `.string_writer` |
 | `.use(zigo.features.text, .{})` | 열거형 text 인코딩 API |
 
 외부 플러그인의 연결과 옵션은 [플러그인 문서](../plugins/README.md)를 참고하세요.

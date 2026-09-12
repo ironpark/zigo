@@ -43,6 +43,15 @@ func zigoSlicePtr[T any](values []T) unsafe.Pointer {
 	return unsafe.Pointer(&values[0])
 }
 
+// zigoStringPtr is the address of a string's bytes, read in place, or of
+// zigoZeroSlot for an empty string.
+func zigoStringPtr(value string) unsafe.Pointer {
+	if len(value) == 0 {
+		return unsafe.Pointer(&zigoZeroSlot)
+	}
+	return unsafe.Pointer(unsafe.StringData(value))
+}
+
 // CallbackState carries one Go callback across the native boundary, and
 // the panic it raises there until the generated caller rethrows it. The
 // trampoline has to recover: a panic cannot unwind native frames.
@@ -196,6 +205,13 @@ func DocumentDeinit(self unsafe.Pointer) int32 {
 func DocumentAppend(self unsafe.Pointer, line []uint8) int32 {
 	linePtr := (*C.uint8_t)(zigoSlicePtr(line))
 	code := int32(C.zg_document_append((*C.zg_document)(self), linePtr, C.size_t(len(line))))
+	return code
+}
+
+// DocumentAppendString calls the generated C ABI wrapper for zg_document_append_string.
+func DocumentAppendString(self unsafe.Pointer, text string) int32 {
+	textPtr := (*C.uint8_t)(zigoStringPtr(text))
+	code := int32(C.zg_document_append_string((*C.zg_document)(self), textPtr, C.size_t(len(text))))
 	return code
 }
 

@@ -20,6 +20,9 @@ pub const bindings = zigo.define(.{
             Document.func("create", .{}),
             Document.func("deinit", .{}),
             Document.func("append", .{}).use(zigo.features.implements, .{ .kind = .writer }),
+            Document.func("appendString", .{
+                .params = &.{.{ .index = 1, .semantic = .utf8_string }},
+            }).use(zigo.features.implements, .{ .kind = .string_writer }),
             Document.func("count", .{}),
             Document.func("dump", .{}).use(zigo.features.implements, .{ .kind = .writer_to }),
             Document.func("load", .{ .params = &.{

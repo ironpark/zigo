@@ -71,6 +71,23 @@ pub fn renderImplementsWrapper(
                 try writer.writeAll("\treturn len(p), nil\n}\n");
             }
         },
+        .string_writer => {
+            // The method's own Go parameter is already a `string`, so the
+            // wrapper passes `s` through: no `[]byte(s)` conversion, which is
+            // the whole reason this kind exists rather than a Write wrapper.
+            if (counts)
+                try writer.writeAll("// The count is what the method reports; a count short of len(s) without an error is io.ErrShortWrite.\n")
+            else
+                try writer.writeAll("// The method takes the whole of s, so the count is len(s) whenever it succeeds.\n");
+            try writer.print("func ({s} *{s}) WriteString(s string) (int, error) {{\n", .{ receiver_name, receiver });
+            if (counts) {
+                try writeCall(writer, receiver_name, go_name, "s", with_error, true);
+                try writer.writeAll("\tif int(n) < len(s) {\n\t\treturn int(n), io.ErrShortWrite\n\t}\n\treturn int(n), nil\n}\n");
+            } else {
+                try writeCall(writer, receiver_name, go_name, "s", with_error, false);
+                try writer.writeAll("\treturn len(s), nil\n}\n");
+            }
+        },
         .reader => {
             try writer.writeAll("// A call that fills nothing while p has room reports io.EOF.\n");
             try writer.print("func ({s} *{s}) Read(p []byte) (int, error) {{\n", .{ receiver_name, receiver });
@@ -196,18 +213,24 @@ pub fn implementsIssue(allocator: std.mem.Allocator, function: semantic.Semantic
     }
     const expected: []const u8 = switch (implements) {
         .writer => "one `[]const u8` parameter",
+        .string_writer => "one `[]const u8` parameter with a string semantic",
         .reader => "one `.out` `[]u8` parameter with `.written = .result`",
         .writer_to => "one `*std.Io.Writer` parameter",
         .reader_from => "one `*std.Io.Reader` parameter",
     };
     const shape_ok = data_count == 1 and switch (implements) {
         .writer => data.?.direction == .in and data.?.type == .slice and semantic.isByte(data.?.type.slice.element.*) and !semantic.isTextHint(data.?.semantic),
+        // The mirror of `.writer`: the parameter has to reach Go as a
+        // `string`, which is what makes the wrapper a pass-through.
+        .string_writer => data.?.direction == .in and data.?.type == .slice and semantic.isByte(data.?.type.slice.element.*) and semantic.isTextHint(data.?.semantic),
         .reader => data.?.direction == .out and data.?.type == .slice and semantic.isByte(data.?.type.slice.element.*) and data.?.writtenHint() == .@"return" and result == .int,
         .writer_to => data.?.type == .io_stream and data.?.type.io_stream.direction == .writer,
         .reader_from => data.?.type == .io_stream and data.?.type.io_stream.direction == .reader,
     };
     if (!shape_ok) {
         const text_hinted = implements == .writer and data_count == 1 and data.?.type == .slice and semantic.isTextHint(data.?.semantic);
+        const byte_hinted = implements == .string_writer and data_count == 1 and data.?.type == .slice and
+            semantic.isByte(data.?.type.slice.element.*) and !semantic.isTextHint(data.?.semantic);
         return .{
             .severity = .@"error",
             .code = "ZIGO058",
@@ -215,6 +238,8 @@ pub fn implementsIssue(allocator: std.mem.Allocator, function: semantic.Semantic
             .site = site.functionSite(function),
             .hint = if (text_hinted)
                 "`Write(p []byte)` passes bytes; drop the string hint so the wrapper does not copy on every call"
+            else if (byte_hinted)
+                "`WriteString(s string)` passes a string; give the parameter a `.utf8_string` or `.c_string` semantic, or use `.writer` for bytes"
             else
                 try std.fmt.allocPrint(allocator, "`{s}` calls the method with exactly the argument `{s}` takes", .{ interface, implements.signature() }),
         };

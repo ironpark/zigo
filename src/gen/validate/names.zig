@@ -1237,7 +1237,7 @@ test "functional options name collisions report ZIGO024 with colliding declarati
             .prefix = "zg",
             // A session is neither a registered type nor a function, so only
             // the session-aware rule can see this clash.
-            .sessions = &.{.{ .children = &.{"Stream"}, .name = "TerminalOption", .primary = "Queue" }},
+            .sessions = &.{.{ .children = &.{.{ .type = "Stream" }}, .name = "TerminalOption", .primary = "Queue" }},
             .types = &.{},
             .zig_version = "0.16.0",
         };

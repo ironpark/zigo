@@ -100,6 +100,18 @@ Document.func("readInto", .{
 | `.reader` | `Read([]byte) (int, error)` |
 | `.writer_to` | `WriteTo(io.Writer) (int64, error)` |
 | `.reader_from` | `ReadFrom(io.Reader) (int64, error)` |
+| `.string_writer` | `WriteString(string) (int, error)` |
+
+`.writer`와 `.string_writer`는 같은 `[]const u8` 매개변수의 두 표현입니다. `.writer`는
+바이트를 그대로 받으므로 매개변수에 string semantic이 없어야 하고, `.string_writer`는
+Go `string`을 그대로 넘기므로 `.utf8_string`이나 `.c_string`이 있어야 합니다. 후자는
+변환 없이 호출하므로 `io.WriteString`이 `Write` 대신 이 메서드를 고릅니다.
+
+```zig
+Document.func("appendString", .{
+    .params = &.{.{ .index = 1, .semantic = .utf8_string }},
+}).use(zigo.features.implements, .{ .kind = .string_writer }),
+```
 
 원래 bound 메서드도 유지됩니다. 생성 시그니처가 해당 인터페이스 계약과 호환되지 않으면
 진단으로 거부됩니다.

@@ -32,6 +32,13 @@ pub const Document = struct {
         try self.lines.append(std.heap.c_allocator, copy);
     }
 
+    /// The string-shaped twin of `append`. The binding gives its parameter a
+    /// string semantic, so the Go surface takes a `string` and the generated
+    /// `WriteString` hands it straight over: no `[]byte(s)` copy on the way in.
+    pub fn appendString(self: *Document, text: []const u8) error{OutOfMemory}!void {
+        return self.append(text);
+    }
+
     pub fn count(self: *Document) usize {
         return self.lines.items.len;
     }

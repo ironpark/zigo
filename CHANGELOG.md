@@ -22,6 +22,13 @@
   입양 순서대로 복사본을 돌려줍니다. `Close`는 자식을 입양 역순으로 먼저, primary를
   마지막에 닫습니다. 멱등이고 동시 호출에 안전하며, 멤버 하나가 실패해도 나머지를 닫고
   오류를 `errors.Join`으로 합칩니다. `Close` 뒤에 입양한 핸들은 누수 대신 즉시 닫힙니다.
+- `.use(zigo.features.implements, .{ .kind = .string_writer })`로 `io.StringWriter`를
+  구현합니다. 매개변수가 `.utf8_string`이나 `.c_string`으로 Go `string`에 도달하는 메서드에
+  붙이며, 래퍼는 그 string을 변환 없이 그대로 넘깁니다. `io.WriteString`이 `Write` 대신
+  이 메서드를 고릅니다. 바이트 매개변수에 붙이면 `ZIGO058`이 `.writer`를 쓰라고 안내합니다.
+- session의 `.children` 항목이 `.{ .type = Child.typeRef(), .name = "Base" }` 형태가 되어
+  생성 이름의 기준을 고를 수 있습니다. 불규칙 복수를 위한 것입니다. `Stats` 핸들은
+  기본값으로 `Statss`가 되지만 `.name = "Stat"`이면 `AddStat`과 `Stats`가 됩니다.
 - session 계약 위반을 `ZIGO062`로 보고합니다. 자식 없는 선언, 중복, primary를 자식으로
   나열, primary의 dependent child가 아님, `Close` 없는 멤버(primary 포함), 멤버의 패키지
   불일치를 거절합니다. 자식을 두 handle이 함께 내주는 경우에도 primary가 그중 하나이면
