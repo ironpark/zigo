@@ -2,7 +2,7 @@
 depends_on:
 - "201-api-consistency-refactor#3"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `tests/plugin_contract.zig` and `zig build test` pass; examples 10 and 11 (which use shipped plugins) verify.
 > NEXT: none
