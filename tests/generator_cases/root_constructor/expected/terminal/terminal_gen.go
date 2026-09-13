@@ -57,3 +57,37 @@ func (t *Terminal) Render() (string, error) {
 
 // MustRender calls Render and panics with its typed error on failure.
 func (t *Terminal) MustRender() string { return zigoMust(t.Render()) }
+
+// NewSnapshot: Captures the screen as a snapshot the caller owns.
+// The caller must call Close on the returned handle.
+// Native failures are returned as generated error values.
+func NewSnapshot() (*Snapshot, error) {
+	result, code := raw.NewSnapshot()
+	if code != 0 {
+		return nil, zigoErrorForCode("NewSnapshot", code)
+	}
+	return zigoNewSnapshot(result), nil
+}
+
+// MustNewSnapshot calls NewSnapshot and panics with its typed error on failure.
+func MustNewSnapshot() *Snapshot { return zigoMust(NewSnapshot()) }
+
+// Terminal: Builds a terminal from the snapshot, leaving the snapshot alone.
+// The caller must call Close on the returned handle.
+// It returns *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
+func (s *Snapshot) Terminal() (*Terminal, error) {
+	ptr, err := zigoCheckedPointer("Snapshot.Terminal receiver", s)
+	if err != nil {
+		return nil, err
+	}
+	defer s.zigoRelease()
+	result, code := raw.SnapshotTerminal(ptr)
+	if code != 0 {
+		return nil, zigoPoisonAfterPanic(zigoErrorForCode("Snapshot.Terminal", code), s)
+	}
+	return zigoNewTerminal(result), nil
+}
+
+// MustTerminal calls Terminal and panics with its typed error on failure.
+func (s *Snapshot) MustTerminal() *Terminal { return zigoMust(s.Terminal()) }

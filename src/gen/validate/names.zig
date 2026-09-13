@@ -77,7 +77,12 @@ pub fn publicNameCollisionIssue(allocator: std.mem.Allocator, document: semantic
                 ),
                 .site = site.functionSiteFor(function, function_path),
                 .hint = "rename one declaration, or give it a `.name` that resolves to a different Go identifier",
-                .note = if (semantic.constructorForInit(document.constructors, function) != null)
+                .note = if (bothMakeOneType(document, function, previous)) |type_name|
+                    // Two ways to make one type. Renaming the type moves both
+                    // names together and settles nothing; one of the two
+                    // constructors has to say what it is called.
+                    try constructorRenameNoteAlloc(allocator, type_name, function)
+                else if (semantic.constructorForInit(document.constructors, function) != null)
                     try functionOrConstructorRenameNoteAlloc(allocator, document, function, target)
                 else if (semantic.constructorForInit(document.constructors, previous) != null)
                     try functionOrConstructorRenameNoteAlloc(allocator, document, previous, target)
@@ -516,6 +521,31 @@ fn functionRenameNoteAlloc(allocator: std.mem.Allocator, function: semantic.Sema
     return std.fmt.allocPrint(allocator, "consider .name = \"{s}Binding\" on function {s}", .{ public_name, path });
 }
 
+/// A name for the second way of making a type. A constructor reached through
+/// a handle is named after it -- `TerminalFromSnapshot` -- and one reached at
+/// the package root has nothing to be named after, so it is only asked for.
+fn constructorRenameNoteAlloc(allocator: std.mem.Allocator, type_name: []const u8, function: semantic.SemanticFn) ![]u8 {
+    const receiver = function.receiver orelse return std.fmt.allocPrint(
+        allocator,
+        "`{s}` is made in two ways; give one of them a `.name`",
+        .{type_name},
+    );
+    return std.fmt.allocPrint(
+        allocator,
+        "`{s}` is made in two ways; consider .name = \"{s}From{s}\" on the one taking a {s}",
+        .{ type_name, type_name, receiver, receiver },
+    );
+}
+
+/// The type both declarations construct, when they construct one type. That
+/// is the only collision a type rename cannot resolve.
+fn bothMakeOneType(document: semantic.Semantic, function: semantic.SemanticFn, previous: semantic.SemanticFn) ?[]const u8 {
+    const made = semantic.constructorForInit(document.constructors, function) orelse return null;
+    const made_before = semantic.constructorForInit(document.constructors, previous) orelse return null;
+    if (!std.mem.eql(u8, made.type, made_before.type)) return null;
+    return made.type;
+}
+
 fn functionOrConstructorRenameNoteAlloc(allocator: std.mem.Allocator, document: semantic.Semantic, function: semantic.SemanticFn, target: targets.Target) ![]u8 {
     if (semantic.constructorForInit(document.constructors, function)) |constructor| {
         for (document.types) |declaration| {
@@ -800,6 +830,46 @@ test "normalized tagged union type and variant collisions are rejected" {
 
 test "symbol collision validation propagates every allocation failure" {
     try std.testing.checkAllAllocationFailures(std.testing.allocator, expectSymbolCollision, .{});
+}
+
+test "two ways of making one type are allowed, and two that want one name are not" {
+    const handle: semantic.TypeDecl = .{ .kind = .@"opaque", .name = "Terminal" };
+    var made: semantic.TypeNode = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "Terminal" } };
+    const returns: semantic.TypeNode = .{ .error_union = .{ .error_set = &.{"Invalid"}, .payload = &made } };
+    const functions = [_]semantic.SemanticFn{
+        .{ .name = "newTerminal", .go = .{ .owner = "Terminal" }, .ownership = .caller, .params = &.{}, .@"return" = returns, .symbol = "zg_new_terminal" },
+        .{ .name = "makeTerminal", .go = .{ .owner = "Terminal" }, .ownership = .caller, .params = &.{}, .@"return" = returns, .symbol = "zg_make_terminal" },
+        .{ .name = "deinit", .params = &.{}, .receiver = "Terminal", .@"return" = .{ .void = {} }, .symbol = "zg_terminal_deinit" },
+    };
+    const colliding: semantic.Semantic = .{
+        .constructors = &.{
+            .{ .deinit = "deinit", .init = "newTerminal", .type = "Terminal" },
+            .{ .deinit = "deinit", .init = "makeTerminal", .type = "Terminal" },
+        },
+        .functions = &functions,
+        .package = "bad",
+        .prefix = "zg",
+        .types = &.{handle},
+        .zig_version = "0.16.0",
+    };
+    var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer scratch.deinit();
+    const issue = (try validate.findIssue(scratch.allocator(), colliding)).?;
+    try std.testing.expectEqualStrings("ZIGO024", issue.code);
+    // Renaming the type moves both names together, so the note asks for the
+    // one thing that settles it.
+    try std.testing.expect(std.mem.indexOf(u8, issue.note.?, "made in two ways") != null);
+
+    var named = functions;
+    var settled = colliding;
+    var constructors = [_]semantic.Constructor{
+        .{ .deinit = "deinit", .init = "newTerminal", .type = "Terminal" },
+        .{ .deinit = "deinit", .init = "makeTerminal", .name = "TerminalFromScratch", .type = "Terminal" },
+    };
+    settled.functions = &named;
+    settled.constructors = &constructors;
+    try std.testing.expect((try validate.findIssue(scratch.allocator(), settled)) == null);
+    try validate.semanticDocument(scratch.allocator(), settled);
 }
 
 test "a public name hint resolves a collision between two namespaced functions" {

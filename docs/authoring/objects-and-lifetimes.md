@@ -47,6 +47,34 @@ api.func("freeTicker", .{
 }),
 ```
 
+## 한 타입을 만드는 여러 길
+
+한 핸들에 생성자를 여러 개 달 수 있습니다. 모두 그 타입이 선언한 하나뿐인 소멸자로
+되돌아가므로 소멸자는 그대로 하나입니다.
+
+```zig
+api.func("newTerminal", .{
+    .role = .{ .constructor = .{ .type = Terminal.typeRef() } },
+}),
+Snapshot.func("terminal", .{
+    .name = "Terminal",
+    .role = .{ .constructor = .{ .type = Terminal.typeRef(), .receiver = .member } },
+}),
+```
+
+```text
+func NewTerminal(cols uint16, rows uint16) (*Terminal, error)
+func (s *Snapshot) Terminal() (*Terminal, error)
+```
+
+두 생성자가 같은 Go 이름으로 풀리면 `ZIGO024`가 나고, 어느 쪽에 `.name`을 줄지 알려
+줍니다. 기본 이름은 둘 다 `New<Type>`이므로 패키지 최상위에 두 개를 두려면 하나는
+반드시 이름을 붙여야 합니다. receiver를 통해 닿는 생성자는 그 receiver의 메서드가
+되므로 이름이 겹치지 않습니다.
+
+돌려받은 핸들은 어느 길로 만들어졌든 호출자 소유이며 `Close`해야 합니다. 부모에 종속된
+자식이 필요하면 아래의 `.parent = .receiver`를 씁니다.
+
 ## 생성한 객체 호출하기
 
 [03-opaque의 호출 예제](../../examples/03-opaque/go/opaque/example_test.go)처럼

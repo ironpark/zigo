@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: 한 핸들이 `NewTerminal`과 `TerminalFromSnapshot`을 함께 낸다.
 > NEXT: none

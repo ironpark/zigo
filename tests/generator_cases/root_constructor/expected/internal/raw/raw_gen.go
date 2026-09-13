@@ -67,3 +67,20 @@ func FreeString(str string) {
 	strPtr := (*C.uint8_t)(zigoStringPtr(str))
 	C.zg_free_string(strPtr, C.size_t(len(str)))
 }
+// NewSnapshot calls the generated C ABI wrapper for zg_new_snapshot.
+func NewSnapshot() (unsafe.Pointer, int32) {
+	var outResult *C.zg_snapshot
+	code := int32(C.zg_new_snapshot(&outResult))
+	return unsafe.Pointer(outResult), code
+}
+// SnapshotFreeSnapshot calls the generated C ABI wrapper for zg_snapshot_free_snapshot.
+func SnapshotFreeSnapshot(self unsafe.Pointer) int32 {
+	code := int32(C.zg_snapshot_free_snapshot((*C.zg_snapshot)(self)))
+	return code
+}
+// SnapshotTerminal calls the generated C ABI wrapper for zg_snapshot_terminal.
+func SnapshotTerminal(self unsafe.Pointer) (unsafe.Pointer, int32) {
+	var outResult *C.zg_terminal
+	code := int32(C.zg_snapshot_terminal((*C.zg_snapshot)(self), &outResult))
+	return unsafe.Pointer(outResult), code
+}

@@ -415,8 +415,11 @@ fn findIntegrityProblem(document: semantic.Semantic) ?[]const u8 {
     }
     for (document.constructors, 0..) |constructor, index| {
         if (!hasHandleType(document, constructor.type)) return constructor.type;
+        // A type may be made in more than one way. What it may not have is one
+        // `init` recorded twice, which would give Go the same wrapper twice.
         for (document.constructors[0..index]) |previous| {
-            if (std.mem.eql(u8, constructor.type, previous.type)) return constructor.type;
+            if (std.mem.eql(u8, constructor.type, previous.type) and
+                std.mem.eql(u8, constructor.init, previous.init)) return constructor.type;
         }
         if (!ownership.hasConstructorInit(document, constructor)) return constructor.init;
         if (!ownership.hasConstructorDeinit(document, constructor)) return constructor.deinit;

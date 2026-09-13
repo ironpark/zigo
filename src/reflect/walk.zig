@@ -170,8 +170,11 @@ pub fn reflect(
     // called. The name rule below is what a binding that said nothing gets.
     for (pairings.items) |claim| {
         if (claim.kind != .constructs) continue;
-        if (pairing.findPairing(pairings.items, .constructs, claim.type).? != claim.index)
-            return pairingIssue(allocator, "two functions declare `.constructs = \"{s}\"`", .{claim.type});
+        // A type may be made in more than one way -- `NewTerminal(cols, rows)`
+        // and a `Snapshot.Terminal()` -- and every one of them is unmade by
+        // the single destructor the type declares. Two constructors that
+        // resolve to one Go name are caught by the public-name check, which
+        // can name both declarations.
         const destructor_index = pairing.findPairing(pairings.items, .destroys, claim.type) orelse
             return pairingIssue(allocator, "`.constructs = \"{s}\"` has no function declaring `.destroys = \"{s}\"`", .{ claim.type, claim.type });
         try pairing.pair(allocator, &constructors, functions.items, claim.index, destructor_index, claim.type, claim.name);
@@ -4026,6 +4029,59 @@ test "a registered enum records the text encoding opt-in" {
     const bytes = try document.serialize(std.testing.allocator);
     defer std.testing.allocator.free(bytes);
     try std.testing.expect(std.mem.indexOf(u8, bytes, "\"text\": true") != null);
+}
+
+test "one handle can be made in more than one way" {
+    const Api = struct {
+        pub const Terminal = opaque {
+            pub fn init(cols: u16) error{OutOfMemory}!*Terminal {
+                _ = cols;
+                return error.OutOfMemory;
+            }
+            pub fn deinit(self: *Terminal) void {
+                _ = self;
+            }
+        };
+        pub const Snapshot = opaque {
+            pub fn terminal(self: *Snapshot) error{OutOfMemory}!*Terminal {
+                _ = self;
+                return error.OutOfMemory;
+            }
+            pub fn deinit(self: *Snapshot) void {
+                _ = self;
+            }
+        };
+        pub fn snapshot() error{OutOfMemory}!*Snapshot {
+            return error.OutOfMemory;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Api,
+        .types = &.{
+            .{ .handle = .{ .type = Api.Terminal } },
+            .{ .handle = .{ .type = Api.Snapshot } },
+        },
+        .functions = &.{
+            .{ .path = "Terminal.init", .constructs = Api.Terminal, .params = &.{.{ .name = "cols" }} },
+            .{ .path = "Terminal.deinit", .destroys = Api.Terminal },
+            .{ .path = "root.snapshot", .constructs = Api.Snapshot },
+            .{ .path = "Snapshot.deinit", .destroys = Api.Snapshot },
+            // A second way to make a Terminal, named so the two do not both
+            // want `NewTerminal`.
+            .{ .path = "Snapshot.terminal", .constructs = Api.Terminal, .name = "TerminalFromSnapshot", .receiver = Api.Snapshot },
+        },
+    }, "terminal", "zg");
+
+    var made_terminal: usize = 0;
+    for (document.constructors) |constructor| {
+        if (!std.mem.eql(u8, constructor.type, "Terminal")) continue;
+        made_terminal += 1;
+        // Both are unmade by the one destructor the type declares.
+        try std.testing.expectEqualStrings("deinit", constructor.deinit);
+    }
+    try std.testing.expectEqual(@as(usize, 2), made_terminal);
 }
 
 test "a returned slice of the out buffer is recorded as the written count" {

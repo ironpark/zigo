@@ -6,6 +6,17 @@
       "init": "newTerminal",
       "name": "extractAudio",
       "type": "Terminal"
+    },
+    {
+      "deinit": "freeSnapshot",
+      "init": "newSnapshot",
+      "type": "Snapshot"
+    },
+    {
+      "deinit": "freeTerminal",
+      "init": "terminal",
+      "name": "Terminal",
+      "type": "Terminal"
     }
   ],
   "functions": [
@@ -130,6 +141,58 @@
         "kind": "void"
       },
       "symbol": "ignored"
+    },
+    {
+      "doc": "Captures the screen as a snapshot the caller owns.",
+      "go_owner": "Snapshot",
+      "name": "newSnapshot",
+      "ownership": "caller",
+      "params": [],
+      "return": {
+        "error_set": [
+          "Invalid"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "const": false,
+          "kind": "opaque_ptr",
+          "nullable": false,
+          "ref": "Snapshot"
+        }
+      },
+      "symbol": "ignored"
+    },
+    {
+      "doc": "Releases a snapshot.",
+      "name": "freeSnapshot",
+      "params": [],
+      "receiver": "Snapshot",
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "ignored"
+    },
+    {
+      "doc": "Builds a terminal from the snapshot, leaving the snapshot alone.",
+      "go_owner": "Terminal",
+      "name": "terminal",
+      "ownership": "caller",
+      "params": [],
+      "receiver": "Snapshot",
+      "return": {
+        "error_set": [
+          "Invalid"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "const": false,
+          "kind": "opaque_ptr",
+          "nullable": false,
+          "ref": "Terminal"
+        }
+      },
+      "symbol": "ignored",
+      "zig_path": "Snapshot.terminal"
     }
   ],
   "package": "terminal",
@@ -138,6 +201,10 @@
     {
       "kind": "opaque",
       "name": "Terminal"
+    },
+    {
+      "kind": "opaque",
+      "name": "Snapshot"
     }
   ],
   "zig_version": "0.16.0"

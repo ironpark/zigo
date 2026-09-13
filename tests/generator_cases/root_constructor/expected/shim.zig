@@ -33,3 +33,21 @@ export fn zg_terminal_render_impl(self: *target.Terminal, out_result_ptr: *[*c]c
 export fn zg_free_string_impl(str_ptr: [*c]const u8, str_len: usize) void {
     target.freeString(std.heap.smp_allocator, if (str_len == 0) &.{} else str_ptr[0..str_len]);
 }
+export fn zg_new_snapshot_impl(out_result: **target.Snapshot) i32 {
+    const result = target.newSnapshot() catch |err| return switch (err) {
+        error.Invalid => 1,
+    };
+    out_result.* = result;
+    return 0;
+}
+export fn zg_snapshot_free_snapshot_impl(self: *target.Snapshot) i32 {
+    target.Snapshot.freeSnapshot(self);
+    return 0;
+}
+export fn zg_snapshot_terminal_impl(self: *target.Snapshot, out_result: **target.Terminal) i32 {
+    const result = target.Snapshot.terminal(self) catch |err| return switch (err) {
+        error.Invalid => 1,
+    };
+    out_result.* = result;
+    return 0;
+}

@@ -129,3 +129,39 @@ ZIGO_EXPORT void zg_free_string(const uint8_t * str_ptr, size_t str_len) {
 zg_free_string_impl(str_ptr, str_len);
     zg_panic_active = 0;
 }
+
+int32_t zg_new_snapshot_impl(zg_snapshot * * out_result);
+ZIGO_EXPORT int32_t zg_new_snapshot(zg_snapshot * * out_result) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        return zg_panic_publish();
+    }
+    int32_t result = zg_new_snapshot_impl(out_result);
+    zg_panic_active = 0;
+    return result;
+}
+
+int32_t zg_snapshot_free_snapshot_impl(zg_snapshot * self);
+ZIGO_EXPORT int32_t zg_snapshot_free_snapshot(zg_snapshot * self) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        return zg_panic_publish();
+    }
+    int32_t result = zg_snapshot_free_snapshot_impl(self);
+    zg_panic_active = 0;
+    return result;
+}
+
+int32_t zg_snapshot_terminal_impl(zg_snapshot * self, zg_terminal * * out_result);
+ZIGO_EXPORT int32_t zg_snapshot_terminal(zg_snapshot * self, zg_terminal * * out_result) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        return zg_panic_publish();
+    }
+    int32_t result = zg_snapshot_terminal_impl(self, out_result);
+    zg_panic_active = 0;
+    return result;
+}

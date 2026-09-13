@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-13T08:03:10Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 억제한 선언의 Go 표면이 플러그인이 쓴 메서드 하나뿐이고 C 심볼은 그대로다.
 > NEXT: none

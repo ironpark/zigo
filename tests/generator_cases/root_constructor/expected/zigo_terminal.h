@@ -6,6 +6,7 @@
 #include <stdint.h>
 
 typedef struct zg_terminal zg_terminal;
+typedef struct zg_snapshot zg_snapshot;
 // ELF and Mach-O export every non-static symbol of a shared library;
 // COFF exports nothing without an explicit annotation, so a DLL built
 // without this would load and then resolve none of its entry points.
@@ -22,6 +23,9 @@ ZIGO_EXPORT int32_t zg_terminal_free_terminal(zg_terminal * self);
 ZIGO_EXPORT int32_t zg_terminal_resize(zg_terminal * self, uint32_t columns);
 ZIGO_EXPORT int32_t zg_terminal_render(zg_terminal * self, const uint8_t * * out_result_ptr, size_t * out_result_len);
 ZIGO_EXPORT void zg_free_string(const uint8_t * str_ptr, size_t str_len);
+ZIGO_EXPORT int32_t zg_new_snapshot(zg_snapshot * * out_result);
+ZIGO_EXPORT int32_t zg_snapshot_free_snapshot(zg_snapshot * self);
+ZIGO_EXPORT int32_t zg_snapshot_terminal(zg_snapshot * self, zg_terminal * * out_result);
 ZIGO_EXPORT const char *zg_last_error_message(void);
 ZIGO_EXPORT const char *zg_caught_panic_message(int32_t code);
 
