@@ -16,13 +16,13 @@ type Stats struct {
 	Len uint32
 	// Capacity corresponds to the Zig field capacity.
 	Capacity uint32
-	// Dropped corresponds to the Zig field dropped.
+	// Dropped: Events the queue refused because it was full.
 	Dropped uint32
-	// Processed corresponds to the Zig field processed.
+	// Processed: Events handed to a consumer since the queue was created.
 	Processed uint32
 	// Policy corresponds to the Zig field policy.
 	Policy Policy
-	// Saturated corresponds to the Zig field saturated.
+	// Saturated: Whether the queue was at capacity the last time it was pushed to.
 	Saturated bool
 }
 

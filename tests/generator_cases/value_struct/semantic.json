@@ -2,77 +2,229 @@
   "functions": [
     {
       "name": "configure",
-      "params": [{"name": "config", "type": {"kind": "value_struct", "ref": "Config"}}],
-      "return": {"kind": "void"},
+      "params": [
+        {
+          "name": "config",
+          "type": {
+            "kind": "value_struct",
+            "ref": "Config"
+          }
+        }
+      ],
+      "return": {
+        "kind": "void"
+      },
       "symbol": "ignored"
     },
     {
       "name": "defaultConfig",
       "params": [],
-      "return": {"kind": "value_struct", "ref": "Config"},
+      "return": {
+        "kind": "value_struct",
+        "ref": "Config"
+      },
       "symbol": "ignored"
     },
     {
       "name": "translate",
       "params": [
-        {"name": "origin", "type": {"kind": "value_struct", "ref": "Point"}},
-        {"name": "dx", "type": {"bits": 16, "kind": "int", "signed": true}}
+        {
+          "name": "origin",
+          "type": {
+            "kind": "value_struct",
+            "ref": "Point"
+          }
+        },
+        {
+          "name": "dx",
+          "type": {
+            "bits": 16,
+            "kind": "int",
+            "signed": true
+          }
+        }
       ],
-      "return": {"kind": "value_struct", "ref": "Point"},
+      "return": {
+        "kind": "value_struct",
+        "ref": "Point"
+      },
       "symbol": "ignored"
     },
     {
       "name": "load",
       "params": [],
-      "return": {"error_set": ["Invalid"], "kind": "error_union", "payload": {"kind": "value_struct", "ref": "Config"}},
+      "return": {
+        "error_set": [
+          "Invalid"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "kind": "value_struct",
+          "ref": "Config"
+        }
+      },
       "symbol": "ignored"
     },
     {
       "name": "acceptPoints",
-      "params": [{"name": "values", "type": {"const": true, "element": {"kind": "value_struct", "ref": "Point"}, "kind": "slice"}}],
-      "return": {"kind": "void"},
+      "params": [
+        {
+          "name": "values",
+          "type": {
+            "const": true,
+            "element": {
+              "kind": "value_struct",
+              "ref": "Point"
+            },
+            "kind": "slice"
+          }
+        }
+      ],
+      "return": {
+        "kind": "void"
+      },
       "symbol": "zg_accept_points"
     },
     {
       "name": "fillPoints",
-      "params": [{"direction": "out", "name": "output", "type": {"const": false, "element": {"kind": "value_struct", "ref": "Point"}, "kind": "slice"}, "written": "return"}],
-      "return": {"error_set": ["Invalid"], "kind": "error_union", "payload": {"bits": 64, "is_usize": true, "kind": "int", "signed": false}},
+      "params": [
+        {
+          "direction": "out",
+          "name": "output",
+          "type": {
+            "const": false,
+            "element": {
+              "kind": "value_struct",
+              "ref": "Point"
+            },
+            "kind": "slice"
+          },
+          "written": "return"
+        }
+      ],
+      "return": {
+        "error_set": [
+          "Invalid"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "bits": 64,
+          "is_usize": true,
+          "kind": "int",
+          "signed": false
+        }
+      },
       "symbol": "zg_fill_points"
     },
     {
       "name": "fillAllPoints",
-      "params": [{"direction": "out", "name": "output", "type": {"const": false, "element": {"kind": "value_struct", "ref": "Point"}, "kind": "slice"}}],
-      "return": {"kind": "void"},
+      "params": [
+        {
+          "direction": "out",
+          "name": "output",
+          "type": {
+            "const": false,
+            "element": {
+              "kind": "value_struct",
+              "ref": "Point"
+            },
+            "kind": "slice"
+          }
+        }
+      ],
+      "return": {
+        "kind": "void"
+      },
       "symbol": "zg_fill_all_points"
     },
     {
       "name": "acceptConfigs",
-      "params": [{"name": "values", "type": {"const": true, "element": {"kind": "value_struct", "ref": "Config"}, "kind": "slice"}}],
-      "return": {"kind": "void"},
+      "params": [
+        {
+          "name": "values",
+          "type": {
+            "const": true,
+            "element": {
+              "kind": "value_struct",
+              "ref": "Config"
+            },
+            "kind": "slice"
+          }
+        }
+      ],
+      "return": {
+        "kind": "void"
+      },
       "symbol": "zg_accept_configs"
     },
     {
       "name": "fillConfigs",
-      "params": [{"direction": "out", "name": "output", "type": {"const": false, "element": {"kind": "value_struct", "ref": "Config"}, "kind": "slice"}, "written": "return"}],
-      "return": {"bits": 64, "is_usize": true, "kind": "int", "signed": false},
+      "params": [
+        {
+          "direction": "out",
+          "name": "output",
+          "type": {
+            "const": false,
+            "element": {
+              "kind": "value_struct",
+              "ref": "Config"
+            },
+            "kind": "slice"
+          },
+          "written": "return"
+        }
+      ],
+      "return": {
+        "bits": 64,
+        "is_usize": true,
+        "kind": "int",
+        "signed": false
+      },
       "symbol": "zg_fill_configs"
     },
     {
       "name": "configs",
       "params": [],
-      "return": {"const": true, "element": {"kind": "value_struct", "ref": "Config"}, "kind": "slice"},
+      "return": {
+        "const": true,
+        "element": {
+          "kind": "value_struct",
+          "ref": "Config"
+        },
+        "kind": "slice"
+      },
       "symbol": "zg_configs"
     },
     {
       "name": "points",
       "params": [],
-      "return": {"const": true, "element": {"kind": "value_struct", "ref": "Point"}, "kind": "slice"},
+      "return": {
+        "const": true,
+        "element": {
+          "kind": "value_struct",
+          "ref": "Point"
+        },
+        "kind": "slice"
+      },
       "symbol": "zg_points"
     },
     {
       "name": "pointsChecked",
       "params": [],
-      "return": {"error_set": ["Invalid"], "kind": "error_union", "payload": {"const": true, "element": {"kind": "value_struct", "ref": "Point"}, "kind": "slice"}},
+      "return": {
+        "error_set": [
+          "Invalid"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "const": true,
+          "element": {
+            "kind": "value_struct",
+            "ref": "Point"
+          },
+          "kind": "slice"
+        }
+      },
       "symbol": "zg_points_checked"
     }
   ],
@@ -81,11 +233,43 @@
   "types": [
     {
       "fields": [
-        {"name": "enabled", "type": {"kind": "bool"}},
-        {"name": "width", "type": {"bits": 32, "kind": "int", "signed": true}},
-        {"name": "mode", "type": {"kind": "enum", "ref": "Mode"}},
-        {"name": "ratio", "type": {"bits": 64, "kind": "float"}},
-        {"name": "origin", "type": {"kind": "value_struct", "ref": "Point"}}
+        {
+          "name": "enabled",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "doc": "Width the renderer lays the output out at, in cells.",
+          "name": "width",
+          "type": {
+            "bits": 32,
+            "kind": "int",
+            "signed": true
+          }
+        },
+        {
+          "name": "mode",
+          "type": {
+            "kind": "enum",
+            "ref": "Mode"
+          }
+        },
+        {
+          "doc": "ratio scales the glyph advance; 1.0 leaves it alone.",
+          "name": "ratio",
+          "type": {
+            "bits": 64,
+            "kind": "float"
+          }
+        },
+        {
+          "name": "origin",
+          "type": {
+            "kind": "value_struct",
+            "ref": "Point"
+          }
+        }
       ],
       "kind": "value_struct",
       "layout": "extern",
@@ -93,18 +277,47 @@
     },
     {
       "fields": [
-        {"name": "x", "type": {"bits": 16, "kind": "int", "signed": true}},
-        {"name": "y", "type": {"bits": 16, "kind": "int", "signed": true}}
+        {
+          "doc": "Column, counted from the left edge.",
+          "name": "x",
+          "type": {
+            "bits": 16,
+            "kind": "int",
+            "signed": true
+          }
+        },
+        {
+          "name": "y",
+          "type": {
+            "bits": 16,
+            "kind": "int",
+            "signed": true
+          }
+        }
       ],
       "kind": "value_struct",
       "layout": "extern",
       "name": "Point"
     },
     {
-      "fields": [{"name": "idle", "value": 0}, {"name": "active", "value": 1}],
+      "fields": [
+        {
+          "name": "idle",
+          "value": 0
+        },
+        {
+          "doc": "The stream is being read.",
+          "name": "active",
+          "value": 1
+        }
+      ],
       "kind": "enum",
       "name": "Mode",
-      "tag_type": {"bits": 8, "kind": "int", "signed": false}
+      "tag_type": {
+        "bits": 8,
+        "kind": "int",
+        "signed": false
+      }
     }
   ],
   "zig_version": "0.16.0"

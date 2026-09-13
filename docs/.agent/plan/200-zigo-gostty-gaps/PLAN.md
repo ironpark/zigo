@@ -8,7 +8,7 @@ registered_at: "2026-09-13T07:28:55Z"
 # Phases
 
 - [x] [Phase 00: std_options passthrough](phases/00-shim-std-options.md)
-- [ ] [Phase 01: Session child plural](phases/01-session-child-plural.md)
+- [x] [Phase 01: Session child plural](phases/01-session-child-plural.md)
 - [ ] [Phase 02: Member docs from source](phases/02-member-docs-capture.md)
 - [ ] [Phase 03: Member doc overrides](phases/03-member-docs-override.md)
 - [ ] [Phase 04: Returned slice written hint](phases/04-returned-slice-written.md)

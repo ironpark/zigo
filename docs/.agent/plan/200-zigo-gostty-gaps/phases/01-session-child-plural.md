@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-13T07:37:22Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `.{ .type = Search, .plural = "Searches" }`가 `Searches()` 접근자를 낸다.
 > NEXT: none

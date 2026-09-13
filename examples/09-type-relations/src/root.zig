@@ -68,7 +68,9 @@ pub fn Enum(comptime names: []const []const u8) type {
 pub const CursorStyle = Enum(([_][]const u8{ "block", "bar", "underline" })[0..3]);
 pub const CharsetSlot = Enum(([_][]const u8{ "block", "bar", "g2" })[0..3]);
 pub const DeccolmMode = enum(u8) {
+    /// The width a terminal comes up in.
     @"80_cols",
+    /// The wide mode DECCOLM switches to.
     @"132_cols",
 
     /// How many columns this mode selects.
@@ -133,7 +135,9 @@ pub const text = struct {
 /// An `extern struct` is a flat C record, so a whole one can travel behind a
 /// nullable pointer even though a `?` inside it could not.
 pub const Point = extern struct {
+    /// Column, counted from the left edge of the screen.
     x: i16,
+    /// Row, counted from the top of the scrollback.
     y: i16,
 };
 

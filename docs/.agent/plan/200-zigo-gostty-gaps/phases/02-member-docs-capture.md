@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `/// 0xRRGGBB.`가 붙은 Zig 필드가 생성된 Go에서 같은 문장을 단다.
 > NEXT: none

@@ -1112,6 +1112,10 @@ pub const Access = enum {
 pub const TypeField = struct {
     /// The Zig member is `std.atomic.Value(T)` while its mirror contains T.
     atomic: ?bool = null,
+    /// The member's own doc comment: what the binding wrote about it, or
+    /// failing that the `///` the Zig source carries. Absent leaves the
+    /// generated description to the emitter.
+    doc: ?[]const u8 = null,
     name: []const u8,
     /// Only `codepoint`, and only on a `u32` member of an `extern struct`:
     /// the mirror spells it `rune` over the same four bytes.
@@ -1121,6 +1125,15 @@ pub const TypeField = struct {
 };
 /// Numeric extent of the exported enum tags, independent of declaration order.
 /// Widen before subtracting so even the full i64 domain is representable.
+/// The doc recorded for one member, by its Zig name. Absent leaves the
+/// generated description in place.
+pub fn fieldDoc(fields: []const TypeField, name: []const u8) ?[]const u8 {
+    for (fields) |field| {
+        if (std.mem.eql(u8, field.name, name)) return field.doc;
+    }
+    return null;
+}
+
 pub fn enumValueRange(fields: []const TypeField) ?struct { min: i64, max: i64, span: u128 } {
     if (fields.len == 0) return null;
     var min = fields[0].value.?;

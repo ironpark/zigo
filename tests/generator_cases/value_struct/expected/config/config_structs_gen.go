@@ -10,7 +10,7 @@ import (
 
 // Point mirrors the Zig `extern struct` of the same name.
 type Point struct {
-	// X corresponds to the Zig field x.
+	// X: Column, counted from the left edge.
 	X int16
 	// Y corresponds to the Zig field y.
 	Y int16
@@ -26,11 +26,11 @@ var _ = [1]struct{}{}[unsafe.Offsetof(Point{}.Y)-unsafe.Offsetof(raw.PointData{}
 type Config struct {
 	// Enabled corresponds to the Zig field enabled.
 	Enabled bool
-	// Width corresponds to the Zig field width.
+	// Width the renderer lays the output out at, in cells.
 	Width int32
 	// Mode corresponds to the Zig field mode.
 	Mode Mode
-	// Ratio corresponds to the Zig field ratio.
+	// Ratio scales the glyph advance; 1.0 leaves it alone.
 	Ratio float64
 	// Origin corresponds to the Zig field origin.
 	Origin Point

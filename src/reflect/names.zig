@@ -190,6 +190,7 @@ fn applyDependencyRoots(
 ) !void {
     if (dependency_roots.len == 0) return;
     const functions = try allocator.dupe(semantic.SemanticFn, document.functions);
+    const types = try mutableTypesAlloc(allocator, document.types);
     for (dependency_roots) |root_path| {
         // A dependency graph can be thousands of files; there is nothing left
         // to learn from them once every name and doc is in place.
@@ -205,10 +206,11 @@ fn applyDependencyRoots(
         // package cache -- so its own directory, not the bindings directory,
         // is what its recorded paths stay relative to.
         const directory = std.fs.path.dirname(root_path) orelse ".";
-        _ = try scanSourceWithDiagnostics(allocator, source, functions, try recordedPathAlloc(allocator, directory, root_path), diagnostics, .best_effort, &scanned.aliases);
-        _ = try scanImportedSources(allocator, io, source, directory, functions, scanned, diagnostics, .best_effort);
+        _ = try scanSourceWithDiagnostics(allocator, source, functions, types, try recordedPathAlloc(allocator, directory, root_path), diagnostics, .best_effort, &scanned.aliases);
+        _ = try scanImportedSources(allocator, io, source, directory, functions, types, scanned, diagnostics, .best_effort);
     }
     document.functions = functions;
+    document.types = types;
 }
 
 /// The root module may be split across files. `applyRecording` reads the
@@ -247,17 +249,20 @@ fn applyRootImports(
         break :blk source;
     };
     const functions = try allocator.dupe(semantic.SemanticFn, document.functions);
+    const types = try mutableTypesAlloc(allocator, document.types);
     const has_errors = try scanImportedSources(
         allocator,
         io,
         root_source,
         std.fs.path.dirname(root_path) orelse ".",
         functions,
+        types,
         scanned,
         diagnostics,
         .strict,
     );
     document.functions = functions;
+    document.types = types;
     if (has_errors) return error.EnrichmentFailed;
 }
 
@@ -300,8 +305,9 @@ fn applyRecording(
     };
     try scanned.record(allocator, try canonicalAlloc(allocator, bindings_path));
     const functions = try allocator.dupe(semantic.SemanticFn, document.functions);
+    const types = try mutableTypesAlloc(allocator, document.types);
     const directory = std.fs.path.dirname(bindings_path) orelse ".";
-    var has_errors = try scanSourceWithDiagnostics(allocator, bindings_source, functions, try recordedPathAlloc(allocator, directory, bindings_path), diagnostics, .strict, &scanned.aliases);
+    var has_errors = try scanSourceWithDiagnostics(allocator, bindings_source, functions, types, try recordedPathAlloc(allocator, directory, bindings_path), diagnostics, .strict, &scanned.aliases);
 
     // The bindings file is the one file the binding's author owns, so its
     // `//!` speaks to Go readers. The root module's `//!` is only reached when
@@ -318,7 +324,7 @@ fn applyRecording(
             scanned.root_source = root_source;
             try scanned.record(allocator, try canonicalAlloc(allocator, root_path));
             if (document.doc == null) document.doc = try containerDocAlloc(allocator, root_source);
-            has_errors = try scanSourceWithDiagnostics(allocator, root_source, functions, try recordedPathAlloc(allocator, directory, root_path), diagnostics, .strict, &scanned.aliases) or has_errors;
+            has_errors = try scanSourceWithDiagnostics(allocator, root_source, functions, types, try recordedPathAlloc(allocator, directory, root_path), diagnostics, .strict, &scanned.aliases) or has_errors;
         } else |err| switch (err) {
             error.FileNotFound => {},
             else => {
@@ -335,13 +341,14 @@ fn applyRecording(
         const path = try std.fs.path.join(allocator, &.{ directory, referenced });
         if (std.Io.Dir.cwd().readFileAlloc(io, path, allocator, source_limit)) |source| {
             try scanned.record(allocator, try canonicalAlloc(allocator, path));
-            has_errors = try scanSourceWithDiagnostics(allocator, source, functions, try recordedPathAlloc(allocator, directory, path), diagnostics, .strict, &scanned.aliases) or has_errors;
+            has_errors = try scanSourceWithDiagnostics(allocator, source, functions, types, try recordedPathAlloc(allocator, directory, path), diagnostics, .strict, &scanned.aliases) or has_errors;
         } else |err| {
             try writeReadError(diagnostics, path, err);
             has_errors = true;
         }
     }
     document.functions = functions;
+    document.types = types;
     if (has_errors) return error.EnrichmentFailed;
 }
 
@@ -361,11 +368,12 @@ fn scanImportedSources(
     source: []const u8,
     directory: []const u8,
     functions: []semantic.SemanticFn,
+    types: []semantic.TypeDecl,
     scanned: *Scanned,
     diagnostics: *std.Io.Writer,
     strictness: Strictness,
 ) !bool {
-    return scanImportedSourcesFrom(allocator, io, source, directory, directory, functions, scanned, diagnostics, strictness);
+    return scanImportedSourcesFrom(allocator, io, source, directory, directory, functions, types, scanned, diagnostics, strictness);
 }
 
 /// `root` is the directory every recorded path is written relative to, so a
@@ -379,6 +387,7 @@ fn scanImportedSourcesFrom(
     directory: []const u8,
     root: []const u8,
     functions: []semantic.SemanticFn,
+    types: []semantic.TypeDecl,
     scanned: *Scanned,
     diagnostics: *std.Io.Writer,
     strictness: Strictness,
@@ -395,7 +404,7 @@ fn scanImportedSourcesFrom(
             // Recorded from the resolved path, so a file reached through
             // `../` is written the same way as one reached directly.
             const recorded = try recordedPathAlloc(allocator, try canonicalAlloc(allocator, root), canonical);
-            has_errors = try scanSourceWithDiagnostics(allocator, imported, functions, recorded, diagnostics, strictness, &scanned.aliases) or has_errors;
+            has_errors = try scanSourceWithDiagnostics(allocator, imported, functions, types, recorded, diagnostics, strictness, &scanned.aliases) or has_errors;
             has_errors = try scanImportedSourcesFrom(
                 allocator,
                 io,
@@ -403,6 +412,7 @@ fn scanImportedSourcesFrom(
                 std.fs.path.dirname(path) orelse ".",
                 root,
                 functions,
+                types,
                 scanned,
                 diagnostics,
                 strictness,
@@ -459,12 +469,13 @@ fn scanSourceWithDiagnostics(
     allocator: std.mem.Allocator,
     source: []const u8,
     functions: []semantic.SemanticFn,
+    types: []semantic.TypeDecl,
     path: ?[]const u8,
     diagnostics: *std.Io.Writer,
     strictness: Strictness,
     aliases: *Aliases,
 ) !bool {
-    const parse_error_count = try scanSourceWithAliases(allocator, source, functions, path, aliases);
+    const parse_error_count = try scanSourceWithAliases(allocator, source, functions, types, path, aliases);
     if (parse_error_count != 0) {
         const label = switch (strictness) {
             .strict => "error",
@@ -515,12 +526,16 @@ fn writeReadError(writer: *std.Io.Writer, path: []const u8, err: anyerror) !void
 /// forgotten afterwards. The enrichment walk uses `scanSourceWithAliases`
 /// so a re-export in `root.zig` still finds its target in a later file.
 fn scanSource(allocator: std.mem.Allocator, source: []const u8, functions: []semantic.SemanticFn, path: ?[]const u8) !usize {
-    var aliases: Aliases = .{};
-    defer aliases.deinit(allocator);
-    return scanSourceWithAliases(allocator, source, functions, path, &aliases);
+    return scanSourceWithTypes(allocator, source, functions, &.{}, path);
 }
 
-fn scanSourceWithAliases(allocator: std.mem.Allocator, source: []const u8, functions: []semantic.SemanticFn, path: ?[]const u8, aliases: *Aliases) !usize {
+fn scanSourceWithTypes(allocator: std.mem.Allocator, source: []const u8, functions: []semantic.SemanticFn, types: []semantic.TypeDecl, path: ?[]const u8) !usize {
+    var aliases: Aliases = .{};
+    defer aliases.deinit(allocator);
+    return scanSourceWithAliases(allocator, source, functions, types, path, &aliases);
+}
+
+fn scanSourceWithAliases(allocator: std.mem.Allocator, source: []const u8, functions: []semantic.SemanticFn, types: []semantic.TypeDecl, path: ?[]const u8, aliases: *Aliases) !usize {
     const terminated = try allocator.dupeZ(u8, source);
     defer allocator.free(terminated);
     var tree = try std.zig.Ast.parse(allocator, terminated, .zig);
@@ -546,7 +561,7 @@ fn scanSourceWithAliases(allocator: std.mem.Allocator, source: []const u8, funct
     // Aliases first, so a re-export matches its target wherever in the file
     // the target is written.
     try collectAliases(allocator, tree, tree.rootDecls(), null, functions, aliases);
-    try scanMembers(allocator, tree, tree.rootDecls(), null, functions, visited, matched, path, &owners, aliases);
+    try scanMembers(allocator, tree, tree.rootDecls(), null, functions, types, visited, matched, path, &owners, aliases);
 
     // Generic type factories contain methods in anonymous containers rather
     // than a named source-level owner. Give those remaining declarations a
@@ -604,6 +619,7 @@ fn scanMembers(
     members: []const std.zig.Ast.Node.Index,
     owner: ?[]const u8,
     functions: []semantic.SemanticFn,
+    types: []semantic.TypeDecl,
     visited: []bool,
     matched: []bool,
     path: ?[]const u8,
@@ -658,7 +674,8 @@ fn scanMembers(
             try allocator.dupe(u8, declaration_name);
         defer allocator.free(nested_owner);
         try owners.append(allocator, try allocator.dupe(u8, nested_owner));
-        try scanMembers(allocator, tree, container.ast.members, nested_owner, functions, visited, matched, path, owners, aliases);
+        try enrichTypeMembers(allocator, tree, container.ast.members, nested_owner, types);
+        try scanMembers(allocator, tree, container.ast.members, nested_owner, functions, types, visited, matched, path, owners, aliases);
     }
 }
 
@@ -873,6 +890,93 @@ fn enrichMatches(
             function.source = .{ .path = try allocator.dupe(u8, value), .line = @intCast(location.line + 1), .column = @intCast(location.column + 1) };
         };
         matched[index] = true;
+    }
+}
+
+/// A writable copy of the registered types, down to each one's field list.
+/// Enrichment fills member docs in place, and the reflected document hands
+/// out `const` slices it does not own.
+fn mutableTypesAlloc(allocator: std.mem.Allocator, types: []const semantic.TypeDecl) ![]semantic.TypeDecl {
+    const copy = try allocator.dupe(semantic.TypeDecl, types);
+    for (copy) |*declaration| declaration.fields = try allocator.dupe(semantic.TypeField, declaration.fields);
+    return copy;
+}
+
+/// The registered type this source-level container declares, or null when the
+/// answer is not certain.
+///
+/// `path` is the container's lexical path inside its file; a registered type's
+/// `zig_path` is `@typeName`, which ends with that same path but opens with
+/// the module the type came from. Matching on the suffix alone would hand one
+/// file's `Options` to another file's, so the members have to agree as well:
+/// every field the document recorded, in the order it recorded them. Two
+/// candidates that both agree mean the file cannot say which, and nothing is
+/// filled.
+fn declaredContainer(
+    tree: std.zig.Ast,
+    members: []const std.zig.Ast.Node.Index,
+    path: []const u8,
+    types: []semantic.TypeDecl,
+) ?*semantic.TypeDecl {
+    var found: ?*semantic.TypeDecl = null;
+    for (types) |*declaration| {
+        if (declaration.fields.len == 0) continue;
+        const zig_path = declaration.zig_path orelse continue;
+        // A duplicate `@typeName` is recorded as `<typeName>#<registered>`.
+        const lexical = zig_path[0 .. std.mem.indexOfScalar(u8, zig_path, '#') orelse zig_path.len];
+        if (!std.mem.eql(u8, lexical, path) and
+            !(lexical.len > path.len and std.mem.endsWith(u8, lexical, path) and
+                lexical[lexical.len - path.len - 1] == '.')) continue;
+        if (!membersAgree(tree, members, declaration.fields)) continue;
+        if (found != null) return null;
+        found = declaration;
+    }
+    return found;
+}
+
+/// Whether the source container spells every recorded field, in order. Extra
+/// source members are allowed: a struct declares methods and constants beside
+/// its fields, and a union variant may have been left out with `.omit`.
+fn membersAgree(tree: std.zig.Ast, members: []const std.zig.Ast.Node.Index, fields: []const semantic.TypeField) bool {
+    var next: usize = 0;
+    for (members) |node| {
+        const field = tree.fullContainerField(node) orelse continue;
+        if (next == fields.len) return true;
+        if (std.mem.eql(u8, memberName(tree, field), fields[next].name)) next += 1;
+    }
+    return next == fields.len;
+}
+
+/// The member's name as the document spells it. A tag that is not an
+/// identifier is written `@"132_cols"` in source and recorded as `132_cols`,
+/// so the quoting comes off before the two are compared.
+fn memberName(tree: std.zig.Ast, field: std.zig.Ast.full.ContainerField) []const u8 {
+    const spelling = tree.tokenSlice(field.ast.main_token);
+    if (!std.mem.startsWith(u8, spelling, "@\"")) return spelling;
+    return spelling[2 .. spelling.len - 1];
+}
+
+/// Fills the doc comments of a registered container's members from the source
+/// that declares them, the way a function's doc is filled. Only `///` counts:
+/// a plain `//` above an enum tag is as often a section divider as a
+/// description of the tag below it.
+fn enrichTypeMembers(
+    allocator: std.mem.Allocator,
+    tree: std.zig.Ast,
+    members: []const std.zig.Ast.Node.Index,
+    path: []const u8,
+    types: []semantic.TypeDecl,
+) !void {
+    const declaration = declaredContainer(tree, members, path, types) orelse return;
+    const fields = @constCast(declaration.fields);
+    var next: usize = 0;
+    for (members) |node| {
+        if (next == fields.len) return;
+        const member = tree.fullContainerField(node) orelse continue;
+        if (!std.mem.eql(u8, memberName(tree, member), fields[next].name)) continue;
+        defer next += 1;
+        if (fields[next].doc != null) continue;
+        fields[next].doc = try docCommentAlloc(allocator, tree, member.firstToken());
     }
 }
 
@@ -1262,9 +1366,9 @@ test "an alias re-export takes its doc and parameter names from the declaration 
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     var aliases: Aliases = .{};
-    try std.testing.expectEqual(@as(usize, 0), try scanSourceWithAliases(arena.allocator(), root_source, &functions, "root.zig", &aliases));
+    try std.testing.expectEqual(@as(usize, 0), try scanSourceWithAliases(arena.allocator(), root_source, &functions, &.{}, "root.zig", &aliases));
     try std.testing.expectEqual(.fallback, functions[0].params[0].name_source);
-    try std.testing.expectEqual(@as(usize, 0), try scanSourceWithAliases(arena.allocator(), key_source, &functions, "key.zig", &aliases));
+    try std.testing.expectEqual(@as(usize, 0), try scanSourceWithAliases(arena.allocator(), key_source, &functions, &.{}, "key.zig", &aliases));
     try std.testing.expectEqualStrings("byte", functions[0].params[0].name);
     try std.testing.expectEqualStrings("Maps an ASCII byte to a key.", functions[0].doc.?);
     try std.testing.expectEqualStrings("key.zig", functions[0].source.?.path);
@@ -1291,11 +1395,70 @@ test "an alias's own doc comment wins and an import-qualified target still match
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     var aliases: Aliases = .{};
-    try std.testing.expectEqual(@as(usize, 0), try scanSourceWithAliases(arena.allocator(), root_source, &functions, "root.zig", &aliases));
+    try std.testing.expectEqual(@as(usize, 0), try scanSourceWithAliases(arena.allocator(), root_source, &functions, &.{}, "root.zig", &aliases));
     try std.testing.expectEqualStrings("KeyFromASCII is the Go entry point for ASCII lookups.", functions[0].doc.?);
-    try std.testing.expectEqual(@as(usize, 0), try scanSourceWithAliases(arena.allocator(), key_source, &functions, "key.zig", &aliases));
+    try std.testing.expectEqual(@as(usize, 0), try scanSourceWithAliases(arena.allocator(), key_source, &functions, &.{}, "key.zig", &aliases));
     try std.testing.expectEqualStrings("byte", functions[0].params[0].name);
     try std.testing.expectEqualStrings("KeyFromASCII is the Go entry point for ASCII lookups.", functions[0].doc.?);
+}
+
+test "container members take their doc comments from the source that declares them" {
+    const source =
+        \\pub const FormatterFormat = enum(u8) {
+        \\    plain,
+        \\    /// Keep the SGR sequences the cells carry.
+        \\    vt,
+        \\    /// A tag that is not an identifier is written quoted.
+        \\    @"vt_132",
+        \\};
+        \\
+        \\pub const RenderCell = extern struct {
+        \\    /// 0xRRGGBB.
+        \\    fg: u32,
+        \\    bg: u32,
+        \\};
+    ;
+    var types = [_]semantic.TypeDecl{
+        .{ .kind = .@"enum", .name = "FormatterFormat", .zig_path = "terminal.FormatterFormat", .fields = &.{
+            .{ .name = "plain", .value = 0 },
+            .{ .name = "vt", .value = 1 },
+            .{ .name = "vt_132", .value = 2 },
+        } },
+        .{ .kind = .value_struct, .name = "RenderCell", .zig_path = "terminal.RenderCell", .fields = &.{
+            .{ .name = "fg" },
+            .{ .name = "bg" },
+        } },
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const mutable = try mutableTypesAlloc(allocator, &types);
+    try std.testing.expectEqual(@as(usize, 0), try scanSourceWithTypes(allocator, source, &.{}, mutable, "terminal.zig"));
+    try std.testing.expect(mutable[0].fields[0].doc == null);
+    try std.testing.expectEqualStrings("Keep the SGR sequences the cells carry.", mutable[0].fields[1].doc.?);
+    try std.testing.expectEqualStrings("A tag that is not an identifier is written quoted.", mutable[0].fields[2].doc.?);
+    try std.testing.expectEqualStrings("0xRRGGBB.", mutable[1].fields[0].doc.?);
+    try std.testing.expect(mutable[1].fields[1].doc == null);
+}
+
+test "a container whose members disagree with the document lends nothing" {
+    // Two files can each declare an `Options`, and the type name alone cannot
+    // say which one the document registered. The recorded members decide.
+    const source =
+        \\pub const Options = struct {
+        \\    /// How wide the output is allowed to run.
+        \\    width: u16,
+        \\};
+    ;
+    var types = [_]semantic.TypeDecl{.{ .kind = .value_struct, .name = "Options", .zig_path = "render.Options", .fields = &.{
+        .{ .name = "depth" },
+    } }};
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const mutable = try mutableTypesAlloc(allocator, &types);
+    try std.testing.expectEqual(@as(usize, 0), try scanSourceWithTypes(allocator, source, &.{}, mutable, "format.zig"));
+    try std.testing.expect(mutable[0].fields[0].doc == null);
 }
 
 test "an alias inside a container resolves a bare identifier against that container" {
@@ -1447,8 +1610,8 @@ test "a wrapper re-exported through an import binding still names its receiver" 
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     var aliases: Aliases = .{};
-    try std.testing.expectEqual(@as(usize, 0), try scanSourceWithAliases(arena.allocator(), root_source, &functions, "root.zig", &aliases));
-    try std.testing.expectEqual(@as(usize, 0), try scanSourceWithAliases(arena.allocator(), config_source, &functions, "config.zig", &aliases));
+    try std.testing.expectEqual(@as(usize, 0), try scanSourceWithAliases(arena.allocator(), root_source, &functions, &.{}, "root.zig", &aliases));
+    try std.testing.expectEqual(@as(usize, 0), try scanSourceWithAliases(arena.allocator(), config_source, &functions, &.{}, "config.zig", &aliases));
     try std.testing.expectEqualStrings("col", functions[0].params[0].name);
     try std.testing.expectEqualStrings("Marks a tab stop at the given column.", functions[0].doc.?);
 }
@@ -1482,8 +1645,8 @@ test "a receiver behind an injected allocator still vouches for the file" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     var aliases: Aliases = .{};
-    try std.testing.expectEqual(@as(usize, 0), try scanSourceWithAliases(arena.allocator(), root_source, &functions, "root.zig", &aliases));
-    try std.testing.expectEqual(@as(usize, 0), try scanSourceWithAliases(arena.allocator(), stream_source, &functions, "stream.zig", &aliases));
+    try std.testing.expectEqual(@as(usize, 0), try scanSourceWithAliases(arena.allocator(), root_source, &functions, &.{}, "root.zig", &aliases));
+    try std.testing.expectEqual(@as(usize, 0), try scanSourceWithAliases(arena.allocator(), stream_source, &functions, &.{}, "stream.zig", &aliases));
     try std.testing.expectEqualStrings("max", functions[0].params[1].name);
     try std.testing.expectEqualStrings("Creates a VT stream over the terminal.", functions[0].doc.?);
 }
@@ -1530,8 +1693,8 @@ test "two aliases onto the same target name are told apart by the file each impo
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     var aliases: Aliases = .{};
-    try std.testing.expectEqual(@as(usize, 0), try scanSourceWithAliases(arena.allocator(), root_source, &functions, "root.zig", &aliases));
-    try std.testing.expectEqual(@as(usize, 0), try scanSourceWithAliases(arena.allocator(), paste_source, &functions, "input/paste.zig", &aliases));
+    try std.testing.expectEqual(@as(usize, 0), try scanSourceWithAliases(arena.allocator(), root_source, &functions, &.{}, "root.zig", &aliases));
+    try std.testing.expectEqual(@as(usize, 0), try scanSourceWithAliases(arena.allocator(), paste_source, &functions, &.{}, "input/paste.zig", &aliases));
     try std.testing.expectEqualStrings("writer", functions[1].params[0].name);
     try std.testing.expectEqualStrings("Encodes the given data for pasting.", functions[1].doc.?);
     // The focus encoder is not in this file, and nothing here may say it is.

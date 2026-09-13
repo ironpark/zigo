@@ -10,7 +10,7 @@ type Mode uint8
 const (
 	// ModeIdle corresponds to the Zig tag idle.
 	ModeIdle Mode = 0
-	// ModeActive corresponds to the Zig tag active.
+	// ModeActive: The stream is being read.
 	ModeActive Mode = 1
 )
 

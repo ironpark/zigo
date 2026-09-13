@@ -229,7 +229,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 75,
+        "line": 77,
         "column": 12
       },
       "symbol": "zg_deccolm_mode_columns"
@@ -253,7 +253,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 112,
+        "line": 114,
         "column": 8
       },
       "symbol": "zg_live_objects"
@@ -268,7 +268,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 99,
+        "line": 101,
         "column": 8
       },
       "symbol": "zg_default_cursor_style"
@@ -283,7 +283,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 83,
+            "line": 85,
             "column": 24
           },
           "type": {
@@ -297,7 +297,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 83,
+            "line": 85,
             "column": 43
           },
           "type": {
@@ -311,7 +311,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 83,
+        "line": 85,
         "column": 8
       },
       "symbol": "zg_configure_styles"
@@ -326,7 +326,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 87,
+            "line": 89,
             "column": 22
           },
           "type": {
@@ -340,7 +340,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 87,
+        "line": 89,
         "column": 8
       },
       "symbol": "zg_is_wide_columns"
@@ -355,7 +355,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 108,
+            "line": 110,
             "column": 25
           },
           "type": {
@@ -370,7 +370,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 108,
+        "line": 110,
         "column": 8
       },
       "symbol": "zg_echo_erase_display"
@@ -387,7 +387,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 128,
+            "line": 130,
             "column": 21
           },
           "type": {
@@ -403,7 +403,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 128,
+            "line": 130,
             "column": 33
           },
           "type": {
@@ -422,7 +422,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 128,
+        "line": 130,
         "column": 12
       },
       "symbol": "zg_text_run_width"
@@ -439,7 +439,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 122,
+            "line": 124,
             "column": 31
           },
           "type": {
@@ -458,7 +458,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 122,
+        "line": 124,
         "column": 16
       },
       "symbol": "zg_text_unicode_codepoint_width"
@@ -474,7 +474,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 143,
+            "line": 147,
             "column": 20
           },
           "type": {
@@ -499,7 +499,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 143,
+        "line": 147,
         "column": 8
       },
       "symbol": "zg_double_width"
@@ -515,7 +515,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 148,
+            "line": 152,
             "column": 15
           },
           "type": {
@@ -534,7 +534,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 148,
+        "line": 152,
         "column": 8
       },
       "symbol": "zg_invert"
@@ -550,7 +550,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 153,
+            "line": 157,
             "column": 23
           },
           "type": {
@@ -568,7 +568,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 153,
+        "line": 157,
         "column": 8
       },
       "symbol": "zg_style_or_default"
@@ -584,7 +584,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 158,
+            "line": 162,
             "column": 22
           },
           "type": {
@@ -605,7 +605,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 158,
+        "line": 162,
         "column": 8
       },
       "symbol": "zg_blinking_style"
@@ -621,7 +621,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 164,
+            "line": 168,
             "column": 19
           },
           "type": {
@@ -638,7 +638,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 164,
+            "line": 168,
             "column": 35
           },
           "type": {
@@ -658,7 +658,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 164,
+        "line": 168,
         "column": 8
       },
       "symbol": "zg_shift_point"
@@ -674,7 +674,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 172,
+            "line": 176,
             "column": 21
           },
           "type": {
@@ -691,7 +691,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 172,
+            "line": 176,
             "column": 37
           },
           "type": {
@@ -717,7 +717,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 172,
+        "line": 176,
         "column": 8
       },
       "symbol": "zg_checked_shift"
@@ -734,7 +734,7 @@
           "retention": "borrowed",
           "semantic": "utf8_string",
           "source": {
-            "line": 180,
+            "line": 184,
             "column": 21
           },
           "type": {
@@ -760,7 +760,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 180,
+        "line": 184,
         "column": 8
       },
       "symbol": "zg_describe_text"
@@ -776,7 +776,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 186,
+            "line": 190,
             "column": 18
           },
           "type": {
@@ -802,7 +802,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 186,
+        "line": 190,
         "column": 8
       },
       "symbol": "zg_sum_or_zero"
@@ -818,7 +818,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 197,
+            "line": 201,
             "column": 22
           },
           "type": {
@@ -844,7 +844,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 197,
+        "line": 201,
         "column": 8
       },
       "symbol": "zg_leading_digits"
@@ -860,7 +860,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 203,
+            "line": 207,
             "column": 18
           },
           "type": {
@@ -888,7 +888,7 @@
       "return_semantic": "utf8_string",
       "source": {
         "path": "root.zig",
-        "line": 203,
+        "line": 207,
         "column": 8
       },
       "symbol": "zg_style_name"
@@ -906,7 +906,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 104,
+        "line": 106,
         "column": 8
       },
       "zig_path": "cursorStyleBlinks",
@@ -987,10 +987,12 @@
       "exhaustive": true,
       "fields": [
         {
+          "doc": "The width a terminal comes up in.",
           "name": "80_cols",
           "value": 0
         },
         {
+          "doc": "The wide mode DECCOLM switches to.",
           "name": "132_cols",
           "value": 1
         }
@@ -1032,6 +1034,7 @@
       "exhaustive": true,
       "fields": [
         {
+          "doc": "Column, counted from the left edge of the screen.",
           "name": "x",
           "type": {
             "bits": 16,
@@ -1041,6 +1044,7 @@
           }
         },
         {
+          "doc": "Row, counted from the top of the scrollback.",
           "name": "y",
           "type": {
             "bits": 16,

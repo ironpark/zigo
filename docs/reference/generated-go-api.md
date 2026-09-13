@@ -13,6 +13,17 @@
 - Zig error 태그는 `Err<Tag>` sentinel이 됩니다.
 - 생성 내부 identifier는 공개 패키지에서 `zigo` 접두사를 예약합니다.
 
+## doc comment
+
+- 함수와 타입의 doc은 Zig 소스의 `///`에서 옵니다.
+- **컨테이너 멤버**도 같습니다. enum 태그와 값 struct 필드의 `///`가 생성된 Go 상수와
+  필드 위에 그대로 실립니다. `///`가 없는 멤버만 `X corresponds to the Zig field x.`
+  형태의 기본 문장을 답니다.
+- Zig 문서가 선언 이름으로 시작하면 Go 이름으로 갈아 끼우고, 그렇지 않으면
+  `GoName: 원문` 형태로 잇습니다. `go doc`이 첫 문장을 요약으로 보여 주기 때문입니다.
+- 바인딩이 멤버 문서를 직접 쓰려면 [binding API](binding-api.md)의 `.doc`을 씁니다.
+  바인딩이 쓴 것이 소스의 `///`보다 우선합니다.
+
 ## 함수 반환값
 
 | Zig 결과 | Go 패턴 |

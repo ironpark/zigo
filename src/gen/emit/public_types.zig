@@ -76,6 +76,7 @@ pub fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Wr
         for (declaration.fields) |field| {
             const member = try naming.pascalAlloc(allocator, field.name);
             defer allocator.free(member);
+            if (field.doc) |doc| try docs.writeGoMemberDoc(writer, "\t", member, field.name, doc);
             try writer.print("\t{s} ", .{member});
             try public_writers.writePublicGoType(scope, writer, field.type.?);
             try writer.writeByte('\n');
@@ -146,7 +147,11 @@ pub fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Wr
         for (record.fields) |field| {
             const member = try naming.pascalAlloc(allocator, field.name);
             defer allocator.free(member);
-            try writer.print("\t// {s} corresponds to the Zig field {s}.\n\t{s} ", .{ member, field.name, member });
+            if (semantic.fieldDoc(record.owner.fields, field.name)) |doc|
+                try docs.writeGoMemberDoc(writer, "\t", member, field.name, doc)
+            else
+                try writer.print("\t// {s} corresponds to the Zig field {s}.\n", .{ member, field.name });
+            try writer.print("\t{s} ", .{member});
             if (public_writers.codepointTypeName(field.node, field.semantic)) |name|
                 try writer.writeAll(name)
             else
@@ -893,7 +898,13 @@ pub fn renderGoEnums(allocator: std.mem.Allocator, writer: *std.Io.Writer, progr
         for (program.liveFields(declaration.name)) |field| {
             const field_name = try naming.pascalAlloc(allocator, field.name);
             defer allocator.free(field_name);
-            try writer.print("\t// {s}{s} corresponds to the Zig tag {s}.\n\t{s}{s} {s} = {d}\n", .{ declaration.name, field_name, field.name, declaration.name, field_name, declaration.name, field.value.? });
+            const constant = try std.fmt.allocPrint(allocator, "{s}{s}", .{ declaration.name, field_name });
+            defer allocator.free(constant);
+            if (field.doc) |doc|
+                try docs.writeGoMemberDoc(writer, "\t", constant, field.name, doc)
+            else
+                try writer.print("\t// {s} corresponds to the Zig tag {s}.\n", .{ constant, field.name });
+            try writer.print("\t{s} {s} = {d}\n", .{ constant, declaration.name, field.value.? });
         }
         try writer.writeAll(")\n\n");
         try renderGoEnumString(allocator, writer, declaration, program.liveFields(declaration.name));

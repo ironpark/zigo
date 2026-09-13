@@ -26,9 +26,12 @@ pub const Observer = *const fn (id: u64, value: i32, userdata: usize) callconv(.
 pub const Stats = extern struct {
     len: u32,
     capacity: u32,
+    /// Events the queue refused because it was full.
     dropped: u32,
+    /// Events handed to a consumer since the queue was created.
     processed: u32,
     policy: Policy,
+    /// Whether the queue was at capacity the last time it was pushed to.
     saturated: bool,
 };
 

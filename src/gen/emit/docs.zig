@@ -66,11 +66,23 @@ pub fn writeCommentLine(writer: *std.Io.Writer, line: []const u8) !void {
 
 pub fn writeGoDoc(writer: *std.Io.Writer, go_name: []const u8, zig_name: []const u8, doc: []const u8) !void {
     try writer.writeByte('\n');
+    try writeDocBody(writer, "", go_name, zig_name, doc);
+}
+
+/// The same text a top-level declaration gets, for a member written inside a
+/// container: indented to sit with the member, and with no blank line ahead of
+/// it, since a `const` block or a struct body is already open.
+pub fn writeGoMemberDoc(writer: *std.Io.Writer, indent: []const u8, go_name: []const u8, zig_name: []const u8, doc: []const u8) !void {
+    try writeDocBody(writer, indent, go_name, zig_name, doc);
+}
+
+fn writeDocBody(writer: *std.Io.Writer, indent: []const u8, go_name: []const u8, zig_name: []const u8, doc: []const u8) !void {
     var lines = std.mem.splitScalar(u8, doc, '\n');
     var first = true;
     while (lines.next()) |line| {
+        try writer.writeAll(indent);
         if (!first) {
-            try writer.print("// {s}\n", .{line});
+            try writeCommentLine(writer, line);
             continue;
         }
         first = false;

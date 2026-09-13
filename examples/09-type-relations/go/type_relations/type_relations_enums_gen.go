@@ -60,9 +60,9 @@ func (value CharsetSlot) String() string {
 type DeccolmMode uint8
 
 const (
-	// DeccolmMode80Cols corresponds to the Zig tag 80_cols.
+	// DeccolmMode80Cols: The width a terminal comes up in.
 	DeccolmMode80Cols DeccolmMode = 0
-	// DeccolmMode132Cols corresponds to the Zig tag 132_cols.
+	// DeccolmMode132Cols: The wide mode DECCOLM switches to.
 	DeccolmMode132Cols DeccolmMode = 1
 )
 
