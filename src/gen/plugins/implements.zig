@@ -1,18 +1,40 @@
 //! The `.implements` wrappers: the method a Go standard interface requires,
 //! added next to a bound handle method and calling it.
 //!
-//! A built-in plugin, on the same terms as `iterator.zig`: the declaration
-//! key, the `semantic.json` spelling and `ZIGO058` stay where they were, and
-//! the typed field is read directly rather than through `ext`.
+//! A built-in plugin on the same terms as an added one: the kinds travel
+//! under its `ext` key, written by `use(zigo.features.implements, .{ ... })`,
+//! and every hook reads them through `optionsOf`. The typed `go.implements`
+//! field beside them is the core's -- name collision rules, the Must mirror
+//! and `abi-diff` read it -- not this plugin's.
 const std = @import("std");
 const abi = @import("abi");
 const diagnostic = @import("diagnostic");
 const plugin_api = @import("plugin");
 const semantic = @import("semantic");
+const iterator = @import("iterator.zig");
 const site = plugin_api.site;
+
+/// What `use(zigo.features.implements, .{ ... })` attaches.
+pub const Options = struct {
+    /// The interfaces the method satisfies, in the order the wrappers are written.
+    kinds: []const semantic.Implements,
+    /// Keep the bound method exported beside the wrappers. By default only the
+    /// standard-library shaped method is public and the zigo-shaped original
+    /// is written under an unexported name.
+    keep_original: bool = false,
+
+    /// Whether the zigo-shaped method is hidden behind the wrappers.
+    pub fn hidesOriginal(self: Options) bool {
+        return self.kinds.len != 0 and !self.keep_original;
+    }
+};
 
 pub const plugin: plugin_api.Plugin = .{
     .name = "IMPLEMENTS",
+    .FunctionOptions = Options,
+    // The options attach to a method; the assertions the type hook writes
+    // sit after the handle that method belongs to.
+    .subjects = &.{ .function, .handle },
     .validate = validateDocument,
     .replaces_method = hidesOriginal,
     .method_hook = methodHook,
@@ -22,8 +44,9 @@ pub const plugin: plugin_api.Plugin = .{
 
 /// The wrappers are the public spelling: the zigo-shaped method is written
 /// under its unexported checked name unless the declaration asked to keep it.
-fn hidesOriginal(_: plugin_api.Context, function: abi.AbiFn) !bool {
-    return function.origin.goImplementsHidesOriginal();
+fn hidesOriginal(context: plugin_api.Context, function: abi.AbiFn) !bool {
+    const options = try context.optionsOf(plugin, .function, function.origin.ext) orelse return false;
+    return options.hidesOriginal();
 }
 
 /// One assertion per interface a handle satisfies through `.implements`, so
@@ -35,7 +58,8 @@ fn typeHook(context: plugin_api.Context, writer: *std.Io.Writer, declaration: se
     for (context.program.functions) |function| {
         const receiver = function.origin.receiver orelse continue;
         if (!std.mem.eql(u8, receiver, declaration.name)) continue;
-        for (function.origin.goImplements()) |kind| {
+        const options = try context.optionsOf(plugin, .function, function.origin.ext) orelse continue;
+        for (options.kinds) |kind| {
             if (!wrote_any) try writer.writeByte('\n');
             wrote_any = true;
             try writer.print("var _ {s} = (*{s})(nil)\n", .{ kind.interfaceName(), declaration.name });
@@ -44,21 +68,21 @@ fn typeHook(context: plugin_api.Context, writer: *std.Io.Writer, declaration: se
 }
 
 fn methodHook(context: plugin_api.Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
-    const kinds = function.origin.goImplements();
-    if (kinds.len == 0) return;
+    const options = try context.optionsOf(plugin, .function, function.origin.ext) orelse return;
     const method = context.method.?;
     // One wrapper per named interface, in the order the declaration named
     // them; every one of them calls the same bound method, under the name
     // its body was written with: the exported one when the declaration kept
     // it, the unexported checked name otherwise.
-    for (kinds) |kind| try renderImplementsWrapper(writer, function, kind, method.receiver_name.?, method.checked_name, method.needs_check);
+    for (options.kinds) |kind| try renderImplementsWrapper(writer, function, kind, options.hidesOriginal(), method.receiver_name.?, method.checked_name, method.needs_check);
 }
 
 fn validateDocument(context: plugin_api.ValidateContext) !void {
     const allocator = context.allocator;
     const document = context.document;
     for (document.functions) |function| {
-        if (try implementsIssue(allocator, function)) |issue| try context.diagnose(issue);
+        const options = try context.optionsOf(plugin, .function, function.ext) orelse continue;
+        if (try implementsIssue(allocator, function, options)) |issue| try context.diagnose(issue);
     }
 }
 
@@ -70,6 +94,7 @@ pub fn renderImplementsWrapper(
     writer: *std.Io.Writer,
     function: abi.AbiFn,
     implements: semantic.Implements,
+    hides_original: bool,
     receiver_name: []const u8,
     go_name: []const u8,
     needs_check: bool,
@@ -94,7 +119,7 @@ pub fn renderImplementsWrapper(
         .reader_from => wrapperParamName(receiver_name, "r", "src"),
     };
 
-    if (function.origin.goImplementsHidesOriginal())
+    if (hides_original)
         try writer.print("\n// {s} calls the Zig method {s}.{s}, satisfying {s}.\n", .{ method, receiver, function.origin.name, interface })
     else
         try writer.print("\n// {s} calls {s}, satisfying {s}.\n", .{ method, go_name, interface });
@@ -233,15 +258,15 @@ fn writeCallCounting(writer: *std.Io.Writer, receiver_name: []const u8, go_name:
 
 /// The counting stream types the `void`-result `WriteTo`/`ReadFrom`
 /// wrappers route their stream through. Only emitted when one needs them.
-pub fn renderCountingStreams(writer: *std.Io.Writer, program: abi.Program) !void {
-    if (programNeedsCountingStream(program, .writer_to)) try writer.writeAll(
+pub fn renderCountingStreams(context: plugin_api.Context, writer: *std.Io.Writer) !void {
+    if (try programNeedsCountingStream(context, .writer_to)) try writer.writeAll(
         "// zigoCountingWriter counts the bytes a WriteTo wrapper sends on to w.\n" ++
             "type zigoCountingWriter struct {\n\tw io.Writer\n\tn int64\n}\n\n" ++
             "// Write passes p on to w and adds what w took to the count.\n" ++
             "func (c *zigoCountingWriter) Write(p []byte) (int, error) {\n" ++
             "\tn, err := c.w.Write(p)\n\tc.n += int64(n)\n\treturn n, err\n}\n\n",
     );
-    if (programNeedsCountingStream(program, .reader_from)) try writer.writeAll(
+    if (try programNeedsCountingStream(context, .reader_from)) try writer.writeAll(
         "// zigoCountingReader counts the bytes a ReadFrom wrapper takes from r.\n" ++
             "type zigoCountingReader struct {\n\tr io.Reader\n\tn int64\n}\n\n" ++
             "// Read fills p from r and adds what r handed over to the count.\n" ++
@@ -250,10 +275,11 @@ pub fn renderCountingStreams(writer: *std.Io.Writer, program: abi.Program) !void
     );
 }
 
-fn programNeedsCountingStream(program: abi.Program, kind: semantic.Implements) bool {
-    for (program.functions) |function| {
+fn programNeedsCountingStream(context: plugin_api.Context, kind: semantic.Implements) !bool {
+    for (context.program.functions) |function| {
         if (function.origin.@"return".errorPayload() != .void) continue;
-        for (function.origin.goImplements()) |declared| if (declared == kind) return true;
+        const options = try context.optionsOf(plugin, .function, function.origin.ext) orelse continue;
+        for (options.kinds) |declared| if (declared == kind) return true;
     }
     return false;
 }
@@ -261,8 +287,8 @@ fn programNeedsCountingStream(program: abi.Program, kind: semantic.Implements) b
 /// arguments and adapts its result, so the method has to be a handle method
 /// whose Go shape is one step from the interface: the single parameter the
 /// interface passes, and a `void` or integer result.
-pub fn implementsIssue(allocator: std.mem.Allocator, function: semantic.SemanticFn) !?diagnostic.Diagnostic {
-    const kinds = function.goImplements();
+pub fn implementsIssue(allocator: std.mem.Allocator, function: semantic.SemanticFn, options: Options) !?diagnostic.Diagnostic {
+    const kinds = options.kinds;
     for (kinds, 0..) |kind, index| {
         // Two wrappers of the same kind would be one Go method declared twice.
         for (kinds[0..index]) |earlier| if (earlier == kind) return .{
@@ -287,10 +313,11 @@ fn kindIssue(allocator: std.mem.Allocator, function: semantic.SemanticFn, implem
         .hint = try std.fmt.allocPrint(allocator, "`{s}` is satisfied by a method; move `.implements` to a method of a registered opaque type", .{interface}),
     };
     const receiver = function.receiver.?;
-    if (function.goIterator() != null or function.cancel != null) return .{
+    const iterates = function.ext != null and function.ext.?.get(iterator.plugin.name) != null;
+    if (iterates or function.cancel != null) return .{
         .severity = .@"error",
         .code = "ZIGO058",
-        .message = try std.fmt.allocPrint(allocator, "`.implements = .{s}` on `{s}.{s}`, which also has `{s}`", .{ @tagName(implements), receiver, function.name, if (function.goIterator() != null) "`.iterator`" else "`.cancel`" }),
+        .message = try std.fmt.allocPrint(allocator, "`.implements = .{s}` on `{s}.{s}`, which also has `{s}`", .{ @tagName(implements), receiver, function.name, if (iterates) "`.iterator`" else "`.cancel`" }),
         .site = site.functionSite(function),
         .hint = try std.fmt.allocPrint(allocator, "`{s}` has no place for a `ctx` or a sequence; bind a plain method for the interface", .{interface}),
     };
@@ -343,5 +370,5 @@ fn kindIssue(allocator: std.mem.Allocator, function: semantic.SemanticFn, implem
 }
 
 fn runtimeHook(context: plugin_api.Context, writer: *std.Io.Writer, file: plugin_api.FileInfo, phase: plugin_api.FilePhase) !void {
-    if (file.kind == .runtime and phase == .end) try renderCountingStreams(writer, context.program);
+    if (file.kind == .runtime and phase == .end) try renderCountingStreams(context, writer);
 }

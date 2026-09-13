@@ -311,7 +311,7 @@ pub fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
             try writer.print("\t{0s}.closed = true\n\t{0s}.ptr = nil\n\t{0s}.owner = nil\n\t{0s}.mu.Unlock()\n\treturn nil\n}}\n\n" ++
                 "var _ io.Closer = (*{1s})(nil)\n\n", .{ recv, declaration.name });
         }
-        try plugin_hooks.runTypeHooks(plugin_hooks.context(allocator, program, options), writer, declaration);
+        try plugin_hooks.runTypeHooks(options, plugin_hooks.context(allocator, program, options), writer, declaration);
     }
 }
 

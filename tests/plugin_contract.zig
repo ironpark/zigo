@@ -58,6 +58,12 @@ test "external plugin validates and analyzes once, renders every public scope, a
     };
 }
 
+test "the generator speaks plugin contract 4.0 and the fixture plugin is written against it" {
+    try std.testing.expectEqual(@as(u16, 4), plugin.contract_version.major);
+    try std.testing.expectEqual(@as(u16, 0), plugin.contract_version.minor);
+    try std.testing.expectEqual(plugin.contract_version.major, contract.plugin.min_contract.major);
+}
+
 test "plugin configuration overrides compiled defaults by registered name" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

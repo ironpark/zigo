@@ -72,7 +72,7 @@ fn renderPublicStructLayoutGuards(
 }
 
 pub fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: emit.Options) !void {
-    const scope: public_writers.PublicScope = .{ .program = program, .options = options };
+    const scope: public_writers.PublicScope = .{ .program = program, .active_package = options.active_package };
     try materialized_decoder.renderPublicMaterializedStructs(allocator, writer, program, options);
     for (program.types) |declaration| {
         if (declaration.kind != .value_struct or declaration.layout != .@"packed") continue;
@@ -141,7 +141,7 @@ pub fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Wr
             }
             try writer.writeAll("\t}\n}\n\n");
         }
-        try plugin_hooks.runTypeHooks(plugin_hooks.context(allocator, program, options), writer, declaration);
+        try plugin_hooks.runTypeHooks(options, plugin_hooks.context(allocator, program, options), writer, declaration);
     }
     for (program.structs) |record| {
         if (record.owner.kind == .tagged_union) continue;
@@ -169,7 +169,7 @@ pub fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Wr
         }
         try writer.writeAll("}\n\n");
         try renderPublicStructLayoutGuards(allocator, writer, options, record);
-        try plugin_hooks.runTypeHooks(plugin_hooks.context(allocator, program, options), writer, record.owner.*);
+        try plugin_hooks.runTypeHooks(options, plugin_hooks.context(allocator, program, options), writer, record.owner.*);
     }
     for (program.structs) |record| {
         if (record.owner.kind == .tagged_union) {
@@ -344,7 +344,7 @@ fn writeValueUnionPayloadFromRaw(
             if (declaration.layout == .@"packed") {
                 const raw_member = try naming.pascalAlloc(allocator, field_name);
                 defer allocator.free(raw_member);
-                try public_writers.writePublicGoType(.{ .program = program, .options = options }, writer, field.type.?);
+                try public_writers.writePublicGoType(.{ .program = program, .active_package = options.active_package }, writer, field.type.?);
                 try writer.print("((uint64({s}.{s}) >> {d}) & 0x{x})", .{ raw_value, raw_member, layout[index].bit_offset, layout[index].mask });
             } else {
                 const child_name = try std.fmt.allocPrint(allocator, "{s}_{s}", .{ field_name, field.name });
@@ -361,13 +361,13 @@ fn writeValueUnionPayloadFromRaw(
     defer allocator.free(expression);
     switch (node) {
         .bool => try writer.print("{s} != 0", .{expression}),
-        .@"enum" => |value| try public_writers.writeEnumFromRaw(.{ .program = program, .options = options }, writer, value.ref, expression),
+        .@"enum" => |value| try public_writers.writeEnumFromRaw(.{ .program = program, .active_package = options.active_package }, writer, value.ref, expression),
         else => try writer.writeAll(expression),
     }
 }
 
 fn renderPublicTaggedUnionValues(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: emit.Options) !void {
-    const scope: public_writers.PublicScope = .{ .program = program, .options = options };
+    const scope: public_writers.PublicScope = .{ .program = program, .active_package = options.active_package };
     for (program.types) |declaration| {
         if (!emit.packageMatches(declaration.package, options.active_package)) continue;
         if (!common.isValueOnlyTaggedUnion(program, declaration.name)) continue;
@@ -430,7 +430,7 @@ fn renderPublicSnapshots(
     options: emit.Options,
     owner: semantic.TypeDecl,
 ) !void {
-    const scope: public_writers.PublicScope = .{ .program = program, .options = options };
+    const scope: public_writers.PublicScope = .{ .program = program, .active_package = options.active_package };
     for (program.snapshots) |snapshot| {
         const declaration = snapshot.owner.*;
         if (!std.mem.eql(u8, declaration.name, owner.name)) continue;
@@ -601,7 +601,7 @@ fn renderPublicUnionVariants(
     options: emit.Options,
     entry: UnionVariantNames,
 ) !void {
-    const scope: public_writers.PublicScope = .{ .program = program, .options = options };
+    const scope: public_writers.PublicScope = .{ .program = program, .active_package = options.active_package };
     {
         const declaration = entry.owner;
         const variant_names = entry;
@@ -783,7 +783,7 @@ fn renderPublicTaggedUnionAccessors(
     options: emit.Options,
     owner: semantic.TypeDecl,
 ) !void {
-    const scope: public_writers.PublicScope = .{ .program = program, .options = options };
+    const scope: public_writers.PublicScope = .{ .program = program, .active_package = options.active_package };
     for (program.projections) |tag_projection| {
         if (tag_projection.kind != .tag) continue;
         const declaration = tag_projection.owner.*;
@@ -878,7 +878,7 @@ fn renderPublicTaggedUnionAccessors(
 }
 
 pub fn renderGoEnums(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: emit.Options) !void {
-    const scope: public_writers.PublicScope = .{ .program = program, .options = options };
+    const scope: public_writers.PublicScope = .{ .program = program, .active_package = options.active_package };
     // The parse error type is shared by every text-encoded enum of the
     // package, so it is written once, ahead of the first enum.
     if (packageHasTextEnum(program, options)) try writer.writeAll(
@@ -926,7 +926,7 @@ pub fn renderGoEnums(allocator: std.mem.Allocator, writer: *std.Io.Writer, progr
         try writer.writeAll(")\n\n");
         try renderGoEnumString(allocator, writer, declaration, program.liveFields(declaration.name));
         if (declaration.text == true) try renderGoEnumText(allocator, writer, program, declaration);
-        try plugin_hooks.runTypeHooks(plugin_hooks.context(allocator, program, options), writer, declaration);
+        try plugin_hooks.runTypeHooks(options, plugin_hooks.context(allocator, program, options), writer, declaration);
     }
 }
 
@@ -1075,7 +1075,7 @@ fn writeEnumNumberFormat(writer: *std.Io.Writer, tag_type: semantic.TypeNode) !v
 }
 
 pub fn renderGoCallbackTypes(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: emit.Options) !void {
-    const scope: public_writers.PublicScope = .{ .program = program, .options = options };
+    const scope: public_writers.PublicScope = .{ .program = program, .active_package = options.active_package };
     for (program.functions) |function| {
         for (function.origin.params, 0..) |parameter, parameter_index| {
             if (parameter.type != .callback) continue;
@@ -1094,7 +1094,7 @@ pub fn renderGoCallbackTypes(allocator: std.mem.Allocator, writer: *std.Io.Write
             try public_writers.writePublicCallbackType(scope, writer, program, parameter.type.callback);
             try writer.writeAll("\n\n");
             const declaration = semantic.typeDecl(program.types, callback_name) orelse semantic.TypeDecl{ .kind = .callback, .name = callback_name, .package = function.origin.package };
-            try plugin_hooks.runTypeHooks(plugin_hooks.context(allocator, program, options), writer, declaration);
+            try plugin_hooks.runTypeHooks(options, plugin_hooks.context(allocator, program, options), writer, declaration);
         }
     }
 }

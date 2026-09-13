@@ -1189,6 +1189,7 @@ test "implements accepts one-step shapes and rejects the rest" {
     free_function.receiver = null;
     var iterating = writer;
     iterating.setGoIterator(.{ .name = "All" });
+    iterating.ext = .{ .entries = &.{.{ .plugin = "ITERATOR", .options = .null }} };
     var cancelling = writer;
     cancelling.cancel = "flag";
     var bool_result = writer;
@@ -1218,7 +1219,7 @@ test "implements accepts one-step shapes and rejects the rest" {
     for ([_]semantic.SemanticFn{ free_function, iterating, cancelling, bool_result, two_params, text_hinted, reader_all, reader_void, wrong_stream, repeated_kind }) |function| {
         var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
         defer scratch.deinit();
-        const issue = (try implements_plugin.implementsIssue(scratch.allocator(), function)) orelse return error.MissingDiagnostic;
+        const issue = (try implements_plugin.implementsIssue(scratch.allocator(), function, .{ .kinds = function.goImplements() })) orelse return error.MissingDiagnostic;
         try std.testing.expectEqualStrings("ZIGO058", issue.code);
     }
 }

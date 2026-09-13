@@ -11,7 +11,7 @@ const Lib = struct {
     }
 };
 const api = zigo.scope(Lib);
-const P = .{ .name = "TEST", .FunctionOptions = struct {}, .TypeOptions = struct {}, .subjects = [_]enum { function }{.function} };
+const P: zigo.Plugin = .{ .name = "TEST", .subjects = &.{.function} };
 comptime {
     _ = api.callback("Callback", .{}).use(P, .{});
 }

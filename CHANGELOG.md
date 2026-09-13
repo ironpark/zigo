@@ -84,6 +84,27 @@ Go 코드는 session 자식의 `.name` 삭제로 입양 메서드가 타입 이�
 | 내부 IR `declare.on_callback_failure` | `on_failure` |
 | 내부 IR `Discover` enum + `discover`/`exclude` 필드 | `Discovery` struct (`discovery: ?.{ .mode, .exclude }`) |
 
+#### Plugin API
+
+플러그인 계약을 `4.0`으로 올렸습니다. 같은 것을 읽는 길을 하나로 줄이고, emitter 내부를 계약에서
+뺐습니다. 호환 shim은 없으며, `min_contract` major가 3인 플러그인은 빌드 그래프 생성 중 거부됩니다.
+생성된 Go 코드는 바뀌지 않습니다. `semantic.json`에는 `.iterator`/`.implements`가 `ext.ITERATOR`/
+`ext.IMPLEMENTS`로도 실리고, 등록 타입에 소스 위치 `source`가 추가됩니다.
+
+| 이전 | 이후 |
+|---|---|
+| `Context.functionOptions(P, function)`, `Context.typeOptions(P, declaration)`, `plugin.readOptions(P, .type, allocator, ext)` | 모든 context의 `optionsOf(P, .function \| .type, ext)`. `readOptions`는 비공개 |
+| `Context.options: plugin.Options` (emitter 필드 40여 개) | `Context.options: plugin.PluginOptions` (target, 패키지 경로, `active_package`, configurations, `emitsHelper`, `file`). emitter 옵션은 `src/gen/emit/options.zig` |
+| `plugin.Referenced`, `Options.helpers: ?*const Referenced` | emitter의 `references.Referenced`; 플러그인은 `options.emitsHelper(name)`만 |
+| `Options.plugins` (골든 케이스용 선택) | generator `Options.plugins`로 이동. 계약에서 삭제 |
+| `context.options.facts.get(...)` | `context.facts.get(...)` (`Context.facts`는 읽기 전용, `AnalyzeContext.facts`/`ValidateContext.facts`가 씀) |
+| `.site = .{ .path = "semantic.json", .declaration = name }` | `plugin.site.typeSite(declaration)`, `typeSiteFor(declaration, name)`, `documentSite(name)` |
+| `naming.pascalAlloc`, 손으로 쓴 `func (v T) Name(...) R {` | `Context.identifierAlloc(allocator, name, .pascal \| .camel)`, `writeFuncHeader`, `writeMethodHeader`, `writeStringLiteral` (`Writers` vtable 확장) |
+| `Entry.use(comptime P: anytype, ...)` | `Entry.use(comptime P: zigo.Plugin, ...)`. `zigo.features.iterator`/`implements`는 `zigo.Plugin` 값 |
+| 내장 `iterator`/`implements`가 `function.origin.goIterator()`/`goImplements()`를 직접 읽음 | `optionsOf(plugin, .function, ext)`로 `ext.ITERATOR`/`ext.IMPLEMENTS`를 읽음. typed `go.*` 필드는 core 규칙과 `abi-diff`가 계속 읽음 |
+| `plugins/<name>/build.zig`가 module만 선언 | `cd plugins/<name> && zig build test`가 플러그인 단위 테스트를 실행. `zigo` 의존성이 `plugin`/`semantic`/`abi`/`diagnostic`/`naming`/`targets` 모듈을 공개 |
+| `plugin.contract_version` 3.1 | 4.0 |
+
 ## [0.26.0] - 2026-09-13
 
 gostty를 쓰면서 zigo에 기능이 없어 우회한 자리들입니다.

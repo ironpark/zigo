@@ -28,11 +28,15 @@ const writers: plugin.Writers = .{
     .writeParameters = writeParameters,
     .writeResultType = writeResultType,
     .writeCallArguments = writeCallArguments,
+    .writeFuncHeader = plugin.format.writeFuncHeader,
+    .writeMethodHeader = plugin.format.writeMethodHeader,
+    .identifierAlloc = plugin.format.identifierAlloc,
+    .writeStringLiteral = plugin.format.writeStringLiteral,
 };
 
 /// The context a `type_hook`, a `files` emitter or a validator sees.
 pub fn context(allocator: std.mem.Allocator, program: abi.Program, options: emit.Options) plugin.Context {
-    return .{ .allocator = allocator, .program = program, .options = options, .writers = &writers };
+    return .{ .allocator = allocator, .program = program, .options = options.view(), .facts = options.facts, .writers = &writers };
 }
 
 /// The context a `method_hook` sees: the same, plus the names the method the
@@ -48,11 +52,13 @@ pub fn methodContext(
     return value;
 }
 
-/// Runs every registered `method_hook`, in registration order.
-pub fn runMethodHooks(value: plugin.Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
+/// Runs every registered `method_hook`, in registration order. `options`
+/// is the emitter's own copy, which knows which added plugins are selected;
+/// the context only carries the view a hook may read.
+pub fn runMethodHooks(options: emit.Options, value: plugin.Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
     inline for (registry.plugins, 0..) |registered, index| {
         if (registered.method_hook) |hook| {
-            if (registered.supports(.function) and runs(index, value.options)) try hook(value, writer, function);
+            if (registered.supports(.function) and runs(index, options)) try hook(value, writer, function);
         }
     }
 }
@@ -67,20 +73,20 @@ pub fn checkedNameAlloc(allocator: std.mem.Allocator, public_name: []const u8) !
 /// Whether a plugin claimed this declaration's public surface. Two claims on
 /// one declaration are refused in `analyze`, so the first answer is the only
 /// one.
-pub fn methodReplaced(value: plugin.Context, function: abi.AbiFn) !bool {
+pub fn methodReplaced(options: emit.Options, value: plugin.Context, function: abi.AbiFn) !bool {
     inline for (registry.plugins, 0..) |registered, index| {
         if (registered.replaces_method) |claims| {
-            if (registered.supports(.function) and runs(index, value.options) and try claims(value, function)) return true;
+            if (registered.supports(.function) and runs(index, options) and try claims(value, function)) return true;
         }
     }
     return false;
 }
 
 /// Runs every registered `type_hook`, in registration order.
-pub fn runTypeHooks(value: plugin.Context, writer: *std.Io.Writer, declaration: semantic.TypeDecl) !void {
+pub fn runTypeHooks(options: emit.Options, value: plugin.Context, writer: *std.Io.Writer, declaration: semantic.TypeDecl) !void {
     inline for (registry.plugins, 0..) |registered, index| {
         if (registered.type_hook) |hook| {
-            if (registered.supports(plugin.typeSubject(declaration.kind)) and runs(index, value.options)) try hook(value, writer, declaration);
+            if (registered.supports(plugin.typeSubject(declaration.kind)) and runs(index, options)) try hook(value, writer, declaration);
         }
     }
 }
@@ -114,7 +120,7 @@ pub fn declaredImports() []const plugin.Import {
 }
 
 fn scopeOf(value: plugin.Context) public_writers.PublicScope {
-    return .{ .program = value.program, .options = value.options };
+    return .{ .program = value.program, .active_package = value.options.active_package };
 }
 
 fn writeTypeName(value: plugin.Context, writer: *std.Io.Writer, name: []const u8) anyerror!void {
@@ -371,19 +377,19 @@ test "plugin result and parameter writers avoid parsing checked signatures" {
     }
 }
 
-pub fn runFileHooks(value: plugin.Context, writer: *std.Io.Writer, phase: plugin.FilePhase) !void {
+pub fn runFileHooks(options: emit.Options, value: plugin.Context, writer: *std.Io.Writer, phase: plugin.FilePhase) !void {
     const file = value.options.file orelse return;
     inline for (registry.plugins, 0..) |registered, index| {
         if (registered.file_hook) |hook| {
-            if (runs(index, value.options)) try hook(value, writer, file, phase);
+            if (runs(index, options)) try hook(value, writer, file, phase);
         }
     }
 }
 
-pub fn runPackageHooks(value: plugin.Context, writer: *std.Io.Writer) !void {
+pub fn runPackageHooks(options: emit.Options, value: plugin.Context, writer: *std.Io.Writer) !void {
     inline for (registry.plugins, 0..) |registered, index| {
         if (registered.package_hook) |hook| {
-            if (runs(index, value.options)) try hook(value, writer);
+            if (runs(index, options)) try hook(value, writer);
         }
     }
 }

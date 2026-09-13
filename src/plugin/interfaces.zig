@@ -2,6 +2,7 @@ const std = @import("std");
 const diagnostic = @import("diagnostic");
 const naming = @import("naming");
 const semantic = @import("semantic");
+const site = @import("site.zig");
 const targets = @import("targets");
 
 pub fn interfaceIssue(allocator: std.mem.Allocator, document: semantic.Semantic, target: targets.Target) !?diagnostic.Diagnostic {
@@ -83,7 +84,7 @@ fn collision(allocator: std.mem.Allocator, interface: semantic.Interface, betwee
         .severity = .@"error",
         .code = "ZIGO024",
         .message = try std.fmt.allocPrint(allocator, "public Go name `{s}` collides between {s}", .{ interface.name, between }),
-        .site = .{ .path = "semantic.json", .declaration = interface.name },
+        .site = site.documentSite(interface.name),
         .hint = "give the interface a `.name` that resolves to a different Go identifier",
     };
 }
@@ -93,7 +94,7 @@ fn issue(interface: semantic.Interface, message: []const u8, hint: []const u8) d
         .severity = .@"error",
         .code = "ZIGO049",
         .message = message,
-        .site = .{ .path = "semantic.json", .declaration = interface.name },
+        .site = site.documentSite(interface.name),
         .hint = hint,
     };
 }

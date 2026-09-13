@@ -43,6 +43,17 @@ fn extensionsAlloc(allocator: std.mem.Allocator, attached: []const zigo.Extensio
     return .{ .entries = entries };
 }
 
+/// `ext` with one more entry: a built-in plugin's options, serialized the
+/// way `use` serializes an added plugin's, so the generator reads both alike.
+fn withBuiltinExtension(allocator: std.mem.Allocator, existing: ?semantic.Extensions, name: []const u8, value: anytype) !semantic.Extensions {
+    const previous = (existing orelse semantic.Extensions{}).entries;
+    const entries = try allocator.alloc(semantic.Extensions.Entry, previous.len + 1);
+    @memcpy(entries[0..previous.len], previous);
+    const text = try std.json.Stringify.valueAlloc(allocator, value, .{});
+    entries[previous.len] = .{ .plugin = name, .options = try std.json.parseFromSliceLeaky(std.json.Value, allocator, text, .{}) };
+    return .{ .entries = entries };
+}
+
 const pairing = @import("pairing.zig");
 const Pairing = pairing.Pairing;
 
@@ -1169,9 +1180,20 @@ fn appendFunction(
     // `*Checked` method); `.iterator = .{ .name = "Rows" }` picks another. The
     // shape (a receiver, no data parameters, `?T`) is checked by validation,
     // where the whole signature is in hand.
-    if (metadata.iterator) |iterator| reflected_function.setGoIterator(.{
-        .name = if (iterator.name.len == 0) try naming.iteratorWrapperNameAlloc(allocator, function_name) else iterator.name,
-    });
+    // `use` captured each plugin's options at the declaration; here they
+    // become the `ext` object the generator hands back to that plugin.
+    if (metadata.ext.len != 0) reflected_function.ext = try extensionsAlloc(allocator, metadata.ext);
+    // The built-in attachments go the same way, under their plugin's key,
+    // with the resolved values: that is what the built-in plugins read. The
+    // typed `go` fields beside them are the core's -- name rules and
+    // `abi-diff` -- so both are written from the one resolution here.
+    if (metadata.iterator) |iterator| {
+        const resolved: semantic.Iterator = .{
+            .name = if (iterator.name.len == 0) try naming.iteratorWrapperNameAlloc(allocator, function_name) else iterator.name,
+        };
+        reflected_function.setGoIterator(resolved);
+        reflected_function.ext = try withBuiltinExtension(allocator, reflected_function.ext, "ITERATOR", resolved);
+    }
     // `.implements` names a Go standard interface; the shape the interface
     // needs is checked by validation, where the whole signature is in hand.
     if (metadata.implements) |implements| {
@@ -1179,10 +1201,8 @@ fn appendFunction(
         for (implements, kinds) |declared, *kind| kind.* = ir(semantic.Implements, declared);
         reflected_function.setGoImplements(kinds);
         if (metadata.implements_keep_original) reflected_function.setGoImplementsKeepOriginal(true);
+        reflected_function.ext = try withBuiltinExtension(allocator, reflected_function.ext, "IMPLEMENTS", .{ .kinds = kinds, .keep_original = metadata.implements_keep_original });
     }
-    // `extend` captured each plugin's options at the declaration; here they
-    // become the `ext` object the generator hands back to that plugin.
-    if (metadata.ext.len != 0) reflected_function.ext = try extensionsAlloc(allocator, metadata.ext);
     if (info.return_type) |return_type| {
         if (isSentinelBytePointer(return_type)) reflected_function.return_semantic = .c_string;
     }
@@ -5614,7 +5634,7 @@ test "callback and materialized plugin attachments survive authoring and reflect
         pub const Observer = *const fn (usize) callconv(.c) void;
         pub const Snapshot = struct { text: []const u8 };
     };
-    const P = .{ .name = "EXTRA", .FunctionOptions = struct {}, .TypeOptions = struct { enabled: bool }, .subjects = [_]enum { callback, materialized }{ .callback, .materialized } };
+    const P: public.Plugin = .{ .name = "EXTRA", .TypeOptions = struct { enabled: bool }, .subjects = &.{ .callback, .materialized } };
     const api = public.scope(Fixture);
     const binding = comptime public.define(api, .{ .declarations = &.{
         api.callback("Observer", .{}).use(P, .{ .enabled = true }),

@@ -16,7 +16,7 @@ fn renderErrorsBody(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
     for (program.types) |declaration| {
         if (declaration.kind != .error_set or !emit.packageMatches(declaration.package, options.active_package)) continue;
         const hooks = @import("plugin_hooks.zig");
-        try hooks.runTypeHooks(hooks.context(allocator, program, options), writer, declaration);
+        try hooks.runTypeHooks(options, hooks.context(allocator, program, options), writer, declaration);
     }
 }
 
@@ -268,7 +268,7 @@ fn renderGoSentinels(writer: *std.Io.Writer, set: SentinelSet, options: emit.Opt
 }
 
 pub fn renderPublicHelpers(writer: *std.Io.Writer, program: abi.Program, options: emit.Options) !void {
-    const scope: public_writers.PublicScope = .{ .program = program, .options = options };
+    const scope: public_writers.PublicScope = .{ .program = program, .active_package = options.active_package };
     const has_callbacks = common.programHasCallbacks(program);
     const needs_bool = options.emitsHelper("zigoBoolToUint8");
     if (!has_callbacks and !needs_bool) return;

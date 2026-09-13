@@ -1218,6 +1218,9 @@ pub const TypeDecl = struct {
     /// Present only when the binding registered the enum with `.text = true`,
     /// asking for `Parse<Enum>`, `MarshalText` and `UnmarshalText` in Go.
     text: ?bool = null,
+    /// The container declaration's source location, from `names.zig`. Purely
+    /// diagnostic, like `SemanticFn.source`: `abi_diff` ignores it.
+    source: ?SourceLocation = null,
     zig_path: ?[]const u8 = null,
 
     /// The access strategy a type was registered with. Types that only have

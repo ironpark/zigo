@@ -1,6 +1,6 @@
 # 플러그인 API 참조
 
-현재 플러그인 계약은 `3.1`입니다. 이 문서는 `src/plugin.zig`이 제공하는 공개 타입과 실행
+현재 플러그인 계약은 `4.0`입니다. 이 문서는 `src/plugin.zig`이 제공하는 공개 타입과 실행
 순서를 요약합니다. 정확한 함수 시그니처는 [소스](../../src/plugin.zig)가 정본입니다.
 
 ## 실행 순서
@@ -24,7 +24,7 @@ configuration and dependency checks
 
 | 필드 | 기본값 | 역할 |
 |---|---|---|
-| `min_contract` | 현재 3.1 | 필요한 계약 version |
+| `min_contract` | 현재 4.0 | 필요한 계약 version |
 | `name` | 필수 | 식별 정보와 진단 접두사 |
 | `Config` | `struct {}` | 빌드 전체 설정 타입 |
 | `Facts` | `struct {}` | analyze 결과의 typed storage |
@@ -72,32 +72,58 @@ exported 이름을 읽어 자신의 래퍼를 씁니다. 결과는 Go 메서드 
 
 ## context
 
+선언 옵션은 모든 context에서 한 가지 방법으로 읽습니다.
+
+```zig
+const options = try context.optionsOf(plugin, .type, declaration.ext) orelse return;
+const options = try context.optionsOf(plugin, .function, function.origin.ext) orelse return;
+```
+
+`P`는 comptime `Plugin` 값이고 결과는 `P.TypeOptions` 또는 `P.FunctionOptions`입니다. 선언이 그
+플러그인을 붙이지 않았으면 `null`, 읽을 수 없는 값이면 `error.InvalidPluginOptions`입니다. 빌드
+설정은 `context.config(plugin)`으로 읽습니다.
+
 `TransformContext`:
 
-- `allocator`, 불변 입력 `document`, configurations, diagnostics
+- `allocator`, 불변 입력 `document`, configurations, diagnostics, `target`
 - `config`, `optionsOf`, `diagnose`
 - `reorderParameters(function, new_order)`
 
 `ValidateContext`:
 
-- `allocator`, validated semantic `document`, configurations, diagnostics, facts
+- `allocator`, validated semantic `document`, configurations, diagnostics, `facts`(쓰기 가능), `target`
 - `config`, `optionsOf`, `diagnose`
 
 `AnalyzeContext`:
 
-- 렌더링 `Context`
-- typed `Facts`
-- diagnostics
+- 렌더링 `Context`인 `render`
+- `facts`(쓰기 가능), diagnostics
+- `config`, `optionsOf`, `diagnose`
 
 렌더링 `Context`:
 
-- lowered `program`, generator `options`, allocator
+- lowered `program`, allocator, `options`(아래 `PluginOptions`), 읽기 전용 `facts`
 - 메서드 hook의 `method` 정보
-- 공개 타입/시그니처/doc writer
-- `functionOptions`, `typeOptions`, `config`
+- 공개 타입/시그니처/doc writer와 header·식별자·리터럴 도우미
+- `config`, `optionsOf`
 - `sourceFilePathAlloc`, `publicFilePathAlloc`
 
-`ArtifactContext`는 allocator, full program, options와 config/path 도우미만 제공합니다.
+`ArtifactContext`는 allocator, full program, `options`와 config/path 도우미만 제공합니다.
+
+## `PluginOptions`
+
+context의 `options`는 플러그인이 볼 수 있는 실행 정보만 담은 view입니다. generator의 link flag,
+라이브러리 경로, backend 같은 emitter 자체 옵션은 여기 없습니다.
+
+| 필드 | 의미 |
+|---|---|
+| `target` | 이번 실행의 출력 언어 (`context.target()`과 같음) |
+| `go_module`, `go_package`, `go_package_path` | 생성 Go 모듈과 공개 패키지 |
+| `raw_package_path` | raw 패키지 디렉터리 |
+| `active_package` | 지금 렌더링 중인 공개 패키지. `null`은 단일 패키지 |
+| `configurations` | 빌드가 컴파일해 넣은 플러그인 설정. `config(plugin)`이 읽음 |
+| `helpers` / `emitsHelper(name)` | gated helper가 이 패키지에서 참조되는지 |
+| `file` | hook이 실행 중인 파일 |
 
 ## naming과 타입 mapping
 
@@ -117,7 +143,13 @@ later 플러그인은 앞선 플러그인의 결과를 봅니다. 플러그인-o
 
 `Facts.put`과 `Facts.get`은 플러그인 식별 정보와 `DeclarationId`를 key로 하는 typed storage입니다.
 validation/analyze에서 계산한 결과를 렌더링 hook이 소스 text 재분석 없이 읽도록 사용합니다.
-중복 put과 잘못된 타입 read는 오류입니다.
+중복 put과 잘못된 타입 read는 오류입니다. 접근 경로는 하나입니다: `ValidateContext.facts`와
+`AnalyzeContext.facts`는 쓰고, 렌더링 `Context.facts`는 읽기만 합니다.
+
+진단의 `site`는 `plugin.site`가 만듭니다. `functionSite(function)`/`functionSiteFor(function, path)`와
+`typeSite(declaration)`/`typeSiteFor(declaration, name)`은 reflection이 기록한 Zig 소스 위치를
+가리키고, 위치가 없으면 `semantic.json`의 해당 항목으로 떨어집니다. interface나 session처럼 소스
+위치가 없는 선언은 `documentSite(name)`입니다.
 
 ## 렌더링 writer
 
@@ -131,9 +163,14 @@ validation/analyze에서 계산한 결과를 렌더링 hook이 소스 text 재�
 - `writeValueType`
 - `writeDoc`
 - `functionInfo`
+- `writeFuncHeader(writer, name, params, results)` — `func Name(params) results {` (줄바꿈 없음)
+- `writeMethodHeader(writer, receiver, name, params, results)` — `func (r *T) Name(params) results {`.
+  `receiver`는 `.{ .name, .type, .pointer }`
+- `identifierAlloc(allocator, name, .pascal | .camel)` — Zig 이름의 Go 식별자 표기 (initialism 규칙 포함)
+- `writeStringLiteral(writer, text)` — escape된 Go 문자열 리터럴
 
-직접 타입, 패키지 qualifier 또는 매개변수 이름을 재구성하면 하위 패키지와 이름 collision에서
-core 출력과 달라질 수 있습니다.
+직접 타입, 패키지 qualifier, 매개변수 이름이나 식별자를 재구성하면 하위 패키지와 이름 collision,
+initialism 표기에서 core 출력과 달라질 수 있습니다. 문장 본문은 format 문자열로 써도 됩니다.
 
 ## `SourceFile`
 

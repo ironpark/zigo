@@ -280,7 +280,8 @@ fn appendPluginIssues(comptime registered: plugin.Plugin, allocator: std.mem.All
 }
 
 fn appendPluginIssuesWithFacts(comptime registered: plugin.Plugin, allocator: std.mem.Allocator, document: semantic.Semantic, configurations: []const plugin.Configuration, issues: *std.ArrayList(diagnostic.Diagnostic), facts: *plugin.Facts, target: targets.Target) !void {
-    if (try pluginOptionsIssue(registered, allocator, document)) |issue| {
+    const context: plugin.ValidateContext = .{ .allocator = allocator, .document = document, .configurations = configurations, .diagnostics = issues, .facts = facts, .target = target };
+    if (try pluginOptionsIssue(registered, context)) |issue| {
         try issues.append(allocator, issue);
         return;
     }
@@ -291,24 +292,22 @@ fn appendPluginIssuesWithFacts(comptime registered: plugin.Plugin, allocator: st
             return;
         },
     };
-    if (registered.validate) |check| try check(.{ .allocator = allocator, .document = document, .configurations = configurations, .diagnostics = issues, .facts = facts, .target = target });
+    if (registered.validate) |check| try check(context);
 }
 
 /// A hand-written `semantic.json` can carry anything under a plugin's key.
 /// Reading it through the plugin's target-specific option type is what turns that into
 /// a `<NAME>001` diagnostic instead of a panic inside a hook.
-fn pluginOptionsIssue(
-    comptime registered: plugin.Plugin,
-    allocator: std.mem.Allocator,
-    document: semantic.Semantic,
-) !?diagnostic.Diagnostic {
+fn pluginOptionsIssue(comptime registered: plugin.Plugin, context: plugin.ValidateContext) !?diagnostic.Diagnostic {
+    const allocator = context.allocator;
+    const document = context.document;
     for (document.functions) |function| {
         if (function.ext == null) continue;
         if (function.ext.?.get(registered.name) != null and !registered.supports(.function)) {
             const declaration = try site.functionDeclarationAlloc(allocator, function);
             return try pluginOptionsDiagnostic(registered, allocator, site.functionSiteFor(function, declaration), declaration);
         }
-        _ = plugin.readOptions(registered, .function, allocator, function.ext) catch {
+        _ = context.optionsOf(registered, .function, function.ext) catch {
             const declaration = try site.functionDeclarationAlloc(allocator, function);
             return try pluginOptionsDiagnostic(registered, allocator, site.functionSiteFor(function, declaration), declaration);
         };
@@ -316,14 +315,9 @@ fn pluginOptionsIssue(
     for (document.types) |declaration| {
         if (declaration.ext == null) continue;
         if (declaration.ext.?.get(registered.name) != null and !registered.supports(plugin.typeSubject(declaration.kind)))
-            return try pluginOptionsDiagnostic(registered, allocator, .{ .path = "semantic.json", .declaration = declaration.name }, declaration.name);
-        _ = plugin.readOptions(registered, .type, allocator, declaration.ext) catch {
-            return try pluginOptionsDiagnostic(
-                registered,
-                allocator,
-                .{ .path = "semantic.json", .declaration = declaration.name },
-                declaration.name,
-            );
+            return try pluginOptionsDiagnostic(registered, allocator, site.typeSite(declaration), declaration.name);
+        _ = context.optionsOf(registered, .type, declaration.ext) catch {
+            return try pluginOptionsDiagnostic(registered, allocator, site.typeSite(declaration), declaration.name);
         };
     }
     return null;

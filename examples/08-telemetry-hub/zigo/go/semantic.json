@@ -1552,6 +1552,11 @@
       "fields": [],
       "kind": "opaque",
       "name": "TelemetryHub",
+      "source": {
+        "path": "root.zig",
+        "line": 39,
+        "column": 11
+      },
       "zig_path": "root.TelemetryHub"
     },
     {
@@ -1578,6 +1583,11 @@
         "kind": "int",
         "signed": false
       },
+      "source": {
+        "path": "root.zig",
+        "line": 11,
+        "column": 11
+      },
       "zig_path": "root.Mode"
     },
     {
@@ -1599,6 +1609,11 @@
         "is_usize": false,
         "kind": "int",
         "signed": false
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 17,
+        "column": 11
       },
       "zig_path": "root.OverflowPolicy"
     },
@@ -1629,6 +1644,11 @@
         "is_usize": false,
         "kind": "int",
         "signed": false
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 22,
+        "column": 11
       },
       "zig_path": "root.Severity"
     }

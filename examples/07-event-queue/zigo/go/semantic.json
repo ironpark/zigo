@@ -2241,6 +2241,11 @@
       "fields": [],
       "kind": "opaque",
       "name": "EventQueue",
+      "source": {
+        "path": "root.zig",
+        "line": 178,
+        "column": 11
+      },
       "zig_path": "root.EventQueue"
     },
     {
@@ -2302,6 +2307,11 @@
       "kind": "value_struct",
       "layout": "extern",
       "name": "Stats",
+      "source": {
+        "path": "root.zig",
+        "line": 26,
+        "column": 11
+      },
       "zig_path": "root.Stats"
     },
     {
@@ -2323,6 +2333,11 @@
         "is_usize": false,
         "kind": "int",
         "signed": false
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 7,
+        "column": 11
       },
       "zig_path": "root.Policy"
     },
@@ -2349,6 +2364,11 @@
       "kind": "value_struct",
       "layout": "extern",
       "name": "Limits",
+      "source": {
+        "path": "root.zig",
+        "line": 40,
+        "column": 11
+      },
       "zig_path": "root.Limits"
     },
     {
@@ -2356,6 +2376,11 @@
       "fields": [],
       "kind": "opaque",
       "name": "Stream",
+      "source": {
+        "path": "root.zig",
+        "line": 505,
+        "column": 11
+      },
       "zig_path": "root.Stream"
     },
     {
@@ -2363,6 +2388,11 @@
       "fields": [],
       "kind": "opaque",
       "name": "BorrowBox",
+      "source": {
+        "path": "root.zig",
+        "line": 160,
+        "column": 11
+      },
       "zig_path": "root.BorrowBox"
     },
     {
@@ -2370,6 +2400,11 @@
       "fields": [],
       "kind": "opaque",
       "name": "BorrowView",
+      "source": {
+        "path": "root.zig",
+        "line": 133,
+        "column": 11
+      },
       "zig_path": "root.BorrowView"
     },
     {
@@ -2377,6 +2412,11 @@
       "fields": [],
       "kind": "opaque",
       "name": "BorrowChild",
+      "source": {
+        "path": "root.zig",
+        "line": 117,
+        "column": 11
+      },
       "zig_path": "root.BorrowChild"
     },
     {
@@ -2384,6 +2424,11 @@
       "fields": [],
       "kind": "opaque",
       "name": "Terminal",
+      "source": {
+        "path": "root.zig",
+        "line": 59,
+        "column": 11
+      },
       "zig_path": "root.Terminal"
     },
     {
@@ -2409,6 +2454,11 @@
         "signed": false
       },
       "text": true,
+      "source": {
+        "path": "root.zig",
+        "line": 12,
+        "column": 11
+      },
       "zig_path": "root.QueueSignal"
     },
     {
@@ -2417,6 +2467,11 @@
       "kind": "opaque",
       "name": "Ticker",
       "package": "types",
+      "source": {
+        "path": "root.zig",
+        "line": 544,
+        "column": 11
+      },
       "zig_path": "root.Ticker"
     },
     {
@@ -2445,6 +2500,11 @@
       "layout": "extern",
       "name": "TickerInfo",
       "package": "types",
+      "source": {
+        "path": "root.zig",
+        "line": 551,
+        "column": 11
+      },
       "zig_path": "root.TickerInfo"
     },
     {
@@ -2484,6 +2544,11 @@
       ],
       "kind": "value_struct",
       "name": "TerminalOptions",
+      "source": {
+        "path": "root.zig",
+        "line": 49,
+        "column": 11
+      },
       "zig_path": "root.TerminalOptions"
     }
   ],

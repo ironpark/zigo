@@ -34,7 +34,7 @@ fn writeShapeGoType(scope: public_writers.PublicScope, writer: *std.Io.Writer, s
 }
 
 pub fn renderPublicMaterializedStructs(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: emit.Options) !void {
-    const scope: public_writers.PublicScope = .{ .program = program, .options = options };
+    const scope: public_writers.PublicScope = .{ .program = program, .active_package = options.active_package };
     const used = try allocator.alloc(bool, program.materialized_layouts.len);
     defer allocator.free(used);
     for (program.materialized_layouts, used) |layout, *flag| flag.* = options.emitsHelper(layout.owner.name);
@@ -57,7 +57,7 @@ pub fn renderPublicMaterializedStructs(allocator: std.mem.Allocator, writer: *st
         }
         try writer.writeAll("}\n\n");
         const hooks = @import("plugin_hooks.zig");
-        try hooks.runTypeHooks(hooks.context(allocator, program, options), writer, layout.owner.*);
+        try hooks.runTypeHooks(options, hooks.context(allocator, program, options), writer, layout.owner.*);
     }
     if (!any) return;
     try writer.writeAll(
@@ -102,12 +102,11 @@ pub fn renderPublicMaterializedStructs(allocator: std.mem.Allocator, writer: *st
     );
     for (program.materialized_layouts, used) |layout, is_used| {
         if (!is_used) continue;
-        try renderMaterializedDecoder(allocator, writer, scope, layout);
+        try renderMaterializedDecoder(allocator, writer, scope, options, layout);
     }
 }
 
-fn renderMaterializedDecoder(allocator: std.mem.Allocator, writer: *std.Io.Writer, scope: public_writers.PublicScope, layout: abi.MaterializedLayout) !void {
-    const options = scope.options;
+fn renderMaterializedDecoder(allocator: std.mem.Allocator, writer: *std.Io.Writer, scope: public_writers.PublicScope, options: emit.Options, layout: abi.MaterializedLayout) !void {
     const public_name = try scope.typeNameAlloc(allocator, layout.owner.name);
     defer allocator.free(public_name);
     if (options.emitsHelperFmt("zigoDecode{s}Buffer", .{layout.owner.name})) try writer.print(

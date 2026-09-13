@@ -225,6 +225,22 @@ pub fn createGeneratorModules(
     };
 }
 
+/// Publishes the plugin contract and the modules it is written against under
+/// their own names, so a plugin package's build can import the same instances
+/// (`dependency.module("plugin")`) and the consuming build integration can
+/// hand them to the declaration side of a plugin.
+pub fn exposeContractModules(b: *std.Build, generator: GeneratorModules) void {
+    const named = [_]struct { []const u8, *std.Build.Module }{
+        .{ "plugin", generator.plugin },
+        .{ "semantic", generator.semantic },
+        .{ "abi", generator.abi },
+        .{ "diagnostic", generator.diagnostic },
+        .{ "naming", generator.naming },
+        .{ "targets", generator.targets },
+    };
+    for (named) |entry| b.modules.put(b.allocator, b.dupe(entry[0]), entry[1]) catch @panic("OOM");
+}
+
 /// The `plugin_registry` module the generator's in-tree registry imports: a
 /// generated file naming the plugin modules the consuming build listed. It is
 /// created even when there are none, so `registry.zig` has one spelling either

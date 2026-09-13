@@ -44,5 +44,9 @@ pub fn runs(comptime index: usize, selected: ?[]const []const u8, target: target
     inline for (builtins) |entry| {
         if (@import("std").mem.eql(u8, entry.name, plugins[index].name)) return true;
     }
-    return (plugin.Options{ .go_module = "", .plugins = selected }).runsPlugin(plugins[index].name);
+    const names = selected orelse return true;
+    for (names) |name| {
+        if (@import("std").mem.eql(u8, name, plugins[index].name)) return true;
+    }
+    return false;
 }

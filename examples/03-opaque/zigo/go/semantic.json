@@ -136,6 +136,11 @@
     },
     {
       "doc": "next counts from 1 up to the total, then reports the end with null.\nBound with `.iterator`, so Go ranges over it as `All()`.",
+      "ext": {
+        "ITERATOR": {
+          "name": "All"
+        }
+      },
       "go": {
         "iterator": {
           "name": "All"
@@ -163,6 +168,11 @@
     },
     {
       "doc": "nextChecked is `next` with a failure path: a negative total is an\nerror the sequence surfaces, rather than an empty sequence.",
+      "ext": {
+        "ITERATOR": {
+          "name": "AllChecked"
+        }
+      },
       "go": {
         "iterator": {
           "name": "AllChecked"
@@ -519,6 +529,11 @@
       "fields": [],
       "kind": "opaque",
       "name": "Context",
+      "source": {
+        "path": "root.zig",
+        "line": 15,
+        "column": 11
+      },
       "zig_path": "root.Context"
     },
     {
@@ -526,6 +541,11 @@
       "fields": [],
       "kind": "opaque",
       "name": "ContextView",
+      "source": {
+        "path": "root.zig",
+        "line": 7,
+        "column": 11
+      },
       "zig_path": "root.ContextView"
     }
   ],

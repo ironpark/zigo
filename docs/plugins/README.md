@@ -1,7 +1,7 @@
 # 생성기 플러그인
 
 플러그인은 core 바인딩 계약을 검증·변형하거나 생성 공개 Go 패키지에 코드와 파일을
-추가합니다. 일반 바인딩 작성과 분리된 확장 지점이며, 현재 계약 version은 3.1입니다.
+추가합니다. 일반 바인딩 작성과 분리된 확장 지점이며, 현재 계약 version은 4.0입니다.
 
 ## 언제 플러그인을 사용하나요?
 
@@ -41,8 +41,14 @@ api.enumeration("Mode", .{})
     .use(enumkit.plugin, .{})
 ```
 
-`.use`는 함수 또는 타입 entry에 typed 옵션을 붙입니다. 같은 플러그인을 한 entry에 두 번
-붙이면 컴파일 error입니다. 의도적인 교체에는 `.replacePlugin`을 사용합니다.
+`.use`는 함수 또는 타입 entry에 typed 옵션을 붙입니다. 첫 인자는 `zigo.Plugin` 값이어야
+하며(플러그인 패키지가 export하는 `plugin`, 또는 `zigo.features.*`), 다른 타입을 넘기면 컴파일
+error입니다. 같은 플러그인을 한 entry에 두 번 붙이면 컴파일 error이고, 의도적인 교체에는
+`.replacePlugin`을 사용합니다.
+
+플러그인 패키지 자체는 `cd plugins/<name> && zig build test`로 단위 테스트를 실행합니다.
+`zigo` 의존성이 `plugin`, `semantic`, `abi`, `diagnostic` 모듈을 이름으로 공개하므로 플러그인의
+`build.zig`는 generator가 쓰는 것과 같은 계약 모듈에 대해 컴파일됩니다.
 
 ## bundled enumkit
 

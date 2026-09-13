@@ -39,7 +39,7 @@ fn analyze(context: api.AnalyzeContext) !void {
 }
 
 fn methodHook(context: api.Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
-    _ = (try context.options.facts.get(plugin, .function(function.origin.*))) orelse return error.MissingAnalysisFact;
+    _ = (try context.facts.get(plugin, .function(function.origin.*))) orelse return error.MissingAnalysisFact;
     try writer.writeAll("\n// ContractAnalyzed\n");
     if (!try replacesMethod(context, function)) return;
     // The whole Go surface of a claimed declaration: the exported name, with

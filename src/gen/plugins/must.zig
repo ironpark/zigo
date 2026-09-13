@@ -16,7 +16,7 @@ pub const plugin: plugin_api.Plugin = .{
 };
 
 pub fn hasVariant(context: plugin_api.Context, function: abi.AbiFn) !bool {
-    return if (try context.options.facts.get(plugin, .function(function.origin.*))) |fact| fact.enabled else false;
+    return if (try context.facts.get(plugin, .function(function.origin.*))) |fact| fact.enabled else false;
 }
 
 fn analyze(context: plugin_api.AnalyzeContext) !void {

@@ -6,6 +6,7 @@
 const std = @import("std");
 const diagnostic = @import("diagnostic");
 const semantic = @import("semantic");
+const site = @import("site.zig");
 const targets = @import("targets");
 
 pub fn sessionIssue(allocator: std.mem.Allocator, document: semantic.Semantic, target: targets.Target) !?diagnostic.Diagnostic {
@@ -220,7 +221,7 @@ fn methodIssue(allocator: std.mem.Allocator, session: semantic.Session) !?diagno
                 .severity = .@"error",
                 .code = "ZIGO024",
                 .message = try std.fmt.allocPrint(allocator, "public Go name `{s}` collides between {s} and {s}", .{ method.name, method.owner, previous.owner }),
-                .site = .{ .path = "semantic.json", .declaration = session.name },
+                .site = site.documentSite(session.name),
                 .hint = "a session closes its members itself and names one accessor per member; rename the type or leave it out of `.children`",
             };
         }
@@ -233,7 +234,7 @@ fn collision(allocator: std.mem.Allocator, session: semantic.Session, between: [
         .severity = .@"error",
         .code = "ZIGO024",
         .message = try std.fmt.allocPrint(allocator, "public Go name `{s}` collides between {s}", .{ session.name, between }),
-        .site = .{ .path = "semantic.json", .declaration = session.name },
+        .site = site.documentSite(session.name),
         .hint = "give the session a `.name` that resolves to a different Go identifier",
     };
 }
@@ -243,7 +244,7 @@ fn issue(session: semantic.Session, message: []const u8, hint: []const u8) diagn
         .severity = .@"error",
         .code = "ZIGO062",
         .message = message,
-        .site = .{ .path = "semantic.json", .declaration = session.name },
+        .site = site.documentSite(session.name),
         .hint = hint,
     };
 }

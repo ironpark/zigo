@@ -182,6 +182,11 @@
         "kind": "int",
         "signed": false
       },
+      "source": {
+        "path": "root.zig",
+        "line": 3,
+        "column": 11
+      },
       "zig_path": "root.Format"
     }
   ],

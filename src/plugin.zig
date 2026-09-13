@@ -20,7 +20,7 @@ const targets = @import("targets");
 
 /// Major versions are incompatible; minor versions add capabilities.
 pub const ContractVersion = struct { major: u16, minor: u16 };
-pub const contract_version: ContractVersion = .{ .major = 3, .minor = 1 };
+pub const contract_version: ContractVersion = .{ .major = 4, .minor = 0 };
 
 /// Serialized build configuration; decoded as the registered plugin's Config.
 pub const Configuration = struct { name: []const u8, json: []const u8 };
@@ -43,6 +43,11 @@ pub const interfaces = @import("plugin/interfaces.zig");
 pub const session = @import("plugin/session.zig");
 pub const site = @import("plugin/site.zig");
 pub const rename = @import("plugin/rename.zig");
+/// The Go formatting helpers behind `Context.writeFuncHeader`,
+/// `writeMethodHeader`, `identifierAlloc` and `writeStringLiteral`. The
+/// emitter's writers table points at them; a plugin calls them through its
+/// context.
+pub const format = @import("plugin/format.zig");
 
 /// Runs before lowering. All allocations and diagnostics belong to the run arena.
 pub const DeclarationId = struct {
@@ -170,147 +175,46 @@ pub const ValidateContext = struct {
     }
 };
 
-/// The identifiers a rendering of the public package used. Selectors
-/// (`x.Name`) are not identifiers of this package and are skipped. It lives
-/// here rather than next to the scanner because `Options` carries it.
-pub const Referenced = struct {
-    names: std.StringHashMapUnmanaged(void) = .empty,
-
-    pub fn contains(self: *const Referenced, name: []const u8) bool {
-        return self.names.contains(name);
-    }
-
-    pub fn deinit(self: *Referenced, allocator: std.mem.Allocator) void {
-        var keys = self.names.keyIterator();
-        while (keys.next()) |key| allocator.free(key.*);
-        self.names.deinit(allocator);
-    }
-
-    pub fn add(self: *Referenced, allocator: std.mem.Allocator, name: []const u8) !void {
-        if (self.names.contains(name)) return;
-        const owned = try allocator.dupe(u8, name);
-        errdefer allocator.free(owned);
-        try self.names.put(allocator, owned, {});
-    }
-};
-
-pub const Options = struct {
-    pub const Backend = enum { cgo, purego };
-    pub const LinkMode = enum { static, dynamic };
-    /// One Go platform the cgo raw package links a native library for.
-    pub const CgoTarget = struct { goos: []const u8, goarch: []const u8 };
-    /// Extra link flags for one platform: a `#cgo <constraint> LDFLAGS:` line
-    /// of its own, so a flag one platform needs never reaches the others.
-    pub const TargetLdflags = struct {
-        /// `goos` or `goos,goarch`, spelled as cgo's build constraint.
-        constraint: []const u8,
-        flags: []const u8,
-    };
-    /// The output language this run generates for. Every context exposes it,
-    /// so a plugin and the generator read one resolved value instead of both
-    /// reaching for `targets.default`. The emitters do not read it: they are
-    /// Go's, which is what `Plugin.output_targets` records.
+/// What a hook may read about the run: the output target, where the generated
+/// packages live, which package is being rendered, the build configuration and
+/// the helper gate. The emitter's own knobs -- link flags, library paths, the
+/// backend -- are not here: a plugin renders against this view alone, and the
+/// generator fills it from its options for every context it hands out.
+pub const PluginOptions = struct {
+    /// The output language this run generates for.
     target: targets.Target = targets.default,
-    // The `go_*` fields below describe the Go module system specifically -- a
-    // module path, a package name, a package directory, a package doc. They are
-    // read by Go's emitter and by nothing else. A second target does not want
-    // them renamed; it wants its own fields beside them, because a crate name
-    // is different data rather than a different spelling.
-    go_module: []const u8,
-    cflags_override: ?[]const u8 = null,
-    ldflags_override: ?[]const u8 = null,
-    extra_ldflags: []const u8 = "",
-    /// The build integration emits the complete LDFLAGS line into a volatile
-    /// Go file when it contains machine-local static archive paths.
-    ldflags_external: bool = false,
-    system_ldflags: []const u8 = "",
-    framework_ldflags: []const u8 = "",
-    /// Space-separated pkg-config package names. They become a `#cgo
-    /// pkg-config:` line rather than `-l` flags, so cgo asks pkg-config for the
-    /// compile and link flags of each one.
-    pkg_config_libs: []const u8 = "",
-    include_dir: []const u8 = "${SRCDIR}/../../../zig-out/include",
-    library_dir: []const u8 = "${SRCDIR}/../../../zig-out/lib",
-    /// Installed header filename. Empty derives `zigo_<package>.h`.
-    header_name: []const u8 = "",
-    raw_package_path: []const u8 = "internal/raw",
-    raw_package_name: []const u8 = "raw",
-    raw_colocated: bool = false,
-    /// Emit and use the backend-neutral runtime shared by split public packages.
-    /// Kept off for legacy single-package documents so their output stays byte-identical.
-    shared_lifecycle: bool = false,
-    lifecycle_package_path: []const u8 = "internal/lifecycle",
-    backend: Backend = .cgo,
-    link_mode: Options.LinkMode = .static,
-    /// Go platforms the cgo raw package links for. Empty keeps one unqualified
-    /// `#cgo LDFLAGS` line naming `library_dir` directly. Otherwise every entry
-    /// gets its own `#cgo <goos>,<goarch> LDFLAGS` line naming the library in
-    /// `library_dir/<goos>_<goarch>/`, so one generated tree builds for each
-    /// listed platform. Ignored by purego, which resolves the library at run time.
-    cgo_targets: []const CgoTarget = &.{},
-    /// Appended per-platform lines, written after the library link lines.
-    target_ldflags: []const TargetLdflags = &.{},
-    library_stem: []const u8 = "",
+    /// The Go module path of the generated tree.
+    go_module: []const u8 = "",
     /// Public Go package name. Empty derives it from the binding name.
     go_package: []const u8 = "",
     /// Public package path below the module root. Empty defaults to the public
     /// package name; `.` publishes at the module root.
     go_package_path: []const u8 = "",
-    /// Body of the generated `// Package ...` doc. Empty falls back to the
-    /// `//!` container doc of the bindings file, then to a default sentence.
-    go_package_doc: []const u8 = "",
+    /// Module-relative directory of the raw package.
+    raw_package_path: []const u8 = "internal/raw",
     /// Null renders the legacy single package; empty selects the default package
     /// of a split document; a value selects that named sub-package.
     active_package: ?[]const u8 = null,
-    default_package_path: []const u8 = "",
-    /// Colon-separated purego candidate locations, in the order they are tried.
-    library_search_paths: []const u8 = "",
-    /// Comma-separated environment variable names. `null` selects the defaults.
-    library_env_vars: ?[]const u8 = null,
-    library_automatic: bool = false,
-    library_exported_api: bool = true,
-    /// Every search-path directory holds the library under a
-    /// `<goos>_<goarch>` subdirectory, the layout `targets` installs, so the
-    /// loader joins the running platform's name before the file name.
-    library_platform_dirs: bool = false,
-    /// Which registered plugins run beyond the built-in ones, by name. Null
-    /// runs every plugin the generator was built with, which is what a build
-    /// wants: listing a plugin module is already the choice. Naming a subset
-    /// is how one binary can hold several plugins and a golden case still pin
-    /// exactly one.
-    plugins: ?[]const []const u8 = null,
     configurations: []const Configuration = &.{},
-    /// The generated helpers the public package references, decided by
-    /// rendering it (`emit.references.referencedHelpersAlloc`). Null emits every
-    /// gated helper, which only the discovery rendering itself relies on
-    /// being absent.
-    helpers: ?*const Referenced = null,
+    /// Which generated helpers the public package references, decided by the
+    /// emitter from a rendering of it. Null emits every gated helper, which
+    /// only the discovery rendering itself relies on being absent.
+    helpers: ?HelperSet = null,
+    /// The file being rendered, when the hook runs inside one.
     file: ?FileInfo = null,
-    facts: *const Facts = &.{},
-
-    /// Whether an added plugin of this name runs. Built-in features are not
-    /// asked: they are the generator's own surface, not an opt-in.
-    pub fn runsPlugin(self: Options, name: []const u8) bool {
-        const selected = self.plugins orelse return true;
-        for (selected) |entry| {
-            if (std.mem.eql(u8, entry, name)) return true;
-        }
-        return false;
-    }
 
     /// Whether a gated helper of this name is written.
-    pub fn emitsHelper(self: Options, name: []const u8) bool {
+    pub fn emitsHelper(self: PluginOptions, name: []const u8) bool {
         const set = self.helpers orelse return true;
-        return set.contains(name);
+        return set.contains(set.context, name);
     }
+};
 
-    /// `emitsHelper` for a name spelled from a type name, such as
-    /// `zigo<Type>ToRaw`. A name too long to spell is treated as referenced.
-    pub fn emitsHelperFmt(self: Options, comptime format: []const u8, args: anytype) bool {
-        var buffer: [256]u8 = undefined;
-        const name = std.fmt.bufPrint(&buffer, format, args) catch return true;
-        return self.emitsHelper(name);
-    }
+/// The emitter's answer to "does the package reference this helper", handed
+/// over as a predicate so the set behind it stays the emitter's own.
+pub const HelperSet = struct {
+    context: *const anyopaque,
+    contains: *const fn (*const anyopaque, []const u8) bool,
 };
 
 /// Document outputs run once with the full program. Package outputs run once
@@ -346,7 +250,7 @@ pub const Artifact = struct {
 pub const ArtifactContext = struct {
     allocator: std.mem.Allocator,
     program: abi.Program,
-    options: Options,
+    options: PluginOptions,
 
     /// The output language this run generates for.
     pub fn target(self: ArtifactContext) targets.Target {
@@ -360,7 +264,7 @@ pub const ArtifactContext = struct {
     }
 };
 
-pub fn sourceFilePathAlloc(allocator: std.mem.Allocator, program: abi.Program, options: Options, package: PackageKind, filename: []const u8) ![]u8 {
+pub fn sourceFilePathAlloc(allocator: std.mem.Allocator, program: abi.Program, options: PluginOptions, package: PackageKind, filename: []const u8) ![]u8 {
     if (package != .raw) return publicFilePathAlloc(allocator, program, options, filename);
     if (options.raw_package_path.len == 0 or std.mem.eql(u8, options.raw_package_path, ".")) return allocator.dupe(u8, filename);
     return std.fmt.allocPrint(allocator, "{s}/{s}", .{ options.raw_package_path, filename });
@@ -369,7 +273,7 @@ const sourceFilePathAllocImpl = sourceFilePathAlloc;
 
 /// Module-relative path for a file in the currently rendered public package.
 /// Call from SourceFile.pathAlloc or Artifact.pathAlloc; the caller owns the returned allocation.
-pub fn publicFilePathAlloc(allocator: std.mem.Allocator, program: abi.Program, options: Options, filename: []const u8) ![]u8 {
+pub fn publicFilePathAlloc(allocator: std.mem.Allocator, program: abi.Program, options: PluginOptions, filename: []const u8) ![]u8 {
     const directory = if (options.go_package_path.len != 0)
         try allocator.dupe(u8, options.go_package_path)
     else if (options.go_package.len != 0)
@@ -419,7 +323,28 @@ pub const Writers = struct {
     writeParameters: *const fn (Context, *std.Io.Writer, abi.AbiFn) anyerror!void,
     writeResultType: *const fn (Context, *std.Io.Writer, abi.AbiFn, ResultOptions) anyerror!usize,
     writeCallArguments: *const fn (Context, *std.Io.Writer, abi.AbiFn) anyerror!void,
+    /// `func Name(params) results {`, without a trailing newline, so a
+    /// one-line body can follow on the same line.
+    writeFuncHeader: *const fn (Context, *std.Io.Writer, []const u8, []const u8, []const u8) anyerror!void,
+    /// `func (r *T) Name(params) results {`, the method form of the above.
+    writeMethodHeader: *const fn (Context, *std.Io.Writer, Receiver, []const u8, []const u8, []const u8) anyerror!void,
+    /// A Zig name as the generated package spells it: an enum tag or a struct
+    /// field becomes its exported member name with `.pascal`, a local or a
+    /// parameter its unexported spelling with `.camel`.
+    identifierAlloc: *const fn (Context, std.mem.Allocator, []const u8, IdentifierStyle) anyerror![]u8,
+    /// A Go string literal, quotes and escapes included.
+    writeStringLiteral: *const fn (*std.Io.Writer, []const u8) anyerror!void,
 };
+
+/// The receiver clause of a method header: `(name *Type)` or `(name Type)`.
+pub const Receiver = struct {
+    name: []const u8,
+    type: []const u8,
+    pointer: bool = false,
+};
+
+/// How `identifierAlloc` spells a name: `SomeName` or `someName`.
+pub const IdentifierStyle = enum { pascal, camel };
 
 /// What a `method_hook` is adjacent to: the method the generator just wrote.
 /// The names are the ones the method itself used, so a wrapper that calls it
@@ -445,14 +370,17 @@ pub const Method = struct {
     needs_check: bool = false,
 };
 
-/// What a hook is given besides its writer: the lowered program, the emitter
-/// options in force, the writers table, and -- for `method_hook` -- the method
-/// the hook is being written after.
+/// What a hook is given besides its writer: the lowered program, the plugin's
+/// view of the options in force, the writers table, the facts `analyze`
+/// recorded, and -- for `method_hook` -- the method the hook is being written
+/// after.
 pub const Context = struct {
     allocator: std.mem.Allocator,
     program: abi.Program,
-    options: Options,
+    options: PluginOptions,
     writers: *const Writers,
+    /// What `analyze` recorded, read-only: rendering may not add facts.
+    facts: *const Facts = &.{},
     /// Set for method_hook, null in other rendering contexts.
     method: ?Method = null,
 
@@ -528,15 +456,33 @@ pub const Context = struct {
         return publicFilePathAllocImpl(self.allocator, self.program, self.options, filename);
     }
 
-    /// `P`'s options on the function being written, or null when the
-    /// declaration did not extend `P`.
-    pub fn functionOptions(self: Context, comptime P: anytype, function: semantic.SemanticFn) !?P.FunctionOptions {
-        return readOptions(P, .function, self.allocator, function.ext);
+    /// `P`'s options on the declaration whose `ext` this is -- the function
+    /// being written or the type being hooked -- or null when the declaration
+    /// did not attach `P`.
+    pub fn optionsOf(self: Context, comptime P: Plugin, comptime attachment: Attachment, ext: ?semantic.Extensions) !?(if (attachment == .function) P.FunctionOptions else P.TypeOptions) {
+        return readOptions(P, attachment, self.allocator, ext);
     }
 
-    /// `P`'s options on a type declaration, or null when it did not extend `P`.
-    pub fn typeOptions(self: Context, comptime P: anytype, declaration: semantic.TypeDecl) !?P.TypeOptions {
-        return readOptions(P, .type, self.allocator, declaration.ext);
+    /// `func Name(params) results {` without a trailing newline; `params`
+    /// is written between the parentheses and `results` after them as given,
+    /// so a tuple result carries its own parentheses.
+    pub fn writeFuncHeader(self: Context, writer: *std.Io.Writer, name: []const u8, params: []const u8, results: []const u8) !void {
+        return self.writers.writeFuncHeader(self, writer, name, params, results);
+    }
+
+    /// The method form of `writeFuncHeader`.
+    pub fn writeMethodHeader(self: Context, writer: *std.Io.Writer, receiver: Receiver, name: []const u8, params: []const u8, results: []const u8) !void {
+        return self.writers.writeMethodHeader(self, writer, receiver, name, params, results);
+    }
+
+    /// A Zig name as the generated package spells it. The caller owns the result.
+    pub fn identifierAlloc(self: Context, allocator: std.mem.Allocator, name: []const u8, style: IdentifierStyle) ![]u8 {
+        return self.writers.identifierAlloc(self, allocator, name, style);
+    }
+
+    /// `text` as a Go string literal, quotes and escapes included.
+    pub fn writeStringLiteral(self: Context, writer: *std.Io.Writer, text: []const u8) !void {
+        return self.writers.writeStringLiteral(writer, text);
     }
 };
 
@@ -548,9 +494,10 @@ pub fn optionsCode(comptime P: anytype) []const u8 {
 }
 
 /// `P`'s options on a declaration, or null when the declaration did not
-/// extend `P`. The result is allocated from `allocator` and never freed
+/// attach `P`. The result is allocated from `allocator` and never freed
 /// individually: the generator backs it with the arena that owns the run.
-pub fn readOptions(comptime P: anytype, comptime attachment: Attachment, allocator: std.mem.Allocator, ext: ?semantic.Extensions) !?(if (attachment == .function) P.FunctionOptions else P.TypeOptions) {
+/// Every context exposes it as `optionsOf`; that is the one way to read it.
+fn readOptions(comptime P: Plugin, comptime attachment: Attachment, allocator: std.mem.Allocator, ext: ?semantic.Extensions) !?(if (attachment == .function) P.FunctionOptions else P.TypeOptions) {
     const attached = (ext orelse return null).get(P.name) orelse return null;
     return std.json.parseFromValueLeaky(if (attachment == .function) P.FunctionOptions else P.TypeOptions, allocator, attached, .{}) catch return error.InvalidPluginOptions;
 }
@@ -732,6 +679,68 @@ pub const AnalyzeContext = struct {
     pub fn diagnose(self: AnalyzeContext, issue: diagnostic.Diagnostic) !void {
         try self.diagnostics.append(self.render.allocator, issue);
     }
+
+    pub fn config(self: AnalyzeContext, comptime P: Plugin) !P.Config {
+        return self.render.config(P);
+    }
+
+    pub fn optionsOf(self: AnalyzeContext, comptime P: Plugin, comptime attachment: Attachment, ext: ?semantic.Extensions) !?(if (attachment == .function) P.FunctionOptions else P.TypeOptions) {
+        return readOptions(P, attachment, self.render.allocator, ext);
+    }
+};
+
+/// Support for a plugin's own unit tests: a rendering context whose
+/// formatting helpers work and whose generator-backed writers -- the ones
+/// that spell types, signatures and parameter names -- report
+/// `error.Unsupported`, since only the generator can answer for those.
+pub const testing = struct {
+    pub fn context(allocator: std.mem.Allocator, program: abi.Program) Context {
+        return .{ .allocator = allocator, .program = program, .options = .{}, .writers = &writers };
+    }
+
+    const writers: Writers = .{
+        .writeTypeName = unsupported.typeName,
+        .writeGoType = unsupported.goType,
+        .receiverNameAlloc = unsupported.receiverName,
+        .writeSignature = unsupported.signature,
+        .writeValueType = unsupported.function,
+        .writeDoc = unsupported.doc,
+        .functionInfo = unsupported.info,
+        .writeParameters = unsupported.function,
+        .writeResultType = unsupported.results,
+        .writeCallArguments = unsupported.function,
+        .writeFuncHeader = format.writeFuncHeader,
+        .writeMethodHeader = format.writeMethodHeader,
+        .identifierAlloc = format.identifierAlloc,
+        .writeStringLiteral = format.writeStringLiteral,
+    };
+
+    const unsupported = struct {
+        fn typeName(_: Context, _: *std.Io.Writer, _: []const u8) anyerror!void {
+            return error.Unsupported;
+        }
+        fn goType(_: Context, _: *std.Io.Writer, _: semantic.TypeNode) anyerror!void {
+            return error.Unsupported;
+        }
+        fn receiverName(_: Context, _: std.mem.Allocator, _: []const u8) anyerror![]u8 {
+            return error.Unsupported;
+        }
+        fn signature(_: Context, _: *std.Io.Writer, _: abi.AbiFn, _: SignatureOptions) anyerror!void {
+            return error.Unsupported;
+        }
+        fn function(_: Context, _: *std.Io.Writer, _: abi.AbiFn) anyerror!void {
+            return error.Unsupported;
+        }
+        fn doc(_: *std.Io.Writer, _: []const u8, _: []const u8, _: []const u8) anyerror!void {
+            return error.Unsupported;
+        }
+        fn info(_: Context, _: abi.AbiFn) anyerror!FunctionInfo {
+            return error.Unsupported;
+        }
+        fn results(_: Context, _: *std.Io.Writer, _: abi.AbiFn, _: ResultOptions) anyerror!usize {
+            return error.Unsupported;
+        }
+    };
 };
 
 pub fn packageMatches(package: ?[]const u8, active: ?[]const u8) bool {
@@ -793,8 +802,31 @@ test "validation and transformation contexts read both declaration option types"
     var facts: Facts = .{};
     const validate: ValidateContext = .{ .allocator = allocator, .document = .{ .package = "test", .prefix = "test", .zig_version = "0.16.0", .types = &.{}, .functions = &.{} }, .diagnostics = &issues, .facts = &facts };
     const transform: TransformContext = .{ .allocator = allocator, .document = validate.document, .diagnostics = &issues };
+    const render = testing.context(allocator, .{ .package = "test", .prefix = "test", .functions = &.{} });
+    const analyze: AnalyzeContext = .{ .render = render, .facts = &facts, .diagnostics = &issues };
     inline for (.{ Attachment.function, Attachment.type }) |attachment| {
         try std.testing.expect((try validate.optionsOf(p, attachment, value)).?.enabled);
         try std.testing.expect((try transform.optionsOf(p, attachment, value)).?.enabled);
+        try std.testing.expect((try render.optionsOf(p, attachment, value)).?.enabled);
+        try std.testing.expect((try analyze.optionsOf(p, attachment, value)).?.enabled);
+        try std.testing.expect(try render.optionsOf(p, attachment, null) == null);
     }
+}
+
+test "the test context formats headers, identifiers and literals like the generator" {
+    const context = testing.context(std.testing.allocator, .{ .package = "test", .prefix = "test", .functions = &.{} });
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    try context.writeFuncHeader(&output.writer, "ModeValues", "", "[]Mode");
+    try context.writeMethodHeader(&output.writer, .{ .name = "value", .type = "Mode", .pointer = true }, "UnmarshalJSON", "data []byte", "error");
+    try context.writeMethodHeader(&output.writer, .{ .name = "value", .type = "Mode" }, "IsKnown", "", "");
+    try context.writeStringLiteral(&output.writer, "tab\t\"quoted\"");
+    try std.testing.expectEqualStrings("func ModeValues() []Mode {func (value *Mode) UnmarshalJSON(data []byte) error {func (value Mode) IsKnown() {\"tab\\t\\\"quoted\\\"\"", output.written());
+    const pascal = try context.identifierAlloc(std.testing.allocator, "low_water", .pascal);
+    defer std.testing.allocator.free(pascal);
+    try std.testing.expectEqualStrings("LowWater", pascal);
+    const camel = try context.identifierAlloc(std.testing.allocator, "low_water", .camel);
+    defer std.testing.allocator.free(camel);
+    try std.testing.expectEqualStrings("lowWater", camel);
+    try std.testing.expectError(error.Unsupported, context.writeTypeName(&output.writer, "Mode"));
 }

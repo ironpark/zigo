@@ -98,7 +98,7 @@ fn analyze(context: plugin_api.AnalyzeContext) !void {
         .severity = .@"error",
         .code = "ZIGO049",
         .message = try std.fmt.allocPrint(context.render.allocator, "method `{s}` has signature `{s}` on `{s}` but `{s}` on `{s}`", .{ mismatch.method, mismatch.first_signature, mismatch.first_type, mismatch.second_signature, mismatch.second_type }),
-        .site = .{ .path = "semantic.json", .declaration = mismatch.interface },
+        .site = plugin_api.site.documentSite(mismatch.interface),
         .hint = "give every listed type the same Go signature for the method, or drop the method or the type from the interface",
     });
 }

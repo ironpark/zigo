@@ -59,6 +59,15 @@
       "symbol": "zg_document_deinit"
     },
     {
+      "ext": {
+        "IMPLEMENTS": {
+          "kinds": [
+            "writer",
+            "string_writer"
+          ],
+          "keep_original": false
+        }
+      },
       "go": {
         "implements": [
           "writer",
@@ -170,6 +179,14 @@
     },
     {
       "doc": "Writes every line out, newline separated. The output is far larger than\nthe shim's staging buffer for a document of any size, which is the\npoint: the buffer is what keeps the crossings proportional to the\npayload rather than to the number of `writeAll` calls.",
+      "ext": {
+        "IMPLEMENTS": {
+          "kinds": [
+            "writer_to"
+          ],
+          "keep_original": false
+        }
+      },
       "go": {
         "implements": [
           "writer_to"
@@ -211,6 +228,14 @@
     },
     {
       "doc": "Reads newline-terminated lines until the stream ends, and reports how\nmany bytes it consumed. A trailing fragment with no newline is not a\nline: `dump` always terminates, so a stream this can read always does.",
+      "ext": {
+        "IMPLEMENTS": {
+          "kinds": [
+            "reader_from"
+          ],
+          "keep_original": false
+        }
+      },
       "go": {
         "implements": [
           "reader_from"
@@ -257,6 +282,14 @@
     },
     {
       "doc": "Copies the newline-terminated lines into `dst`, continuing where the\nlast call stopped, and reports how many bytes it copied. Zero means\neverything has been read. It is the `io.Reader` shape: an out buffer\nand a count, with nothing streamed through Zig.",
+      "ext": {
+        "IMPLEMENTS": {
+          "kinds": [
+            "reader"
+          ],
+          "keep_original": false
+        }
+      },
       "go": {
         "implements": [
           "reader"
@@ -376,6 +409,14 @@
     },
     {
       "doc": "Bytes with no promise of being UTF-8, which is why the binding leaves\nthe parameter opaque. The generated `WriteString` still takes a Go\n`string` and lends its bytes here without copying them.",
+      "ext": {
+        "IMPLEMENTS": {
+          "kinds": [
+            "string_writer"
+          ],
+          "keep_original": false
+        }
+      },
       "go": {
         "implements": [
           "string_writer"
@@ -756,6 +797,11 @@
       "fields": [],
       "kind": "opaque",
       "name": "Document",
+      "source": {
+        "path": "root.zig",
+        "line": 11,
+        "column": 11
+      },
       "zig_path": "root.Document"
     },
     {
@@ -763,6 +809,11 @@
       "fields": [],
       "kind": "opaque",
       "name": "Sink",
+      "source": {
+        "path": "root.zig",
+        "line": 105,
+        "column": 11
+      },
       "zig_path": "root.Sink"
     },
     {
@@ -770,6 +821,11 @@
       "fields": [],
       "kind": "opaque",
       "name": "Source",
+      "source": {
+        "path": "root.zig",
+        "line": 138,
+        "column": 11
+      },
       "zig_path": "root.Source"
     }
   ],

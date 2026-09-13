@@ -466,7 +466,7 @@ fn appendEmitters(allocator: std.mem.Allocator, prepared: *std.ArrayList(Prepare
         try prepared.append(allocator, .{
             .source_kind = if (emitter.source_file) |file| file.kind else null,
             .source_directory = if (emitter.source_file) |file| blk: {
-                const example = try plugin.sourceFilePathAlloc(allocator, program, options, file.package, "_.go");
+                const example = try plugin.sourceFilePathAlloc(allocator, program, options.view(), file.package, "_.go");
                 break :blk std.fs.path.dirname(example) orelse ".";
             } else null,
             .path = relative_path,
@@ -481,7 +481,7 @@ fn appendArtifacts(allocator: std.mem.Allocator, prepared: *std.ArrayList(Prepar
     inline for (registry.plugins, 0..) |registered, index| {
         if (registry.runs(index, options.plugins, options.target)) inline for (registered.artifacts) |artifact| {
             if (artifact.scope == scope) {
-                const context: plugin.ArtifactContext = .{ .allocator = allocator, .program = program, .options = options };
+                const context: plugin.ArtifactContext = .{ .allocator = allocator, .program = program, .options = options.view() };
                 if (artifact.enabled) |predicate| {
                     if (try predicate(context)) try appendArtifact(allocator, prepared, context, registered.name, artifact);
                 } else try appendArtifact(allocator, prepared, context, registered.name, artifact);

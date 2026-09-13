@@ -675,6 +675,7 @@ fn scanMembers(
         defer allocator.free(nested_owner);
         try owners.append(allocator, try allocator.dupe(u8, nested_owner));
         try enrichTypeMembers(allocator, tree, container.ast.members, nested_owner, types);
+        try locateType(allocator, tree, container.ast.members, nested_owner, variable.ast.mut_token + 1, path, types);
         try scanMembers(allocator, tree, container.ast.members, nested_owner, functions, types, visited, matched, path, owners, aliases);
     }
 }
@@ -978,6 +979,43 @@ fn enrichTypeMembers(
         if (fields[next].doc != null) continue;
         fields[next].doc = try docCommentAlloc(allocator, tree, member.firstToken());
     }
+}
+
+/// Records where a registered type's container is declared, the way a
+/// function's `source` is: the first file that resolves it wins, and a file
+/// with no stable path gives nothing. A container with fields is matched the
+/// way member docs are; a field-less one -- a handle -- has only its lexical
+/// path to go by, so it is placed only when exactly one registered type
+/// spells that path.
+fn locateType(
+    allocator: std.mem.Allocator,
+    tree: std.zig.Ast,
+    members: []const std.zig.Ast.Node.Index,
+    path: []const u8,
+    name_token: std.zig.Ast.TokenIndex,
+    file: ?[]const u8,
+    types: []semantic.TypeDecl,
+) !void {
+    const value = file orelse return;
+    const declaration = declaredContainer(tree, members, path, types) orelse fieldlessType(path, types) orelse return;
+    if (declaration.source != null) return;
+    const location = tree.tokenLocation(0, name_token);
+    declaration.source = .{ .path = try allocator.dupe(u8, value), .line = @intCast(location.line + 1), .column = @intCast(location.column + 1) };
+}
+
+fn fieldlessType(path: []const u8, types: []semantic.TypeDecl) ?*semantic.TypeDecl {
+    var found: ?*semantic.TypeDecl = null;
+    for (types) |*declaration| {
+        if (declaration.fields.len != 0) continue;
+        const zig_path = declaration.zig_path orelse continue;
+        const lexical = zig_path[0 .. std.mem.indexOfScalar(u8, zig_path, '#') orelse zig_path.len];
+        if (!std.mem.eql(u8, lexical, path) and
+            !(lexical.len > path.len and std.mem.endsWith(u8, lexical, path) and
+                lexical[lexical.len - path.len - 1] == '.')) continue;
+        if (found != null) return null;
+        found = declaration;
+    }
+    return found;
 }
 
 fn functionOwner(function: semantic.SemanticFn) ?[]const u8 {

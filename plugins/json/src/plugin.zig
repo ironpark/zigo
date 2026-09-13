@@ -8,7 +8,6 @@
 //! code. A `type_hook` writes it instead.
 const std = @import("std");
 const diagnostic = @import("diagnostic");
-const naming = @import("naming");
 const plugin_api = @import("plugin");
 const semantic = @import("semantic");
 
@@ -46,7 +45,7 @@ pub const plugin: plugin_api.Plugin = .{
 };
 
 fn typeHook(context: plugin_api.Context, writer: *std.Io.Writer, declaration: semantic.TypeDecl) !void {
-    const options = try context.typeOptions(plugin, declaration) orelse return;
+    const options = try context.optionsOf(plugin, .type, declaration.ext) orelse return;
     switch (declaration.kind) {
         .@"enum" => try renderEnum(context, writer, declaration),
         .value_struct => try renderValueStruct(context, writer, declaration, options),
@@ -58,20 +57,24 @@ fn typeHook(context: plugin_api.Context, writer: *std.Io.Writer, declaration: se
 /// marshalling is one call; unmarshalling is the switch that `String` does not
 /// have an inverse for unless the binding asked for `.text`.
 fn renderEnum(context: plugin_api.Context, writer: *std.Io.Writer, declaration: semantic.TypeDecl) !void {
-    try writer.print(
-        "// MarshalJSON encodes {0s} as its Zig tag name.\n" ++
-            "func (value {0s}) MarshalJSON() ([]byte, error) {{ return json.Marshal(value.String()) }}\n\n" ++
-            "// UnmarshalJSON decodes a Zig tag name written by MarshalJSON.\n" ++
-            "func (value *{0s}) UnmarshalJSON(data []byte) error {{\n" ++
-            "\tvar text string\n" ++
-            "\tif err := json.Unmarshal(data, &text); err != nil {{\n\t\treturn err\n\t}}\n" ++
-            "\tswitch text {{\n",
-        .{declaration.name},
+    const by_value: plugin_api.Receiver = .{ .name = "value", .type = declaration.name };
+    const by_pointer: plugin_api.Receiver = .{ .name = "value", .type = declaration.name, .pointer = true };
+    try writer.print("// MarshalJSON encodes {s} as its Zig tag name.\n", .{declaration.name});
+    try context.writeMethodHeader(writer, by_value, "MarshalJSON", "", "([]byte, error)");
+    try writer.writeAll(" return json.Marshal(value.String()) }\n\n");
+    try writer.writeAll("// UnmarshalJSON decodes a Zig tag name written by MarshalJSON.\n");
+    try context.writeMethodHeader(writer, by_pointer, "UnmarshalJSON", "data []byte", "error");
+    try writer.writeAll(
+        "\n\tvar text string\n" ++
+            "\tif err := json.Unmarshal(data, &text); err != nil {\n\t\treturn err\n\t}\n" ++
+            "\tswitch text {\n",
     );
     for (declaration.fields) |field| {
-        const member = try naming.pascalAlloc(context.allocator, field.name);
+        const member = try context.identifierAlloc(context.allocator, field.name, .pascal);
         defer context.allocator.free(member);
-        try writer.print("\tcase \"{s}\":\n\t\t*value = {s}{s}\n", .{ field.name, declaration.name, member });
+        try writer.writeAll("\tcase ");
+        try context.writeStringLiteral(writer, field.name);
+        try writer.print(":\n\t\t*value = {s}{s}\n", .{ declaration.name, member });
     }
     try writer.print(
         "\tdefault:\n\t\treturn fmt.Errorf(\"{0s}: unknown value %q\", text)\n\t}}\n\treturn nil\n}}\n\n",
@@ -90,9 +93,11 @@ fn renderValueStruct(
 ) !void {
     const wire = try std.fmt.allocPrint(context.allocator, "zigo{s}JSON", .{declaration.name});
     defer context.allocator.free(wire);
+    const by_value: plugin_api.Receiver = .{ .name = "value", .type = declaration.name };
+    const by_pointer: plugin_api.Receiver = .{ .name = "value", .type = declaration.name, .pointer = true };
     try writer.print("// {s} is the wire shape of {s}: the same fields under the JSON keys the binding chose.\ntype {s} struct {{\n", .{ wire, declaration.name, wire });
     for (declaration.fields) |field| {
-        const member = try naming.pascalAlloc(context.allocator, field.name);
+        const member = try context.identifierAlloc(context.allocator, field.name, .pascal);
         defer context.allocator.free(member);
         try writer.print("\t{s} ", .{member});
         if (semantic.isCodepoint(field.type.?, field.semantic))
@@ -104,16 +109,20 @@ fn renderValueStruct(
             .go => member,
         }});
     }
-    try writer.print("}}\n\n// MarshalJSON encodes {0s} under the JSON keys the binding chose.\nfunc (value {0s}) MarshalJSON() ([]byte, error) {{\n\treturn json.Marshal({1s}{{", .{ declaration.name, wire });
+    try writer.print("}}\n\n// MarshalJSON encodes {s} under the JSON keys the binding chose.\n", .{declaration.name});
+    try context.writeMethodHeader(writer, by_value, "MarshalJSON", "", "([]byte, error)");
+    try writer.print("\n\treturn json.Marshal({s}{{", .{wire});
     for (declaration.fields, 0..) |field, index| {
-        const member = try naming.pascalAlloc(context.allocator, field.name);
+        const member = try context.identifierAlloc(context.allocator, field.name, .pascal);
         defer context.allocator.free(member);
         if (index != 0) try writer.writeAll(", ");
         try writer.print("{0s}: value.{0s}", .{member});
     }
-    try writer.print("}})\n}}\n\n// UnmarshalJSON decodes what MarshalJSON wrote.\nfunc (value *{0s}) UnmarshalJSON(data []byte) error {{\n\tvar wire {1s}\n\tif err := json.Unmarshal(data, &wire); err != nil {{\n\t\treturn err\n\t}}\n\t*value = {0s}{{", .{ declaration.name, wire });
+    try writer.writeAll("})\n}\n\n// UnmarshalJSON decodes what MarshalJSON wrote.\n");
+    try context.writeMethodHeader(writer, by_pointer, "UnmarshalJSON", "data []byte", "error");
+    try writer.print("\n\tvar wire {1s}\n\tif err := json.Unmarshal(data, &wire); err != nil {{\n\t\treturn err\n\t}}\n\t*value = {0s}{{", .{ declaration.name, wire });
     for (declaration.fields, 0..) |field, index| {
-        const member = try naming.pascalAlloc(context.allocator, field.name);
+        const member = try context.identifierAlloc(context.allocator, field.name, .pascal);
         defer context.allocator.free(member);
         if (index != 0) try writer.writeAll(", ");
         try writer.print("{0s}: wire.{0s}", .{member});
@@ -127,7 +136,7 @@ fn validateDocument(context: plugin_api.ValidateContext) !void {
     const allocator = context.allocator;
     const document = context.document;
     for (document.types) |declaration| {
-        _ = try plugin_api.readOptions(plugin, .type, allocator, declaration.ext) orelse continue;
+        _ = try context.optionsOf(plugin, .type, declaration.ext) orelse continue;
         if (declaration.kind == .@"enum" or declaration.kind == .value_struct) continue;
         try context.diagnose(.{
             .severity = .@"error",
@@ -137,8 +146,23 @@ fn validateDocument(context: plugin_api.ValidateContext) !void {
                 "`{s}` is a {s}, which has no JSON encoding to generate",
                 .{ declaration.name, @tagName(declaration.kind) },
             ),
-            .site = .{ .path = "semantic.json", .declaration = declaration.name },
-            .hint = "extend a value struct or an enum; a handle is a pointer into native memory and has no fields to encode",
+            .site = plugin_api.site.typeSite(declaration),
+            .hint = "attach json to a value struct or an enum; a handle is a pointer into native memory and has no fields to encode",
         });
     }
+}
+
+test "an enum writes its tag names as string literals through the context writers" {
+    const context = plugin_api.testing.context(std.testing.allocator, .{ .package = "palette", .prefix = "zg", .functions = &.{} });
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    try renderEnum(context, &output.writer, .{
+        .kind = .@"enum",
+        .name = "Mode",
+        .fields = &.{ .{ .name = "idle", .value = 0 }, .{ .name = "get_all", .value = 1 } },
+    });
+    const rendered = output.written();
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "func (value Mode) MarshalJSON() ([]byte, error) { return json.Marshal(value.String()) }\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "func (value *Mode) UnmarshalJSON(data []byte) error {\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "\tcase \"get_all\":\n\t\t*value = ModeGetAll\n") != null);
 }

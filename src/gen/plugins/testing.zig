@@ -33,7 +33,7 @@ fn methodHook(context: plugin_api.Context, writer: *std.Io.Writer, function: abi
     if (!enabled) return;
     const method = context.method.?;
     const receiver = method.receiver orelse return;
-    const options = try context.functionOptions(plugin, function.origin.*) orelse Options{};
+    const options = try context.optionsOf(plugin, .function, function.origin.ext) orelse Options{};
     try writer.print(
         "\n// {0s}TestHook reports the name of {0s}.\nfunc ({1s} *{2s}) {0s}TestHook() string {{ return \"{3s}\" }}\n",
         .{ method.public_name, method.receiver_name.?, receiver, @tagName(options.mode) },
@@ -74,7 +74,7 @@ fn validateAll(context: plugin_api.ValidateContext) !void {
         .severity = .@"error",
         .code = if (index == 0) "TEST002" else "TEST003",
         .message = "test plugin diagnostic",
-        .site = .{ .path = "semantic.json", .declaration = "sample" },
+        .site = plugin_api.site.documentSite("sample"),
         .hint = "test hint",
     };
     for (issues) |issue| try context.diagnose(issue);

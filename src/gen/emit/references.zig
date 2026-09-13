@@ -7,9 +7,39 @@ const abi = @import("abi");
 const emit = @import("emit.zig");
 const plugin = @import("plugin");
 
-/// The identifiers a rendering of the public package used. It is declared
-/// with the plugin contract, since the emitter options carry it.
-pub const Referenced = plugin.Referenced;
+/// The identifiers a rendering of the public package used. Selectors
+/// (`x.Name`) are not identifiers of this package and are skipped. The
+/// emitter options carry it; a plugin sees it as the `HelperSet` predicate.
+pub const Referenced = struct {
+    names: std.StringHashMapUnmanaged(void) = .empty,
+
+    pub fn contains(self: *const Referenced, name: []const u8) bool {
+        return self.names.contains(name);
+    }
+
+    pub fn deinit(self: *Referenced, allocator: std.mem.Allocator) void {
+        var keys = self.names.keyIterator();
+        while (keys.next()) |key| allocator.free(key.*);
+        self.names.deinit(allocator);
+    }
+
+    pub fn add(self: *Referenced, allocator: std.mem.Allocator, name: []const u8) !void {
+        if (self.names.contains(name)) return;
+        const owned = try allocator.dupe(u8, name);
+        errdefer allocator.free(owned);
+        try self.names.put(allocator, owned, {});
+    }
+
+    /// This set as the predicate the plugin contract hands a hook.
+    pub fn helperSet(self: *const Referenced) plugin.HelperSet {
+        return .{ .context = self, .contains = containsErased };
+    }
+
+    fn containsErased(context: *const anyopaque, name: []const u8) bool {
+        const self: *const Referenced = @ptrCast(@alignCast(context));
+        return self.contains(name);
+    }
+};
 
 /// Records every identifier of a Go body: comments and string literals are
 /// skipped, and so is the name after a `.`, which belongs to another package

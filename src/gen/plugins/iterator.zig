@@ -1,11 +1,11 @@
 //! Range-over-func wrappers for `.iterator` methods: a `next()` that returns
 //! `?T` becomes an `iter.Seq`/`iter.Seq2` the caller ranges over.
 //!
-//! A built-in plugin. It keeps its declaration key (`.iterator`) and its
-//! `semantic.json` spelling, and reads the typed field directly instead of
-//! going through `ext`: an in-tree plugin may, and every document and golden
-//! that predates the plugin frame stays exactly as it was. An out-of-tree
-//! plugin transports its options with `use`.
+//! A built-in plugin on the same terms as an added one: its options travel
+//! under its `ext` key, written by `use(zigo.features.iterator, .{ ... })`
+//! with the wrapper name already resolved, and every hook reads them through
+//! `optionsOf`. The typed `go.iterator` field beside them is the core's --
+//! name collision rules and `abi-diff` read it -- not this plugin's.
 const std = @import("std");
 const abi = @import("abi");
 const diagnostic = @import("diagnostic");
@@ -13,8 +13,15 @@ const plugin_api = @import("plugin");
 const semantic = @import("semantic");
 const site = plugin_api.site;
 
+/// What `use(zigo.features.iterator, .{ .name = ... })` attaches: the
+/// wrapper's name. The reflector has already resolved an empty name to
+/// `All` (or `AllChecked` over a `*Checked` method) by the time it is here.
+pub const Options = semantic.Iterator;
+
 pub const plugin: plugin_api.Plugin = .{
     .name = "ITERATOR",
+    .FunctionOptions = Options,
+    .subjects = &.{.function},
     .after = &.{ "MUST", "IMPLEMENTS" },
     .validate = validateDocument,
     .method_hook = methodHook,
@@ -23,8 +30,8 @@ pub const plugin: plugin_api.Plugin = .{
 /// The wrapper is written after the method it drives, in the file that owns
 /// the method: a plugin's method hook is exactly where the direct call was.
 fn methodHook(context: plugin_api.Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
-    if (function.origin.goIterator() == null) return;
-    try renderIteratorWrapper(context, writer, function);
+    const options = try context.optionsOf(plugin, .function, function.origin.ext) orelse return;
+    try renderIteratorWrapper(context, writer, function, options);
 }
 
 /// The shape rule for `.iterator`, run over the whole document. The name
@@ -34,7 +41,8 @@ fn validateDocument(context: plugin_api.ValidateContext) !void {
     const allocator = context.allocator;
     const document = context.document;
     for (document.functions) |function| {
-        if (try iteratorIssue(allocator, function)) |issue| try context.diagnose(issue);
+        const options = try context.optionsOf(plugin, .function, function.ext) orelse continue;
+        if (try iteratorIssue(allocator, function, options)) |issue| try context.diagnose(issue);
     }
 }
 
@@ -44,13 +52,12 @@ fn validateDocument(context: plugin_api.ValidateContext) !void {
 /// carries an `error` yields `iter.Seq2[T, error]`: the error is yielded
 /// once, with the zero value, and the sequence stops. Otherwise it yields
 /// `iter.Seq[T]`.
-pub fn renderIteratorWrapper(context: plugin_api.Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
+pub fn renderIteratorWrapper(context: plugin_api.Context, writer: *std.Io.Writer, function: abi.AbiFn, iterator: Options) !void {
     const allocator = context.allocator;
     const method = context.method.?;
     const receiver_name = method.receiver_name.?;
     const go_name = method.checked_name;
     const needs_check = method.needs_check;
-    const iterator = function.origin.goIterator().?;
     const receiver = function.origin.receiver.?;
     const with_error = needs_check or function.origin.@"return" == .error_union;
     var payload: std.Io.Writer.Allocating = .init(allocator);
@@ -87,8 +94,7 @@ pub fn renderIteratorWrapper(context: plugin_api.Context, writer: *std.Io.Writer
 /// An iterator wrapper drives `next()` for the caller, so the method has to
 /// be one Go can call with nothing but the receiver (and its `ctx`), and it
 /// has to say when it is finished: `?T` or `!?T`.
-pub fn iteratorIssue(allocator: std.mem.Allocator, function: semantic.SemanticFn) !?diagnostic.Diagnostic {
-    const iterator = function.goIterator() orelse return null;
+pub fn iteratorIssue(allocator: std.mem.Allocator, function: semantic.SemanticFn, iterator: Options) !?diagnostic.Diagnostic {
     if (function.receiver == null) return .{
         .severity = .@"error",
         .code = "ZIGO050",

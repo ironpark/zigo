@@ -624,7 +624,8 @@ pub fn writeRawGoType(writer: *std.Io.Writer, program: abi.Program, node: semant
 /// pass over the rendered Go.
 pub const PublicScope = struct {
     program: abi.Program,
-    options: emit.Options,
+    /// The package being rendered; see `Options.active_package`.
+    active_package: ?[]const u8 = null,
 
     /// The same rule as `writeTypeName`, as a string, for the templates that
     /// interleave a type reference with other uses of the bare name -- a
@@ -642,7 +643,7 @@ pub const PublicScope = struct {
         if (semantic.typeDecl(self.program.types, name)) |declaration| {
             if (declaration.goAdapter()) |adapter| return writer.writeAll(adapter.type);
         }
-        const active = self.options.active_package orelse return writer.writeAll(name);
+        const active = self.active_package orelse return writer.writeAll(name);
         for (self.program.types) |declaration| {
             if (!std.mem.eql(u8, declaration.name, name)) continue;
             if (emit.packageMatches(declaration.package, active)) break;

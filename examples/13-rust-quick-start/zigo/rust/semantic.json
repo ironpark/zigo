@@ -407,6 +407,11 @@
       "fields": [],
       "kind": "opaque",
       "name": "Tally",
+      "source": {
+        "path": "root.zig",
+        "line": 35,
+        "column": 11
+      },
       "zig_path": "root.Tally"
     },
     {
@@ -414,6 +419,11 @@
       "fields": [],
       "kind": "opaque",
       "name": "Reading",
+      "source": {
+        "path": "root.zig",
+        "line": 93,
+        "column": 11
+      },
       "zig_path": "root.Reading"
     }
   ],

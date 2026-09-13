@@ -21,9 +21,9 @@ const raw = @import("raw.zig");
 const shim = @import("shim.zig");
 pub const references = @import("references.zig");
 
-/// The emitter options, defined with the plugin contract so a plugin
-/// compiled as its own module reaches them without importing the generator.
-pub const Options = plugin.Options;
+/// The emitter options. A plugin sees only the `PluginOptions` view the
+/// contexts are built from; see `options.zig`.
+pub const Options = @import("options.zig").Options;
 
 pub const Emitter = struct {
     enabled: ?*const fn (std.mem.Allocator, abi.Program, Options) anyerror!bool = null,
@@ -83,13 +83,13 @@ fn hasPackageHooks() bool {
 fn packageHooksPath(allocator: std.mem.Allocator, program: abi.Program, options: Options) ![]u8 {
     const filename = try targets.go.generatedFileNameAlloc(allocator, "zigo_plugins");
     defer allocator.free(filename);
-    return plugin.publicFilePathAlloc(allocator, program, options, filename);
+    return plugin.publicFilePathAlloc(allocator, program, options.view(), filename);
 }
 
 fn renderPackageHooks(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
     return public.renderPublicFile(allocator, writer, program, options, struct {
         fn body(a: std.mem.Allocator, w: *std.Io.Writer, p: abi.Program, o: Options) !void {
-            return plugin_hooks.runPackageHooks(plugin_hooks.context(a, p, o), w);
+            return plugin_hooks.runPackageHooks(o, plugin_hooks.context(a, p, o), w);
         }
     }.body);
 }
@@ -439,7 +439,7 @@ fn publicErrorsPath(allocator: std.mem.Allocator, program: abi.Program, options:
 }
 
 fn publicFilePathAlloc(allocator: std.mem.Allocator, program: abi.Program, options: Options, filename: []const u8) ![]u8 {
-    return @import("plugin").publicFilePathAlloc(allocator, program, options, filename);
+    return @import("plugin").publicFilePathAlloc(allocator, program, options.view(), filename);
 }
 
 /// One generated file, produced outside the fixed emitter table because how

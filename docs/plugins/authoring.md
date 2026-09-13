@@ -28,10 +28,11 @@ fn typeHook(
     writer: *std.Io.Writer,
     declaration: semantic.TypeDecl,
 ) !void {
-    const options = try context.typeOptions(plugin, declaration) orelse return;
+    const options = try context.optionsOf(plugin, .type, declaration.ext) orelse return;
     if (!options.enabled) return;
 
-    try writer.print("func (value {s}) HasName() bool {{\n", .{declaration.name});
+    try context.writeMethodHeader(writer, .{ .name = "value", .type = declaration.name }, "HasName", "", "bool");
+    try writer.writeByte('\n');
     for (context.program.liveFields(declaration.name)) |field| {
         const value = field.value orelse return error.MissingEnumValue;
         try writer.print("    if value == {d} {{ return true }}\n", .{value});
@@ -39,6 +40,12 @@ fn typeHook(
     try writer.writeAll("    return false\n}\n");
 }
 ```
+
+선언에 붙은 옵션은 모든 context에서 같은 한 가지 방법, `optionsOf(plugin, .function | .type, ext)`로
+읽습니다. 메서드·함수 header는 `writeFuncHeader`/`writeMethodHeader`로, Zig 이름에서 파생하는 Go
+식별자는 `identifierAlloc(allocator, name, .pascal | .camel)`로, 문자열 리터럴은
+`writeStringLiteral`로 씁니다. 그래야 generator가 core 타입에 쓰는 것과 같은 표기(initialism 규칙,
+escape)를 플러그인도 얻습니다. 문장 본문은 위처럼 `writer.print`로 써도 됩니다.
 
 등록된 태그의 실제 정수 값으로 비교하므로 알려지지 않은 값은 `false`가 됩니다.
 `String()`은 알려지지 않은 값에도 설명 문자열을 반환할 수 있어 빈 문자열 여부로 판별하면
@@ -154,7 +161,7 @@ fn validate(context: api.ValidateContext) !void {
                 .severity = .@"error",
                 .code = "KNOWN002",
                 .message = "KNOWN requires an enum",
-                .site = .{ .path = "semantic.json", .declaration = declaration.name },
+                .site = api.site.typeSite(declaration),
                 .hint = "attach KNOWN to an enumeration",
             });
         }
@@ -163,6 +170,10 @@ fn validate(context: api.ValidateContext) !void {
 ```
 
 위 함수를 실행하려면 `plugin` 선언에 `.validate = validate`도 추가합니다.
+
+진단의 `site`는 `api.site`의 도우미로 만듭니다. `typeSite(declaration)`과 `functionSite(function)`은
+reflection이 기록한 Zig 소스 위치(파일, 줄, 열)를 가리키고, 위치가 없는 선언은 `semantic.json`의
+해당 항목으로 떨어집니다. 경로를 직접 쓰지 마세요.
 
 `NAME001`은 옵션 decode failure에 사용되므로 플러그인의 자체 rule은 일반적으로 `002`부터
 시작합니다. core 진단을 숨기지 않도록 core 검증이 먼저 실행됩니다.
@@ -201,7 +212,8 @@ Go file은 패키지 clause, 빌드 constraint와 import framing을 generator가
 
 플러그인 패키지에서는 최소한 다음을 검사하세요.
 
-- 옵션별 렌더링 결과 golden
+- 옵션별 렌더링 결과 golden. `api.testing.context(allocator, program)`가 header·식별자·리터럴
+  도우미는 동작하고 generator가 답해야 하는 writer는 `error.Unsupported`를 내는 context를 줍니다
 - 잘못된 선언의 진단 code와 hint
 - empty 선언과 disabled 옵션
 - 여러 공개 패키지에서 경로와 import

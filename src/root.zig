@@ -5,6 +5,10 @@ pub const package = author.package;
 pub const interface = author.interface;
 pub const session = author.session;
 pub const features = @import("features.zig");
+/// The value a plugin package exports and `Entry.use` takes; `zigo.features`
+/// are values of this type too. Its hooks and contexts are documented with
+/// the generator's plugin contract (`docs/plugins/`).
+pub const Plugin = @import("plugin").Plugin;
 pub const Binding = author.Binding;
 pub const Entry = author.Entry;
 pub const FunctionRef = author.FunctionRef;

@@ -197,6 +197,11 @@
       "symbol": "zg_cursor_create"
     },
     {
+      "ext": {
+        "ITERATOR": {
+          "name": "All"
+        }
+      },
       "go": {
         "iterator": {
           "name": "All"
@@ -222,6 +227,11 @@
       "symbol": "zg_cursor_next"
     },
     {
+      "ext": {
+        "ITERATOR": {
+          "name": "AllChecked"
+        }
+      },
       "go": {
         "iterator": {
           "name": "AllChecked"
@@ -619,6 +629,11 @@
         "kind": "int",
         "signed": false
       },
+      "source": {
+        "path": "root.zig",
+        "line": 3,
+        "column": 11
+      },
       "zig_path": "root.Status"
     },
     {
@@ -646,6 +661,11 @@
       "kind": "value_struct",
       "layout": "extern",
       "name": "Point",
+      "source": {
+        "path": "root.zig",
+        "line": 5,
+        "column": 11
+      },
       "zig_path": "root.Point"
     },
     {
@@ -710,6 +730,11 @@
       "kind": "materialized",
       "materialized_version": 2,
       "name": "Leaf",
+      "source": {
+        "path": "root.zig",
+        "line": 7,
+        "column": 11
+      },
       "zig_path": "root.Leaf"
     },
     {
@@ -903,6 +928,11 @@
       "kind": "materialized",
       "materialized_version": 2,
       "name": "Probe",
+      "source": {
+        "path": "root.zig",
+        "line": 15,
+        "column": 11
+      },
       "zig_path": "root.Probe"
     },
     {
@@ -910,6 +940,11 @@
       "fields": [],
       "kind": "opaque",
       "name": "LegacyLeaf",
+      "source": {
+        "path": "root.zig",
+        "line": 92,
+        "column": 11
+      },
       "zig_path": "root.LegacyLeaf"
     },
     {
@@ -917,6 +952,11 @@
       "fields": [],
       "kind": "opaque",
       "name": "LegacyProbe",
+      "source": {
+        "path": "root.zig",
+        "line": 100,
+        "column": 11
+      },
       "zig_path": "root.LegacyProbe"
     },
     {
@@ -924,6 +964,11 @@
       "fields": [],
       "kind": "opaque",
       "name": "Cursor",
+      "source": {
+        "path": "root.zig",
+        "line": 142,
+        "column": 11
+      },
       "zig_path": "root.Cursor"
     }
   ],

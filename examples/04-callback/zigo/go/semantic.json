@@ -1439,6 +1439,11 @@
       "fields": [],
       "kind": "opaque",
       "name": "CallbackContext",
+      "source": {
+        "path": "root.zig",
+        "line": 136,
+        "column": 11
+      },
       "zig_path": "root.CallbackContext"
     },
     {
@@ -1537,6 +1542,11 @@
         "is_usize": false,
         "kind": "int",
         "signed": true
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 124,
+        "column": 11
       },
       "zig_path": "root.Level"
     }

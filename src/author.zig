@@ -2,6 +2,7 @@
 const std = @import("std");
 const ir = @import("declare.zig");
 const features = @import("features.zig");
+const plugin = @import("plugin");
 
 pub const SemanticHint = ir.SemanticHint;
 pub const GoAdapter = ir.GoAdapter;
@@ -231,10 +232,10 @@ pub const Entry = union(enum) {
         if (self != .type) @compileError("zigo typeRef requires a type");
         return self.type.ref;
     }
-    /// Attach plugin `P` with its typed options. `P` is a `plugin.Plugin`
-    /// value or one of `zigo.features`; the same declaration cannot attach
-    /// the same plugin twice.
-    pub fn use(comptime self: Entry, comptime P: anytype, comptime options: pluginOptions(P, self)) Entry {
+    /// Attach plugin `P` with its typed options. `P` is the `plugin.Plugin`
+    /// value a plugin package exports, or one of `zigo.features`; the same
+    /// declaration cannot attach the same plugin twice.
+    pub fn use(comptime self: Entry, comptime P: plugin.Plugin, comptime options: pluginOptions(P, self)) Entry {
         comptime checkPluginSubject(P, self);
         var result = self;
         const extensions = switch (self) {
@@ -265,7 +266,7 @@ pub const Entry = union(enum) {
         return result;
     }
     /// Explicit replacement, separate from duplicate-rejecting use().
-    pub fn replacePlugin(comptime self: Entry, comptime P: anytype, comptime options: pluginOptions(P, self)) Entry {
+    pub fn replacePlugin(comptime self: Entry, comptime P: plugin.Plugin, comptime options: pluginOptions(P, self)) Entry {
         var result = self;
         const existing = switch (self) {
             .function => self.function.extensions,
@@ -285,13 +286,10 @@ pub const Entry = union(enum) {
     }
 };
 
-fn pluginOptions(comptime P: anytype, comptime entry: Entry) type {
-    inline for (.{ "name", "FunctionOptions", "TypeOptions", "subjects" }) |field| {
-        if (!@hasField(@TypeOf(P), field)) @compileError("zigo use expects a plugin.Plugin value; it has no `" ++ field ++ "`");
-    }
+fn pluginOptions(comptime P: plugin.Plugin, comptime entry: Entry) type {
     return if (entry == .function) P.FunctionOptions else P.TypeOptions;
 }
-fn checkPluginSubject(comptime P: anytype, comptime entry: Entry) void {
+fn checkPluginSubject(comptime P: plugin.Plugin, comptime entry: Entry) void {
     const subject = switch (entry) {
         .function => "function",
         .type => @tagName(entry.type.representation),
@@ -501,7 +499,7 @@ test "type plugins and explicit replacement keep one typed option payload" {
     const Lib = struct {
         pub const Record = extern struct { value: u32 };
     };
-    const P = .{ .name = "TEST", .FunctionOptions = struct {}, .TypeOptions = struct { limit: ?u32 = 10 }, .subjects = [_]enum { value }{.value} };
+    const P: plugin.Plugin = .{ .name = "TEST", .TypeOptions = struct { limit: ?u32 = 10 }, .subjects = &.{.value} };
     const entry = comptime scope(Lib).value("Record", .{}).use(P, .{ .limit = 5 }).replacePlugin(P, .{ .limit = null });
     try std.testing.expectEqual(@as(usize, 1), entry.type.extensions.len);
     const bytes = try entry.type.extensions[0].jsonAlloc(std.testing.allocator);
@@ -514,7 +512,7 @@ test "plugin options are selected by attachment target" {
         pub const Record = extern struct { value: u32 };
         pub fn f() void {}
     };
-    const P = .{ .name = "DUAL", .FunctionOptions = struct { checked: bool }, .TypeOptions = struct { key: []const u8 }, .subjects = [_]enum { function, value }{ .function, .value } };
+    const P: plugin.Plugin = .{ .name = "DUAL", .FunctionOptions = struct { checked: bool }, .TypeOptions = struct { key: []const u8 }, .subjects = &.{ .function, .value } };
     const api = scope(Lib);
     const f = comptime api.func("f", .{}).use(P, .{ .checked = true });
     const t = comptime api.value("Record", .{}).use(P, .{ .key = "value" });

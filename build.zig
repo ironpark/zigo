@@ -411,12 +411,20 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const test_filters = b.option([]const []const u8, "test-filter", "Run only tests or generator cases matching a filter") orelse &.{};
+    const generator_modules = modules.createGeneratorModules(b, b.path("src"), target, optimize, &.{});
+    // `zigo` -- the authoring module `bindings.zig` imports -- speaks the plugin
+    // contract: `Entry.use` takes a `plugin.Plugin`, so the module imports the
+    // one instance of the contract the generator is built with.
     const zigo = b.addModule("zigo", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
+        .imports = &.{.{ .name = "plugin", .module = generator_modules.plugin }},
     });
-    const generator_modules = modules.createGeneratorModules(b, b.path("src"), target, optimize, &.{});
+    // The contract and what it is written against, by name, so a plugin
+    // package's own `zig build test` compiles against exactly what the
+    // generator runs it with (`zigo_dependency.module("plugin")`).
+    modules.exposeContractModules(b, generator_modules);
     const generator = modules.addGeneratorWithModules(b, b.path("src/main.zig"), target, optimize, generator_modules);
     b.installArtifact(generator);
 
@@ -558,56 +566,17 @@ fn addReflection(b: *std.Build, options: ReflectionOptions) Reflection {
     // targets another platform. The generated Go tree is platform-independent;
     // reflected layouts are pinned by the shim's comptime ABI guards, which fail
     // the target compile if a C-variable type diverges.
-    const naming_module = b.createModule(.{
-        .root_source_file = zigo_dependency.path("src/gen/naming.zig"),
-        .target = b.graph.host,
-        .optimize = .Debug,
-    });
-    const semantic_module = b.createModule(.{
-        .root_source_file = zigo_dependency.path("src/gen/ir/semantic.zig"),
-        .target = b.graph.host,
-        .optimize = .Debug,
-        .imports = &.{.{ .name = "naming", .module = naming_module }},
-    });
-    // The output language's rules. The reflector's package check and the
-    // plugin contract's interface check both ask the target, so the module
-    // reaches as far as the declaration side does.
-    const targets_module = b.createModule(.{
-        .root_source_file = zigo_dependency.path("src/gen/targets.zig"),
-        .target = b.graph.host,
-        .optimize = .Debug,
-        .imports = &.{
-            .{ .name = "naming", .module = naming_module },
-            .{ .name = "semantic", .module = semantic_module },
-        },
-    });
-    // The declaration side of a plugin: what `bindings.zig` imports so
-    // `use` can name the plugin and its option type. Only created because
-    // a plugin's root file is written against the whole contract; a module
-    // nothing references is never compiled.
-    const abi_declaration_module = b.createModule(.{
-        .root_source_file = zigo_dependency.path("src/gen/ir/abi.zig"),
-        .target = b.graph.host,
-        .optimize = .Debug,
-        .imports = &.{.{ .name = "semantic", .module = semantic_module }},
-    });
-    const diagnostic_declaration_module = b.createModule(.{
-        .root_source_file = zigo_dependency.path("src/gen/diagnostic.zig"),
-        .target = b.graph.host,
-        .optimize = .Debug,
-    });
-    const plugin_declaration_module = b.createModule(.{
-        .root_source_file = zigo_dependency.path("src/plugin.zig"),
-        .target = b.graph.host,
-        .optimize = .Debug,
-        .imports = &.{
-            .{ .name = "abi", .module = abi_declaration_module },
-            .{ .name = "semantic", .module = semantic_module },
-            .{ .name = "diagnostic", .module = diagnostic_declaration_module },
-            .{ .name = "naming", .module = naming_module },
-            .{ .name = "targets", .module = targets_module },
-        },
-    });
+    //
+    // The declaration side of a plugin -- the contract `bindings.zig` and a
+    // plugin's root file are written against -- is the instance the `zigo`
+    // module itself imports: `use` takes a `plugin.Plugin`, so the plugin a
+    // binding names and the one `use` expects have to be one type.
+    const naming_module = zigo_dependency.module("naming");
+    const semantic_module = zigo_dependency.module("semantic");
+    const targets_module = zigo_dependency.module("targets");
+    const abi_declaration_module = zigo_dependency.module("abi");
+    const diagnostic_declaration_module = zigo_dependency.module("diagnostic");
+    const plugin_declaration_module = zigo_dependency.module("plugin");
     // The reflected module is the caller's, retargeted to the host. Its
     // Static link inputs were built for `options.target`, and a host executable
     // cannot link a foreign archive. Rebuild library steps for the host so

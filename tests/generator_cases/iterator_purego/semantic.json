@@ -1,6 +1,7 @@
 {
   "functions": [
     {
+      "ext": {"ITERATOR": {"name": "All"}},
       "iterator": {"name": "All"},
       "name": "next",
       "params": [],
@@ -12,6 +13,7 @@
       "symbol": "zg_cursor_next"
     },
     {
+      "ext": {"ITERATOR": {"name": "Checked"}},
       "iterator": {"name": "Checked"},
       "name": "nextChecked",
       "params": [],

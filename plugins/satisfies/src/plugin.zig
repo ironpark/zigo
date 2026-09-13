@@ -37,7 +37,7 @@ pub const plugin: plugin_api.Plugin = .{
 /// The assertion goes after the type, in the file that declares it, so the
 /// two are read together and `go build` reports them together.
 fn typeHook(context: plugin_api.Context, writer: *std.Io.Writer, declaration: semantic.TypeDecl) !void {
-    const options = try context.typeOptions(plugin, declaration) orelse return;
+    const options = try context.optionsOf(plugin, .type, declaration.ext) orelse return;
     for (options.interfaces) |interface| {
         try writer.print("// {0s} satisfies {1s}; this assertion stops compiling the day it does not.\nvar _ {1s} = ", .{ declaration.name, interface });
         switch (options.form) {
@@ -56,7 +56,7 @@ fn validateDocument(context: plugin_api.ValidateContext) !void {
     var issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
     errdefer issues.deinit(allocator);
     for (document.types) |declaration| {
-        const options = try plugin_api.readOptions(plugin, .type, allocator, declaration.ext) orelse continue;
+        const options = try context.optionsOf(plugin, .type, declaration.ext) orelse continue;
         for (options.interfaces) |interface| {
             const dot = std.mem.indexOfScalar(u8, interface, '.');
             if (dot != null and dot.? != 0 and dot.? + 1 != interface.len) continue;
@@ -66,10 +66,30 @@ fn validateDocument(context: plugin_api.ValidateContext) !void {
                 .message = try std.fmt.allocPrint(allocator, "`{s}` claims interface `{s}`, which {s}", .{
                     declaration.name, interface, if (dot == null) "names no package" else "is not a qualified Go name",
                 }),
-                .site = .{ .path = "semantic.json", .declaration = declaration.name },
+                .site = plugin_api.site.typeSite(declaration),
                 .hint = if (dot == null) "write the interface as `<package>.<Name>`; the qualifier is what brings its import into the generated file" else "write the interface as `<package>.<Name>`",
             });
         }
     }
     for (issues.items) |issue| try context.diagnose(issue);
+}
+
+test "each claimed interface gets one assertion in the requested form" {
+    // Options read off `ext` live on the context's allocator, which the
+    // generator backs with the run arena; the test does the same.
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const context = plugin_api.testing.context(arena.allocator(), .{ .package = "streams", .prefix = "zg", .functions = &.{} });
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    const options = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), "{\"form\":\"value\",\"interfaces\":[\"fmt.Stringer\",\"io.Closer\"]}", .{});
+    try typeHook(context, &output.writer, .{ .kind = .@"opaque", .name = "Document", .ext = .{ .entries = &.{.{ .plugin = name, .options = options }} } });
+    try std.testing.expectEqualStrings(
+        "// Document satisfies fmt.Stringer; this assertion stops compiling the day it does not.\nvar _ fmt.Stringer = *new(Document)\n\n" ++
+            "// Document satisfies io.Closer; this assertion stops compiling the day it does not.\nvar _ io.Closer = *new(Document)\n\n",
+        output.written(),
+    );
+    output.clearRetainingCapacity();
+    try typeHook(context, &output.writer, .{ .kind = .@"opaque", .name = "Document" });
+    try std.testing.expectEqualStrings("", output.written());
 }

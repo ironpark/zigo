@@ -1156,8 +1156,21 @@ fn addBindingAuthoringErrors(b: *std.Build, test_step: *std.Build.Step) void {
         const run = b.addSystemCommand(&.{ b.graph.zig_exe, "build-obj", "-fno-emit-bin", "--dep", "zigo" });
         run.setName("authoring rejects " ++ case[0]);
         run.addPrefixedFileArg("-Mroot=", b.path("tests/binding_errors/" ++ case[0] ++ ".zig"));
+        // The same graph `zigo` has in the build: the authoring module speaks
+        // the plugin contract, and the contract is written against the IR.
+        run.addArgs(&.{ "--dep", "plugin" });
         run.addPrefixedFileArg("-Mzigo=", b.path("src/root.zig"));
-        inline for (.{ "author", "normalize", "declare", "features", "param", "result", "callback_layout", "context_tests" }) |source|
+        run.addArgs(&.{ "--dep", "abi", "--dep", "semantic", "--dep", "diagnostic", "--dep", "naming", "--dep", "targets" });
+        run.addPrefixedFileArg("-Mplugin=", b.path("src/plugin.zig"));
+        run.addArgs(&.{ "--dep", "semantic" });
+        run.addPrefixedFileArg("-Mabi=", b.path("src/gen/ir/abi.zig"));
+        run.addArgs(&.{ "--dep", "naming" });
+        run.addPrefixedFileArg("-Msemantic=", b.path("src/gen/ir/semantic.zig"));
+        run.addPrefixedFileArg("-Mnaming=", b.path("src/gen/naming.zig"));
+        run.addPrefixedFileArg("-Mdiagnostic=", b.path("src/gen/diagnostic.zig"));
+        run.addArgs(&.{ "--dep", "naming", "--dep", "semantic" });
+        run.addPrefixedFileArg("-Mtargets=", b.path("src/gen/targets.zig"));
+        inline for (.{ "author", "normalize", "declare", "features", "param", "result", "callback_layout", "context_tests", "plugin" }) |source|
             run.addFileInput(b.path("src/" ++ source ++ ".zig"));
         run.expectExitCode(1);
         run.expectStdErrMatch(case[1]);

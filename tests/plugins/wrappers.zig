@@ -12,7 +12,7 @@ pub const plugin: api.Plugin = .{
 };
 
 fn methodHook(context: api.Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
-    _ = try context.functionOptions(plugin, function.origin.*) orelse return;
+    _ = try context.optionsOf(plugin, .function, function.origin.ext) orelse return;
     const method = context.method.?;
     try writer.print("// Wrap{0s} panics on failure.\nfunc ", .{method.public_name});
     if (method.receiver) |receiver| try writer.print("({s} {s}{s}) ", .{ method.receiver_name.?, if (function.origin.receiverIsValue()) "" else "*", receiver });
