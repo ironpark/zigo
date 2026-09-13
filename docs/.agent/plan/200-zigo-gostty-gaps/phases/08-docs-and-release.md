@@ -1,4 +1,5 @@
 ---
+completed_at: "2026-09-13T08:21:06Z"
 depends_on:
 - "200-zigo-gostty-gaps#0"
 - "200-zigo-gostty-gaps#1"
@@ -8,7 +9,7 @@ depends_on:
 - "200-zigo-gostty-gaps#5"
 - "200-zigo-gostty-gaps#6"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `zig build test`가 통과하고 문서가 실제 동작과 일치한다.
 > NEXT: none
