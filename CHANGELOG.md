@@ -46,7 +46,6 @@ Go 코드는 session 자식의 `.name` 삭제로 입양 메서드가 타입 이�
 | `zigo.define(.{ .root = library, ... })` | `zigo.define(api, .{ ... })` (`api = zigo.scope(library)`가 root를 한 번 말함) |
 | `api.val(...)` | `api.value(...)` |
 | `api.enumType(...)` | `api.enumeration(...)` |
-| `api.taggedUnion(...)` | `api.@"union"(...)` |
 | `api.in("Type").func(...)` + `Entry.members(&.{ ... })` | `const T = api.handle("Type", .{}).context();` + `T.members(&.{ T.func(...) })` |
 | `api.in("namespace")` (네임스페이스) | `api.namespace("namespace")` |
 | `Context.define(entries)` | `Context.members(entries)` |

@@ -61,7 +61,7 @@ const nested = api.namespace("namespace");
 | `value(name, options)` | extern·packed 구조체 | `fields`, `go` |
 | `materialized(name, options)` | 일반 결과 구조체 | `fields` |
 | `enumeration(name, options)` | 열거형 | `exhaustive`, `text`, `go`, `covers`, `fields` |
-| `@"union"(name, options)` | tagged union | `access`, `omit` |
+| `taggedUnion(name, options)` | tagged union | `access`, `omit` |
 | `callback(name, options)` | 함수 포인터 alias | 매개변수, userdata와 `contract` |
 
 `enumeration`의 `.text = true`는 `Parse<Enum>`, `MarshalText`와 `UnmarshalText`를 생성합니다.

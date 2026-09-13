@@ -12,7 +12,7 @@ Go 호출 조각은 함수 본문용이며, 전체 import와 실행 방법은 �
 기본 표현은 네이티브 객체를 가리키는 핸들과 variant 접근자입니다.
 
 ```zig
-const Value = api.@"union"("Value", .{}).context();
+const Value = api.taggedUnion("Value", .{}).context();
 
 const value = Value.select(.{ .names = &.{
     "create",
@@ -85,7 +85,7 @@ case taggedunion.ValueFlag:
 한 시점의 태그와 페이로드를 함께 복사하려면 스냅샷 access를 선택합니다.
 
 ```zig
-api.@"union"("Signal", .{ .access = .snapshot })
+api.taggedUnion("Signal", .{ .access = .snapshot })
 ```
 
 ```go
@@ -127,7 +127,7 @@ Zig 오류는 평소처럼 `Err<Tag>` sentinel이 되고, `.omit`으로 뺀 vari
 Go API에 공개할 수 없거나 의도적으로 숨길 variant는 `.omit`에 나열합니다.
 
 ```zig
-api.@"union"("ScrollViewport", .{
+api.taggedUnion("ScrollViewport", .{
     .omit = &.{"unknown"},
 })
 ```

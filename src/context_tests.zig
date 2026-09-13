@@ -125,7 +125,7 @@ test "decorations before context and after members share existing replacement ru
 
 test "context is representation-independent for member-bearing declarations" {
     const Mode = api.enumeration("Mode", .{ .text = true }).context();
-    const Value = api.@"union"("Value", .{ .access = .snapshot }).context();
+    const Value = api.taggedUnion("Value", .{ .access = .snapshot }).context();
     const Probe = api.materialized("Probe", .{}).context();
     const actual = comptime zigo.define(api, .{ .declarations = &.{
         Mode.select(.{ .names = &.{"number"} }), Value.members(&.{}), Probe.members(&.{}),

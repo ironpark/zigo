@@ -424,7 +424,7 @@ fn Scope(comptime Root: type, comptime Container: type, comptime path: []const u
         pub fn enumeration(comptime name: []const u8, comptime options: EnumOptions) Entry {
             return typeEntry(name, .{ .enumeration = options });
         }
-        pub fn @"union"(comptime name: []const u8, comptime options: UnionOptions) Entry {
+        pub fn taggedUnion(comptime name: []const u8, comptime options: UnionOptions) Entry {
             return typeEntry(name, .{ .tagged_union = options });
         }
         pub fn callback(comptime name: []const u8, comptime options: CallbackOptions) Entry {

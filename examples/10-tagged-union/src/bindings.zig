@@ -5,8 +5,8 @@ const json = @import("zigo_json");
 
 const api = zigo.scope(library);
 const Child = api.handle("Child", .{}).context();
-const Value = api.@"union"("Value", .{}).context();
-const Signal = api.@"union"("Signal", .{ .access = .snapshot }).context();
+const Value = api.taggedUnion("Value", .{}).context();
+const Signal = api.taggedUnion("Signal", .{ .access = .snapshot }).context();
 const Palette = api.handle("Palette", .{ .fields = &.{
     .{ .path = "flags", .set = true },
     .{ .path = "pinned_mode", .name = "pinnedMode", .set = true },
@@ -52,7 +52,7 @@ pub const bindings = zigo.define(api, .{
             Palette.func("deinit", .{}),
         }),
         api.callback("FlagsObserver", .{}),
-        api.@"union"("ScrollViewport", .{ .omit = &.{"unknown"} }),
+        api.taggedUnion("ScrollViewport", .{ .omit = &.{"unknown"} }),
         api.func("liveValues", .{}),
         api.func("divide", .{}),
         api.func("sum", .{}),
