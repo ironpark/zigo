@@ -3,6 +3,7 @@
 package interfaces
 
 import (
+	"io"
 	"runtime"
 	"sync"
 	"unsafe"
@@ -110,6 +111,8 @@ func (i *IntBatch) Close() error {
 	runtime.KeepAlive(i)
 	return nil
 }
+
+var _ io.Closer = (*IntBatch)(nil)
 
 // zigoTakeLocked hands out what is left to release once i is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
@@ -222,6 +225,8 @@ func (f *FloatBatch) Close() error {
 	return nil
 }
 
+var _ io.Closer = (*FloatBatch)(nil)
+
 // zigoTakeLocked hands out what is left to release once f is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
 // object: releasing state a panic left half-changed could fault, so it leaks.
@@ -329,3 +334,5 @@ func (w *Window) Close() error {
 	w.mu.Unlock()
 	return nil
 }
+
+var _ io.Closer = (*Window)(nil)

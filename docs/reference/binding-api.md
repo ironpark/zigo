@@ -157,7 +157,7 @@ role:
 | `zigo.param.options(index, fields, options)` | 구조체 필드를 Go functional options로 펼침 |
 
 `zigo.param.options`의 `options` 사양:
-- `.prefix: ?[]const u8 = null`: `With*` 함수 이름 및 옵션 타입 접두사 (`""` 지정 시 접두사 생략)
+- `.prefix: ?[]const u8 = null`: `With*` 함수 이름 및 옵션 타입 접두사. 기본은 소유 타입 이름(`TerminalOption`, `WithTerminalRows`)이고 `""`를 지정하면 접두사를 생략합니다(opt-in)
 - `.type_name: ?[]const u8 = null`: 옵션 함수 타입 이름 명시적 지정
 
 `Param.named(name)`은 도우미가 만든 매개변수의 Go 이름을 바꿉니다.
@@ -259,8 +259,8 @@ zigo.session(.{
 
 | 연결 | 결과 |
 |---|---|
-| `.use(zigo.features.iterator, .{ .name = "All" })` | `iter.Seq`/`Seq2` 래퍼 |
-| `.use(zigo.features.implements, .{ .kinds = &.{.reader} })` | 표준 I/O 메서드 래퍼. kind는 `.writer`, `.reader`, `.writer_to`, `.reader_from`, `.string_writer`이며 항상 목록으로 적습니다. `.string_writer`는 string semantic이 있으면 인자를 그대로, 없으면 string의 바이트를 빌려 넘깁니다 |
+| `.use(zigo.features.iterator, .{})` | `iter.Seq`/`Seq2` 래퍼. 이름은 `.name`, 기본은 `All`(메서드가 `Checked`로 끝나면 `AllChecked`) |
+| `.use(zigo.features.implements, .{ .kinds = &.{.reader} })` | 표준 I/O 메서드 래퍼. kind는 `.writer`, `.reader`, `.writer_to`, `.reader_from`, `.string_writer`이며 항상 목록으로 적습니다. `.string_writer`는 string semantic이 있으면 인자를 그대로, 없으면 string의 바이트를 빌려 넘깁니다. 래퍼만 공개되며 bound 메서드는 숨겨집니다. `.keep_original = true`면 원래 이름도 함께 내보냅니다 |
 
 열거형 text 인코딩은 feature가 아니라 `enumeration`의 `.text = true` 옵션입니다.
 

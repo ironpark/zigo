@@ -3,6 +3,7 @@
 package cb
 
 import (
+	"io"
 	"runtime"
 	"sync"
 	"unsafe"
@@ -126,6 +127,8 @@ func (h *Hub) Close() error {
 	runtime.KeepAlive(h)
 	return nil
 }
+
+var _ io.Closer = (*Hub)(nil)
 
 // zigoTakeLocked hands out what is left to release once h is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native

@@ -16,11 +16,11 @@ import (
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
-func NewTelemetryHub(inputName string, maxSamples uint, initialMode Mode, overflowPolicy OverflowPolicy, observer TelemetryHubObserver) (*TelemetryHub, error) {
+func NewTelemetryHub(inputName string, maxSamples uint, initialMode Mode, overflowPolicy OverflowPolicy, observer Observer) (*TelemetryHub, error) {
 	if observer == nil {
 		return nil, &CallbackError{Operation: "NewTelemetryHub", Callback: "observer", Err: ErrNilCallback}
 	}
-	observerHandle := zigoNewTelemetryHubObserverHandle(observer)
+	observerHandle := zigoNewObserverHandle(observer)
 	result, code := raw.TelemetryHubCreate(inputName, maxSamples, uint32(initialMode), uint32(overflowPolicy), raw.CallbackPointer0(), uintptr(observerHandle))
 	if zigoCallbackPanicPending() {
 		zigoRethrowCallbackPanic("NewTelemetryHub", observerHandle)

@@ -11,10 +11,8 @@ import (
 )
 
 
-// Feed calls the Zig function Stream.feed.
-// It returns *HandleError if a required handle is nil or closed.
-// Native failures are returned as generated error values.
-func (s *Stream) Feed(bytes []byte) error {
+// zigoCheckedFeed is the checked form of Feed, which a plugin replaced.
+func (s *Stream) zigoCheckedFeed(bytes []byte) error {
 	ptr, err := zigoCheckedPointer("Stream.Feed receiver", s)
 	if err != nil {
 		return err
@@ -27,30 +25,28 @@ func (s *Stream) Feed(bytes []byte) error {
 	return nil
 }
 
-// Write calls Feed, satisfying io.Writer.
+// Write calls the Zig method Stream.feed, satisfying io.Writer.
 // The method takes the whole of p, so the count is len(p) whenever it succeeds.
 func (s *Stream) Write(p []byte) (int, error) {
-	if err := s.Feed(p); err != nil {
+	if err := s.zigoCheckedFeed(p); err != nil {
 		return 0, err
 	}
 	return len(p), nil
 }
 
-// WriteString calls Feed, satisfying io.StringWriter.
+// WriteString calls the Zig method Stream.feed, satisfying io.StringWriter.
 // The method takes the whole of str, so the count is len(str) whenever it succeeds.
 // The method takes bytes, so str lends its own, without a copy; native reads them during the call only.
 func (s *Stream) WriteString(str string) (int, error) {
 	zigoBytes := unsafe.Slice(unsafe.StringData(str), len(str))
-	if err := s.Feed(zigoBytes); err != nil {
+	if err := s.zigoCheckedFeed(zigoBytes); err != nil {
 		return 0, err
 	}
 	return len(str), nil
 }
 
-// Push calls the Zig function Buffer.push.
-// It returns *HandleError if a required handle is nil or closed.
-// A native panic is returned as *NativePanicError.
-func (b *Buffer) Push(bytes []byte) (uint, error) {
+// zigoCheckedPush is the checked form of Push, which a plugin replaced.
+func (b *Buffer) zigoCheckedPush(bytes []byte) (uint, error) {
 	ptr, err := zigoCheckedPointer("Buffer.Push receiver", b)
 	if err != nil {
 		return 0, err
@@ -63,10 +59,10 @@ func (b *Buffer) Push(bytes []byte) (uint, error) {
 	return result, nil
 }
 
-// Write calls Push, satisfying io.Writer.
+// Write calls the Zig method Buffer.push, satisfying io.Writer.
 // The count is what the method reports; a count short of len(p) without an error is io.ErrShortWrite.
 func (b *Buffer) Write(p []byte) (int, error) {
-	n, err := b.Push(p)
+	n, err := b.zigoCheckedPush(p)
 	if err != nil {
 		return 0, err
 	}
@@ -92,10 +88,8 @@ func (s *Stream) AppendString(text string) error {
 	return nil
 }
 
-// PushString calls the Zig function Buffer.pushString.
-// It returns *HandleError if a required handle is nil or closed.
-// A native panic is returned as *NativePanicError.
-func (b *Buffer) PushString(bytes string) (uint, error) {
+// zigoCheckedPushString is the checked form of PushString, which a plugin replaced.
+func (b *Buffer) zigoCheckedPushString(bytes string) (uint, error) {
 	ptr, err := zigoCheckedPointer("Buffer.PushString receiver", b)
 	if err != nil {
 		return 0, err
@@ -108,10 +102,10 @@ func (b *Buffer) PushString(bytes string) (uint, error) {
 	return result, nil
 }
 
-// WriteString calls PushString, satisfying io.StringWriter.
+// WriteString calls the Zig method Buffer.pushString, satisfying io.StringWriter.
 // The count is what the method reports; a count short of len(s) without an error is io.ErrShortWrite.
 func (b *Buffer) WriteString(s string) (int, error) {
-	n, err := b.PushString(s)
+	n, err := b.zigoCheckedPushString(s)
 	if err != nil {
 		return 0, err
 	}
@@ -121,10 +115,8 @@ func (b *Buffer) WriteString(s string) (int, error) {
 	return int(n), nil
 }
 
-// Drain calls the Zig function Buffer.drain.
-// It returns *HandleError if a required handle is nil or closed.
-// A native panic is returned as *NativePanicError.
-func (b *Buffer) Drain(dst []byte) (uint, error) {
+// zigoCheckedDrain is the checked form of Drain, which a plugin replaced.
+func (b *Buffer) zigoCheckedDrain(dst []byte) (uint, error) {
 	ptr, err := zigoCheckedPointer("Buffer.Drain receiver", b)
 	if err != nil {
 		return 0, err
@@ -137,10 +129,10 @@ func (b *Buffer) Drain(dst []byte) (uint, error) {
 	return result, nil
 }
 
-// Read calls Drain, satisfying io.Reader.
+// Read calls the Zig method Buffer.drain, satisfying io.Reader.
 // A call that fills nothing while p has room reports io.EOF.
 func (b *Buffer) Read(p []byte) (int, error) {
-	n, err := b.Drain(p)
+	n, err := b.zigoCheckedDrain(p)
 	if err != nil {
 		return 0, err
 	}
@@ -150,11 +142,8 @@ func (b *Buffer) Read(p []byte) (int, error) {
 	return int(n), nil
 }
 
-// Dump calls the Zig function Stream.dump.
-// It returns *HandleError if a required handle is nil or closed.
-// Native failures are returned as generated error values.
-// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
-func (s *Stream) Dump(w io.Writer) error {
+// zigoCheckedDump is the checked form of Dump, which a plugin replaced.
+func (s *Stream) zigoCheckedDump(w io.Writer) error {
 	if w == nil {
 		return &StreamError{Operation: "Stream.Dump", Parameter: "w", Err: ErrNilStream}
 	}
@@ -178,19 +167,19 @@ func (s *Stream) Dump(w io.Writer) error {
 	return nil
 }
 
-// WriteTo calls Dump, satisfying io.WriterTo.
+// WriteTo calls the Zig method Stream.dump, satisfying io.WriterTo.
 // The count is what w received during the call.
 func (s *Stream) WriteTo(w io.Writer) (int64, error) {
+	if w == nil {
+		return 0, s.zigoCheckedDump(nil)
+	}
 	counting := &zigoCountingWriter{w: w}
-	err := s.Dump(counting)
+	err := s.zigoCheckedDump(counting)
 	return counting.n, err
 }
 
-// Load calls the Zig function Stream.load.
-// It returns *HandleError if a required handle is nil or closed.
-// Native failures are returned as generated error values.
-// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
-func (s *Stream) Load(r io.Reader) (uint, error) {
+// zigoCheckedLoad is the checked form of Load, which a plugin replaced.
+func (s *Stream) zigoCheckedLoad(r io.Reader) (uint, error) {
 	if r == nil {
 		return 0, &StreamError{Operation: "Stream.Load", Parameter: "r", Err: ErrNilStream}
 	}
@@ -215,21 +204,18 @@ func (s *Stream) Load(r io.Reader) (uint, error) {
 	return result, nil
 }
 
-// ReadFrom calls Load, satisfying io.ReaderFrom.
+// ReadFrom calls the Zig method Stream.load, satisfying io.ReaderFrom.
 // The count is what the method reports.
 func (s *Stream) ReadFrom(r io.Reader) (int64, error) {
-	n, err := s.Load(r)
+	n, err := s.zigoCheckedLoad(r)
 	if err != nil {
 		return 0, err
 	}
 	return int64(n), nil
 }
 
-// Render calls the Zig function Buffer.render.
-// It returns *HandleError if a required handle is nil or closed.
-// A native panic is returned as *NativePanicError.
-// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
-func (b *Buffer) Render(w io.Writer) (uint32, error) {
+// zigoCheckedRender is the checked form of Render, which a plugin replaced.
+func (b *Buffer) zigoCheckedRender(w io.Writer) (uint32, error) {
 	if w == nil {
 		return 0, &StreamError{Operation: "Buffer.Render", Parameter: "w", Err: ErrNilStream}
 	}
@@ -253,21 +239,18 @@ func (b *Buffer) Render(w io.Writer) (uint32, error) {
 	return result, nil
 }
 
-// WriteTo calls Render, satisfying io.WriterTo.
+// WriteTo calls the Zig method Buffer.render, satisfying io.WriterTo.
 // The count is what the method reports.
 func (b *Buffer) WriteTo(w io.Writer) (int64, error) {
-	n, err := b.Render(w)
+	n, err := b.zigoCheckedRender(w)
 	if err != nil {
 		return 0, err
 	}
 	return int64(n), nil
 }
 
-// Fill calls the Zig function Buffer.fill.
-// It returns *HandleError if a required handle is nil or closed.
-// A native panic is returned as *NativePanicError.
-// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
-func (b *Buffer) Fill(r io.Reader) error {
+// zigoCheckedFill is the checked form of Fill, which a plugin replaced.
+func (b *Buffer) zigoCheckedFill(r io.Reader) error {
 	if r == nil {
 		return &StreamError{Operation: "Buffer.Fill", Parameter: "r", Err: ErrNilStream}
 	}
@@ -292,10 +275,13 @@ func (b *Buffer) Fill(r io.Reader) error {
 	return nil
 }
 
-// ReadFrom calls Fill, satisfying io.ReaderFrom.
+// ReadFrom calls the Zig method Buffer.fill, satisfying io.ReaderFrom.
 // The count is what r handed over during the call.
 func (b *Buffer) ReadFrom(r io.Reader) (int64, error) {
+	if r == nil {
+		return 0, b.zigoCheckedFill(nil)
+	}
 	counting := &zigoCountingReader{r: r}
-	err := b.Fill(counting)
+	err := b.zigoCheckedFill(counting)
 	return counting.n, err
 }

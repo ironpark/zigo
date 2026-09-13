@@ -15,3 +15,8 @@ func zigoCheckedPointer(operation string, value zigoHandle) (unsafe.Pointer, err
 func zigoPoisonAfterPanic(err error, handles ...zigoHandle) error {
 	return lifecycle.PoisonAfterPanic(err, handles...)
 }
+
+// The lifecycle methods of every handle here stay unexported. The shared
+// runtime reaches them through this registration.
+func init() {
+}

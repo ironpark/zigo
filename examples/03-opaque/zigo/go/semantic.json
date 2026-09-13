@@ -165,7 +165,7 @@
       "doc": "nextChecked is `next` with a failure path: a negative total is an\nerror the sequence surfaces, rather than an empty sequence.",
       "go": {
         "iterator": {
-          "name": "Checked"
+          "name": "AllChecked"
         }
       },
       "name": "nextChecked",

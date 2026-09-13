@@ -107,6 +107,8 @@ func (d *Document) Close() error {
 	return nil
 }
 
+var _ io.Closer = (*Document)(nil)
+
 // zigoTakeLocked hands out what is left to release once d is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
 // object: releasing state a panic left half-changed could fault, so it leaks.

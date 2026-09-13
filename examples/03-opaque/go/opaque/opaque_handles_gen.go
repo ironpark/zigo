@@ -3,6 +3,7 @@
 package opaque
 
 import (
+	"io"
 	"runtime"
 	"sync"
 	"unsafe"
@@ -110,6 +111,8 @@ func (co *Context) Close() error {
 	runtime.KeepAlive(co)
 	return nil
 }
+
+var _ io.Closer = (*Context)(nil)
 
 // zigoTakeLocked hands out what is left to release once co is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
@@ -225,3 +228,5 @@ func (c *ContextView) Close() error {
 	c.mu.Unlock()
 	return nil
 }
+
+var _ io.Closer = (*ContextView)(nil)

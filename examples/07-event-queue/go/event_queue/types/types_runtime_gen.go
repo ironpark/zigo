@@ -16,6 +16,12 @@ func zigoPoisonAfterPanic(err error, handles ...zigoHandle) error {
 	return lifecycle.PoisonAfterPanic(err, handles...)
 }
 
+// The lifecycle methods of every handle here stay unexported. The shared
+// runtime reaches them through this registration.
+func init() {
+	lifecycle.Register(lifecycle.Methods[*Ticker]{Acquire: (*Ticker).zigoAcquire, Release: (*Ticker).zigoRelease, Poison: (*Ticker).zigoPoison})
+}
+
 func zigoMust[T any](value T, err error) T {
 	if err != nil {
 		panic(err)

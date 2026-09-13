@@ -55,9 +55,6 @@ func (i *IntBatch) Clear(keep uint) error {
 	return nil
 }
 
-// MustClear calls Clear and panics with its typed error on failure.
-func (i *IntBatch) MustClear(keep uint) { _ = zigoMust(struct{}{}, i.Clear(keep)) }
-
 // Push calls the Zig function IntBatch.push.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
@@ -73,9 +70,6 @@ func (i *IntBatch) Push(value int32) error {
 	}
 	return nil
 }
-
-// MustPush calls Push and panics with its typed error on failure.
-func (i *IntBatch) MustPush(value int32) { _ = zigoMust(struct{}{}, i.Push(value)) }
 
 // NewFloatBatch creates a caller-owned FloatBatch.
 // The caller must call Close on the returned handle.
@@ -126,9 +120,6 @@ func (f *FloatBatch) Clear(retain uint) error {
 	return nil
 }
 
-// MustClear calls Clear and panics with its typed error on failure.
-func (f *FloatBatch) MustClear(retain uint) { _ = zigoMust(struct{}{}, f.Clear(retain)) }
-
 // Push calls the Zig function FloatBatch.push.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
@@ -144,9 +135,6 @@ func (f *FloatBatch) Push(value float64) error {
 	}
 	return nil
 }
-
-// MustPush calls Push and panics with its typed error on failure.
-func (f *FloatBatch) MustPush(value float64) { _ = zigoMust(struct{}{}, f.Push(value)) }
 
 // Size calls the Zig function Window.size.
 // It returns *HandleError if a required handle is nil or closed.

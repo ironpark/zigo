@@ -54,6 +54,7 @@ func (co *Context) Add(value int64) (int64, error) {
 }
 
 // MaybeTotal calls the Zig function Context.maybeTotal.
+// The bool result reports whether a value was present; the value before it is zero when it was not.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (co *Context) MaybeTotal(present bool) (int64, bool, error) {
@@ -87,6 +88,7 @@ func (co *Context) SetTotal(c int64) error {
 
 // Next counts from 1 up to the total, then reports the end with null.
 // Bound with `.iterator`, so Go ranges over it as `All()`.
+// The bool result reports whether a value was present; the value before it is zero when it was not.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (co *Context) Next() (int64, bool, error) {
@@ -122,6 +124,7 @@ func (co *Context) All() iter.Seq2[int64, error] {
 
 // NextChecked is `next` with a failure path: a negative total is an
 // error the sequence surfaces, rather than an empty sequence.
+// The bool result reports whether a value was present; the value before it is zero when it was not.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (co *Context) NextChecked() (int64, bool, error) {
@@ -137,9 +140,9 @@ func (co *Context) NextChecked() (int64, bool, error) {
 	return result, zigoHas, nil
 }
 
-// Checked returns a sequence that calls NextChecked until it reports no value.
+// AllChecked returns a sequence that calls NextChecked until it reports no value.
 // A failed call yields its error once, with the zero int64, and the sequence ends.
-func (co *Context) Checked() iter.Seq2[int64, error] {
+func (co *Context) AllChecked() iter.Seq2[int64, error] {
 	return func(yield func(int64, error) bool) {
 		for {
 			value, ok, err := co.NextChecked()

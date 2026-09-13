@@ -4,8 +4,8 @@ import (
 	"testing"
 	"unsafe"
 
-	"example.com/zigo/event-queue/bridge/cgo"
-	"example.com/zigo/event-queue/bridge/cgo/cheader"
+	"example.com/zigo/event-queue/internal/cgo"
+	"example.com/zigo/event-queue/internal/cgo/cheader"
 )
 
 // The Go mirrors are only correct if they reproduce the C header exactly. cgo

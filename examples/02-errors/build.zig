@@ -15,7 +15,9 @@ pub fn build(b: *std.Build) void {
     _ = zigo.addGoBindings(b, .{
         .name = "errors",
         .module = errors_module,
-        .layout = .{ .go_module = "example.com/zigo/errors", .raw_package = "support/ffi" },
+        // `errors` would shadow the standard package in every importer, so the public
+        // package is `failures`; the raw package has to live under `internal/`.
+        .layout = .{ .go_module = "example.com/zigo/errors", .go_package = "failures", .raw_package = "internal/ffi" },
         .target = target,
         .optimize = optimize,
     });

@@ -425,3 +425,77 @@ test "functional options naming creates expected type and With* function names" 
         try std.testing.expectEqualStrings("terminalOptions", cfg_type);
     }
 }
+
+/// The one meaning of a `Checked` suffix in a generated package: the
+/// error-reporting twin of a method spelled without it. `Next() (T, bool)`
+/// beside `NextChecked() (T, bool, error)`, `SampleValues` beside
+/// `SampleValuesChecked`. The generator never appends the word itself -- a
+/// method body a plugin claims is written under the reserved
+/// `zigoChecked<Name>`, which is not exported -- so a public `Checked` is
+/// always the binding's own spelling, and a derived name only carries it
+/// forward: the iterator over a `*Checked` method is `AllChecked`.
+pub const checked_suffix = "Checked";
+
+pub fn isCheckedTwin(name: []const u8) bool {
+    return name.len > checked_suffix.len and std.mem.endsWith(u8, name, checked_suffix);
+}
+
+/// The default name of a `.iterator` wrapper: `All`, or `AllChecked` over a
+/// method that is itself the checked twin, so the two wrappers pair up the
+/// same way the two methods do.
+pub fn iteratorWrapperNameAlloc(allocator: std.mem.Allocator, method_name: []const u8) ![]u8 {
+    return allocator.dupe(u8, if (isCheckedTwin(method_name)) "All" ++ checked_suffix else "All");
+}
+
+test "iterator wrappers carry the Checked suffix forward and nothing else" {
+    const plain = try iteratorWrapperNameAlloc(std.testing.allocator, "next");
+    defer std.testing.allocator.free(plain);
+    try std.testing.expectEqualStrings("All", plain);
+    const checked = try iteratorWrapperNameAlloc(std.testing.allocator, "nextChecked");
+    defer std.testing.allocator.free(checked);
+    try std.testing.expectEqualStrings("AllChecked", checked);
+    // The bare word is a name of its own, not a twin of the empty name.
+    try std.testing.expect(!isCheckedTwin("Checked"));
+}
+
+/// The importable top-level packages of the Go standard library (directories
+/// such as `text` or `encoding/json`'s `json` are not in it: only a package a
+/// file can import by that bare path clashes). A generated package with one
+/// of these names is legal but hostile: every file that imports it beside
+/// the standard package has to alias one of them, and `errors` in particular
+/// hides the package every error check reaches for.
+pub fn isGoStandardPackage(name: []const u8) bool {
+    const packages = [_][]const u8{
+        "bufio",  "builtin", "bytes",   "cmp",     "context", "crypto", "embed",   "encoding",
+        "errors", "expvar",  "flag",    "fmt",     "hash",    "html",   "image",   "io",
+        "iter",   "log",     "maps",    "math",    "mime",    "net",    "os",      "path",
+        "plugin", "reflect", "regexp",  "runtime", "slices",  "sort",   "strconv", "strings",
+        "sync",   "syscall", "testing", "time",    "unicode", "unique", "unsafe",
+    };
+    for (packages) |package| if (std.mem.eql(u8, name, package)) return true;
+    return false;
+}
+
+test "standard package names are recognised, ordinary ones are not" {
+    for ([_][]const u8{ "errors", "io", "fmt", "time", "sync" }) |name|
+        try std.testing.expect(isGoStandardPackage(name));
+    // Nested packages and bare directories are not importable by that name.
+    for ([_][]const u8{ "failures", "event_queue", "scalar", "text", "json", "atomic", "" }) |name|
+        try std.testing.expect(!isGoStandardPackage(name));
+}
+
+/// Whether a slash-separated Go package path has an `internal` element, which
+/// is what makes Go refuse the import from outside the enclosing tree. The
+/// raw package is required to have one; see `build_options.validateRawPackagePath`.
+pub fn pathHasInternalElement(path: []const u8) bool {
+    var components = std.mem.splitScalar(u8, path, '/');
+    while (components.next()) |component| if (std.mem.eql(u8, component, "internal")) return true;
+    return false;
+}
+
+test "an internal element is recognised at any depth" {
+    try std.testing.expect(pathHasInternalElement("internal/raw"));
+    try std.testing.expect(pathHasInternalElement("bridge/internal/cgo"));
+    try std.testing.expect(!pathHasInternalElement("bridge/cgo"));
+    try std.testing.expect(!pathHasInternalElement("internals/raw"));
+}

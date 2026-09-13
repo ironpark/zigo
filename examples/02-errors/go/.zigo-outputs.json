@@ -14,19 +14,19 @@
       "kind": "native"
     },
     {
-      "path": "support/ffi/ffi_gen.go",
+      "path": "internal/ffi/ffi_gen.go",
       "kind": "go"
     },
     {
-      "path": "errors/errors_gen.go",
+      "path": "failures/failures_gen.go",
       "kind": "go"
     },
     {
-      "path": "errors/errors_enums_gen.go",
+      "path": "failures/failures_enums_gen.go",
       "kind": "go"
     },
     {
-      "path": "errors/errors_errors_gen.go",
+      "path": "failures/failures_errors_gen.go",
       "kind": "go"
     },
     {

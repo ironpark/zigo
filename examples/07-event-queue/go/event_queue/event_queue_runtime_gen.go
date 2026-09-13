@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"unsafe"
 
-	raw "example.com/zigo/event-queue/bridge/cgo"
+	raw "example.com/zigo/event-queue/internal/cgo"
 	lifecycle "example.com/zigo/event-queue/internal/lifecycle"
 )
 
@@ -25,6 +25,17 @@ func zigoPoisonAfterPanic(err error, handles ...zigoHandle) error {
 	return lifecycle.PoisonAfterPanic(err, handles...)
 }
 
+// The lifecycle methods of every handle here stay unexported. The shared
+// runtime reaches them through this registration.
+func init() {
+	lifecycle.Register(lifecycle.Methods[*EventQueue]{Acquire: (*EventQueue).zigoAcquire, Release: (*EventQueue).zigoRelease, Poison: (*EventQueue).zigoPoison, AcquireChild: (*EventQueue).zigoAcquireChild, DropChild: (*EventQueue).zigoDropChild})
+	lifecycle.Register(lifecycle.Methods[*Stream]{Acquire: (*Stream).zigoAcquire, Release: (*Stream).zigoRelease, Poison: (*Stream).zigoPoison})
+	lifecycle.Register(lifecycle.Methods[*BorrowBox]{Acquire: (*BorrowBox).zigoAcquire, Release: (*BorrowBox).zigoRelease, Poison: (*BorrowBox).zigoPoison, AcquireChild: (*BorrowBox).zigoAcquireChild, DropChild: (*BorrowBox).zigoDropChild})
+	lifecycle.Register(lifecycle.Methods[*BorrowView]{Acquire: (*BorrowView).zigoAcquire, Release: (*BorrowView).zigoRelease, Poison: (*BorrowView).zigoPoison, AcquireChild: (*BorrowView).zigoAcquireChild, DropChild: (*BorrowView).zigoDropChild})
+	lifecycle.Register(lifecycle.Methods[*BorrowChild]{Acquire: (*BorrowChild).zigoAcquire, Release: (*BorrowChild).zigoRelease, Poison: (*BorrowChild).zigoPoison})
+	lifecycle.Register(lifecycle.Methods[*Terminal]{Acquire: (*Terminal).zigoAcquire, Release: (*Terminal).zigoRelease, Poison: (*Terminal).zigoPoison})
+}
+
 func zigoMust[T any](value T, err error) T {
 	if err != nil {
 		panic(err)
@@ -39,14 +50,8 @@ func zigoMustMatch[T any](value T, matched bool, err error) (T, bool) {
 	return value, matched
 }
 
-// EventQueueCreateObserver is the Go callback signature accepted by the generated binding.
-type EventQueueCreateObserver func(uint64, int32) int32
-
-// EventQueueCloneObserver is the Go callback signature accepted by the generated binding.
-type EventQueueCloneObserver func(uint64, int32) int32
-
-// EventQueueSetObserverObserver is the Go callback signature accepted by the generated binding.
-type EventQueueSetObserverObserver func(uint64, int32) int32
+// Observer is the Go callback signature accepted by the generated binding.
+type Observer func(uint64, int32) int32
 
 func zigoBoolToUint8(value bool) uint8 {
 	if value {
@@ -59,21 +64,7 @@ var zigoActiveCallbackHandles atomic.Int64
 
 type zigoCallbackHandle = cgo.Handle
 
-func zigoNewEventQueueCreateObserverHandle(value EventQueueCreateObserver) zigoCallbackHandle {
-	stored := (func(uint64, int32) int32)(value)
-	handle := cgo.NewHandle(&raw.CallbackState{Fn: stored})
-	zigoActiveCallbackHandles.Add(1)
-	return handle
-}
-
-func zigoNewEventQueueCloneObserverHandle(value EventQueueCloneObserver) zigoCallbackHandle {
-	stored := (func(uint64, int32) int32)(value)
-	handle := cgo.NewHandle(&raw.CallbackState{Fn: stored})
-	zigoActiveCallbackHandles.Add(1)
-	return handle
-}
-
-func zigoNewEventQueueSetObserverObserverHandle(value EventQueueSetObserverObserver) zigoCallbackHandle {
+func zigoNewObserverHandle(value Observer) zigoCallbackHandle {
 	stored := (func(uint64, int32) int32)(value)
 	handle := cgo.NewHandle(&raw.CallbackState{Fn: stored})
 	zigoActiveCallbackHandles.Add(1)

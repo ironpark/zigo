@@ -25,10 +25,8 @@ func NewDocument() (*Document, error) {
 	return zigoNewDocument(result), nil
 }
 
-// Append calls the Zig function Document.append.
-// It returns *HandleError if a required handle is nil or closed.
-// Native failures are returned as generated error values.
-func (d *Document) Append(line []byte) error {
+// zigoCheckedAppend is the checked form of Append, which a plugin replaced.
+func (d *Document) zigoCheckedAppend(line []byte) error {
 	ptr, err := zigoCheckedPointer("Document.Append receiver", d)
 	if err != nil {
 		return err
@@ -41,21 +39,21 @@ func (d *Document) Append(line []byte) error {
 	return nil
 }
 
-// Write calls Append, satisfying io.Writer.
+// Write calls the Zig method Document.append, satisfying io.Writer.
 // The method takes the whole of p, so the count is len(p) whenever it succeeds.
 func (d *Document) Write(p []byte) (int, error) {
-	if err := d.Append(p); err != nil {
+	if err := d.zigoCheckedAppend(p); err != nil {
 		return 0, err
 	}
 	return len(p), nil
 }
 
-// WriteString calls Append, satisfying io.StringWriter.
+// WriteString calls the Zig method Document.append, satisfying io.StringWriter.
 // The method takes the whole of s, so the count is len(s) whenever it succeeds.
 // The method takes bytes, so s lends its own, without a copy; native reads them during the call only.
 func (d *Document) WriteString(s string) (int, error) {
 	zigoBytes := unsafe.Slice(unsafe.StringData(s), len(s))
-	if err := d.Append(zigoBytes); err != nil {
+	if err := d.zigoCheckedAppend(zigoBytes); err != nil {
 		return 0, err
 	}
 	return len(s), nil
@@ -95,14 +93,8 @@ func (d *Document) Count() (uint, error) {
 	return result, nil
 }
 
-// Dump: Writes every line out, newline separated. The output is far larger than
-// the shim's staging buffer for a document of any size, which is the
-// point: the buffer is what keeps the crossings proportional to the
-// payload rather than to the number of `writeAll` calls.
-// It returns *HandleError if a required handle is nil or closed.
-// Native failures are returned as generated error values.
-// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
-func (d *Document) Dump(w io.Writer) error {
+// zigoCheckedDump is the checked form of Dump, which a plugin replaced.
+func (d *Document) zigoCheckedDump(w io.Writer) error {
 	if w == nil {
 		return &StreamError{Operation: "Document.Dump", Parameter: "w", Err: ErrNilStream}
 	}
@@ -126,21 +118,19 @@ func (d *Document) Dump(w io.Writer) error {
 	return nil
 }
 
-// WriteTo calls Dump, satisfying io.WriterTo.
+// WriteTo calls the Zig method Document.dump, satisfying io.WriterTo.
 // The count is what w received during the call.
 func (d *Document) WriteTo(w io.Writer) (int64, error) {
+	if w == nil {
+		return 0, d.zigoCheckedDump(nil)
+	}
 	counting := &zigoCountingWriter{w: w}
-	err := d.Dump(counting)
+	err := d.zigoCheckedDump(counting)
 	return counting.n, err
 }
 
-// Load: Reads newline-terminated lines until the stream ends, and reports how
-// many bytes it consumed. A trailing fragment with no newline is not a
-// line: `dump` always terminates, so a stream this can read always does.
-// It returns *HandleError if a required handle is nil or closed.
-// Native failures are returned as generated error values.
-// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
-func (d *Document) Load(r io.Reader) (uint, error) {
+// zigoCheckedLoad is the checked form of Load, which a plugin replaced.
+func (d *Document) zigoCheckedLoad(r io.Reader) (uint, error) {
 	if r == nil {
 		return 0, &StreamError{Operation: "Document.Load", Parameter: "r", Err: ErrNilStream}
 	}
@@ -165,23 +155,18 @@ func (d *Document) Load(r io.Reader) (uint, error) {
 	return result, nil
 }
 
-// ReadFrom calls Load, satisfying io.ReaderFrom.
+// ReadFrom calls the Zig method Document.load, satisfying io.ReaderFrom.
 // The count is what the method reports.
 func (d *Document) ReadFrom(r io.Reader) (int64, error) {
-	n, err := d.Load(r)
+	n, err := d.zigoCheckedLoad(r)
 	if err != nil {
 		return 0, err
 	}
 	return int64(n), nil
 }
 
-// ReadInto: Copies the newline-terminated lines into `dst`, continuing where the
-// last call stopped, and reports how many bytes it copied. Zero means
-// everything has been read. It is the `io.Reader` shape: an out buffer
-// and a count, with nothing streamed through Zig.
-// It returns *HandleError if a required handle is nil or closed.
-// A native panic is returned as *NativePanicError.
-func (d *Document) ReadInto(dst []byte) (uint, error) {
+// zigoCheckedReadInto is the checked form of ReadInto, which a plugin replaced.
+func (d *Document) zigoCheckedReadInto(dst []byte) (uint, error) {
 	ptr, err := zigoCheckedPointer("Document.ReadInto receiver", d)
 	if err != nil {
 		return 0, err
@@ -194,10 +179,10 @@ func (d *Document) ReadInto(dst []byte) (uint, error) {
 	return result, nil
 }
 
-// Read calls ReadInto, satisfying io.Reader.
+// Read calls the Zig method Document.readInto, satisfying io.Reader.
 // A call that fills nothing while p has room reports io.EOF.
 func (d *Document) Read(p []byte) (int, error) {
-	n, err := d.ReadInto(p)
+	n, err := d.zigoCheckedReadInto(p)
 	if err != nil {
 		return 0, err
 	}
@@ -268,12 +253,8 @@ func (s *Sink) Count() (uint, error) {
 	return result, nil
 }
 
-// Push: Bytes with no promise of being UTF-8, which is why the binding leaves
-// the parameter opaque. The generated `WriteString` still takes a Go
-// `string` and lends its bytes here without copying them.
-// It returns *HandleError if a required handle is nil or closed.
-// Native failures are returned as generated error values.
-func (s *Sink) Push(bytes []byte) error {
+// zigoCheckedPush is the checked form of Push, which a plugin replaced.
+func (s *Sink) zigoCheckedPush(bytes []byte) error {
 	ptr, err := zigoCheckedPointer("Sink.Push receiver", s)
 	if err != nil {
 		return err
@@ -286,12 +267,12 @@ func (s *Sink) Push(bytes []byte) error {
 	return nil
 }
 
-// WriteString calls Push, satisfying io.StringWriter.
+// WriteString calls the Zig method Sink.push, satisfying io.StringWriter.
 // The method takes the whole of str, so the count is len(str) whenever it succeeds.
 // The method takes bytes, so str lends its own, without a copy; native reads them during the call only.
 func (s *Sink) WriteString(str string) (int, error) {
 	zigoBytes := unsafe.Slice(unsafe.StringData(str), len(str))
-	if err := s.Push(zigoBytes); err != nil {
+	if err := s.zigoCheckedPush(zigoBytes); err != nil {
 		return 0, err
 	}
 	return len(str), nil

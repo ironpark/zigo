@@ -27,7 +27,13 @@ fn analyze(context: plugin_api.AnalyzeContext) !void {
     const info = try allocator.alloc(plugin_api.FunctionInfo, functions.len);
     for (functions, info) |function, *entry| entry.* = try render.functionInfo(function);
     for (functions, info) |function, entry| {
-        const enabled = entry.is_public and entry.has_error and !std.mem.eql(u8, entry.public_name, "Close");
+        // A mirror exists for a method that hands back a value beside its
+        // error: `Must` is the caller's way to take the value without the
+        // check. An error-only method has no value to take, so it has no
+        // mirror -- `if err := m(); err != nil { panic(err) }` is the caller's
+        // own line. A method `.implements` hid has no exported form to mirror.
+        const returns_value = function.origin.@"return".errorPayload() != .void;
+        const enabled = entry.is_public and entry.has_error and returns_value and !std.mem.eql(u8, entry.public_name, "Close") and !function.origin.goImplementsHidesOriginal();
         try context.facts.put(allocator, plugin, .function(function.origin.*), .{ .enabled = enabled });
         if (!enabled) continue;
         const must_name = try std.fmt.allocPrint(allocator, "Must{s}", .{entry.public_name});
@@ -97,6 +103,9 @@ fn analyze(context: plugin_api.AnalyzeContext) !void {
     }
 }
 
+/// The mirror of one method: the values through `zigoMust`, or the value
+/// and its presence flag through `zigoMustMatch`. `analyze` only enables a
+/// method that has a value, so there is no error-only shape here.
 fn methodHook(context: plugin_api.Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
     if (!try hasVariant(context, function)) return;
     const method = context.method.?;
@@ -109,7 +118,7 @@ fn methodHook(context: plugin_api.Context, writer: *std.Io.Writer, function: abi
     const count = try context.writeResultType(writer, function, .{ .omit_error = true });
     try writer.writeAll(" { ");
     try writer.writeAll(switch (count) {
-        0 => "_ = zigoMust(struct{}{}, ",
+        0 => unreachable,
         1 => "return zigoMust(",
         else => "return zigoMustMatch(",
     });

@@ -7,6 +7,7 @@ import "example.com/zigo/optional-return-checks/internal/raw"
 
 
 // Password calls the Zig function Terminal.password.
+// The bool result reports whether a value was present; the value before it is zero when it was not.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (t *Terminal) Password() (int32, bool, error) {
@@ -23,6 +24,7 @@ func (t *Terminal) Password() (int32, bool, error) {
 }
 
 // CheckedLevel calls the Zig function checkedLevel.
+// The bool result reports whether a value was present; the value before it is zero when it was not.
 // Native failures are returned as generated error values.
 func CheckedLevel(level uint8) (int32, bool, error) {
 	if level > 127 {
@@ -36,6 +38,7 @@ func CheckedLevel(level uint8) (int32, bool, error) {
 }
 
 // TerminalValue calls the Zig function terminalValue.
+// The bool result reports whether a value was present; the value before it is zero when it was not.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func TerminalValue(terminal *Terminal) (int32, bool, error) {

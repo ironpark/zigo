@@ -76,6 +76,7 @@ func (t *Terminal) SetCursorX(v uint16) error {
 
 // CharsetSingleShift: Reports the pending single shift, if any.
 // Zig field: Terminal.screen.charset.single_shift.
+// The bool result reports whether a value was present; the value before it is zero when it was not.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (t *Terminal) CharsetSingleShift() (CursorStyle, bool, error) {
@@ -92,6 +93,7 @@ func (t *Terminal) CharsetSingleShift() (CursorStyle, bool, error) {
 }
 
 // Scrollback returns the Zig field Terminal.scrollback.
+// The bool result reports whether a value was present; the value before it is zero when it was not.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (t *Terminal) Scrollback() (uint16, bool, error) {
@@ -108,6 +110,7 @@ func (t *Terminal) Scrollback() (uint16, bool, error) {
 }
 
 // SetScrollback sets the Zig field Terminal.scrollback.
+// A nil v is the absent value.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (t *Terminal) SetScrollback(v *uint16) error {

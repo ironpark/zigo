@@ -58,6 +58,26 @@ Go 코드는 session 자식의 `.name` 삭제로 입양 메서드가 타입 이�
 | `zigo.param.callback(n, .{ .retention = ..., .go_error, .userdata })` | `zigo.param.callback(n, .{ .contract = .{ .retention = ... }, .go_error, .userdata })` (`CallbackSite`). 호출 지점 필드가 타입의 값을 필드별로 덮어씀 |
 | `.use(zigo.features.implements, .{ .kind = .writer })` | `.use(zigo.features.implements, .{ .kinds = &.{.writer} })` (`.kind` 삭제) |
 | `api.enumType("E", .{}).use(zigo.features.text, .{})` | `api.enumeration("E", .{ .text = true })` (`features.text` 삭제) |
+
+#### Generated Go
+
+생성된 Go 패키지가 손으로 쓴 Go처럼 읽히도록 규칙을 정리했습니다. C ABI와 shim은 바뀌지
+않으므로 `go-abi-check`는 그대로 통과하고, 바뀌는 것은 Go 이름과 표기뿐입니다. 호환 shim은
+없습니다.
+
+| 이전 | 이후 |
+|---|---|
+| 여러 패키지 빌드에서 핸들의 `ZigoAcquire`/`ZigoRelease`/`ZigoPoison`/`ZigoAcquireChild`/`ZigoDropChild` export | 삭제. 메서드는 `zigo*`로 비공개이며 각 패키지가 `init`에서 `lifecycle.Register`로 등록. `lifecycle.Handle`은 인터페이스가 아니라 `any` |
+| `layout.raw_package = "support/ffi"`처럼 공개 위치의 raw 패키지 | `internal` 요소가 없는 경로는 build panic·`ZIGO063`. 예제 02는 `internal/ffi`, 07은 `internal/cgo` |
+| 공개 패키지 이름 `errors` 등 표준 라이브러리 이름 | `ZIGO064`로 거절. 예제 02의 공개 패키지는 `failures` |
+| `func (b *BorrowView) MustExplode() { _ = zigoMust(struct{}{}, ...) }` (오류만 돌려주는 메서드의 `Must*`) | 삭제. `Must*`는 값을 돌려주는 메서드에만, MUST 플러그인을 켰을 때만 |
+| tagged union의 `MustTag`/`MustVariant`/`MustAs*`/`MustSnapshot` 무조건 생성 | MUST 플러그인을 켰을 때만 |
+| `.iterator = .{ .name = "Checked" }`로 붙이던 오류 반환 iterator 이름 | 기본 이름이 `Checked`로 끝나는 메서드에서 `AllChecked`. `Checked`는 "오류를 보고하는 쌍둥이" 한 뜻만 가짐 |
+| `.implements` 메서드의 원래 이름(`Append`, `Dump`, `Load`, `ReadInto`, `Push`)과 래퍼 둘 다 공개 | 래퍼(`Write`, `WriteTo`, `ReadFrom`, `Read`, `WriteString`)만 공개. 원래 이름은 `.keep_original = true`일 때만 |
+| `io.Writer`/`io.Reader` 단언은 `Document`에만 | `.implements`로 만족하는 모든 인터페이스와 `Close`가 있는 모든 핸들의 `io.Closer`에 `var _ I = (*T)(nil)` |
+| 유추 콜백 타입 `EventQueueCreateObserver`, `EventQueueSetObserverObserver` | 유일하면 매개변수 이름(`Observer`), 충돌 시 소유 타입, 그다음 메서드를 앞에 붙이되 단어를 반복하지 않음. 같은 시그니처는 한 타입 공유 |
+| optional 결과 `(T, bool)`의 의미가 doc에 없음 | doc comment가 `A nil <p> is the absent value.`·`The bool result reports whether a value was present ...`를 적음 |
+| `zigo.param.options(..., .{ .prefix = "" })`로 `Option`/`WithRows` (예제 07) | 기본 접두사 `TerminalOption`/`WithTerminalRows`. `.prefix = ""`는 opt-in으로 유지 |
 | `zigo.features.*`의 `.builtin`, 자체 `Subject` enum | 삭제. `zigo.Subject`와 이름(`ITERATOR`, `IMPLEMENTS`)으로 식별 |
 | session `children[].name`, `children[].plural` | `children[].accessor` (입양 메서드는 항상 `Add<Type>`) |
 | `zigo.ParamContract`, `zigo.Lifetime`, `zigo.Buffer` 재export | 삭제 |

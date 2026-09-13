@@ -24,6 +24,7 @@ var DefaultLibraryName = raw.DefaultLibraryName
 
 
 // Next calls the Zig function Cursor.next.
+// The bool result reports whether a value was present; the value before it is zero when it was not.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (c *Cursor) Next() (int64, bool, error) {
@@ -58,6 +59,7 @@ func (c *Cursor) All() iter.Seq2[int64, error] {
 }
 
 // NextChecked calls the Zig function Cursor.nextChecked.
+// The bool result reports whether a value was present; the value before it is zero when it was not.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (c *Cursor) NextChecked() (Step, bool, error) {

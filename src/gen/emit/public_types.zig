@@ -14,6 +14,15 @@ const public = @import("public.zig");
 const public_writers = @import("public_writers.zig");
 const shim = @import("shim.zig");
 const handle_emit = @import("handles.zig");
+const must = @import("builtin_plugins").must;
+
+/// Whether the MUST plugin is on for this generation. The tagged-union
+/// `Must*` accessors follow the same switch as every other `Must*` mirror,
+/// so a package without the plugin has no panicking form at all.
+fn mustEnabled(allocator: std.mem.Allocator, program: abi.Program, options: emit.Options) bool {
+    const config = plugin_hooks.context(allocator, program, options).config(must.plugin) catch return false;
+    return config.enabled;
+}
 
 pub fn renderUnionFile(
     allocator: std.mem.Allocator,
@@ -462,9 +471,11 @@ fn renderPublicSnapshots(
         // One reader per union, shared by the owned and borrowed handles.
         try writer.print(
             "func zigo{0s}Snapshot(receiver zigoHandle) ({1s}, error) {{\n" ++
-                "\tptr, err := zigoCheckedPointer(\"{0s}.Snapshot receiver\", receiver)\n\tif err != nil {{\n\t\treturn {1s}{{}}, err\n\t}}\n\tdefer receiver.zigoRelease()\n\tdata, status := ",
+                "\tptr, err := zigoCheckedPointer(\"{0s}.Snapshot receiver\", receiver)\n\tif err != nil {{\n\t\treturn {1s}{{}}, err\n\t}}\n\tdefer ",
             .{ declaration.name, type_name },
         );
+        try handle_emit.writeInterfaceRelease(writer, options, "receiver");
+        try writer.writeAll("\n\tdata, status := ");
         try public_writers.writeRawReferencePrefix(writer, options);
         try writer.print(
             "{0s}(ptr)\n\tif status != zigoProjectionSuccess {{\n\t\treturn {1s}{{}}, zigoPoisonAfterPanic(zigoProjectionError(\"{2s}.Snapshot\", status), receiver)\n\t}}\n\treturn {1s}{{\n\t\ttag: {3s}(data.Tag),\n",
@@ -492,7 +503,7 @@ fn renderPublicSnapshots(
                         "// returns a typed lifecycle/native error.\nfunc ({0s} *{1s}{2s}) Snapshot() ({3s}, error) {{ return zigo{1s}Snapshot({0s}) }}\n\n",
                     .{ recv, declaration.name, suffix, type_name },
                 );
-                try writer.print(
+                if (mustEnabled(allocator, program, options)) try writer.print(
                     "// MustSnapshot reads the tag and every payload in one native call and panics\n" ++
                         "// with a typed error on failure.\nfunc ({0s} *{1s}{2s}) MustSnapshot() {3s} {{ return zigoMust(zigo{1s}Snapshot({0s})) }}\n\n",
                     .{ recv, declaration.name, suffix, type_name },
@@ -686,7 +697,7 @@ fn renderPublicUnionVariants(
                         "// lifecycle/native error.\nfunc ({0s} *{1s}{2s}) Variant() ({1s}Variant, error) {{ return zigo{1s}Variant({0s}) }}\n\n",
                     .{ recv, declaration.name, suffix },
                 );
-                try writer.print(
+                if (mustEnabled(allocator, program, options)) try writer.print(
                     "// MustVariant returns the active variant as a concrete {1s}Variant and panics\n" ++
                         "// with a typed error on failure.\nfunc ({0s} *{1s}{2s}) MustVariant() {1s}Variant {{ return zigoMust(zigo{1s}Variant({0s})) }}\n\n",
                     .{ recv, declaration.name, suffix },
@@ -785,9 +796,11 @@ fn renderPublicTaggedUnionAccessors(
         // interface so the owned and borrowed methods can both delegate to it.
         try writer.print(
             "func zigo{0s}Tag(receiver zigoHandle) ({1s}, error) {{\n" ++
-                "\tptr, err := zigoCheckedPointer(\"{0s}.Tag receiver\", receiver)\n\tif err != nil {{\n\t\treturn 0, err\n\t}}\n\tdefer receiver.zigoRelease()\n\tresult, status := ",
+                "\tptr, err := zigoCheckedPointer(\"{0s}.Tag receiver\", receiver)\n\tif err != nil {{\n\t\treturn 0, err\n\t}}\n\tdefer ",
             .{ declaration.name, tag_type },
         );
+        try handle_emit.writeInterfaceRelease(writer, options, "receiver");
+        try writer.writeAll("\n\tresult, status := ");
         try public_writers.writeRawReferencePrefix(writer, options);
         try writer.print(
             "{0s}ProjectTag(ptr)\n\tif status != zigoProjectionSuccess {{\n\t\treturn 0, zigoPoisonAfterPanic(zigoProjectionError(\"{0s}.Tag\", status), receiver)\n\t}}\n\treturn {1s}(result), nil\n}}\n\n",
@@ -801,7 +814,7 @@ fn renderPublicTaggedUnionAccessors(
                         "func ({0s} *{1s}{2s}) Tag() ({3s}, error) {{ return zigo{1s}Tag({0s}) }}\n\n",
                     .{ recv, declaration.name, suffix, tag_type },
                 );
-                try writer.print(
+                if (mustEnabled(allocator, program, options)) try writer.print(
                     "// MustTag returns the active tagged-union tag and panics with a typed error on failure.\n" ++
                         "func ({0s} *{1s}{2s}) MustTag() {3s} {{ return zigoMust(zigo{1s}Tag({0s})) }}\n\n",
                     .{ recv, declaration.name, suffix, tag_type },
@@ -819,7 +832,9 @@ fn renderPublicTaggedUnionAccessors(
             try public_writers.writePayloadType(scope, writer, payload);
             try writer.print(", bool, error) {{\n\tptr, err := zigoCheckedPointer(\"{s}.As{s} receiver\", receiver)\n\tif err != nil {{\n\t\treturn ", .{ declaration.name, field_name });
             try writer.writeAll(type_spelling.goZero(payload));
-            try writer.writeAll(", false, err\n\t}\n\tdefer receiver.zigoRelease()\n\tresult, status := ");
+            try writer.writeAll(", false, err\n\t}\n\tdefer ");
+            try handle_emit.writeInterfaceRelease(writer, options, "receiver");
+            try writer.writeAll("\n\tresult, status := ");
             try public_writers.writeRawReferencePrefix(writer, options);
             try writer.print("{s}Project{s}(ptr)\n\tif status == zigoProjectionMismatch {{\n\t\treturn ", .{ declaration.name, field_name });
             try writer.writeAll(type_spelling.goZero(payload));
@@ -851,9 +866,11 @@ fn renderPublicTaggedUnionAccessors(
                     try writer.print("// As{0s} returns the {1s} payload, whether it is active, and any lifecycle/native error.\nfunc ({2s} *{3s}{4s}) As{0s}() (", .{ field_name, field.name, recv, declaration.name, suffix });
                     try public_writers.writePayloadType(scope, writer, payload);
                     try writer.print(", bool, error) {{ return zigo{0s}As{1s}({2s}) }}\n\n", .{ declaration.name, field_name, recv });
-                    try writer.print("// MustAs{0s} returns the {1s} payload when active and panics with a typed error on failure.\nfunc ({2s} *{3s}{4s}) MustAs{0s}() (", .{ field_name, field.name, recv, declaration.name, suffix });
-                    try public_writers.writePayloadType(scope, writer, payload);
-                    try writer.print(", bool) {{ return zigoMustMatch(zigo{0s}As{1s}({2s})) }}\n\n", .{ declaration.name, field_name, recv });
+                    if (mustEnabled(allocator, program, options)) {
+                        try writer.print("// MustAs{0s} returns the {1s} payload when active and panics with a typed error on failure.\nfunc ({2s} *{3s}{4s}) MustAs{0s}() (", .{ field_name, field.name, recv, declaration.name, suffix });
+                        try public_writers.writePayloadType(scope, writer, payload);
+                        try writer.print(", bool) {{ return zigoMustMatch(zigo{0s}As{1s}({2s})) }}\n\n", .{ declaration.name, field_name, recv });
+                    }
                 }
             }
         }

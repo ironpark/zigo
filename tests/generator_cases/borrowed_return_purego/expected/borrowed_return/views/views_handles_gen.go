@@ -3,11 +3,13 @@
 package views
 
 import (
+	"io"
 	"runtime"
 	"sync"
 	"unsafe"
 
 	"example.com/zigo/borrowed-return/internal/raw"
+	lifecycle "example.com/zigo/borrowed-return/internal/lifecycle"
 )
 
 // Parent is a caller-owned native handle. Call Close when it is no longer needed.
@@ -65,13 +67,6 @@ func (p *Parent) zigoPoison(cause *NativePanicError) {
 	}
 }
 
-// ZigoAcquire implements the shared lifecycle handle contract.
-func (p *Parent) ZigoAcquire(operation string) (unsafe.Pointer, error) { return p.zigoAcquire(operation) }
-// ZigoRelease implements the shared lifecycle handle contract.
-func (p *Parent) ZigoRelease() { p.zigoRelease() }
-// ZigoPoison implements the shared lifecycle handle contract.
-func (p *Parent) ZigoPoison(cause *NativePanicError) { p.zigoPoison(cause) }
-
 type zigoParentCleanupState struct {
 	ptr unsafe.Pointer
 }
@@ -118,6 +113,8 @@ func (p *Parent) Close() error {
 	return nil
 }
 
+var _ io.Closer = (*Parent)(nil)
+
 // zigoTakeLocked hands out what is left to release once p is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
 // object: releasing state a panic left half-changed could fault, so it leaks.
@@ -156,7 +153,7 @@ func (v *View) zigoAcquire(operation string) (unsafe.Pointer, error) {
 	parent := v.owner
 	v.mu.Unlock()
 	if parent != nil {
-		if _, err := parent.ZigoAcquire(operation); err != nil {
+		if _, err := lifecycle.Acquire(operation, parent); err != nil {
 			return nil, err
 		}
 	}
@@ -174,7 +171,7 @@ func (v *View) zigoAcquire(operation string) (unsafe.Pointer, error) {
 	v.mu.Unlock()
 	if err != nil {
 		if parent != nil {
-			parent.ZigoRelease()
+			lifecycle.Release(parent)
 		}
 		return nil, err
 	}
@@ -189,7 +186,7 @@ func (v *View) zigoRelease() {
 	v.active--
 	parent := v.owner
 	v.mu.Unlock()
-	if parent != nil { parent.ZigoRelease() }
+	if parent != nil { lifecycle.Release(parent) }
 }
 
 // zigoPoison marks v unusable: a Zig panic unwound through native frames
@@ -205,16 +202,9 @@ func (v *View) zigoPoison(cause *NativePanicError) {
 	}
 	v.mu.Unlock()
 	if parent != nil {
-		parent.ZigoPoison(cause)
+		lifecycle.Poison(parent, cause)
 	}
 }
-
-// ZigoAcquire implements the shared lifecycle handle contract.
-func (v *View) ZigoAcquire(operation string) (unsafe.Pointer, error) { return v.zigoAcquire(operation) }
-// ZigoRelease implements the shared lifecycle handle contract.
-func (v *View) ZigoRelease() { v.zigoRelease() }
-// ZigoPoison implements the shared lifecycle handle contract.
-func (v *View) ZigoPoison(cause *NativePanicError) { v.zigoPoison(cause) }
 
 // Close detaches this borrowed View view without releasing native resources.
 func (v *View) Close() error {
@@ -232,3 +222,5 @@ func (v *View) Close() error {
 	v.mu.Unlock()
 	return nil
 }
+
+var _ io.Closer = (*View)(nil)

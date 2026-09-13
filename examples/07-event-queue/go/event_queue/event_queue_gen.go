@@ -9,7 +9,7 @@ package event_queue
 import (
 	"unsafe"
 
-	raw "example.com/zigo/event-queue/bridge/cgo"
+	raw "example.com/zigo/event-queue/internal/cgo"
 	lifecycle "example.com/zigo/event-queue/internal/lifecycle"
 
 	zigo_pkg_types "example.com/zigo/event-queue/event_queue/types"
@@ -19,11 +19,11 @@ import (
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
-func NewEventQueue(name string, capacity uint, policy Policy, observer EventQueueCreateObserver) (*EventQueue, error) {
+func NewEventQueue(name string, capacity uint, policy Policy, observer Observer) (*EventQueue, error) {
 	if observer == nil {
 		return nil, &CallbackError{Operation: "NewEventQueue", Callback: "observer", Err: ErrNilCallback}
 	}
-	observerHandle := zigoNewEventQueueCreateObserverHandle(observer)
+	observerHandle := zigoNewObserverHandle(observer)
 	result, code := raw.EventQueueCreate(name, capacity, uint32(policy), uintptr(observerHandle))
 	if zigoCallbackPanicPending() {
 		zigoRethrowCallbackPanic("NewEventQueue", observerHandle)
@@ -36,7 +36,7 @@ func NewEventQueue(name string, capacity uint, policy Policy, observer EventQueu
 }
 
 // MustNewEventQueue calls NewEventQueue and panics with its typed error on failure.
-func MustNewEventQueue(name string, capacity uint, policy Policy, observer EventQueueCreateObserver) *EventQueue {
+func MustNewEventQueue(name string, capacity uint, policy Policy, observer Observer) *EventQueue {
 	return zigoMust(NewEventQueue(name, capacity, policy, observer))
 }
 
@@ -48,7 +48,7 @@ func MustNewEventQueue(name string, capacity uint, policy Policy, observer Event
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
-func (e *EventQueue) Clone(observer EventQueueCloneObserver) (*EventQueue, error) {
+func (e *EventQueue) Clone(observer Observer) (*EventQueue, error) {
 	ptr, err := zigoCheckedPointer("EventQueue.Clone receiver", e)
 	if err != nil {
 		return nil, err
@@ -57,7 +57,7 @@ func (e *EventQueue) Clone(observer EventQueueCloneObserver) (*EventQueue, error
 	if observer == nil {
 		return nil, &CallbackError{Operation: "EventQueue.Clone", Callback: "observer", Err: ErrNilCallback}
 	}
-	observerHandle := zigoNewEventQueueCloneObserverHandle(observer)
+	observerHandle := zigoNewObserverHandle(observer)
 	result, code := raw.EventQueueClone(ptr, uintptr(observerHandle))
 	if zigoCallbackPanicPending() {
 		zigoRethrowCallbackPanic("EventQueue.Clone", observerHandle)
@@ -73,9 +73,7 @@ func (e *EventQueue) Clone(observer EventQueueCloneObserver) (*EventQueue, error
 }
 
 // MustClone calls Clone and panics with its typed error on failure.
-func (e *EventQueue) MustClone(observer EventQueueCloneObserver) *EventQueue {
-	return zigoMust(e.Clone(observer))
-}
+func (e *EventQueue) MustClone(observer Observer) *EventQueue { return zigoMust(e.Clone(observer)) }
 
 // NewStream: Opens a stream owned by the caller. The allocator is injected before
 // the receiver, matching APIs where one handle constructs another.
@@ -92,7 +90,7 @@ func (e *EventQueue) NewStream() (*Stream, error) {
 	defer func() {
 		e.zigoRelease()
 		if !zigoChildCreated {
-			zigoChildParent.ZigoDropChild()
+			lifecycle.DropChild(zigoChildParent)
 		}
 	}()
 	result, code := raw.EventQueueNewStream(ptr)
@@ -131,11 +129,6 @@ func (e *EventQueue) Enqueue(id uint64, value int32) error {
 		return zigoPoisonAfterPanic(zigoErrorForCode("EventQueue.Enqueue", code), e)
 	}
 	return nil
-}
-
-// MustEnqueue calls Enqueue and panics with its typed error on failure.
-func (e *EventQueue) MustEnqueue(id uint64, value int32) {
-	_ = zigoMust(struct{}{}, e.Enqueue(id, value))
 }
 
 // MergeFrom appends another queue's events to this one under the current
@@ -204,7 +197,7 @@ func (e *EventQueue) MustProcess(limit uint) uint { return zigoMust(e.Process(li
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
-func (e *EventQueue) SetObserver(observer EventQueueSetObserverObserver) error {
+func (e *EventQueue) SetObserver(observer Observer) error {
 	ptr, err := zigoCheckedPointer("EventQueue.SetObserver receiver", e)
 	if err != nil {
 		return err
@@ -213,7 +206,7 @@ func (e *EventQueue) SetObserver(observer EventQueueSetObserverObserver) error {
 	if observer == nil {
 		return &CallbackError{Operation: "EventQueue.SetObserver", Callback: "observer", Err: ErrNilCallback}
 	}
-	observerHandle := zigoNewEventQueueSetObserverObserverHandle(observer)
+	observerHandle := zigoNewObserverHandle(observer)
 	observerHandleAdopted := false
 	defer func() {
 		if !observerHandleAdopted {
@@ -234,11 +227,6 @@ func (e *EventQueue) SetObserver(observer EventQueueSetObserverObserver) error {
 	observerHandleAdopted = true
 	zigoDeleteCallbackHandle(observerPreviousHandle)
 	return nil
-}
-
-// MustSetObserver calls SetObserver and panics with its typed error on failure.
-func (e *EventQueue) MustSetObserver(observer EventQueueSetObserverObserver) {
-	_ = zigoMust(struct{}{}, e.SetObserver(observer))
 }
 
 // Name calls the Zig function EventQueue.name.
@@ -322,6 +310,7 @@ func (e *EventQueue) MustSampleValuesChecked() []float32 { return zigoMust(e.Sam
 
 // SelectionString: A fallible optional slice with caller ownership. An empty queue has no
 // selection; otherwise Go copies and releases the allocated name.
+// The bool result reports whether a value was present; the value before it is zero when it was not.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
@@ -821,11 +810,6 @@ func (e *EventQueue) ApplyLimits(updated Limits) error {
 	return nil
 }
 
-// MustApplyLimits calls ApplyLimits and panics with its typed error on failure.
-func (e *EventQueue) MustApplyLimits(updated Limits) {
-	_ = zigoMust(struct{}{}, e.ApplyLimits(updated))
-}
-
 // Clear calls the Zig function EventQueue.clear.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
@@ -937,7 +921,7 @@ func (b *BorrowView) NewBorrowChild() (*BorrowChild, error) {
 	defer func() {
 		b.zigoRelease()
 		if !zigoChildCreated {
-			zigoChildParent.ZigoDropChild()
+			lifecycle.DropChild(zigoChildParent)
 		}
 	}()
 	result, code := raw.BorrowViewNewChild(ptr)
@@ -986,9 +970,6 @@ func (b *BorrowView) Explode() error {
 	return nil
 }
 
-// MustExplode calls Explode and panics with its typed error on failure.
-func (b *BorrowView) MustExplode() { _ = zigoMust(struct{}{}, b.Explode()) }
-
 // Get calls the Zig function BorrowChild.get.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
@@ -1008,32 +989,32 @@ func (b *BorrowChild) Get() (int32, error) {
 // MustGet calls Get and panics with its typed error on failure.
 func (b *BorrowChild) MustGet() int32 { return zigoMust(b.Get()) }
 
-// Option configures NewTerminal.
-type Option func(*options)
+// TerminalOption configures NewTerminal.
+type TerminalOption func(*terminalOptions)
 
-type options struct {
+type terminalOptions struct {
 	rows               uint16
 	maxScrollbackBytes uint
 	blinkIntervalMs    *uint32
 }
 
-// WithRows configures rows. Default: 24.
-func WithRows(rows uint16) Option {
-	return func(cfg *options) {
+// WithTerminalRows configures rows. Default: 24.
+func WithTerminalRows(rows uint16) TerminalOption {
+	return func(cfg *terminalOptions) {
 		cfg.rows = rows
 	}
 }
 
-// WithMaxScrollbackBytes configures max_scrollback_bytes. Default: 1048576.
-func WithMaxScrollbackBytes(maxScrollbackBytes uint) Option {
-	return func(cfg *options) {
+// WithTerminalMaxScrollbackBytes configures max_scrollback_bytes. Default: 1048576.
+func WithTerminalMaxScrollbackBytes(maxScrollbackBytes uint) TerminalOption {
+	return func(cfg *terminalOptions) {
 		cfg.maxScrollbackBytes = maxScrollbackBytes
 	}
 }
 
-// WithBlinkIntervalMs configures blink_interval_ms. Default: 500.
-func WithBlinkIntervalMs(blinkIntervalMs *uint32) Option {
-	return func(cfg *options) {
+// WithTerminalBlinkIntervalMs configures blink_interval_ms. Default: 500.
+func WithTerminalBlinkIntervalMs(blinkIntervalMs *uint32) TerminalOption {
+	return func(cfg *terminalOptions) {
 		cfg.blinkIntervalMs = blinkIntervalMs
 	}
 }
@@ -1041,9 +1022,9 @@ func WithBlinkIntervalMs(blinkIntervalMs *uint32) Option {
 // NewTerminal creates a caller-owned Terminal.
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.
-func NewTerminal(initialCols uint16, opts ...Option) (*Terminal, error) {
+func NewTerminal(initialCols uint16, opts ...TerminalOption) (*Terminal, error) {
 	var zigoDefaultBlinkIntervalMs uint32 = 500
-	cfg := options{
+	cfg := terminalOptions{
 		rows:               24,
 		maxScrollbackBytes: 1048576,
 		blinkIntervalMs:    &zigoDefaultBlinkIntervalMs,
@@ -1059,7 +1040,7 @@ func NewTerminal(initialCols uint16, opts ...Option) (*Terminal, error) {
 }
 
 // MustNewTerminal calls NewTerminal and panics with its typed error on failure.
-func MustNewTerminal(initialCols uint16, opts ...Option) *Terminal {
+func MustNewTerminal(initialCols uint16, opts ...TerminalOption) *Terminal {
 	return zigoMust(NewTerminal(initialCols, opts...))
 }
 

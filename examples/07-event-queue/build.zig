@@ -25,7 +25,7 @@ pub fn build(b: *std.Build) void {
     _ = zigo.addGoBindings(b, .{
         .name = "event_queue",
         .module = event_queue,
-        .layout = .{ .go_module = "example.com/zigo/event-queue", .raw_package = "bridge/cgo" },
+        .layout = .{ .go_module = "example.com/zigo/event-queue", .raw_package = "internal/cgo" },
         .target = target,
         .optimize = optimize,
         .go_package_doc = package_doc,

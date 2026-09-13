@@ -22,6 +22,8 @@ func Checked() (Flags, error) {
 }
 
 // Maybe calls the Zig function maybe.
+// A nil flags is the absent value.
+// The bool result reports whether a value was present; the value before it is zero when it was not.
 func Maybe(flags *Flags) (Flags, bool) {
 	var flagsRaw *uint16
 	if flags != nil {

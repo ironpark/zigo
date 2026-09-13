@@ -61,7 +61,7 @@ func TestMaterializedIteratorExhaustionAndEarlyStop(t *testing.T) {
 			seen := uint32(0)
 			sequence := cursor.All()
 			if checked {
-				sequence = cursor.Checked()
+				sequence = cursor.AllChecked()
 			}
 			for value, err := range sequence {
 				if err != nil {
@@ -111,7 +111,7 @@ func TestMaterializedIteratorYieldsErrorOnce(t *testing.T) {
 		}
 		before := ReleasedBuffers()
 		seen, failures := uint32(0), 0
-		for value, err := range cursor.Checked() {
+		for value, err := range cursor.AllChecked() {
 			if err != nil {
 				if !errors.Is(err, ErrInvalid) || value.Name != "" {
 					t.Fatalf("error yield = (%+v, %v)", value, err)

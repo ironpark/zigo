@@ -11,7 +11,42 @@
 - 생성자는 보통 `New<Type>`입니다.
 - 소멸자는 핸들의 `Close() error`가 됩니다.
 - Zig error 태그는 `Err<Tag>` sentinel이 됩니다.
-- 생성 내부 identifier는 공개 패키지에서 `zigo` 접두사를 예약합니다.
+- 생성 내부 identifier는 공개 패키지에서 `zigo` 접두사를 예약합니다. `zigo`로 시작하는
+  identifier는 언제나 비공개입니다. 핸들 수명 메서드(`zigoAcquire`, `zigoRelease`, ...)는 여러
+  패키지로 나뉜 바인딩에서도 export되지 않고, 패키지가 `init`에서 `internal/lifecycle`에 메서드
+  값을 등록해 공유 런타임이 그것을 부릅니다.
+- 공개 패키지 이름이 Go 표준 라이브러리의 최상위 패키지(`errors`, `io`, `fmt`, `time`, ...)와
+  같으면 `ZIGO064`로 거절됩니다. `layout.go_package`로 다른 이름을 고르세요.
+
+### `Checked` 접미사
+
+`Checked`는 한 가지 뜻만 가집니다. 같은 이름의 메서드 옆에 있는, 오류를 보고하는 쌍둥이입니다.
+`Next() (T, bool)` 옆의 `NextChecked() (T, bool, error)`, `SampleValues() []float32` 옆의
+`SampleValuesChecked() ([]float32, error)`가 그렇습니다. 생성기는 이 단어를 스스로 붙이지
+않습니다. 플러그인이 공개 표기를 가져간 메서드의 본문은 비공개 `zigoChecked<Name>`으로
+쓰이고, 공개 이름의 `Checked`는 언제나 바인딩(Zig 함수 이름 또는 `.name`)이 적은 것입니다.
+파생 이름은 그것을 그대로 이어받습니다. `*Checked` 메서드의 iterator 래퍼 기본 이름은
+`AllChecked`입니다.
+
+### 콜백 타입 이름
+
+바인딩이 `api.callback("Observer", ...)`로 선언한 콜백은 그 이름을 씁니다. 선언 없이 함수
+시그니처에서 유추한 콜백 타입은 프로그램 안에서 유일한 가장 짧은 표기를 고릅니다.
+
+1. 매개변수 이름: `Observer`
+2. 충돌하면 소유 타입(자유 함수면 함수 이름)을 앞에: `EventQueueObserver`, `SubscribeHandler`
+3. 그래도 충돌하면 소유 타입과 메서드: `EventQueueSetObserver`. 메서드 이름이 매개변수
+   이름으로 끝나면 매개변수 이름은 반복하지 않습니다.
+
+시그니처가 같은 매개변수는 한 타입을 공유하므로, `create`·`clone`·`setObserver`가 같은
+`observer`를 받으면 `Observer` 하나만 생성됩니다. 선언된 타입과 겹치면 `Callback`이 붙습니다.
+
+### `Must*` 정책
+
+`Must<Name>`은 MUST 플러그인을 켠 빌드에서만 생성됩니다. tagged union의 `MustTag`,
+`MustVariant`, `MustAs*`, `MustSnapshot`도 같은 스위치를 따릅니다. 오류 옆에 값을 돌려주는
+메서드만 mirror를 가집니다. `Close`처럼 오류만 돌려주는 메서드에는 `Must*`가 없으며, 그 경우
+`if err := h.Explode(); err != nil { panic(err) }`는 호출자가 직접 쓰는 한 줄입니다.
 
 ## doc comment
 
@@ -33,6 +68,11 @@
 | `?T` | `(T, bool)` 또는 nil 가능한 타입 |
 | `E!?T` | `(T, bool, error)` |
 | 출력 버퍼 + count 결과 | `(n int, error)` 또는 해당 정수 형태 |
+
+optional은 입력에서 `*T`(nil이 부재값), 결과에서 `(T, bool)`(뒤의 `bool`이 존재 여부)로
+한 가지씩만 표기합니다. `Invert(value *bool) (bool, bool)`처럼 값 자체가 bool이어도 모양은
+같으므로, 생성된 doc comment가 `A nil value is the absent value.`와 `The bool result reports
+whether a value was present; the value before it is zero when it was not.`로 두 쪽을 명시합니다.
 
 비표준 폭 정수 입력의 range check, invalid 핸들과 콜백 계약 때문에 원래 Zig
 함수가 오류 유니온이 아니어도 Go 시그니처에 `error`가 추가될 수 있습니다.
@@ -73,6 +113,21 @@ defer resource.Close()
 않습니다. borrowed 객체는 `Ref` 타입처럼 별도 표현을 사용할 수 있고 부모보다 오래 사용할
 수 없습니다.
 
+`Close`가 있는 모든 핸들의 파일에는 `var _ io.Closer = (*T)(nil)` 단언이 있습니다.
+`.implements`로 만족하는 인터페이스(`io.Writer`, `io.Reader`, `io.StringWriter`, `io.WriterTo`,
+`io.ReaderFrom`)마다 같은 단언이 핸들 뒤에 붙어, 래퍼가 인터페이스와 어긋나면 소비자가 아니라
+이 패키지의 빌드가 먼저 실패합니다.
+
+### `implements` 래퍼
+
+`.use(zigo.features.implements, .{ .kinds = ... })`를 붙인 메서드는 표준 인터페이스 모양의
+래퍼(`Write`, `Read`, `WriteString`, `WriteTo`, `ReadFrom`)만 공개합니다. zigo 모양의 원래
+메서드(`Append([]byte) error`, `Dump(io.Writer) error` 같은 것)는 비공개 `zigoChecked<Name>`으로
+쓰이고 래퍼가 그것을 부릅니다. 카운트는 표준 시그니처대로 `Write`·`Read`·`WriteString`이
+`int`, `WriteTo`·`ReadFrom`이 `int64`입니다. 원래 이름도 함께 내보내려면
+`.keep_original = true`를 줍니다. 오류 문자열의 operation은 여전히 원래 이름(`Document.Dump`)을
+씁니다.
+
 ## functional options
 
 구조체 매개변수를 `zigo.param.options`로 선언하면 생성자 인자가 Go의 functional options
@@ -80,13 +135,13 @@ defer resource.Close()
 생성자가 함께 생성됩니다.
 
 ```go
-type Option func(*options)
+type TerminalOption func(*terminalOptions)
 
-type options struct{ ... }
+type terminalOptions struct{ ... }
 
-func WithRows(rows uint16) Option
-func NewTerminal(initialCols uint16, opts ...Option) (*Terminal, error)
-func MustNewTerminal(initialCols uint16, opts ...Option) *Terminal
+func WithTerminalRows(rows uint16) TerminalOption
+func NewTerminal(initialCols uint16, opts ...TerminalOption) (*Terminal, error)
+func MustNewTerminal(initialCols uint16, opts ...TerminalOption) *Terminal // MUST 플러그인을 켰을 때
 ```
 
 옵션으로 바뀌지 않은 매개변수는 위치 인자로 남고 가변 인자는 마지막에 옵니다. 나열한 필드
@@ -98,7 +153,8 @@ func NewTerminal(cols uint16, rows uint16, opts ...TerminalOption) (*Terminal, e
 ```
 
 - 기본 접두사는 소유 타입 이름(자유 함수면 함수 이름)입니다. `.prefix`가 이를 대체하고,
-  `.prefix = ""`는 `Option`·`With<Field>`처럼 접두사 없는 이름을 만듭니다.
+  `.prefix = ""`는 `Option`·`With<Field>`처럼 접두사 없는 이름을 만드는 opt-in입니다. 한
+  패키지에 옵션을 받는 생성자가 하나뿐일 때만 쓰세요.
 - 옵션 타입 이름은 `<접두사>Option`이고 `.type_name`이 이를 대체합니다.
 - 설정 구조체는 비공개입니다. 옵션 타입의 이름만 공개 API에 남습니다.
 - 설정 구조체와 `With*` 생성자에는 Zig 기본값이 있는 필드만 나타납니다. 기본값이 하나도
@@ -187,4 +243,7 @@ LibraryLoaded() bool
 
 같은 패키지에 `_gen.go`가 아닌 파일을 추가해 도우미나 메서드를 작성할 수 있습니다. 공개
 생성 이름과 `zigo`로 시작하는 private identifier를 다시 정의하지 마세요. raw 패키지는 내부
-구현이며 호환성 보장 대상이 아닙니다.
+구현이며 호환성 보장 대상이 아닙니다. 그래서 raw 패키지 경로(`layout.raw_package`)는 반드시
+`internal` 요소를 포함해야 하며(기본값 `internal/raw`), 다른 경로는 build가 거부합니다. 여러
+패키지로 나뉜 바인딩이 공유하는 `internal/lifecycle`도 마찬가지로 모듈 밖에서는 import할 수
+없습니다.

@@ -3,7 +3,7 @@
 // Package types contains event-queue values and the standalone Ticker handle.
 package types
 
-import raw "example.com/zigo/event-queue/bridge/cgo"
+import raw "example.com/zigo/event-queue/internal/cgo"
 
 // NewTicker: Opens a ticker the caller owns.
 // The caller must call Close on the returned handle.

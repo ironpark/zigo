@@ -91,11 +91,12 @@ fn findMustVariantIssue(allocator: std.mem.Allocator, document: semantic.Semanti
 test "generated Must names participate in ZIGO024 collision checks" {
     const document: semantic.Semantic = .{
         .functions = &.{
+            // A value beside the error: an error-only method has no mirror.
             .{
                 .name = "ping",
                 .params = &.{},
                 .receiver = "Handle",
-                .@"return" = .{ .void = {} },
+                .@"return" = .{ .int = .{ .bits = 32, .signed = true, .is_usize = false } },
                 .symbol = "zg_handle_ping",
             },
             .{
@@ -130,7 +131,7 @@ test "a callback signature flagged go_error elsewhere gives a free function a Mu
                     .{ .name = "observer", .type = observer },
                     .{ .name = "userdata", .type = usize_node },
                 },
-                .@"return" = .{ .void = {} },
+                .@"return" = status,
                 .symbol = "zg_run",
             },
             .{

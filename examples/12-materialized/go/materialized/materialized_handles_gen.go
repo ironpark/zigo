@@ -3,10 +3,12 @@
 package materialized
 
 import (
+	"io"
 	"runtime"
 	"sync"
 	"unsafe"
 
+	lifecycle "example.com/zigo/materialized/internal/lifecycle"
 	"example.com/zigo/materialized/internal/raw"
 )
 
@@ -33,7 +35,7 @@ func (l *LegacyLeaf) zigoAcquire(operation string) (unsafe.Pointer, error) {
 	parent := l.owner
 	l.mu.Unlock()
 	if parent != nil {
-		if _, err := parent.ZigoAcquire(operation); err != nil {
+		if _, err := lifecycle.Acquire(operation, parent); err != nil {
 			return nil, err
 		}
 	}
@@ -51,7 +53,7 @@ func (l *LegacyLeaf) zigoAcquire(operation string) (unsafe.Pointer, error) {
 	l.mu.Unlock()
 	if err != nil {
 		if parent != nil {
-			parent.ZigoRelease()
+			lifecycle.Release(parent)
 		}
 		return nil, err
 	}
@@ -67,7 +69,7 @@ func (l *LegacyLeaf) zigoRelease() {
 	parent := l.owner
 	l.mu.Unlock()
 	if parent != nil {
-		parent.ZigoRelease()
+		lifecycle.Release(parent)
 	}
 }
 
@@ -84,20 +86,9 @@ func (l *LegacyLeaf) zigoPoison(cause *NativePanicError) {
 	}
 	l.mu.Unlock()
 	if parent != nil {
-		parent.ZigoPoison(cause)
+		lifecycle.Poison(parent, cause)
 	}
 }
-
-// ZigoAcquire implements the shared lifecycle handle contract.
-func (l *LegacyLeaf) ZigoAcquire(operation string) (unsafe.Pointer, error) {
-	return l.zigoAcquire(operation)
-}
-
-// ZigoRelease implements the shared lifecycle handle contract.
-func (l *LegacyLeaf) ZigoRelease() { l.zigoRelease() }
-
-// ZigoPoison implements the shared lifecycle handle contract.
-func (l *LegacyLeaf) ZigoPoison(cause *NativePanicError) { l.zigoPoison(cause) }
 
 // Close detaches this borrowed LegacyLeaf view without releasing native resources.
 func (l *LegacyLeaf) Close() error {
@@ -120,6 +111,8 @@ func (l *LegacyLeaf) Close() error {
 	l.mu.Unlock()
 	return nil
 }
+
+var _ io.Closer = (*LegacyLeaf)(nil)
 
 // LegacyProbe is a caller-owned native handle. Call Close when it is no longer needed.
 type LegacyProbe struct {
@@ -176,17 +169,6 @@ func (l *LegacyProbe) zigoPoison(cause *NativePanicError) {
 	}
 }
 
-// ZigoAcquire implements the shared lifecycle handle contract.
-func (l *LegacyProbe) ZigoAcquire(operation string) (unsafe.Pointer, error) {
-	return l.zigoAcquire(operation)
-}
-
-// ZigoRelease implements the shared lifecycle handle contract.
-func (l *LegacyProbe) ZigoRelease() { l.zigoRelease() }
-
-// ZigoPoison implements the shared lifecycle handle contract.
-func (l *LegacyProbe) ZigoPoison(cause *NativePanicError) { l.zigoPoison(cause) }
-
 type zigoLegacyProbeCleanupState struct {
 	ptr unsafe.Pointer
 }
@@ -232,6 +214,8 @@ func (l *LegacyProbe) Close() error {
 	runtime.KeepAlive(l)
 	return nil
 }
+
+var _ io.Closer = (*LegacyProbe)(nil)
 
 // zigoTakeLocked hands out what is left to release once l is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
@@ -303,17 +287,6 @@ func (c *Cursor) zigoPoison(cause *NativePanicError) {
 	}
 }
 
-// ZigoAcquire implements the shared lifecycle handle contract.
-func (c *Cursor) ZigoAcquire(operation string) (unsafe.Pointer, error) {
-	return c.zigoAcquire(operation)
-}
-
-// ZigoRelease implements the shared lifecycle handle contract.
-func (c *Cursor) ZigoRelease() { c.zigoRelease() }
-
-// ZigoPoison implements the shared lifecycle handle contract.
-func (c *Cursor) ZigoPoison(cause *NativePanicError) { c.zigoPoison(cause) }
-
 type zigoCursorCleanupState struct {
 	ptr unsafe.Pointer
 }
@@ -354,6 +327,8 @@ func (c *Cursor) Close() error {
 	runtime.KeepAlive(c)
 	return nil
 }
+
+var _ io.Closer = (*Cursor)(nil)
 
 // zigoTakeLocked hands out what is left to release once c is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native

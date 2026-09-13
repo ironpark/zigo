@@ -21,6 +21,9 @@ func (p *Palette) Flags() (Flags, error) {
 	return FlagsFromBacking(result), nil
 }
 
+// MustFlags calls Flags and panics with its typed error on failure.
+func (p *Palette) MustFlags() Flags { return zigoMust(p.Flags()) }
+
 // SetFlags sets the Zig field Palette.flags.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
@@ -38,6 +41,7 @@ func (p *Palette) SetFlags(v Flags) error {
 }
 
 // PinnedMode returns the Zig field Palette.pinned_mode.
+// The bool result reports whether a value was present; the value before it is zero when it was not.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (p *Palette) PinnedMode() (Mode, bool, error) {
@@ -53,7 +57,11 @@ func (p *Palette) PinnedMode() (Mode, bool, error) {
 	return Mode(result), zigoHas, nil
 }
 
+// MustPinnedMode calls PinnedMode and panics with its typed error on failure.
+func (p *Palette) MustPinnedMode() (Mode, bool) { return zigoMustMatch(p.PinnedMode()) }
+
 // SetPinnedMode sets the Zig field Palette.pinned_mode.
+// A nil v is the absent value.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (p *Palette) SetPinnedMode(v *Mode) error {
@@ -90,6 +98,9 @@ func (p *Palette) Name() ([]byte, error) {
 	return result, nil
 }
 
+// MustName calls Name and panics with its typed error on failure.
+func (p *Palette) MustName() []byte { return zigoMust(p.Name()) }
+
 // NewChild creates a caller-owned Child.
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.
@@ -100,6 +111,9 @@ func NewChild(value int32) (*Child, error) {
 	}
 	return zigoNewChild(result), nil
 }
+
+// MustNewChild calls NewChild and panics with its typed error on failure.
+func MustNewChild(value int32) *Child { return zigoMust(NewChild(value)) }
 
 // Get calls the Zig function Child.get.
 // It returns *HandleError if a required handle is nil or closed.
@@ -117,6 +131,9 @@ func (c *Child) Get() (int32, error) {
 	return result, nil
 }
 
+// MustGet calls Get and panics with its typed error on failure.
+func (c *Child) MustGet() int32 { return zigoMust(c.Get()) }
+
 // NewValue creates a caller-owned Value.
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.
@@ -127,6 +144,9 @@ func NewValue(initial int64) (*Value, error) {
 	}
 	return zigoNewValue(result), nil
 }
+
+// MustNewValue calls NewValue and panics with its typed error on failure.
+func MustNewValue(initial int64) *Value { return zigoMust(NewValue(initial)) }
 
 // SetNone calls the Zig function Value.setNone.
 // It returns *HandleError if a required handle is nil or closed.
@@ -262,6 +282,9 @@ func (v *Value) Borrow() (*ValueRef, error) {
 	return &ValueRef{ptr: result, parent: v}, nil
 }
 
+// MustBorrow calls Borrow and panics with its typed error on failure.
+func (v *Value) MustBorrow() *ValueRef { return zigoMust(v.Borrow()) }
+
 // NewSignal creates a caller-owned Signal.
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.
@@ -272,6 +295,9 @@ func NewSignal(initial uint32) (*Signal, error) {
 	}
 	return zigoNewSignal(result), nil
 }
+
+// MustNewSignal calls NewSignal and panics with its typed error on failure.
+func MustNewSignal(initial uint32) *Signal { return zigoMust(NewSignal(initial)) }
 
 // SetIdle calls the Zig function Signal.setIdle.
 // It returns *HandleError if a required handle is nil or closed.
@@ -380,6 +406,9 @@ func NewPalette(flags Flags) (*Palette, error) {
 	return zigoNewPalette(result), nil
 }
 
+// MustNewPalette calls NewPalette and panics with its typed error on failure.
+func MustNewPalette(flags Flags) *Palette { return zigoMust(NewPalette(flags)) }
+
 // LiveValues calls the Zig function liveValues.
 func LiveValues() uint {
 	return raw.LiveValues()
@@ -393,6 +422,11 @@ func Divide(numerator float64, denominator float64) (float64, error) {
 		return 0, zigoErrorForCode("Divide", code)
 	}
 	return result, nil
+}
+
+// MustDivide calls Divide and panics with its typed error on failure.
+func MustDivide(numerator float64, denominator float64) float64 {
+	return zigoMust(Divide(numerator, denominator))
 }
 
 // Sum calls the Zig function sum.
@@ -415,12 +449,16 @@ func CurrentViewport(kind uint8) (ScrollViewport, error) {
 	return zigoScrollViewportFromRaw(result), nil
 }
 
+// MustCurrentViewport calls CurrentViewport and panics with its typed error on failure.
+func MustCurrentViewport(kind uint8) ScrollViewport { return zigoMust(CurrentViewport(kind)) }
+
 // EchoRgb calls the Zig function echoRGB.
 func EchoRgb(value RGB) RGB {
 	return RGBFromBacking(raw.EchoRgb(value.Backing()))
 }
 
 // MaybeRgb calls the Zig function maybeRGB.
+// The bool result reports whether a value was present; the value before it is zero when it was not.
 func MaybeRgb(present bool) (RGB, bool) {
 	zigoResult, zigoHas := raw.MaybeRgb(zigoBoolToUint8(present))
 	return RGBFromBacking(zigoResult), zigoHas
@@ -435,6 +473,9 @@ func CheckedRgb(valid bool) (RGB, error) {
 	}
 	return RGBFromBacking(result), nil
 }
+
+// MustCheckedRgb calls CheckedRgb and panics with its typed error on failure.
+func MustCheckedRgb(valid bool) RGB { return zigoMust(CheckedRgb(valid)) }
 
 // EchoColorRecord calls the Zig function echoColorRecord.
 func EchoColorRecord(value ColorRecord) ColorRecord {

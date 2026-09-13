@@ -107,6 +107,8 @@ func (d *Document) Close() error {
 	return nil
 }
 
+var _ io.Closer = (*Document)(nil)
+
 // zigoTakeLocked hands out what is left to release once d is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
 // object: releasing state a panic left half-changed could fault, so it leaks.
@@ -121,6 +123,12 @@ func (d *Document) zigoTakeLocked() (zigoDocumentCleanupState, bool) {
 	}
 	return state, true
 }
+
+var _ io.Writer = (*Document)(nil)
+var _ io.StringWriter = (*Document)(nil)
+var _ io.WriterTo = (*Document)(nil)
+var _ io.ReaderFrom = (*Document)(nil)
+var _ io.Reader = (*Document)(nil)
 
 // Document satisfies io.ReadWriteCloser; this assertion stops compiling the day it does not.
 var _ io.ReadWriteCloser = (*Document)(nil)
@@ -221,6 +229,8 @@ func (s *Sink) Close() error {
 	return nil
 }
 
+var _ io.Closer = (*Sink)(nil)
+
 // zigoTakeLocked hands out what is left to release once s is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
 // object: releasing state a panic left half-changed could fault, so it leaks.
@@ -235,6 +245,8 @@ func (s *Sink) zigoTakeLocked() (zigoSinkCleanupState, bool) {
 	}
 	return state, true
 }
+
+var _ io.StringWriter = (*Sink)(nil)
 
 // Source is a caller-owned native handle. Call Close when it is no longer needed.
 type Source struct {
@@ -331,6 +343,8 @@ func (s *Source) Close() error {
 	runtime.KeepAlive(s)
 	return nil
 }
+
+var _ io.Closer = (*Source)(nil)
 
 // zigoTakeLocked hands out what is left to release once s is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native

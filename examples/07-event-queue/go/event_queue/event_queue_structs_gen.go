@@ -5,7 +5,7 @@ package event_queue
 import (
 	"unsafe"
 
-	raw "example.com/zigo/event-queue/bridge/cgo"
+	raw "example.com/zigo/event-queue/internal/cgo"
 
 	zigo_pkg_types "example.com/zigo/event-queue/event_queue/types"
 )

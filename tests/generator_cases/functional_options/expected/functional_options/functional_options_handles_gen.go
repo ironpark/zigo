@@ -3,6 +3,7 @@
 package functional_options
 
 import (
+	"io"
 	"runtime"
 	"sync"
 	"unsafe"
@@ -105,6 +106,8 @@ func (t *Terminal) Close() error {
 	runtime.KeepAlive(t)
 	return nil
 }
+
+var _ io.Closer = (*Terminal)(nil)
 
 // zigoTakeLocked hands out what is left to release once t is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native

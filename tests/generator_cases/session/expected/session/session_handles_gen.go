@@ -3,6 +3,7 @@
 package session
 
 import (
+	"io"
 	"runtime"
 	"sync"
 	"unsafe"
@@ -138,6 +139,8 @@ func (q *Queue) Close() error {
 	runtime.KeepAlive(q)
 	return nil
 }
+
+var _ io.Closer = (*Queue)(nil)
 
 // zigoTakeLocked hands out what is left to release once q is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
@@ -278,6 +281,8 @@ func (s *Stream) Close() error {
 	runtime.KeepAlive(s)
 	return nil
 }
+
+var _ io.Closer = (*Stream)(nil)
 
 // zigoTakeLocked hands out what is left to release once s is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
@@ -420,6 +425,8 @@ func (t *Ticker) Close() error {
 	return nil
 }
 
+var _ io.Closer = (*Ticker)(nil)
+
 // zigoTakeLocked hands out what is left to release once t is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
 // object: releasing state a panic left half-changed could fault, so it leaks.
@@ -560,6 +567,8 @@ func (s *Search) Close() error {
 	runtime.KeepAlive(s)
 	return nil
 }
+
+var _ io.Closer = (*Search)(nil)
 
 // zigoTakeLocked hands out what is left to release once s is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native

@@ -127,9 +127,25 @@ pub const RawPackageError = error{
     InvalidPath,
     InvalidComponent,
     InvalidCharacter,
+    NotInternal,
 };
 
+/// The raw package is the call layer between the public package and the
+/// native library, not part of the supported API, so its path has to carry
+/// an `internal` element: Go then refuses the import from outside the
+/// module, which is the only enforcement a generated package can have.
 pub fn validateRawPackagePath(path: []const u8) RawPackageError!void {
+    try validatePackagePath(path);
+    // The same rule as `naming.pathHasInternalElement`, kept inline: this file
+    // is its own module and cannot share the naming module's source file.
+    var elements = std.mem.splitScalar(u8, path, '/');
+    while (elements.next()) |element| if (std.mem.eql(u8, element, "internal")) return;
+    return error.NotInternal;
+}
+
+/// A relative, slash-separated Go package path with portable components.
+/// The public package path is held to this alone.
+pub fn validatePackagePath(path: []const u8) RawPackageError!void {
     if (path.len == 0 or std.fs.path.isAbsolute(path) or std.mem.indexOfScalar(u8, path, '\\') != null)
         return error.InvalidPath;
     var components = std.mem.splitScalar(u8, path, '/');
@@ -143,12 +159,12 @@ pub fn validateRawPackagePath(path: []const u8) RawPackageError!void {
     }
 }
 
-test "raw package paths accept portable relative components" {
-    for ([_][]const u8{ "internal/raw", "bridge/cgo", "vendor-ffi/v1.2" }) |path|
+test "raw package paths accept portable relative components under internal" {
+    for ([_][]const u8{ "internal/raw", "internal/bridge/cgo", "vendor-ffi/internal/v1.2" }) |path|
         try validateRawPackagePath(path);
 }
 
-test "raw package paths reject unsafe forms and components" {
+test "raw package paths reject unsafe forms, components and public placement" {
     const cases = [_]struct { path: []const u8, expected: RawPackageError }{
         .{ .path = "", .expected = error.InvalidPath },
         .{ .path = "/absolute", .expected = error.InvalidPath },
@@ -157,6 +173,9 @@ test "raw package paths reject unsafe forms and components" {
         .{ .path = "./raw", .expected = error.InvalidComponent },
         .{ .path = "../raw", .expected = error.InvalidComponent },
         .{ .path = "internal/raw!", .expected = error.InvalidCharacter },
+        .{ .path = "bridge/cgo", .expected = error.NotInternal },
+        .{ .path = "support/ffi", .expected = error.NotInternal },
+        .{ .path = "internals/raw", .expected = error.NotInternal },
     };
     for (cases) |case| try std.testing.expectError(case.expected, validateRawPackagePath(case.path));
 }

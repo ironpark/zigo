@@ -55,8 +55,8 @@ func TestDocumentWriteToCountsWhatTheWriterReceived(t *testing.T) {
 	}
 	defer doc.Close()
 	for _, line := range []string{"alpha", "beta", "gamma"} {
-		if err := doc.Append([]byte(line)); err != nil {
-			t.Fatalf("Append: %v", err)
+		if _, err := doc.Write([]byte(line)); err != nil {
+			t.Fatalf("Write: %v", err)
 		}
 	}
 
@@ -117,10 +117,8 @@ func TestDocumentIsAnIoReader(t *testing.T) {
 	if n, err := doc.Read(scratch[:]); n != 0 || !errors.Is(err, io.EOF) {
 		t.Fatalf("Read past the end returned %d, %v", n, err)
 	}
-	// ReadInto is still there, with its own shape.
-	if n, err := doc.ReadInto(scratch[:]); n != 0 || err != nil {
-		t.Fatalf("ReadInto past the end returned %d, %v", n, err)
-	}
+	// The bound method is written under the interface's name only: Read is
+	// the one public spelling.
 }
 
 func TestImplementsWrappersRefuseAClosedHandle(t *testing.T) {
@@ -178,7 +176,7 @@ func TestDocumentIsAnIoStringWriter(t *testing.T) {
 		t.Fatalf("document = %q, want %q", got, "alpha\nbeta\n")
 	}
 
-	// The bound method is still there under its own name.
+	// A method that declares no interface keeps its own name.
 	if err := doc.AppendString("gamma"); err != nil {
 		t.Fatalf("AppendString: %v", err)
 	}
@@ -233,9 +231,10 @@ func TestSinkWriteStringLendsBytes(t *testing.T) {
 		t.Fatalf("WriteString(\"\") = %d, %v; want 0, nil", n, err)
 	}
 
-	// The bound method is still there under its own name, taking bytes.
-	if err := sink.Push([]byte("!")); err != nil {
-		t.Fatalf("Push: %v", err)
+	// WriteString is the one public spelling of push; the bound method is
+	// not exported beside it.
+	if _, err := sink.WriteString("!"); err != nil {
+		t.Fatalf("WriteString: %v", err)
 	}
 }
 

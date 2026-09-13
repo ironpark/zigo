@@ -1,8 +1,8 @@
-package errors_test
+package failures_test
 
 import (
 	"errors"
-	calculator "example.com/zigo/errors/errors"
+	calculator "example.com/zigo/errors/failures"
 	"fmt"
 )
 

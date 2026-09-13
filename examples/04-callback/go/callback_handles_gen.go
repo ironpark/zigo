@@ -3,6 +3,7 @@
 package callback
 
 import (
+	"io"
 	"runtime"
 	"sync"
 	"unsafe"
@@ -168,6 +169,8 @@ func (c *CallbackContext) Close() error {
 	return nil
 }
 
+var _ io.Closer = (*CallbackContext)(nil)
+
 // zigoTakeLocked hands out what is left to release once c is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
 // object: releasing state a panic left half-changed could fault, so it leaks.
@@ -280,6 +283,8 @@ func (f *FloatBuffer) Close() error {
 	return nil
 }
 
+var _ io.Closer = (*FloatBuffer)(nil)
+
 // zigoTakeLocked hands out what is left to release once f is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
 // object: releasing state a panic left half-changed could fault, so it leaks.
@@ -390,6 +395,8 @@ func (i *IntBuffer) Close() error {
 	runtime.KeepAlive(i)
 	return nil
 }
+
+var _ io.Closer = (*IntBuffer)(nil)
 
 // zigoTakeLocked hands out what is left to release once i is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native

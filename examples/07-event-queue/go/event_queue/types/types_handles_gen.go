@@ -3,11 +3,12 @@
 package types
 
 import (
+	"io"
 	"runtime"
 	"sync"
 	"unsafe"
 
-	raw "example.com/zigo/event-queue/bridge/cgo"
+	raw "example.com/zigo/event-queue/internal/cgo"
 )
 
 // Ticker is a caller-owned native handle. Call Close when it is no longer needed.
@@ -65,17 +66,6 @@ func (t *Ticker) zigoPoison(cause *NativePanicError) {
 	}
 }
 
-// ZigoAcquire implements the shared lifecycle handle contract.
-func (t *Ticker) ZigoAcquire(operation string) (unsafe.Pointer, error) {
-	return t.zigoAcquire(operation)
-}
-
-// ZigoRelease implements the shared lifecycle handle contract.
-func (t *Ticker) ZigoRelease() { t.zigoRelease() }
-
-// ZigoPoison implements the shared lifecycle handle contract.
-func (t *Ticker) ZigoPoison(cause *NativePanicError) { t.zigoPoison(cause) }
-
 type zigoTickerCleanupState struct {
 	ptr unsafe.Pointer
 }
@@ -116,6 +106,8 @@ func (t *Ticker) Close() error {
 	runtime.KeepAlive(t)
 	return nil
 }
+
+var _ io.Closer = (*Ticker)(nil)
 
 // zigoTakeLocked hands out what is left to release once t is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native

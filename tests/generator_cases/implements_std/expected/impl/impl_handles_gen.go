@@ -3,6 +3,7 @@
 package impl
 
 import (
+	"io"
 	"sync"
 	"unsafe"
 )
@@ -56,6 +57,11 @@ func (s *Stream) zigoPoison(cause *NativePanicError) {
 	}
 }
 
+
+var _ io.Writer = (*Stream)(nil)
+var _ io.StringWriter = (*Stream)(nil)
+var _ io.WriterTo = (*Stream)(nil)
+var _ io.ReaderFrom = (*Stream)(nil)
 // Buffer represents a native Zig handle.
 type Buffer struct {
 	ptr    unsafe.Pointer
@@ -104,3 +110,10 @@ func (b *Buffer) zigoPoison(cause *NativePanicError) {
 		b.poison = cause
 	}
 }
+
+
+var _ io.Writer = (*Buffer)(nil)
+var _ io.StringWriter = (*Buffer)(nil)
+var _ io.Reader = (*Buffer)(nil)
+var _ io.WriterTo = (*Buffer)(nil)
+var _ io.ReaderFrom = (*Buffer)(nil)

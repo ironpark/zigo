@@ -9,7 +9,7 @@ const std = @import("std");
 pub const Extension = struct {
     /// Set by `Entry.use` for `zigo.features`, which the reflector reads as
     /// typed fields rather than through `ext`.
-    builtin: union(enum) { none, iterator: Iterator, implements: []const Implements } = .none,
+    builtin: union(enum) { none, iterator: Iterator, implements: ImplementsOptions } = .none,
     /// The plugin's name. It is the key the options travel under in
     /// `semantic.json`, so two plugins cannot collide silently.
     plugin: []const u8,
@@ -123,7 +123,9 @@ pub const Returns = struct {
     go: ?GoAdapter = null,
 };
 
-pub const Iterator = struct { name: []const u8 = "All" };
+/// An empty name asks for the derived one: `All`, or `AllChecked` over a
+/// method whose own name carries the `Checked` suffix.
+pub const Iterator = struct { name: []const u8 = "" };
 
 /// A Go standard interface a handle method also satisfies. The generator adds
 /// the interface's method next to the bound one, calling it and adapting the
@@ -132,6 +134,10 @@ pub const Iterator = struct { name: []const u8 = "All" };
 /// `WriteTo(w io.Writer) (int64, error)`, and `.reader_from` adds
 /// `ReadFrom(r io.Reader) (int64, error)`.
 pub const Implements = enum { writer, reader, writer_to, reader_from, string_writer };
+
+/// What `.use(zigo.features.implements, ...)` captured: the interfaces and
+/// whether the zigo-shaped original stays exported beside the wrappers.
+pub const ImplementsOptions = struct { kinds: []const Implements, keep_original: bool = false };
 
 pub const Cancel = struct {
     /// The `*const std.atomic.Value(u32)` parameter, by its `Param.name`.
@@ -162,6 +168,8 @@ pub const Function = struct {
     /// The Go standard interfaces this method also satisfies, each through a
     /// wrapper of its own.
     implements: ?[]const Implements = null,
+    /// With `implements`: the bound method stays exported beside the wrappers.
+    implements_keep_original: bool = false,
     cancel: ?Cancel = null,
     /// Declarations this function stands in for in `go-coverage`.
     covers: []const []const u8 = &.{},

@@ -3,6 +3,7 @@
 package signal
 
 import (
+	"io"
 	"runtime"
 	"sync"
 	"unsafe"
@@ -105,6 +106,8 @@ func (s *Signal) Close() error {
 	runtime.KeepAlive(s)
 	return nil
 }
+
+var _ io.Closer = (*Signal)(nil)
 
 // zigoTakeLocked hands out what is left to release once s is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native

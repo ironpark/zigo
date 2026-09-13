@@ -1,11 +1,11 @@
-package errors
+package failures
 
 import (
 	stderrors "errors"
 	"strings"
 	"testing"
 
-	"example.com/zigo/errors/support/ffi"
+	"example.com/zigo/errors/internal/ffi"
 )
 
 func TestDivideByZero(t *testing.T) {

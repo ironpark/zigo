@@ -14,7 +14,7 @@
       "kind": "native"
     },
     {
-      "path": "bridge/cgo/cgo_gen.go",
+      "path": "internal/cgo/cgo_gen.go",
       "kind": "go"
     },
     {

@@ -3,6 +3,7 @@
 package tagged_union
 
 import (
+	"io"
 	"runtime"
 	"sync"
 	"unsafe"
@@ -75,8 +76,8 @@ func (c *ChildRef) zigoAcquire(operation string) (unsafe.Pointer, error) {
 	if c == nil || c.ptr == nil {
 		return nil, &HandleError{Operation: operation}
 	}
-	if c.parent != nil {
-		if _, err := c.parent.zigoAcquire(operation); err != nil {
+	if parent := c.parent; parent != nil {
+		if _, err := parent.zigoAcquire(operation); err != nil {
 			return nil, err
 		}
 	}
@@ -84,14 +85,20 @@ func (c *ChildRef) zigoAcquire(operation string) (unsafe.Pointer, error) {
 }
 
 func (c *ChildRef) zigoRelease() {
-	if c != nil && c.parent != nil {
-		c.parent.zigoRelease()
+	if c == nil {
+		return
+	}
+	if parent := c.parent; parent != nil {
+		parent.zigoRelease()
 	}
 }
 
 func (c *ChildRef) zigoPoison(cause *NativePanicError) {
-	if c != nil && c.parent != nil {
-		c.parent.zigoPoison(cause)
+	if c == nil {
+		return
+	}
+	if parent := c.parent; parent != nil {
+		parent.zigoPoison(cause)
 	}
 }
 
@@ -135,6 +142,8 @@ func (c *Child) Close() error {
 	runtime.KeepAlive(c)
 	return nil
 }
+
+var _ io.Closer = (*Child)(nil)
 
 // zigoTakeLocked hands out what is left to release once c is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
@@ -216,8 +225,8 @@ func (v *ValueRef) zigoAcquire(operation string) (unsafe.Pointer, error) {
 	if v == nil || v.ptr == nil {
 		return nil, &HandleError{Operation: operation}
 	}
-	if v.parent != nil {
-		if _, err := v.parent.zigoAcquire(operation); err != nil {
+	if parent := v.parent; parent != nil {
+		if _, err := parent.zigoAcquire(operation); err != nil {
 			return nil, err
 		}
 	}
@@ -225,14 +234,20 @@ func (v *ValueRef) zigoAcquire(operation string) (unsafe.Pointer, error) {
 }
 
 func (v *ValueRef) zigoRelease() {
-	if v != nil && v.parent != nil {
-		v.parent.zigoRelease()
+	if v == nil {
+		return
+	}
+	if parent := v.parent; parent != nil {
+		parent.zigoRelease()
 	}
 }
 
 func (v *ValueRef) zigoPoison(cause *NativePanicError) {
-	if v != nil && v.parent != nil {
-		v.parent.zigoPoison(cause)
+	if v == nil {
+		return
+	}
+	if parent := v.parent; parent != nil {
+		parent.zigoPoison(cause)
 	}
 }
 
@@ -276,6 +291,8 @@ func (v *Value) Close() error {
 	runtime.KeepAlive(v)
 	return nil
 }
+
+var _ io.Closer = (*Value)(nil)
 
 // zigoTakeLocked hands out what is left to release once v is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
@@ -388,6 +405,8 @@ func (s *Signal) Close() error {
 	return nil
 }
 
+var _ io.Closer = (*Signal)(nil)
+
 // zigoTakeLocked hands out what is left to release once s is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
 // object: releasing state a panic left half-changed could fault, so it leaks.
@@ -498,6 +517,8 @@ func (p *Palette) Close() error {
 	runtime.KeepAlive(p)
 	return nil
 }
+
+var _ io.Closer = (*Palette)(nil)
 
 // zigoTakeLocked hands out what is left to release once p is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native

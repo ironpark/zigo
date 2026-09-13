@@ -5,7 +5,7 @@ package event_queue
 import (
 	"strconv"
 
-	raw "example.com/zigo/event-queue/bridge/cgo"
+	raw "example.com/zigo/event-queue/internal/cgo"
 	lifecycle "example.com/zigo/event-queue/internal/lifecycle"
 )
 

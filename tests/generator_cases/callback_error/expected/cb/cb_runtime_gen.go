@@ -44,14 +44,14 @@ func zigoPoisonAfterPanic(err error, handles ...zigoHandle) error {
 // Thread: any; the callback may run on any native thread.
 type HubCreateObserver func(int32) (int32, error)
 
-// HubSetObserverObserver is the Go callback signature accepted by the generated binding.
-type HubSetObserverObserver func(int32) (int32, error)
+// HubSetObserver is the Go callback signature accepted by the generated binding.
+type HubSetObserver func(int32) (int32, error)
 
-// ApplyObserverCallback is the Go callback signature accepted by the generated binding.
-type ApplyObserverCallback func(int32) (int32, error)
+// ApplyObserver is the Go callback signature accepted by the generated binding.
+type ApplyObserver func(int32) (int32, error)
 
-// NotifyObserverCallback is the Go callback signature accepted by the generated binding.
-type NotifyObserverCallback func(int32)
+// NotifyObserver is the Go callback signature accepted by the generated binding.
+type NotifyObserver func(int32)
 
 var zigoActiveCallbackHandles atomic.Int64
 
@@ -64,21 +64,21 @@ func zigoNewHubCreateObserverHandle(value HubCreateObserver) zigoCallbackHandle 
 	return handle
 }
 
-func zigoNewHubSetObserverObserverHandle(value HubSetObserverObserver) zigoCallbackHandle {
+func zigoNewHubSetObserverHandle(value HubSetObserver) zigoCallbackHandle {
 	stored := (func(int32) (int32, error))(value)
 	handle := cgo.NewHandle(&raw.CallbackState{Fn: stored})
 	zigoActiveCallbackHandles.Add(1)
 	return handle
 }
 
-func zigoNewApplyObserverCallbackHandle(value ApplyObserverCallback) zigoCallbackHandle {
+func zigoNewApplyObserverHandle(value ApplyObserver) zigoCallbackHandle {
 	stored := (func(int32) (int32, error))(value)
 	handle := cgo.NewHandle(&raw.CallbackState{Fn: stored})
 	zigoActiveCallbackHandles.Add(1)
 	return handle
 }
 
-func zigoNewNotifyObserverCallbackHandle(value NotifyObserverCallback) zigoCallbackHandle {
+func zigoNewNotifyObserverHandle(value NotifyObserver) zigoCallbackHandle {
 	stored := (func(int32))(value)
 	handle := cgo.NewHandle(&raw.CallbackState{Fn: stored})
 	zigoActiveCallbackHandles.Add(1)

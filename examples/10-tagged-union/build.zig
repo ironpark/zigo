@@ -26,6 +26,13 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.dependency("zigo_enumkit", .{}).path("src/plugin.zig"),
     };
 
+    // The `Must*` accessors of the tagged unions follow the MUST plugin like
+    // every other panicking mirror; the tests use them.
+    const must: zigo.PluginModule = .{
+        .name = "MUST",
+        .config = zigo.configJson(b, .{ .enabled = true }),
+    };
+
     _ = zigo.addGoBindings(b, .{
         .name = "tagged_union",
         .module = tagged_union,
@@ -34,6 +41,6 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .link = if (purego) .{ .purego = .{} } else .cgo_static,
-        .plugins = &.{ json, enumkit },
+        .plugins = &.{ json, enumkit, must },
     });
 }

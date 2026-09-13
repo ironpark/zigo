@@ -4,19 +4,19 @@ package cb
 
 import "example.com/zigo/cb/internal/raw"
 
-// ReduceReducerCallback is the Go callback signature accepted by the generated binding.
-type ReduceReducerCallback func(int32, int32) int32
+// Reducer is the Go callback signature accepted by the generated binding.
+type Reducer func(int32, int32) int32
 
-// VisitVisitorCallback is the Go callback signature accepted by the generated binding.
-type VisitVisitorCallback func(int32, bool)
+// Visitor is the Go callback signature accepted by the generated binding.
+type Visitor func(int32, bool)
 
 type zigoCallbackHandle = uintptr
 
-func zigoNewReduceReducerCallbackHandle(value ReduceReducerCallback) zigoCallbackHandle {
+func zigoNewReducerHandle(value Reducer) zigoCallbackHandle {
 	return raw.NewCallbackHandle((func(int32, int32) int32)(value))
 }
 
-func zigoNewVisitVisitorCallbackHandle(value VisitVisitorCallback) zigoCallbackHandle {
+func zigoNewVisitorHandle(value Visitor) zigoCallbackHandle {
 	return raw.NewCallbackHandle(func(p0 int32, p1 uint8) {
 		value(p0, p1 != 0)
 	})

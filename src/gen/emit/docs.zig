@@ -119,7 +119,29 @@ fn withoutLeadingName(line: []const u8, go_name: []const u8, zig_name: []const u
     return std.mem.trimStart(u8, line[end..], " ");
 }
 
-pub fn writePublicFunctionDoc(writer: *std.Io.Writer, function: semantic.SemanticFn, go_name: []const u8, owned_type: ?[]const u8, reaches_callbacks: bool, reaches_callback_errors: bool) !void {
+/// The one spelling of optionality in a generated signature, and the one
+/// sentence that explains each side of it. An optional input is a pointer
+/// whose nil is the absent value; an optional result is the value beside a
+/// bool that reports presence. Both the type writers and this doc read the
+/// spelling from here, so the two cannot drift apart.
+pub const optional_input_type_prefix = "*";
+pub const optional_output_presence_type = "bool";
+
+/// Documents every optional parameter and an optional result of `function`,
+/// naming the presence result so `Invert(value *bool) (bool, bool)` reads
+/// unambiguously: the second bool is presence, the first is the value.
+pub fn writeOptionalContractDoc(writer: *std.Io.Writer, function: semantic.SemanticFn, go_names: ?[]const []const u8) !void {
+    for (function.params, 0..) |parameter, index| {
+        if (parameter.type != .optional or parameter.injected != null) continue;
+        const name = if (go_names) |names| names[index] else parameter.name;
+        try writer.print("// A nil {s} is the absent value.\n", .{name});
+    }
+    const payload = function.@"return".errorPayload();
+    if (payload == .optional)
+        try writer.print("// The {s} result reports whether a value was present; the value before it is zero when it was not.\n", .{optional_output_presence_type});
+}
+
+pub fn writePublicFunctionDoc(writer: *std.Io.Writer, function: semantic.SemanticFn, go_name: []const u8, owned_type: ?[]const u8, reaches_callbacks: bool, reaches_callback_errors: bool, go_names: ?[]const []const u8) !void {
     if (function.field_access) |field_access| {
         if (function.doc) |doc| {
             if (field_access.setter) {
@@ -168,6 +190,7 @@ pub fn writePublicFunctionDoc(writer: *std.Io.Writer, function: semantic.Semanti
     for (function.params) |parameter| {
         if (parameter.type == .callback) try writeCallbackContractDoc(writer, parameter, parameter.name);
     }
+    try writeOptionalContractDoc(writer, function, go_names);
     if (owned_type != null)
         try writer.writeAll("// The caller must call Close on the returned handle.\n");
     if (returnsBorrowedOpaque(function))

@@ -16,7 +16,7 @@ pub const bindings = zigo.define(api, .{
             Context.func("maybeTotal", .{}),
             Context.func("setTotal", .{}),
             Context.func("next", .{}).use(zigo.features.iterator, .{}),
-            Context.func("nextChecked", .{}).use(zigo.features.iterator, .{ .name = "Checked" }),
+            Context.func("nextChecked", .{}).use(zigo.features.iterator, .{}),
             Context.func("rewind", .{}),
             Context.func("addCopy", .{}),
             Context.func("borrowView", .{ .returns = zigo.result.borrowed() }),

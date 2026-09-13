@@ -43,6 +43,7 @@ func WrapInspectPoint(point zigo_pkg_model.Point) zigo_pkg_model.Point {
 }
 
 // MaybePoint calls the Zig function maybePoint.
+// The bool result reports whether a value was present; the value before it is zero when it was not.
 // Native failures are returned as generated error values.
 func MaybePoint() (zigo_pkg_model.Point, bool, error) {
 	result, zigoHas, code := raw.MaybePoint()
@@ -73,11 +74,11 @@ func WrapConfigure(enabled bool, optionsRows uint16, scale float32, mode zigo_pk
 // Reduce calls the Zig function reduce.
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
-func Reduce(acc int32, reducer ReduceReducerCallback) (int32, error) {
+func Reduce(acc int32, reducer Reducer) (int32, error) {
 	if reducer == nil {
 		return 0, &CallbackError{Operation: "Reduce", Callback: "reducer", Err: ErrNilCallback}
 	}
-	reducerHandle := zigoNewReduceReducerCallbackHandle(reducer)
+	reducerHandle := zigoNewReducerHandle(reducer)
 	defer zigoDeleteCallbackHandle(reducerHandle)
 	result, code := raw.Reduce(acc, uintptr(reducerHandle))
 	if zigoCallbackPanicPending() {
@@ -89,7 +90,7 @@ func Reduce(acc int32, reducer ReduceReducerCallback) (int32, error) {
 	return result, nil
 }
 // WrapReduce panics on failure.
-func WrapReduce(acc int32, reducer ReduceReducerCallback) int32 {
+func WrapReduce(acc int32, reducer Reducer) int32 {
 	return zigoWrap1(Reduce(acc, reducer))
 }
 

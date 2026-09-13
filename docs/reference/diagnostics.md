@@ -80,6 +80,8 @@ zigo는 생성 전에 소스 reflection, semantic 계약과 최종 출력을 검
 | `ZIGO060` | 플러그인 transform의 네이티브 매개변수 order가 순열이 아닙니다. `reorderParameters`를 사용합니다. |
 | `ZIGO061` | functional options 계약이 잘못되었습니다(복수 옵션 매개변수, 옵션 필드 부재). 나열한 필드 중 적어도 하나에 Zig 기본값을 주거나, 전부 위치 인자로 낼 것이면 `.options` 대신 `.flatten`을 씁니다. 기본값이 없는 필드는 오류가 아니라 Go 위치 인자가 됩니다. |
 | `ZIGO062` | session 계약이 잘못되었습니다(자식 없음, 중복, primary를 자식으로 나열, dependent child가 아님, `Close` 없음, 멤버의 패키지 불일치). `.children`을 고치거나 그 핸들을 세션에서 빼냅니다. |
+| `ZIGO063` | raw 패키지 경로에 `internal` 요소가 없습니다. raw 패키지는 지원 API가 아니므로 `internal/` 아래에 두거나(기본값 `internal/raw`) `layout.raw_colocated`를 씁니다. |
+| `ZIGO064` | 공개 Go 패키지 이름이 표준 라이브러리 패키지(`errors`, `io`, `fmt`, `time` 등)와 같습니다. `layout.go_package` 또는 하위 패키지의 `.path`로 다른 이름을 고릅니다. |
 
 `ZIGO047`은 현재 할당되지 않았습니다. 진단 번호가 연속적이라고 가정하지 마세요.
 

@@ -4,11 +4,11 @@ package cb
 
 import "example.com/zigo/cb/internal/raw"
 
-// FilterPredicateCallback is the Go callback signature accepted by the generated binding.
-type FilterPredicateCallback func(int32, bool) bool
+// Predicate is the Go callback signature accepted by the generated binding.
+type Predicate func(int32, bool) bool
 
-// EachVisitorCallback is the Go callback signature accepted by the generated binding.
-type EachVisitorCallback func(bool)
+// Visitor is the Go callback signature accepted by the generated binding.
+type Visitor func(bool)
 
 func zigoBoolToUint8(value bool) uint8 {
 	if value {
@@ -19,13 +19,13 @@ func zigoBoolToUint8(value bool) uint8 {
 
 type zigoCallbackHandle = uintptr
 
-func zigoNewFilterPredicateCallbackHandle(value FilterPredicateCallback) zigoCallbackHandle {
+func zigoNewPredicateHandle(value Predicate) zigoCallbackHandle {
 	return raw.NewCallbackHandle(func(p0 int32, p1 uint8) uint8 {
 		return zigoBoolToUint8(value(p0, p1 != 0))
 	})
 }
 
-func zigoNewEachVisitorCallbackHandle(value EachVisitorCallback) zigoCallbackHandle {
+func zigoNewVisitorHandle(value Visitor) zigoCallbackHandle {
 	return raw.NewCallbackHandle(func(p0 uint8) {
 		value(p0 != 0)
 	})

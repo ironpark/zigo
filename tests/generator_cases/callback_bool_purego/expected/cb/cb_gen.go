@@ -21,11 +21,11 @@ var DefaultLibraryName = raw.DefaultLibraryName
 
 // Filter calls the Zig function filter.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
-func Filter(value int32, predicate FilterPredicateCallback) bool {
+func Filter(value int32, predicate Predicate) bool {
 	if predicate == nil {
 		panic(&CallbackError{Operation: "Filter", Callback: "predicate", Err: ErrNilCallback})
 	}
-	predicateHandle := zigoNewFilterPredicateCallbackHandle(predicate)
+	predicateHandle := zigoNewPredicateHandle(predicate)
 	defer zigoDeleteCallbackHandle(predicateHandle)
 	result := raw.Filter(value, raw.CallbackPointer0(), uintptr(predicateHandle))
 	if zigoCallbackPanicPending() {
@@ -36,11 +36,11 @@ func Filter(value int32, predicate FilterPredicateCallback) bool {
 
 // Each calls the Zig function each.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
-func Each(visitor EachVisitorCallback) {
+func Each(visitor Visitor) {
 	if visitor == nil {
 		panic(&CallbackError{Operation: "Each", Callback: "visitor", Err: ErrNilCallback})
 	}
-	visitorHandle := zigoNewEachVisitorCallbackHandle(visitor)
+	visitorHandle := zigoNewVisitorHandle(visitor)
 	defer zigoDeleteCallbackHandle(visitorHandle)
 	raw.Each(raw.CallbackPointer1(), uintptr(visitorHandle))
 	if zigoCallbackPanicPending() {

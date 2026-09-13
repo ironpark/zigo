@@ -5,7 +5,7 @@ package types
 import (
 	"unsafe"
 
-	raw "example.com/zigo/event-queue/bridge/cgo"
+	raw "example.com/zigo/event-queue/internal/cgo"
 )
 
 // TickerInfo mirrors the Zig `extern struct` of the same name.

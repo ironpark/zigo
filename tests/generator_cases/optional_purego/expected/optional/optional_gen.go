@@ -20,12 +20,15 @@ var DefaultLibraryName = raw.DefaultLibraryName
 
 
 // Double calls the Zig function double.
+// A nil value is the absent value.
+// The bool result reports whether a value was present; the value before it is zero when it was not.
 func Double(value *int32) (int32, bool) {
 	zigoResult, zigoHas := raw.Double(value)
 	return zigoResult, zigoHas
 }
 
 // Flag calls the Zig function flag.
+// A nil value is the absent value.
 func Flag(value *bool) bool {
 	var valueRaw *uint8
 	if value != nil {
@@ -36,6 +39,8 @@ func Flag(value *bool) bool {
 }
 
 // PickMode calls the Zig function pickMode.
+// A nil value is the absent value.
+// The bool result reports whether a value was present; the value before it is zero when it was not.
 func PickMode(value *Mode) (Mode, bool) {
 	var valueRaw *uint8
 	if value != nil {
@@ -47,6 +52,8 @@ func PickMode(value *Mode) (Mode, bool) {
 }
 
 // CheckedDouble calls the Zig function checkedDouble.
+// A nil value is the absent value.
+// The bool result reports whether a value was present; the value before it is zero when it was not.
 // Native failures are returned as generated error values.
 func CheckedDouble(value *int32) (int32, bool, error) {
 	result, zigoHas, code := raw.CheckedDouble(value)
@@ -57,6 +64,8 @@ func CheckedDouble(value *int32) (int32, bool, error) {
 }
 
 // ShiftPoint calls the Zig function shiftPoint.
+// A nil origin is the absent value.
+// The bool result reports whether a value was present; the value before it is zero when it was not.
 func ShiftPoint(origin *Point) (Point, bool) {
 	var originRaw *raw.PointData
 	if origin != nil {
@@ -68,6 +77,8 @@ func ShiftPoint(origin *Point) (Point, bool) {
 }
 
 // CheckedPoint calls the Zig function checkedPoint.
+// A nil origin is the absent value.
+// The bool result reports whether a value was present; the value before it is zero when it was not.
 // Native failures are returned as generated error values.
 func CheckedPoint(origin *Point) (Point, bool, error) {
 	var originRaw *raw.PointData

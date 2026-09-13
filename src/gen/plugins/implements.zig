@@ -14,18 +14,43 @@ const site = plugin_api.site;
 pub const plugin: plugin_api.Plugin = .{
     .name = "IMPLEMENTS",
     .validate = validateDocument,
+    .replaces_method = hidesOriginal,
     .method_hook = methodHook,
+    .type_hook = typeHook,
     .file_hook = runtimeHook,
 };
+
+/// The wrappers are the public spelling: the zigo-shaped method is written
+/// under its unexported checked name unless the declaration asked to keep it.
+fn hidesOriginal(_: plugin_api.Context, function: abi.AbiFn) !bool {
+    return function.origin.goImplementsHidesOriginal();
+}
+
+/// One assertion per interface a handle satisfies through `.implements`, so
+/// a wrapper that stops matching the interface fails this package's build
+/// rather than a consumer's.
+fn typeHook(context: plugin_api.Context, writer: *std.Io.Writer, declaration: semantic.TypeDecl) !void {
+    if (declaration.kind != .@"opaque") return;
+    var wrote_any = false;
+    for (context.program.functions) |function| {
+        const receiver = function.origin.receiver orelse continue;
+        if (!std.mem.eql(u8, receiver, declaration.name)) continue;
+        for (function.origin.goImplements()) |kind| {
+            if (!wrote_any) try writer.writeByte('\n');
+            wrote_any = true;
+            try writer.print("var _ {s} = (*{s})(nil)\n", .{ kind.interfaceName(), declaration.name });
+        }
+    }
+}
 
 fn methodHook(context: plugin_api.Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
     const kinds = function.origin.goImplements();
     if (kinds.len == 0) return;
     const method = context.method.?;
     // One wrapper per named interface, in the order the declaration named
-    // them; every one of them calls the same public method.
-    // The name the generated body was written under: a declaration another
-    // plugin claimed still has one, and it is what the adapter has to call.
+    // them; every one of them calls the same bound method, under the name
+    // its body was written with: the exported one when the declaration kept
+    // it, the unexported checked name otherwise.
     for (kinds) |kind| try renderImplementsWrapper(writer, function, kind, method.receiver_name.?, method.checked_name, method.needs_check);
 }
 
@@ -69,7 +94,10 @@ pub fn renderImplementsWrapper(
         .reader_from => wrapperParamName(receiver_name, "r", "src"),
     };
 
-    try writer.print("\n// {s} calls {s}, satisfying {s}.\n", .{ method, go_name, interface });
+    if (function.origin.goImplementsHidesOriginal())
+        try writer.print("\n// {s} calls the Zig method {s}.{s}, satisfying {s}.\n", .{ method, receiver, function.origin.name, interface })
+    else
+        try writer.print("\n// {s} calls {s}, satisfying {s}.\n", .{ method, go_name, interface });
     switch (implements) {
         .writer => {
             if (counts)
@@ -126,6 +154,7 @@ pub fn renderImplementsWrapper(
                 try writeCall(writer, receiver_name, go_name, name, with_error, true);
                 try writer.writeAll("\treturn int64(n), nil\n}\n");
             } else {
+                try writeNilStreamPassThrough(writer, receiver_name, go_name, name, with_error);
                 try writer.print("\tcounting := &zigoCountingWriter{{w: {s}}}\n", .{name});
                 try writeCallCounting(writer, receiver_name, go_name, "counting", with_error);
             }
@@ -140,6 +169,7 @@ pub fn renderImplementsWrapper(
                 try writeCall(writer, receiver_name, go_name, name, with_error, true);
                 try writer.writeAll("\treturn int64(n), nil\n}\n");
             } else {
+                try writeNilStreamPassThrough(writer, receiver_name, go_name, name, with_error);
                 try writer.print("\tcounting := &zigoCountingReader{{r: {s}}}\n", .{name});
                 try writeCallCounting(writer, receiver_name, go_name, "counting", with_error);
             }
@@ -180,6 +210,15 @@ fn writeCall(writer: *std.Io.Writer, receiver_name: []const u8, go_name: []const
     } else {
         try writer.print("\t{s}.{s}({s})\n", .{ receiver_name, go_name, argument });
     }
+}
+
+/// A nil stream goes to the method as it is, so the method's own nil check
+/// reports it; wrapped in a counting adapter it would look present.
+fn writeNilStreamPassThrough(writer: *std.Io.Writer, receiver_name: []const u8, go_name: []const u8, argument: []const u8, with_error: bool) !void {
+    if (with_error)
+        try writer.print("\tif {s} == nil {{\n\t\treturn 0, {s}.{s}(nil)\n\t}}\n", .{ argument, receiver_name, go_name })
+    else
+        try writer.print("\tif {s} == nil {{\n\t\t{s}.{s}(nil)\n\t\treturn 0, nil\n\t}}\n", .{ argument, receiver_name, go_name });
 }
 
 /// The call through a counting stream: the count is reported even when the

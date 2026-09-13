@@ -150,7 +150,7 @@ pub fn init(gpa: std.mem.Allocator, initial_cols: u16, options: TerminalOptions)
 Terminal.members(&.{
     Terminal.func("init", .{
         .params = &.{
-            zigo.param.options(2, &.{ "rows", "max_scrollback_bytes" }, .{ .prefix = "" }),
+            zigo.param.options(2, &.{ "rows", "max_scrollback_bytes" }, .{}),
         },
     }),
 })
@@ -159,30 +159,30 @@ Terminal.members(&.{
 index는 receiver나 주입된 매개변수를 제거하기 전의 원래 Zig 시그니처 기준으로, `.flatten`과
 같습니다. 위 선언에서 index `2`는 `options` 매개변수를 가리킵니다.
 
-- `.prefix`: `With*` 함수 이름 및 옵션 타입 접두사입니다. 생략 시 소유 타입(`Terminal`) 이름이 사용되며, `""`를 주면 접두사 없이 `Option`, `WithRows` 등으로 방출됩니다.
+- `.prefix`: `With*` 함수 이름 및 옵션 타입 접두사입니다. 생략 시 소유 타입(`Terminal`) 이름이 사용되어 `TerminalOption`, `WithTerminalRows`가 됩니다. `""`를 주면 접두사 없이 `Option`, `WithRows`로 방출되는데, 한 패키지에 옵션을 받는 생성자가 하나뿐일 때만 쓰는 opt-in입니다.
 - `.type_name`: 방출할 옵션 함수 타입의 이름입니다.
 
 ### 생성 Go
 
-공개 Go API에는 `Option` 타입, `With*` 함수들, 그리고 가변 인자(`opts ...Option`)를 받는 생성자가 생성됩니다. 옵션으로 바뀌지 않은 매개변수는 위치 인자로 남고, 가변 인자는 항상 마지막에 옵니다.
+공개 Go API에는 `TerminalOption` 타입, `WithTerminal*` 함수들, 그리고 가변 인자(`opts ...TerminalOption`)를 받는 생성자가 생성됩니다. 옵션으로 바뀌지 않은 매개변수는 위치 인자로 남고, 가변 인자는 항상 마지막에 옵니다.
 
 ```go
-// Option configures NewTerminal.
-type Option func(*options)
+// TerminalOption configures NewTerminal.
+type TerminalOption func(*terminalOptions)
 
-type options struct {
+type terminalOptions struct {
 	rows               uint16
 	maxScrollbackBytes uint
 }
 
-// WithRows configures rows. Default: 24.
-func WithRows(rows uint16) Option { ... }
+// WithTerminalRows configures rows. Default: 24.
+func WithTerminalRows(rows uint16) TerminalOption { ... }
 
-// WithMaxScrollbackBytes configures max_scrollback_bytes. Default: 1048576.
-func WithMaxScrollbackBytes(maxScrollbackBytes uint) Option { ... }
+// WithTerminalMaxScrollbackBytes configures max_scrollback_bytes. Default: 1048576.
+func WithTerminalMaxScrollbackBytes(maxScrollbackBytes uint) TerminalOption { ... }
 
-func NewTerminal(initialCols uint16, opts ...Option) (*Terminal, error) {
-	cfg := options{
+func NewTerminal(initialCols uint16, opts ...TerminalOption) (*Terminal, error) {
+	cfg := terminalOptions{
 		rows:               24,
 		maxScrollbackBytes: 1048576,
 	}
@@ -202,13 +202,13 @@ Go 호출자는 옵션을 생략하거나, 필요한 옵션만 지정하거나, 
 term1, err := event_queue.NewTerminal(80)
 
 // 2. 일부 옵션만 변경
-term2, err := event_queue.NewTerminal(80, event_queue.WithRows(50))
+term2, err := event_queue.NewTerminal(80, event_queue.WithTerminalRows(50))
 
 // 3. 모든 옵션 지정
 term3, err := event_queue.NewTerminal(
 	120,
-	event_queue.WithRows(40),
-	event_queue.WithMaxScrollbackBytes(8<<20),
+	event_queue.WithTerminalRows(40),
+	event_queue.WithTerminalMaxScrollbackBytes(8<<20),
 )
 ```
 

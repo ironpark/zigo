@@ -30,7 +30,7 @@ pub const bindings = zigo.define(api, .{
         Cursor.members(&.{
             Cursor.func("create", .{}),
             Cursor.func("next", .{ .returns = owned_tree }).use(zigo.features.iterator, .{}),
-            Cursor.func("nextChecked", .{ .returns = owned_tree }).use(zigo.features.iterator, .{ .name = "Checked" }),
+            Cursor.func("nextChecked", .{ .returns = owned_tree }).use(zigo.features.iterator, .{}),
             Cursor.func("count", .{}),
             Cursor.func("deinit", .{}),
         }),

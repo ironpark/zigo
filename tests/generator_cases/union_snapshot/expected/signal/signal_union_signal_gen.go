@@ -20,9 +20,6 @@ func zigoSignalTag(receiver zigoHandle) (SignalTag, error) {
 // Tag returns the active tagged-union tag or a typed lifecycle/native error.
 func (s *Signal) Tag() (SignalTag, error) { return zigoSignalTag(s) }
 
-// MustTag returns the active tagged-union tag and panics with a typed error on failure.
-func (s *Signal) MustTag() SignalTag { return zigoMust(zigoSignalTag(s)) }
-
 func zigoSignalAsTicks(receiver zigoHandle) (uint32, bool, error) {
 	ptr, err := zigoCheckedPointer("Signal.AsTicks receiver", receiver)
 	if err != nil {
@@ -41,9 +38,6 @@ func zigoSignalAsTicks(receiver zigoHandle) (uint32, bool, error) {
 
 // AsTicks returns the ticks payload, whether it is active, and any lifecycle/native error.
 func (s *Signal) AsTicks() (uint32, bool, error) { return zigoSignalAsTicks(s) }
-
-// MustAsTicks returns the ticks payload when active and panics with a typed error on failure.
-func (s *Signal) MustAsTicks() (uint32, bool) { return zigoMustMatch(zigoSignalAsTicks(s)) }
 
 func zigoSignalAsLevel(receiver zigoHandle) (float64, bool, error) {
 	ptr, err := zigoCheckedPointer("Signal.AsLevel receiver", receiver)
@@ -64,9 +58,6 @@ func zigoSignalAsLevel(receiver zigoHandle) (float64, bool, error) {
 // AsLevel returns the level payload, whether it is active, and any lifecycle/native error.
 func (s *Signal) AsLevel() (float64, bool, error) { return zigoSignalAsLevel(s) }
 
-// MustAsLevel returns the level payload when active and panics with a typed error on failure.
-func (s *Signal) MustAsLevel() (float64, bool) { return zigoMustMatch(zigoSignalAsLevel(s)) }
-
 func zigoSignalAsOffset(receiver zigoHandle) (int16, bool, error) {
 	ptr, err := zigoCheckedPointer("Signal.AsOffset receiver", receiver)
 	if err != nil {
@@ -85,9 +76,6 @@ func zigoSignalAsOffset(receiver zigoHandle) (int16, bool, error) {
 
 // AsOffset returns the offset payload, whether it is active, and any lifecycle/native error.
 func (s *Signal) AsOffset() (int16, bool, error) { return zigoSignalAsOffset(s) }
-
-// MustAsOffset returns the offset payload when active and panics with a typed error on failure.
-func (s *Signal) MustAsOffset() (int16, bool) { return zigoMustMatch(zigoSignalAsOffset(s)) }
 
 func zigoSignalAsMode(receiver zigoHandle) (Mode, bool, error) {
 	ptr, err := zigoCheckedPointer("Signal.AsMode receiver", receiver)
@@ -108,9 +96,6 @@ func zigoSignalAsMode(receiver zigoHandle) (Mode, bool, error) {
 // AsMode returns the mode payload, whether it is active, and any lifecycle/native error.
 func (s *Signal) AsMode() (Mode, bool, error) { return zigoSignalAsMode(s) }
 
-// MustAsMode returns the mode payload when active and panics with a typed error on failure.
-func (s *Signal) MustAsMode() (Mode, bool) { return zigoMustMatch(zigoSignalAsMode(s)) }
-
 func zigoSignalAsActive(receiver zigoHandle) (bool, bool, error) {
 	ptr, err := zigoCheckedPointer("Signal.AsActive receiver", receiver)
 	if err != nil {
@@ -129,9 +114,6 @@ func zigoSignalAsActive(receiver zigoHandle) (bool, bool, error) {
 
 // AsActive returns the active payload, whether it is active, and any lifecycle/native error.
 func (s *Signal) AsActive() (bool, bool, error) { return zigoSignalAsActive(s) }
-
-// MustAsActive returns the active payload when active and panics with a typed error on failure.
-func (s *Signal) MustAsActive() (bool, bool) { return zigoMustMatch(zigoSignalAsActive(s)) }
 
 // SignalSnapshot is a value copy of a Signal: one native call carries the active tag
 // and every scalar payload back together.
@@ -197,10 +179,6 @@ func zigoSignalSnapshot(receiver zigoHandle) (SignalSnapshot, error) {
 // Snapshot reads the tag and every payload in one native call, or
 // returns a typed lifecycle/native error.
 func (s *Signal) Snapshot() (SignalSnapshot, error) { return zigoSignalSnapshot(s) }
-
-// MustSnapshot reads the tag and every payload in one native call and panics
-// with a typed error on failure.
-func (s *Signal) MustSnapshot() SignalSnapshot { return zigoMust(zigoSignalSnapshot(s)) }
 
 // SignalVariant is the sealed interface every Signal variant implements. A type
 // switch over the concrete variant types reads the active payload without
@@ -280,7 +258,3 @@ func zigoSignalVariant(receiver zigoHandle) (SignalVariant, error) {
 // Variant returns the active variant as a concrete SignalVariant, or a typed
 // lifecycle/native error.
 func (s *Signal) Variant() (SignalVariant, error) { return zigoSignalVariant(s) }
-
-// MustVariant returns the active variant as a concrete SignalVariant and panics
-// with a typed error on failure.
-func (s *Signal) MustVariant() SignalVariant { return zigoMust(zigoSignalVariant(s)) }

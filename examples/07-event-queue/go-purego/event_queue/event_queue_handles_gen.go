@@ -3,6 +3,7 @@
 package event_queue
 
 import (
+	"io"
 	"runtime"
 	"sync"
 	"unsafe"
@@ -84,17 +85,6 @@ func (e *EventQueue) zigoPoison(cause *NativePanicError) {
 	}
 }
 
-// ZigoAcquire implements the shared lifecycle handle contract.
-func (e *EventQueue) ZigoAcquire(operation string) (unsafe.Pointer, error) {
-	return e.zigoAcquire(operation)
-}
-
-// ZigoRelease implements the shared lifecycle handle contract.
-func (e *EventQueue) ZigoRelease() { e.zigoRelease() }
-
-// ZigoPoison implements the shared lifecycle handle contract.
-func (e *EventQueue) ZigoPoison(cause *NativePanicError) { e.zigoPoison(cause) }
-
 // zigoAcquireChild reserves one dependent child atomically with the call pin.
 func (e *EventQueue) zigoAcquireChild(operation string) (unsafe.Pointer, zigoChildHandle, error) {
 	if e == nil {
@@ -121,14 +111,6 @@ func (e *EventQueue) zigoDropChild() {
 	e.children--
 	e.mu.Unlock()
 }
-
-// ZigoAcquireChild reserves a dependent child through the shared lifecycle contract.
-func (e *EventQueue) ZigoAcquireChild(operation string) (unsafe.Pointer, lifecycle.ChildHandle, error) {
-	return e.zigoAcquireChild(operation)
-}
-
-// ZigoDropChild releases a dependent-child reservation.
-func (e *EventQueue) ZigoDropChild() { e.zigoDropChild() }
 
 type zigoEventQueueCleanupState struct {
 	ptr             unsafe.Pointer
@@ -180,6 +162,8 @@ func (e *EventQueue) Close() error {
 	return nil
 }
 
+var _ io.Closer = (*EventQueue)(nil)
+
 // zigoTakeLocked hands out what is left to release once e is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
 // object: releasing state a panic left half-changed could fault, so it leaks.
@@ -216,7 +200,7 @@ func (s *Stream) zigoAcquire(operation string) (unsafe.Pointer, error) {
 	parent := s.parent
 	s.mu.Unlock()
 	if parent != nil {
-		if _, err := parent.ZigoAcquire(operation); err != nil {
+		if _, err := lifecycle.Acquire(operation, parent); err != nil {
 			return nil, err
 		}
 	}
@@ -234,7 +218,7 @@ func (s *Stream) zigoAcquire(operation string) (unsafe.Pointer, error) {
 	s.mu.Unlock()
 	if err != nil {
 		if parent != nil {
-			parent.ZigoRelease()
+			lifecycle.Release(parent)
 		}
 		return nil, err
 	}
@@ -254,7 +238,7 @@ func (s *Stream) zigoRelease() {
 		zigoCleanupStream(state)
 	}
 	if parent != nil {
-		parent.ZigoRelease()
+		lifecycle.Release(parent)
 	}
 }
 
@@ -272,20 +256,9 @@ func (s *Stream) zigoPoison(cause *NativePanicError) {
 	}
 	s.mu.Unlock()
 	if parent != nil {
-		parent.ZigoPoison(cause)
+		lifecycle.Poison(parent, cause)
 	}
 }
-
-// ZigoAcquire implements the shared lifecycle handle contract.
-func (s *Stream) ZigoAcquire(operation string) (unsafe.Pointer, error) {
-	return s.zigoAcquire(operation)
-}
-
-// ZigoRelease implements the shared lifecycle handle contract.
-func (s *Stream) ZigoRelease() { s.zigoRelease() }
-
-// ZigoPoison implements the shared lifecycle handle contract.
-func (s *Stream) ZigoPoison(cause *NativePanicError) { s.zigoPoison(cause) }
 
 type zigoStreamCleanupState struct {
 	ptr    unsafe.Pointer
@@ -304,7 +277,7 @@ func zigoCleanupStream(state zigoStreamCleanupState) {
 		raw.StreamFreeStream(state.ptr)
 	}
 	if state.parent != nil {
-		state.parent.ZigoDropChild()
+		lifecycle.DropChild(state.parent)
 	}
 }
 
@@ -331,6 +304,8 @@ func (s *Stream) Close() error {
 	runtime.KeepAlive(s)
 	return nil
 }
+
+var _ io.Closer = (*Stream)(nil)
 
 // zigoTakeLocked hands out what is left to release once s is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
@@ -404,17 +379,6 @@ func (b *BorrowBox) zigoPoison(cause *NativePanicError) {
 	}
 }
 
-// ZigoAcquire implements the shared lifecycle handle contract.
-func (b *BorrowBox) ZigoAcquire(operation string) (unsafe.Pointer, error) {
-	return b.zigoAcquire(operation)
-}
-
-// ZigoRelease implements the shared lifecycle handle contract.
-func (b *BorrowBox) ZigoRelease() { b.zigoRelease() }
-
-// ZigoPoison implements the shared lifecycle handle contract.
-func (b *BorrowBox) ZigoPoison(cause *NativePanicError) { b.zigoPoison(cause) }
-
 // zigoAcquireChild reserves one dependent child atomically with the call pin.
 func (b *BorrowBox) zigoAcquireChild(operation string) (unsafe.Pointer, zigoChildHandle, error) {
 	if b == nil {
@@ -441,14 +405,6 @@ func (b *BorrowBox) zigoDropChild() {
 	b.children--
 	b.mu.Unlock()
 }
-
-// ZigoAcquireChild reserves a dependent child through the shared lifecycle contract.
-func (b *BorrowBox) ZigoAcquireChild(operation string) (unsafe.Pointer, lifecycle.ChildHandle, error) {
-	return b.zigoAcquireChild(operation)
-}
-
-// ZigoDropChild releases a dependent-child reservation.
-func (b *BorrowBox) ZigoDropChild() { b.zigoDropChild() }
 
 type zigoBorrowBoxCleanupState struct {
 	ptr unsafe.Pointer
@@ -501,6 +457,8 @@ func (b *BorrowBox) Close() error {
 	return nil
 }
 
+var _ io.Closer = (*BorrowBox)(nil)
+
 // zigoTakeLocked hands out what is left to release once b is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
 // object: releasing state a panic left half-changed could fault, so it leaks.
@@ -540,7 +498,7 @@ func (b *BorrowView) zigoAcquire(operation string) (unsafe.Pointer, error) {
 	parent := b.owner
 	b.mu.Unlock()
 	if parent != nil {
-		if _, err := parent.ZigoAcquire(operation); err != nil {
+		if _, err := lifecycle.Acquire(operation, parent); err != nil {
 			return nil, err
 		}
 	}
@@ -558,7 +516,7 @@ func (b *BorrowView) zigoAcquire(operation string) (unsafe.Pointer, error) {
 	b.mu.Unlock()
 	if err != nil {
 		if parent != nil {
-			parent.ZigoRelease()
+			lifecycle.Release(parent)
 		}
 		return nil, err
 	}
@@ -574,7 +532,7 @@ func (b *BorrowView) zigoRelease() {
 	parent := b.owner
 	b.mu.Unlock()
 	if parent != nil {
-		parent.ZigoRelease()
+		lifecycle.Release(parent)
 	}
 }
 
@@ -591,20 +549,9 @@ func (b *BorrowView) zigoPoison(cause *NativePanicError) {
 	}
 	b.mu.Unlock()
 	if parent != nil {
-		parent.ZigoPoison(cause)
+		lifecycle.Poison(parent, cause)
 	}
 }
-
-// ZigoAcquire implements the shared lifecycle handle contract.
-func (b *BorrowView) ZigoAcquire(operation string) (unsafe.Pointer, error) {
-	return b.zigoAcquire(operation)
-}
-
-// ZigoRelease implements the shared lifecycle handle contract.
-func (b *BorrowView) ZigoRelease() { b.zigoRelease() }
-
-// ZigoPoison implements the shared lifecycle handle contract.
-func (b *BorrowView) ZigoPoison(cause *NativePanicError) { b.zigoPoison(cause) }
 
 // zigoAcquireChild reserves one dependent child on the ultimate owning handle.
 func (b *BorrowView) zigoAcquireChild(operation string) (unsafe.Pointer, zigoChildHandle, error) {
@@ -615,26 +562,22 @@ func (b *BorrowView) zigoAcquireChild(operation string) (unsafe.Pointer, zigoChi
 	parent := b.owner
 	b.mu.Unlock()
 	if parent != nil {
-		childParent, ok := parent.(zigoChildHandle)
-		if !ok {
-			return nil, nil, &HandleError{Operation: operation}
-		}
-		_, reservation, err := childParent.ZigoAcquireChild(operation)
+		_, reservation, err := lifecycle.AcquireChild(operation, parent)
 		if err != nil {
 			return nil, nil, err
 		}
 		b.mu.Lock()
 		if b.closed || b.ptr == nil {
 			b.mu.Unlock()
-			childParent.ZigoRelease()
-			reservation.ZigoDropChild()
+			lifecycle.Release(parent)
+			lifecycle.DropChild(reservation)
 			return nil, nil, &HandleError{Operation: operation}
 		}
 		if b.poison != nil {
 			err := b.poison.Poisoned(operation)
 			b.mu.Unlock()
-			childParent.ZigoRelease()
-			reservation.ZigoDropChild()
+			lifecycle.Release(parent)
+			lifecycle.DropChild(reservation)
 			return nil, nil, err
 		}
 		b.active++
@@ -664,14 +607,6 @@ func (b *BorrowView) zigoDropChild() {
 	b.mu.Unlock()
 }
 
-// ZigoAcquireChild reserves a dependent child through the shared lifecycle contract.
-func (b *BorrowView) ZigoAcquireChild(operation string) (unsafe.Pointer, lifecycle.ChildHandle, error) {
-	return b.zigoAcquireChild(operation)
-}
-
-// ZigoDropChild releases a dependent-child reservation.
-func (b *BorrowView) ZigoDropChild() { b.zigoDropChild() }
-
 // Close detaches this borrowed BorrowView view without releasing native resources.
 func (b *BorrowView) Close() error {
 	if b == nil {
@@ -694,6 +629,8 @@ func (b *BorrowView) Close() error {
 	return nil
 }
 
+var _ io.Closer = (*BorrowView)(nil)
+
 // BorrowChild is a caller-owned native handle. Call Close when it is no longer needed.
 type BorrowChild struct {
 	ptr     unsafe.Pointer
@@ -714,7 +651,7 @@ func (b *BorrowChild) zigoAcquire(operation string) (unsafe.Pointer, error) {
 	parent := b.parent
 	b.mu.Unlock()
 	if parent != nil {
-		if _, err := parent.ZigoAcquire(operation); err != nil {
+		if _, err := lifecycle.Acquire(operation, parent); err != nil {
 			return nil, err
 		}
 	}
@@ -732,7 +669,7 @@ func (b *BorrowChild) zigoAcquire(operation string) (unsafe.Pointer, error) {
 	b.mu.Unlock()
 	if err != nil {
 		if parent != nil {
-			parent.ZigoRelease()
+			lifecycle.Release(parent)
 		}
 		return nil, err
 	}
@@ -752,7 +689,7 @@ func (b *BorrowChild) zigoRelease() {
 		zigoCleanupBorrowChild(state)
 	}
 	if parent != nil {
-		parent.ZigoRelease()
+		lifecycle.Release(parent)
 	}
 }
 
@@ -770,20 +707,9 @@ func (b *BorrowChild) zigoPoison(cause *NativePanicError) {
 	}
 	b.mu.Unlock()
 	if parent != nil {
-		parent.ZigoPoison(cause)
+		lifecycle.Poison(parent, cause)
 	}
 }
-
-// ZigoAcquire implements the shared lifecycle handle contract.
-func (b *BorrowChild) ZigoAcquire(operation string) (unsafe.Pointer, error) {
-	return b.zigoAcquire(operation)
-}
-
-// ZigoRelease implements the shared lifecycle handle contract.
-func (b *BorrowChild) ZigoRelease() { b.zigoRelease() }
-
-// ZigoPoison implements the shared lifecycle handle contract.
-func (b *BorrowChild) ZigoPoison(cause *NativePanicError) { b.zigoPoison(cause) }
 
 type zigoBorrowChildCleanupState struct {
 	ptr    unsafe.Pointer
@@ -802,7 +728,7 @@ func zigoCleanupBorrowChild(state zigoBorrowChildCleanupState) {
 		raw.BorrowChildDeinit(state.ptr)
 	}
 	if state.parent != nil {
-		state.parent.ZigoDropChild()
+		lifecycle.DropChild(state.parent)
 	}
 }
 
@@ -829,6 +755,8 @@ func (b *BorrowChild) Close() error {
 	runtime.KeepAlive(b)
 	return nil
 }
+
+var _ io.Closer = (*BorrowChild)(nil)
 
 // zigoTakeLocked hands out what is left to release once b is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
@@ -901,17 +829,6 @@ func (t *Terminal) zigoPoison(cause *NativePanicError) {
 	}
 }
 
-// ZigoAcquire implements the shared lifecycle handle contract.
-func (t *Terminal) ZigoAcquire(operation string) (unsafe.Pointer, error) {
-	return t.zigoAcquire(operation)
-}
-
-// ZigoRelease implements the shared lifecycle handle contract.
-func (t *Terminal) ZigoRelease() { t.zigoRelease() }
-
-// ZigoPoison implements the shared lifecycle handle contract.
-func (t *Terminal) ZigoPoison(cause *NativePanicError) { t.zigoPoison(cause) }
-
 type zigoTerminalCleanupState struct {
 	ptr unsafe.Pointer
 }
@@ -952,6 +869,8 @@ func (t *Terminal) Close() error {
 	runtime.KeepAlive(t)
 	return nil
 }
+
+var _ io.Closer = (*Terminal)(nil)
 
 // zigoTakeLocked hands out what is left to release once t is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native

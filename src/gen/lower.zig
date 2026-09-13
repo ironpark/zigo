@@ -1630,36 +1630,87 @@ fn pairUserdataParams(allocator: std.mem.Allocator, function: semantic.SemanticF
 /// type names itself; an anonymous signature is named after its owner and
 /// parameter, qualified when two of them would otherwise collide, and
 /// suffixed with `Callback` when the name is already a public type.
+/// The Go type name of every anonymous callback signature. The rule is the
+/// shortest spelling that is unique within the program:
+///
+/// 1. the parameter's own name, `Observer`;
+/// 2. the owning type (or the free function) in front of it,
+///    `EventQueueObserver`;
+/// 3. the owning type and the method, `EventQueueSetObserver` -- the
+///    parameter is dropped when the method name already ends with it, so no
+///    name ever repeats a word.
+///
+/// Two parameters whose signatures are the same share one type at whichever
+/// level they meet; only a genuinely different signature pushes a name to the
+/// next level. A name that lands on a declared type takes a `Callback` suffix.
+/// A declared callback type names itself and takes no part in this.
 fn nameCallbackTypes(allocator: std.mem.Allocator, document: semantic.Semantic, functions: []abi.AbiFn) !void {
     for (functions) |*lowered| {
         const entries = try allocator.alloc(?abi.AbiFn.CallbackType, lowered.origin.params.len);
         for (entries) |*entry| entry.* = null;
         lowered.callback_types = entries;
     }
-    // How many anonymous signatures derive each base name, counted once for
-    // the program: a base shared by two of them is what forces qualification.
-    var base_counts: std.StringHashMapUnmanaged(u32) = .empty;
-    defer {
-        var keys = base_counts.keyIterator();
-        while (keys.next()) |key| allocator.free(key.*);
-        base_counts.deinit(allocator);
-    }
-    for (functions) |lowered| for (lowered.origin.params, 0..) |parameter, index| {
+    const Slot = struct { function: usize, parameter: usize, level: u8, name: []u8, signature: []const u8 };
+    var slots: std.ArrayList(Slot) = .empty;
+    defer slots.deinit(allocator);
+    for (functions, 0..) |lowered, function_index| for (lowered.origin.params, 0..) |parameter, index| {
         if (parameter.type != .callback or parameter.type.callback.ref != null) continue;
-        const base = try callbackTypeBaseNameAlloc(allocator, lowered.origin.*, index);
-        const entry = try base_counts.getOrPut(allocator, base);
-        if (entry.found_existing) {
-            allocator.free(base);
-            entry.value_ptr.* += 1;
-        } else entry.value_ptr.* = 1;
+        try slots.append(allocator, .{
+            .function = function_index,
+            .parameter = index,
+            .level = 1,
+            .name = try callbackTypeCandidateAlloc(allocator, lowered.origin.*, index, 1),
+            .signature = try callbackSignatureKeyAlloc(allocator, parameter),
+        });
     };
+    // Bump every group that shares a name across different signatures until
+    // no group is left or the last level is reached; a group that agrees on
+    // the signature stays and shares the name.
+    const bump = try allocator.alloc(bool, slots.items.len);
+    defer allocator.free(bump);
+    while (true) {
+        // Decide the whole round on the names as they stand, then move every
+        // member of a conflicting group together: a group bumped one member
+        // at a time would leave the last one alone at the shorter name.
+        var any = false;
+        for (slots.items, 0..) |slot, index| {
+            bump[index] = false;
+            if (slot.level == 3) continue;
+            for (slots.items, 0..) |other, other_index| {
+                if (other_index == index or !std.mem.eql(u8, other.name, slot.name)) continue;
+                if (!std.mem.eql(u8, other.signature, slot.signature)) {
+                    bump[index] = true;
+                    any = true;
+                    break;
+                }
+            }
+        }
+        if (!any) break;
+        for (slots.items, 0..) |*slot, index| {
+            if (!bump[index]) continue;
+            slot.level += 1;
+            allocator.free(slot.name);
+            slot.name = try callbackTypeCandidateAlloc(allocator, functions[slot.function].origin.*, slot.parameter, slot.level);
+        }
+    }
+    for (slots.items) |*slot| {
+        if (semantic.typeDecl(document.types, slot.name) == null) continue;
+        const suffixed = try std.fmt.allocPrint(allocator, "{s}Callback", .{slot.name});
+        allocator.free(slot.name);
+        slot.name = suffixed;
+    }
     var seen: std.ArrayList([]const u8) = .empty;
     defer seen.deinit(allocator);
-    for (functions) |*lowered| {
+    for (functions, 0..) |*lowered, function_index| {
         const entries = @constCast(lowered.callback_types);
         for (lowered.origin.params, 0..) |parameter, index| {
             if (parameter.type != .callback) continue;
-            const name = try callbackTypeNameAlloc(allocator, document, base_counts, lowered.*, index);
+            const name = if (parameter.type.callback.ref) |ref| try allocator.dupe(u8, ref) else blk: {
+                for (slots.items) |slot| {
+                    if (slot.function == function_index and slot.parameter == index) break :blk slot.name;
+                }
+                unreachable;
+            };
             var first_use = true;
             for (seen.items) |taken| if (std.mem.eql(u8, taken, name)) {
                 first_use = false;
@@ -1671,54 +1722,41 @@ fn nameCallbackTypes(allocator: std.mem.Allocator, document: semantic.Semantic, 
     }
 }
 
-fn callbackTypeNameAlloc(
-    allocator: std.mem.Allocator,
-    document: semantic.Semantic,
-    base_counts: std.StringHashMapUnmanaged(u32),
-    function: abi.AbiFn,
-    parameter_index: usize,
-) ![]u8 {
-    // A declared callback type names itself; the derived name is for the
-    // signatures the binding left anonymous.
-    if (function.origin.params[parameter_index].type.callback.ref) |ref| return allocator.dupe(u8, ref);
-    const base = try callbackTypeBaseNameAlloc(allocator, function.origin.*, parameter_index);
-    defer allocator.free(base);
-    const duplicate_base = (base_counts.get(base) orelse 0) > 1;
-
-    const owner = function.origin.receiver orelse function.origin.namespace;
-    const qualified = if (duplicate_base and owner != null) blk: {
-        const owner_name = try naming.ownerPascalAlloc(allocator, owner.?);
-        defer allocator.free(owner_name);
-        const function_name = try naming.pascalAlloc(allocator, function.origin.name);
-        defer allocator.free(function_name);
-        const parameter_name = try naming.pascalAlloc(allocator, function.origin.params[parameter_index].name);
-        defer allocator.free(parameter_name);
-        break :blk try std.fmt.allocPrint(allocator, "{s}{s}{s}", .{ owner_name, function_name, parameter_name });
-    } else try allocator.dupe(u8, base);
-    defer allocator.free(qualified);
-
-    for (document.types) |declaration| {
-        if (std.mem.eql(u8, declaration.name, qualified))
-            return std.fmt.allocPrint(allocator, "{s}Callback", .{qualified});
-    }
-    return allocator.dupe(u8, qualified);
+/// What makes two anonymous callbacks the same Go type: the signature node,
+/// which is everything the public spelling reads, and the contract words the
+/// type's doc comment carries.
+fn callbackSignatureKeyAlloc(allocator: std.mem.Allocator, parameter: semantic.Parameter) ![]const u8 {
+    return std.json.Stringify.valueAlloc(allocator, .{
+        .type = parameter.type,
+        .reentrancy = parameter.reentrancy,
+        .thread = parameter.thread,
+    }, .{});
 }
 
-fn callbackTypeBaseNameAlloc(allocator: std.mem.Allocator, function: semantic.SemanticFn, parameter_index: usize) ![]u8 {
+/// One level of the callback type name rule; see `nameCallbackTypes`.
+fn callbackTypeCandidateAlloc(allocator: std.mem.Allocator, function: semantic.SemanticFn, parameter_index: usize, level: u8) ![]u8 {
     const parameter_name = try naming.pascalAlloc(allocator, function.params[parameter_index].name);
     defer allocator.free(parameter_name);
-    if (function.receiver orelse function.namespace) |owner| {
-        const owner_name = try naming.ownerPascalAlloc(allocator, owner);
-        defer allocator.free(owner_name);
-        return std.fmt.allocPrint(allocator, "{s}{s}", .{ owner_name, parameter_name });
-    }
     const function_name = try naming.pascalAlloc(allocator, function.name);
     defer allocator.free(function_name);
-    // A parameter already called `callback` would otherwise stutter into
-    // `ApplyCallbackCallback`.
-    if (std.mem.eql(u8, parameter_name, "Callback"))
-        return std.fmt.allocPrint(allocator, "{s}Callback", .{function_name});
-    return std.fmt.allocPrint(allocator, "{s}{s}Callback", .{ function_name, parameter_name });
+    const owner: ?[]u8 = if (function.receiver orelse function.namespace) |owner| try naming.ownerPascalAlloc(allocator, owner) else null;
+    defer if (owner) |name| allocator.free(name);
+    // A parameter called `callback` says nothing on its own, so its first
+    // level is already the qualified one.
+    const bare = !std.mem.eql(u8, parameter_name, "Callback");
+    switch (level) {
+        1 => if (bare) return allocator.dupe(u8, parameter_name),
+        else => {},
+    }
+    if (owner == null or level <= 2) {
+        const qualifier = owner orelse function_name;
+        if (!bare) return std.fmt.allocPrint(allocator, "{s}Callback", .{qualifier});
+        // A free function has no third level: its name is already in.
+        return std.fmt.allocPrint(allocator, "{s}{s}", .{ qualifier, parameter_name });
+    }
+    if (!bare or std.mem.endsWith(u8, function_name, parameter_name))
+        return std.fmt.allocPrint(allocator, "{s}{s}", .{ owner.?, function_name });
+    return std.fmt.allocPrint(allocator, "{s}{s}{s}", .{ owner.?, function_name, parameter_name });
 }
 
 fn returnContainsCStringSlice(node: semantic.TypeNode, hint: ?semantic.SemanticHint) bool {
@@ -2636,7 +2674,8 @@ test "lowering pairs userdata with its callback and names the callback type" {
     // The token sits directly after the callback that owns it.
     try std.testing.expectEqual(@as(?usize, null), watch.userdataFor(0));
     try std.testing.expectEqual(@as(?usize, 0), watch.userdataFor(1));
-    try std.testing.expectEqualStrings("QueueOnEvent", watch.callbackType(0).?.name);
+    // Unique in the program, so the parameter's own name is the type's.
+    try std.testing.expectEqualStrings("OnEvent", watch.callbackType(0).?.name);
     try std.testing.expect(watch.callbackType(0).?.first_use);
     try std.testing.expect(watch.callbackType(1) == null);
 }

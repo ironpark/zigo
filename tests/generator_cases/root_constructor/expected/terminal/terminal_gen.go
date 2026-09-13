@@ -36,9 +36,6 @@ func (t *Terminal) Resize(columns uint32) error {
 	return nil
 }
 
-// MustResize calls Resize and panics with its typed error on failure.
-func (t *Terminal) MustResize(columns uint32) { _ = zigoMust(struct{}{}, t.Resize(columns)) }
-
 // Render: Renders the screen into memory the caller owns.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.

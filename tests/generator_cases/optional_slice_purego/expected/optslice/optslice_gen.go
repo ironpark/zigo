@@ -20,33 +20,39 @@ var DefaultLibraryName = raw.DefaultLibraryName
 
 
 // Measure calls the Zig function measure.
+// A nil text is the absent value.
 func Measure(text *string) uint {
 	return raw.Measure(text)
 }
 
 // Label calls the Zig function label.
+// A nil text is the absent value.
 func Label(text *string) uint {
 	return raw.Label(text)
 }
 
 // Total calls the Zig function total.
+// A nil values is the absent value.
 func Total(values *[]int32) int32 {
 	return raw.Total(values)
 }
 
 // Digits calls the Zig function digits.
+// The bool result reports whether a value was present; the value before it is zero when it was not.
 func Digits(count uint32) ([]int32, bool) {
 	zigoResult, zigoHas := raw.Digits(count)
 	return zigoResult, zigoHas
 }
 
 // Name calls the Zig function name.
+// The bool result reports whether a value was present; the value before it is zero when it was not.
 func Name(count uint32) (string, bool) {
 	zigoResult, zigoHas := raw.Name(count)
 	return zigoResult, zigoHas
 }
 
 // CheckedDigits calls the Zig function checkedDigits.
+// The bool result reports whether a value was present; the value before it is zero when it was not.
 // Native failures are returned as generated error values.
 func CheckedDigits(count uint32) ([]int32, bool, error) {
 	result, zigoHas, code := raw.CheckedDigits(count)
@@ -57,6 +63,7 @@ func CheckedDigits(count uint32) ([]int32, bool, error) {
 }
 
 // TakeOwned calls the Zig function takeOwned.
+// The bool result reports whether a value was present; the value before it is zero when it was not.
 // Native failures are returned as generated error values.
 func TakeOwned() ([]byte, bool, error) {
 	result, zigoHas, code := raw.TakeOwned()
@@ -67,6 +74,7 @@ func TakeOwned() ([]byte, bool, error) {
 }
 
 // TakeOwnedCString calls the Zig function takeOwnedCString.
+// The bool result reports whether a value was present; the value before it is zero when it was not.
 // Native failures are returned as generated error values.
 func TakeOwnedCString() (string, bool, error) {
 	result, zigoHas, code := raw.TakeOwnedCString()

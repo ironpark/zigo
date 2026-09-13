@@ -101,6 +101,10 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
         if (options.diagnostics) |issues| try issues.append(allocator, try issue.clone(allocator));
         return error.InvalidSemantic;
     };
+    if (try layoutIssue(scratch_allocator, transformed, options)) |issue| {
+        if (options.diagnostics) |issues| try issues.append(allocator, try issue.clone(allocator));
+        return error.InvalidSemantic;
+    }
     // Validation judged the Zig surface the document records; everything below
     // works on the expansion, where a stream-returning method has become the
     // `Write`/`Flush`/`Read` operations that carry it. The error-set collection
@@ -361,6 +365,37 @@ fn normalizeOutputPath(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
     }
     if (parts.items.len == 0) return error.InvalidOutputPath;
     return std.mem.join(allocator, "/", parts.items);
+}
+
+/// The two layout faults the document and the options can carry together: a
+/// raw package placed where a consumer could import it, and a public package
+/// named after a standard-library package, which every importer would then
+/// have to alias away from the real one.
+fn layoutIssue(allocator: std.mem.Allocator, document: semantic.Semantic, options: Options) !?diagnostic.Diagnostic {
+    if (!std.mem.eql(u8, options.output_target.name, targets.default.name)) return null;
+    if (!options.raw_colocated and !naming.pathHasInternalElement(options.raw_package_path)) return .{
+        .severity = .@"error",
+        .code = "ZIGO063",
+        .message = try std.fmt.allocPrint(allocator, "raw package path `{s}` has no `internal` element", .{options.raw_package_path}),
+        .site = .{ .path = "semantic.json", .declaration = "package" },
+        .hint = "the raw package is not part of the supported API; place it under `internal/` (the default is `internal/raw`) or set `layout.raw_colocated`",
+    };
+    const root_name = if (options.go_package.len != 0) try allocator.dupe(u8, options.go_package) else try naming.snakeAlloc(allocator, document.package);
+    if (naming.isGoStandardPackage(root_name)) return try standardPackageIssue(allocator, root_name);
+    if (document.packages) |packages| for (packages) |package| {
+        if (naming.isGoStandardPackage(package.name)) return try standardPackageIssue(allocator, package.name);
+    };
+    return null;
+}
+
+fn standardPackageIssue(allocator: std.mem.Allocator, name: []const u8) !diagnostic.Diagnostic {
+    return .{
+        .severity = .@"error",
+        .code = "ZIGO064",
+        .message = try std.fmt.allocPrint(allocator, "public Go package name `{s}` shadows the standard library package of that name", .{name}),
+        .site = .{ .path = "semantic.json", .declaration = "package" },
+        .hint = "choose another name with `layout.go_package` (or `.path` on a sub-package); a caller importing both would have to alias one of them",
+    };
 }
 
 fn outputPathIssue(allocator: std.mem.Allocator, files: []PreparedFile, target: targets.Target) !?diagnostic.Diagnostic {
@@ -669,6 +704,48 @@ test "the Rust target refuses every handle shape it does not own" {
     }
 }
 
+test "a public raw package and a standard-library package name are refused" {
+    const fixture =
+        \\{"functions":[{"name":"add","params":[],"return":{"kind":"void"},"symbol":"zg_add"}],"package":"sample","prefix":"zg","zig_version":"0.16.0"}
+    ;
+    const cases = [_]struct { raw_package_path: []const u8 = "internal/raw", go_package: []const u8 = "", code: []const u8, names: []const u8 }{
+        .{ .raw_package_path = "support/ffi", .code = "ZIGO063", .names = "`support/ffi`" },
+        .{ .go_package = "errors", .code = "ZIGO064", .names = "`errors`" },
+        .{ .go_package = "io", .code = "ZIGO064", .names = "`io`" },
+    };
+    for (cases) |case| {
+        var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+        defer arena.deinit();
+        var tree = std.testing.tmpDir(.{ .iterate = true });
+        defer tree.cleanup();
+        var issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
+        try std.testing.expectError(error.InvalidSemantic, generate(arena.allocator(), std.testing.io, fixture, tree.dir, .{
+            .diagnostics = &issues,
+            .package = "sample",
+            .prefix = "zg",
+            .go_module = "example.com/sample",
+            .raw_package_path = case.raw_package_path,
+            .go_package = case.go_package,
+        }));
+        try std.testing.expect(issues.items.len != 0);
+        try std.testing.expectEqualStrings(case.code, issues.items[0].code);
+        try std.testing.expect(std.mem.indexOf(u8, issues.items[0].message, case.names) != null);
+    }
+    // The same raw path is fine once colocated: there is no raw package to hide.
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var tree = std.testing.tmpDir(.{ .iterate = true });
+    defer tree.cleanup();
+    try generate(arena.allocator(), std.testing.io, fixture, tree.dir, .{
+        .package = "sample",
+        .prefix = "zg",
+        .go_module = "example.com/sample",
+        .raw_package_path = "sample",
+        .raw_package_name = "sample",
+        .raw_colocated = true,
+    });
+}
+
 test "a handle becomes a struct that frees itself" {
     const fixture =
         \\{"package":"sample","prefix":"zg","types":[{"kind":"opaque","name":"Counter"}],"zig_version":"0.16.0","constructors":[{"deinit":"deinit","init":"create","type":"Counter"}],"functions":[{"name":"create","namespace":"Counter","ownership":"caller","params":[],"return":{"kind":"error_union","error_set":["OutOfMemory"],"payload":{"kind":"opaque_ptr","ref":"Counter","const":false,"nullable":false}},"symbol":"zg_counter_create"},{"name":"bump","receiver":"Counter","params":[],"return":{"bits":64,"kind":"int","signed":true},"symbol":"zg_counter_bump"},{"name":"peek","receiver":"Counter","receiver_by_value":true,"params":[],"return":{"bits":64,"kind":"int","signed":true},"symbol":"zg_counter_peek"},{"name":"deinit","receiver":"Counter","params":[],"return":{"kind":"void"},"symbol":"zg_counter_deinit"}]}
@@ -877,15 +954,15 @@ test "raw Go package can use a custom relative path" {
         .package = "scalar",
         .prefix = "zg",
         .go_module = "example.com/zigo/scalar",
-        .raw_package_path = "support/ffi",
+        .raw_package_path = "internal/support/ffi",
         .raw_package_name = "ffi",
     });
-    const raw = try temporary.dir.readFileAlloc(std.testing.io, "support/ffi/ffi_gen.go", std.testing.allocator, .limited(16 * 1024));
+    const raw = try temporary.dir.readFileAlloc(std.testing.io, "internal/support/ffi/ffi_gen.go", std.testing.allocator, .limited(16 * 1024));
     defer std.testing.allocator.free(raw);
     try std.testing.expect(std.mem.containsAtLeast(u8, raw, 1, "package ffi"));
     const public = try temporary.dir.readFileAlloc(std.testing.io, "scalar/scalar_gen.go", std.testing.allocator, .limited(16 * 1024));
     defer std.testing.allocator.free(public);
-    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "import raw \"example.com/zigo/scalar/support/ffi\""));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "import raw \"example.com/zigo/scalar/internal/support/ffi\""));
     try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "return raw.Add(p0, p1)"));
 }
 
@@ -1184,18 +1261,18 @@ test "callbacks use role-specific public types and typed handle helpers" {
     });
     const public = try temporary.dir.readFileAlloc(std.testing.io, "callbacks/callbacks_gen.go", std.testing.allocator, .limited(64 * 1024));
     defer std.testing.allocator.free(public);
-    try std.testing.expect(std.mem.indexOf(u8, public, "type SubscribeHandlerCallback") == null);
-    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "func Subscribe(handler SubscribeHandlerCallback)"));
+    try std.testing.expect(std.mem.indexOf(u8, public, "type SubscribeHandler") == null);
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "func Subscribe(handler SubscribeHandler)"));
     try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "defer zigoDeleteCallbackHandle(handlerHandle)"));
     const public_types = try temporary.dir.readFileAlloc(std.testing.io, "callbacks/callbacks_runtime_gen.go", std.testing.allocator, .limited(64 * 1024));
     defer std.testing.allocator.free(public_types);
-    try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "type SubscribeHandlerCallback func(int32) int32"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "type SubscribeHandler func(int32) int32"));
     try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "type RegistryInstallHandler func(uint64) int32"));
     try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "type RegistryReplaceHandler func(uint8) int32"));
     // The callback signature types and the handle helpers that wrap them are
     // one concern, so the runtime file carries both.
     const helpers = public_types;
-    try std.testing.expect(std.mem.containsAtLeast(u8, helpers, 1, "func zigoNewSubscribeHandlerCallbackHandle(value SubscribeHandlerCallback) zigoCallbackHandle"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, helpers, 1, "func zigoNewSubscribeHandlerHandle(value SubscribeHandler) zigoCallbackHandle"));
     try std.testing.expect(std.mem.containsAtLeast(u8, helpers, 1, "stored := (func(int32) int32)(value)"));
     try std.testing.expect(std.mem.containsAtLeast(u8, helpers, 1, "stored := (func(uint64) int32)(value)"));
     try std.testing.expect(std.mem.containsAtLeast(u8, helpers, 1, "stored := (func(uint8) int32)(value)"));

@@ -39,8 +39,8 @@ func zigoPoisonAfterPanic(err error, handles ...zigoHandle) error {
 	return err
 }
 
-// TelemetryHubObserver is the Go callback signature accepted by the generated binding.
-type TelemetryHubObserver func(uint64, float64) int32
+// Observer is the Go callback signature accepted by the generated binding.
+type Observer func(uint64, float64) int32
 
 func zigoBoolToUint8(value bool) uint8 {
 	if value {
@@ -53,7 +53,7 @@ var zigoActiveCallbackHandles atomic.Int64
 
 type zigoCallbackHandle = cgo.Handle
 
-func zigoNewTelemetryHubObserverHandle(value TelemetryHubObserver) zigoCallbackHandle {
+func zigoNewObserverHandle(value Observer) zigoCallbackHandle {
 	stored := (func(uint64, float64) int32)(value)
 	handle := cgo.NewHandle(&raw.CallbackState{Fn: stored})
 	zigoActiveCallbackHandles.Add(1)

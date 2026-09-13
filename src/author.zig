@@ -254,7 +254,7 @@ pub const Entry = union(enum) {
             captured.builtin = .{ .iterator = options };
         } else if (std.mem.eql(u8, P.name, features.implements.name)) {
             if (options.kinds.len == 0) @compileError("zigo implements needs a non-empty `.kinds`");
-            captured.builtin = .{ .implements = options.kinds };
+            captured.builtin = .{ .implements = .{ .kinds = options.kinds, .keep_original = options.keep_original } };
         }
         const extended = extensions ++ [_]ir.Extension{captured};
         switch (result) {

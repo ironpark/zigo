@@ -10,8 +10,7 @@ import (
 	"time"
 )
 
-var _ EventQueueCreateObserver = func(uint64, int32) int32 { return 0 }
-var _ EventQueueCloneObserver = func(uint64, int32) int32 { return 0 }
+var _ Observer = func(uint64, int32) int32 { return 0 }
 
 // A generated handle closes like any other Go resource.
 var _ io.Closer = (*EventQueue)(nil)

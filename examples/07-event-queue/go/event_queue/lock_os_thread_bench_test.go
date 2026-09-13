@@ -4,7 +4,7 @@ import (
 	"runtime"
 	"testing"
 
-	raw "example.com/zigo/event-queue/bridge/cgo"
+	raw "example.com/zigo/event-queue/internal/cgo"
 )
 
 // enqueueUnlocked is Enqueue with the runtime.LockOSThread pair taken out and

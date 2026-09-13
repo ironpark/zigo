@@ -3,6 +3,7 @@
 package cbenum
 
 import (
+	"io"
 	"sync"
 	"unsafe"
 )
@@ -99,3 +100,5 @@ func (s *Stream) Close() error {
 	s.mu.Unlock()
 	return nil
 }
+
+var _ io.Closer = (*Stream)(nil)

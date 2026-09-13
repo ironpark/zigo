@@ -192,7 +192,10 @@ fn normalizeFunction(comptime f: a.Function, comptime state: State, comptime par
     var result: ir.Function = .{ .path = functionPath(f.ref, state), .name = f.options.name, .doc = f.options.doc, .symbol = f.options.symbol, .ext = externalExtensions(f.extensions), .codepoints = defaults.codepoints, .strings = defaults.strings };
     for (f.extensions) |ext| switch (ext.builtin) {
         .iterator => |value| result.iterator = value,
-        .implements => |value| result.implements = value,
+        .implements => |value| {
+            result.implements = value.kinds;
+            result.implements_keep_original = value.keep_original;
+        },
         else => {},
     };
     const info = f.ref.signature();

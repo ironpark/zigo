@@ -543,7 +543,7 @@ fn renderPublicBody(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
         if (replaced)
             try writer.print("\n// {s} is the checked form of {s}, which a plugin replaced.\n", .{ checked_name, go_name })
         else
-            try docs.writePublicFunctionDoc(writer, function.origin.*, go_name, owned_type, public_writers.functionReachesCallbacks(program, function.origin.*), has_callback_error);
+            try docs.writePublicFunctionDoc(writer, function.origin.*, go_name, owned_type, public_writers.functionReachesCallbacks(program, function.origin.*), has_callback_error, go_names);
         if (function.origin.receiver) |receiver| {
             // A value receiver is spelled by value: there is no handle to
             // point at, and nothing the method could mutate through a pointer.

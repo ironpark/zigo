@@ -224,10 +224,13 @@ Context.func("next", .{})
     .use(zigo.features.iterator, .{}),
 
 Context.func("nextChecked", .{})
-    .use(zigo.features.iterator, .{ .name = "Checked" }),
+    .use(zigo.features.iterator, .{}),
 ```
 
-원래 메서드도 유지되며 래퍼 이름은 충돌하지 않아야 합니다.
+래퍼 이름은 기본으로 `All`이고, 메서드 이름이 `Checked`로 끝나면 `AllChecked`입니다. 위 선언은
+`Next() (T, bool)`·`All() iter.Seq[T]`와 `NextChecked() (T, bool, error)`·`AllChecked() iter.Seq2[T, error]`를
+만듭니다. `.name`으로 다른 이름을 줄 수 있습니다. 원래 메서드도 유지되며 래퍼 이름은 충돌하지
+않아야 합니다.
 
 ## 공통 인터페이스
 

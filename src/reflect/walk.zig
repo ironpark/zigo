@@ -1165,16 +1165,20 @@ fn appendFunction(
         reflected_function.cancel = cancel.param;
         if (cancel.canceled) |canceled| reflected_function.cancel_error = canceled;
     }
-    // `.iterator = .{}` names the wrapper `All`; `.iterator = .{ .name = "Rows" }`
-    // picks another. The shape (a receiver, no data parameters, `?T`) is
-    // checked by validation, where the whole signature is in hand.
-    if (metadata.iterator) |iterator| reflected_function.setGoIterator(.{ .name = iterator.name });
+    // `.iterator = .{}` names the wrapper `All` (`AllChecked` over a
+    // `*Checked` method); `.iterator = .{ .name = "Rows" }` picks another. The
+    // shape (a receiver, no data parameters, `?T`) is checked by validation,
+    // where the whole signature is in hand.
+    if (metadata.iterator) |iterator| reflected_function.setGoIterator(.{
+        .name = if (iterator.name.len == 0) try naming.iteratorWrapperNameAlloc(allocator, function_name) else iterator.name,
+    });
     // `.implements` names a Go standard interface; the shape the interface
     // needs is checked by validation, where the whole signature is in hand.
     if (metadata.implements) |implements| {
         const kinds = try allocator.alloc(semantic.Implements, implements.len);
         for (implements, kinds) |declared, *kind| kind.* = ir(semantic.Implements, declared);
         reflected_function.setGoImplements(kinds);
+        if (metadata.implements_keep_original) reflected_function.setGoImplementsKeepOriginal(true);
     }
     // `extend` captured each plugin's options at the declaration; here they
     // become the `ext` object the generator hands back to that plugin.

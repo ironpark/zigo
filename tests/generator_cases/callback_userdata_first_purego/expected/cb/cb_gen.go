@@ -21,11 +21,11 @@ var DefaultLibraryName = raw.DefaultLibraryName
 
 // Reduce calls the Zig function reduce.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
-func Reduce(acc int32, reducer ReduceReducerCallback) int32 {
+func Reduce(acc int32, reducer Reducer) int32 {
 	if reducer == nil {
 		panic(&CallbackError{Operation: "Reduce", Callback: "reducer", Err: ErrNilCallback})
 	}
-	reducerHandle := zigoNewReduceReducerCallbackHandle(reducer)
+	reducerHandle := zigoNewReducerHandle(reducer)
 	defer zigoDeleteCallbackHandle(reducerHandle)
 	result := raw.Reduce(acc, raw.CallbackPointer0(), uintptr(reducerHandle))
 	if zigoCallbackPanicPending() {
@@ -36,11 +36,11 @@ func Reduce(acc int32, reducer ReduceReducerCallback) int32 {
 
 // Visit calls the Zig function visit.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
-func Visit(visitor VisitVisitorCallback) {
+func Visit(visitor Visitor) {
 	if visitor == nil {
 		panic(&CallbackError{Operation: "Visit", Callback: "visitor", Err: ErrNilCallback})
 	}
-	visitorHandle := zigoNewVisitVisitorCallbackHandle(visitor)
+	visitorHandle := zigoNewVisitorHandle(visitor)
 	defer zigoDeleteCallbackHandle(visitorHandle)
 	raw.Visit(raw.CallbackPointer1(), uintptr(visitorHandle))
 	if zigoCallbackPanicPending() {

@@ -25,8 +25,8 @@
 | Zig | Go 형태 |
 |---|---|
 | `E!T` | `(T, error)` |
-| `?T` 입력 | `*T` 또는 nil 가능한 대응 타입 |
-| `?T` 결과 | `(T, bool)` 또는 nil 가능한 대응 타입 |
+| `?T` 입력 | `*T` 또는 nil 가능한 대응 타입. nil이 부재값이며 doc comment가 `A nil <name> is the absent value.`로 적습니다 |
+| `?T` 결과 | `(T, bool)` 또는 nil 가능한 대응 타입. 뒤의 `bool`이 존재 여부이며 doc comment가 이를 적습니다 |
 | `E!?T` | `(T, bool, error)` |
 
 `anyerror`는 안정된 error code를 만들 수 없어 지원하지 않습니다. 명시적 오류 집합을

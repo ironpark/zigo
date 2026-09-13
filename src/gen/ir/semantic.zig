@@ -785,10 +785,14 @@ pub const FnGo = struct {
     /// every one of them calling this one, in the order they were named. Go
     /// surface only; the C symbol is unchanged.
     implements: ?[]const Implements = null,
+    /// With `implements`: the zigo-shaped method stays exported beside the
+    /// wrappers. Absent, the wrappers are the only public spelling and the
+    /// original is written under an unexported name.
+    implements_keep_original: ?bool = null,
 
     fn compact(self: FnGo) ?FnGo {
         return if (self.name == null and self.owner == null and self.return_adapter == null and
-            self.iterator == null and self.implements == null) null else self;
+            self.iterator == null and self.implements == null and self.implements_keep_original == null) null else self;
     }
 };
 
@@ -1081,6 +1085,18 @@ pub const SemanticFn = struct {
     pub fn setGoImplements(self: *SemanticFn, value: ?[]const Implements) void {
         var go = self.go orelse FnGo{};
         go.implements = if (value) |kinds| (if (kinds.len == 0) null else kinds) else null;
+        self.go = go.compact();
+    }
+
+    /// Whether `.implements` hides the zigo-shaped method: the default, so a
+    /// handle reads like one written against `io` from the start.
+    pub fn goImplementsHidesOriginal(self: SemanticFn) bool {
+        return self.goImplements().len != 0 and !((self.go orelse FnGo{}).implements_keep_original orelse false);
+    }
+
+    pub fn setGoImplementsKeepOriginal(self: *SemanticFn, value: bool) void {
+        var go = self.go orelse FnGo{};
+        go.implements_keep_original = if (value) true else null;
         self.go = go.compact();
     }
 

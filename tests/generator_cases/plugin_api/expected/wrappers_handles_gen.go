@@ -3,6 +3,7 @@
 package wrappers
 
 import (
+	"io"
 	"runtime"
 	"sync"
 	"unsafe"
@@ -65,13 +66,6 @@ func (j *Job) zigoPoison(cause *NativePanicError) {
 	}
 }
 
-// ZigoAcquire implements the shared lifecycle handle contract.
-func (j *Job) ZigoAcquire(operation string) (unsafe.Pointer, error) { return j.zigoAcquire(operation) }
-// ZigoRelease implements the shared lifecycle handle contract.
-func (j *Job) ZigoRelease() { j.zigoRelease() }
-// ZigoPoison implements the shared lifecycle handle contract.
-func (j *Job) ZigoPoison(cause *NativePanicError) { j.zigoPoison(cause) }
-
 type zigoJobCleanupState struct {
 	ptr unsafe.Pointer
 }
@@ -112,6 +106,8 @@ func (j *Job) Close() error {
 	runtime.KeepAlive(j)
 	return nil
 }
+
+var _ io.Closer = (*Job)(nil)
 
 // zigoTakeLocked hands out what is left to release once j is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native

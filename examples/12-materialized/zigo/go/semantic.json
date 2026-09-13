@@ -224,7 +224,7 @@
     {
       "go": {
         "iterator": {
-          "name": "Checked"
+          "name": "AllChecked"
         }
       },
       "name": "nextChecked",

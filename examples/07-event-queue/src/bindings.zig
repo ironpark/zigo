@@ -149,7 +149,7 @@ pub const bindings = zigo.define(api, .{
         Terminal.members(&.{
             Terminal.func("init", .{
                 .params = &.{
-                    zigo.param.options(2, &.{ "rows", "max_scrollback_bytes", "blink_interval_ms" }, .{ .prefix = "" }),
+                    zigo.param.options(2, &.{ "rows", "max_scrollback_bytes", "blink_interval_ms" }, .{}),
                 },
             }),
             Terminal.func("blinkIntervalMs", .{}),

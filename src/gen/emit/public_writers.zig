@@ -9,6 +9,7 @@ const targets = @import("targets");
 const common = @import("common.zig");
 const docs = @import("docs.zig");
 const emit = @import("emit.zig");
+const handles = @import("handles.zig");
 const public = @import("public.zig");
 const lower = @import("lower");
 
@@ -43,10 +44,9 @@ pub fn renderHandleChecks(
         try writer.writeAll("\tif err != nil {\n\t\t");
         try writeHandleErrorReturn(scope, writer, function, constructor);
         if (function.childOfReceiver()) {
-            try writer.print(
-                "\t}}\n\tzigoChildCreated := false\n\tdefer func() {{\n\t\t{s}.zigoRelease()\n\t\tif !zigoChildCreated {{\n\t\t\tzigoChildParent.{s}()\n\t\t}}\n\t}}()\n",
-                .{ receiver_name, if (options.shared_lifecycle) "ZigoDropChild" else "zigoDropChild" },
-            );
+            try writer.print("\t}}\n\tzigoChildCreated := false\n\tdefer func() {{\n\t\t{s}.zigoRelease()\n\t\tif !zigoChildCreated {{\n\t\t\t", .{receiver_name});
+            try handles.writeInterfaceDropChild(writer, options, "zigoChildParent");
+            try writer.writeAll("\n\t\t}\n\t}()\n");
         } else {
             try writer.print("\t}}\n\tdefer {s}.zigoRelease()\n", .{receiver_name});
         }
@@ -288,7 +288,7 @@ pub fn writeCheckedFunctionReturnType(scope: PublicScope, writer: *std.Io.Writer
     if (function.@"return" == .optional) {
         try writer.writeAll(" (");
         try writeOptionalPublicPayloadType(scope, writer, function.@"return".optional.child.*, function.return_semantic);
-        try writer.writeAll(", bool, error)");
+        try writer.print(", {s}, error)", .{docs.optional_output_presence_type});
         return;
     }
     try writer.writeAll(" (");
@@ -477,7 +477,7 @@ fn writePublicReturnType(scope: PublicScope, writer: *std.Io.Writer, node: seman
         .optional => |value| {
             try writer.writeAll(" (");
             try writeOptionalPublicPayloadType(scope, writer, value.child.*, hint);
-            try writer.writeAll(", bool)");
+            try writer.print(", {s})", .{docs.optional_output_presence_type});
         },
         else => {
             try writer.writeByte(' ');
@@ -692,9 +692,10 @@ pub fn writePublicGoType(scope: PublicScope, writer: *std.Io.Writer, node: seman
         .value_struct => |value| try scope.writeTypeName(writer, value.ref),
         // `?T` is spelled `*T` in public Go too: nil stands for absent, a
         // non-nil pointer carries the value, for both scalar and extern
-        // struct children.
+        // struct children. The spelling is `docs.zig`'s, beside the sentence
+        // that documents it.
         .optional => |value| {
-            try writer.writeByte('*');
+            try writer.writeAll(docs.optional_input_type_prefix);
             try writePublicGoType(scope, writer, value.child.*);
         },
         else => unreachable,

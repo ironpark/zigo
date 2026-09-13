@@ -24,13 +24,13 @@ zig build go
 
 - [src/root.zig](src/root.zig) — `Divide` 오류 유니온과 추가 타입
 - [src/bindings.zig](src/bindings.zig) — 공개 함수와 오류 선언
-- [Go 사용 예제](go/errors/example_test.go) — 성공·실패 경로
-- `go/support/ffi` — 이 예제에서 지정한 raw 패키지
+- [Go 사용 예제](go/failures/example_test.go) — 성공·실패 경로
+- `go/internal/ffi` — 이 예제에서 지정한 raw 패키지. raw 패키지는 항상 `internal/` 아래에 있어야 합니다
 
 ## 동작과 주의사항
 
 Zig 오류 집합은 Go에서 `errors.Is`로 비교할 수 있는 오류 값이 됩니다. 공개 사용자는 raw
-패키지가 아니라 `errors` 패키지만 import합니다. 예상하지 않은 오류를 예제 테스트에서는
+패키지가 아니라 `failures` 패키지만 import합니다. 공개 패키지 이름이 표준 `errors`와 같으면 생성기가 `ZIGO064`로 거절하므로 이 예제는 `layout.go_package = "failures"`를 씁니다. 예상하지 않은 오류를 예제 테스트에서는
 panic으로 드러내지만 실제 애플리케이션에서는 반환하거나 해당 작업을 중단해야 합니다.
 
 ## 관련 문서

@@ -1330,10 +1330,11 @@ fn isRunnableOnHost(target: std.Target, host: std.Target) bool {
 
 fn resolveGoPackagePath(path: []const u8) []const u8 {
     if (std.mem.eql(u8, path, ".")) return path;
-    build_options.validateRawPackagePath(path) catch |err| switch (err) {
+    build_options.validatePackagePath(path) catch |err| switch (err) {
         error.InvalidPath => @panic("layout.go_package_path must be '.' or a non-empty relative slash-separated path"),
         error.InvalidComponent => @panic("layout.go_package_path must not contain empty, '.' or '..' components"),
         error.InvalidCharacter => @panic("layout.go_package_path components may contain only ASCII letters, digits, '_', '-' and '.'"),
+        error.NotInternal => unreachable,
     };
     return path;
 }
@@ -1353,6 +1354,7 @@ fn resolveRawPackage(b: *std.Build, layout: Layout, go_package_path: []const u8,
         error.InvalidPath => @panic("layout.raw_package must be a non-empty relative slash-separated path"),
         error.InvalidComponent => @panic("layout.raw_package must not contain empty, '.' or '..' components"),
         error.InvalidCharacter => @panic("layout.raw_package components may contain only ASCII letters, digits, '_', '-' and '.'"),
+        error.NotInternal => @panic("layout.raw_package must contain an `internal` element (for example `internal/raw`); the raw package is not part of the supported API"),
     };
     const name = naming.snakeAlloc(b.allocator, std.fs.path.basename(path)) catch @panic("OOM");
     go_words.validatePackageName(name) catch

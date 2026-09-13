@@ -55,6 +55,7 @@ func Decode(byte uint8) (rune, error) {
 }
 
 // Peek: Peeks at the next codepoint, if there is one.
+// The bool result reports whether a value was present; the value before it is zero when it was not.
 func Peek() (rune, bool) {
 	zigoResult, zigoHas := raw.Peek()
 	return rune(zigoResult), zigoHas

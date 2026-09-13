@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-var _ TelemetryHubObserver = func(uint64, float64) int32 { return 0 }
+var _ Observer = func(uint64, float64) int32 { return 0 }
 
 // A generated handle closes like any other Go resource.
 var _ io.Closer = (*TelemetryHub)(nil)
@@ -274,7 +274,7 @@ func TestFailedConstructionAndIndependentConcurrentLifecycles(t *testing.T) {
 	assertNoLiveResources(t)
 }
 
-func newTestHub(t *testing.T, name string, capacity uint, policy OverflowPolicy, observer TelemetryHubObserver) *TelemetryHub {
+func newTestHub(t *testing.T, name string, capacity uint, policy OverflowPolicy, observer Observer) *TelemetryHub {
 	t.Helper()
 	hub, err := NewTelemetryHub(name, capacity, ModeRaw, policy, observer)
 	if err != nil {

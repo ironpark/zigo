@@ -17,6 +17,8 @@ func Translate(origin image.Point, dx int16) image.Point {
 }
 
 // Shift calls the Zig function shift.
+// A nil origin is the absent value.
+// The bool result reports whether a value was present; the value before it is zero when it was not.
 // Native failures are returned as generated error values.
 func Shift(origin *image.Point) (image.Point, bool, error) {
 	var originRaw *raw.PointData

@@ -13,8 +13,6 @@ type Batch interface {
 	MustLen() uint
 	// Clear calls the Zig method clear of the implementing handle.
 	Clear(keep uint) error
-	// MustClear calls Clear and panics with its typed error on failure.
-	MustClear(keep uint)
 	io.Closer
 }
 

@@ -17,7 +17,13 @@ pub const iterator = .{
 /// than one interface, so the list is the only spelling; it must not be empty.
 pub const implements = .{
     .name = "IMPLEMENTS",
-    .FunctionOptions = struct { kinds: []const ir.Implements },
+    .FunctionOptions = struct {
+        kinds: []const ir.Implements,
+        /// Keep the bound method exported beside the interface wrappers. By
+        /// default only the standard-library shaped method (`Write`,
+        /// `Read`, ...) is public and the zigo-shaped original is hidden.
+        keep_original: bool = false,
+    },
     .TypeOptions = struct {},
     .subjects = &[_]author.Subject{.function},
 };

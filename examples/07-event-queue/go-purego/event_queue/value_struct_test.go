@@ -27,7 +27,7 @@ func TestFunctionalOptionsDefault(t *testing.T) {
 // The same field with the option given both ways: a value replaces the
 // default, and nil turns the option off rather than restoring it.
 func TestFunctionalOptionsOptionalOverride(t *testing.T) {
-	terminal, err := NewTerminal(80, WithBlinkIntervalMs(zigoTestPtr(uint32(120))))
+	terminal, err := NewTerminal(80, WithTerminalBlinkIntervalMs(zigoTestPtr(uint32(120))))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func TestFunctionalOptionsOptionalOverride(t *testing.T) {
 		t.Fatalf("BlinkIntervalMs() = %d, want 120", got)
 	}
 
-	off, err := NewTerminal(80, WithBlinkIntervalMs(nil))
+	off, err := NewTerminal(80, WithTerminalBlinkIntervalMs(nil))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func TestFunctionalOptionsOptionalOverride(t *testing.T) {
 func zigoTestPtr[T any](value T) *T { return &value }
 
 func TestFunctionalOptionsPartial(t *testing.T) {
-	terminal, err := NewTerminal(80, WithRows(50))
+	terminal, err := NewTerminal(80, WithTerminalRows(50))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestFunctionalOptionsPartial(t *testing.T) {
 }
 
 func TestFunctionalOptionsAll(t *testing.T) {
-	terminal, err := NewTerminal(120, WithRows(40), WithMaxScrollbackBytes(8<<20))
+	terminal, err := NewTerminal(120, WithTerminalRows(40), WithTerminalMaxScrollbackBytes(8<<20))
 	if err != nil {
 		t.Fatal(err)
 	}

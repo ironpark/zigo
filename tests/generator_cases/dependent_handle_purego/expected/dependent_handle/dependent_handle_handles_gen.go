@@ -3,6 +3,7 @@
 package dependent_handle
 
 import (
+	"io"
 	"runtime"
 	"sync"
 	"unsafe"
@@ -143,6 +144,8 @@ func (p *Parent) Close() error {
 	runtime.KeepAlive(p)
 	return nil
 }
+
+var _ io.Closer = (*Parent)(nil)
 
 // zigoTakeLocked hands out what is left to release once p is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
@@ -311,6 +314,8 @@ func (v *View) Close() error {
 	return nil
 }
 
+var _ io.Closer = (*View)(nil)
+
 // Child is a caller-owned native handle. Call Close when it is no longer needed.
 type Child struct {
 	ptr     unsafe.Pointer
@@ -435,6 +440,8 @@ func (c *Child) Close() error {
 	runtime.KeepAlive(c)
 	return nil
 }
+
+var _ io.Closer = (*Child)(nil)
 
 // zigoTakeLocked hands out what is left to release once c is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native

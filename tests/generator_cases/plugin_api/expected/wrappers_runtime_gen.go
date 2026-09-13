@@ -16,8 +16,14 @@ type zigoHandle = lifecycle.Handle
 func zigoCheckedPointer(operation string, value zigoHandle) (unsafe.Pointer, error) { return lifecycle.CheckedPointer(operation, value) }
 func zigoPoisonAfterPanic(err error, handles ...zigoHandle) error { return lifecycle.PoisonAfterPanic(err, handles...) }
 
-// ReduceReducerCallback is the Go callback signature accepted by the generated binding.
-type ReduceReducerCallback func(int32, int32) int32
+// The lifecycle methods of every handle here stay unexported. The shared
+// runtime reaches them through this registration.
+func init() {
+	lifecycle.Register(lifecycle.Methods[*Job]{Acquire: (*Job).zigoAcquire, Release: (*Job).zigoRelease, Poison: (*Job).zigoPoison})
+}
+
+// Reducer is the Go callback signature accepted by the generated binding.
+type Reducer func(int32, int32) int32
 
 func zigoBoolToUint8(value bool) uint8 {
 	if value {
@@ -30,7 +36,7 @@ var zigoActiveCallbackHandles atomic.Int64
 
 type zigoCallbackHandle = cgo.Handle
 
-func zigoNewReduceReducerCallbackHandle(value ReduceReducerCallback) zigoCallbackHandle {
+func zigoNewReducerHandle(value Reducer) zigoCallbackHandle {
 	stored := (func(int32, int32) int32)(value)
 	handle := cgo.NewHandle(&raw.CallbackState{Fn: stored})
 	zigoActiveCallbackHandles.Add(1)

@@ -3,6 +3,7 @@
 package store
 
 import (
+	"io"
 	"runtime"
 	"sync"
 	"unsafe"
@@ -105,6 +106,8 @@ func (c *Cursor) Close() error {
 	runtime.KeepAlive(c)
 	return nil
 }
+
+var _ io.Closer = (*Cursor)(nil)
 
 // zigoTakeLocked hands out what is left to release once c is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
@@ -216,6 +219,8 @@ func (s *Store) Close() error {
 	runtime.KeepAlive(s)
 	return nil
 }
+
+var _ io.Closer = (*Store)(nil)
 
 // zigoTakeLocked hands out what is left to release once s is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native

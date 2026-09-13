@@ -42,14 +42,14 @@ func zigoPoisonAfterPanic(err error, handles ...zigoHandle) error {
 // Thread: any; the callback may run on any native thread.
 type HubCreateObserver func(int32) (int32, error)
 
-// HubSetObserverObserver is the Go callback signature accepted by the generated binding.
-type HubSetObserverObserver func(int32) (int32, error)
+// HubSetObserver is the Go callback signature accepted by the generated binding.
+type HubSetObserver func(int32) (int32, error)
 
-// ApplyObserverCallback is the Go callback signature accepted by the generated binding.
-type ApplyObserverCallback func(int32) (int32, error)
+// ApplyObserver is the Go callback signature accepted by the generated binding.
+type ApplyObserver func(int32) (int32, error)
 
-// NotifyObserverCallback is the Go callback signature accepted by the generated binding.
-type NotifyObserverCallback func(int32)
+// NotifyObserver is the Go callback signature accepted by the generated binding.
+type NotifyObserver func(int32)
 
 type zigoCallbackHandle = uintptr
 
@@ -57,15 +57,15 @@ func zigoNewHubCreateObserverHandle(value HubCreateObserver) zigoCallbackHandle 
 	return raw.NewCallbackHandle((func(int32) (int32, error))(value))
 }
 
-func zigoNewHubSetObserverObserverHandle(value HubSetObserverObserver) zigoCallbackHandle {
+func zigoNewHubSetObserverHandle(value HubSetObserver) zigoCallbackHandle {
 	return raw.NewCallbackHandle((func(int32) (int32, error))(value))
 }
 
-func zigoNewApplyObserverCallbackHandle(value ApplyObserverCallback) zigoCallbackHandle {
+func zigoNewApplyObserverHandle(value ApplyObserver) zigoCallbackHandle {
 	return raw.NewCallbackHandle((func(int32) (int32, error))(value))
 }
 
-func zigoNewNotifyObserverCallbackHandle(value NotifyObserverCallback) zigoCallbackHandle {
+func zigoNewNotifyObserverHandle(value NotifyObserver) zigoCallbackHandle {
 	return raw.NewCallbackHandle((func(int32))(value))
 }
 

@@ -3,6 +3,7 @@
 package borrowed_return
 
 import (
+	"io"
 	"runtime"
 	"sync"
 	"unsafe"
@@ -111,6 +112,8 @@ func (p *Parent) Close() error {
 	return nil
 }
 
+var _ io.Closer = (*Parent)(nil)
+
 // zigoTakeLocked hands out what is left to release once p is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
 // object: releasing state a panic left half-changed could fault, so it leaks.
@@ -218,3 +221,5 @@ func (v *View) Close() error {
 	v.mu.Unlock()
 	return nil
 }
+
+var _ io.Closer = (*View)(nil)

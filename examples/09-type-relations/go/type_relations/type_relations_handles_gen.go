@@ -3,6 +3,7 @@
 package type_relations
 
 import (
+	"io"
 	"runtime"
 	"sync"
 	"unsafe"
@@ -105,6 +106,8 @@ func (c *Counter) Close() error {
 	runtime.KeepAlive(c)
 	return nil
 }
+
+var _ io.Closer = (*Counter)(nil)
 
 // zigoTakeLocked hands out what is left to release once c is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
@@ -216,6 +219,8 @@ func (a *Accumulator) Close() error {
 	runtime.KeepAlive(a)
 	return nil
 }
+
+var _ io.Closer = (*Accumulator)(nil)
 
 // zigoTakeLocked hands out what is left to release once a is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native

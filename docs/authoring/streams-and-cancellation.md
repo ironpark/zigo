@@ -139,8 +139,17 @@ Document.func("append", .{}).use(zigo.features.implements, .{ .kinds = &.{ .writ
 선언되므로 `ZIGO058`이 납니다. 래퍼 이름이 그 타입의 다른 메서드나 다른 래퍼와 겹치면
 `ZIGO024`가 납니다.
 
-원래 bound 메서드도 유지됩니다. 생성 시그니처가 해당 인터페이스 계약과 호환되지 않으면
-진단으로 거부됩니다.
+래퍼가 공개 표기의 전부입니다. bound 메서드(`Append`, `Dump`, `ReadInto` 같은 zigo 모양)는
+비공개 이름으로 쓰이고 래퍼만 그것을 부르므로, 핸들에는 `Write`·`WriteTo`·`Read`처럼 처음부터
+`io`에 맞춰 쓴 메서드만 남습니다. 원래 이름도 함께 내보내려면 `.keep_original = true`를 줍니다.
+
+```zig
+Document.func("append", .{}).use(zigo.features.implements, .{ .kinds = &.{.writer}, .keep_original = true }),
+```
+
+핸들이 `.implements`로 만족하는 인터페이스마다 `var _ io.Writer = (*Document)(nil)` 단언이 핸들
+파일에 함께 나오고, `Close`가 있는 모든 핸들에는 `var _ io.Closer` 단언이 나옵니다. 생성
+시그니처가 해당 인터페이스 계약과 호환되지 않으면 진단으로 거부됩니다.
 
 ## `context.Context`로 취소하기
 

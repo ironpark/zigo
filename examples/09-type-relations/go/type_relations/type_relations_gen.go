@@ -160,12 +160,16 @@ func CodepointWidth(cp uint32) (uint8, error) {
 }
 
 // DoubleWidth: A `?u32` on both sides: absent in, absent out.
+// A nil value is the absent value.
+// The bool result reports whether a value was present; the value before it is zero when it was not.
 func DoubleWidth(value *uint32) (uint32, bool) {
 	zigoResult, zigoHas := raw.DoubleWidth(value)
 	return zigoResult, zigoHas
 }
 
 // Invert: An optional bool has three states at the boundary, and Go sees all three.
+// A nil value is the absent value.
+// The bool result reports whether a value was present; the value before it is zero when it was not.
 func Invert(value *bool) (bool, bool) {
 	var valueRaw *uint8
 	if value != nil {
@@ -177,6 +181,7 @@ func Invert(value *bool) (bool, bool) {
 }
 
 // StyleOrDefault: An optional enum resolves to the default style when it is absent.
+// A nil style is the absent value.
 func StyleOrDefault(style *CursorStyle) CursorStyle {
 	var styleRaw *uint8
 	if style != nil {
@@ -187,6 +192,8 @@ func StyleOrDefault(style *CursorStyle) CursorStyle {
 }
 
 // BlinkingStyle: An optional enum on the way out: only a blinking style is reported.
+// A nil style is the absent value.
+// The bool result reports whether a value was present; the value before it is zero when it was not.
 func BlinkingStyle(style *CursorStyle) (CursorStyle, bool) {
 	var styleRaw *uint8
 	if style != nil {
@@ -198,6 +205,8 @@ func BlinkingStyle(style *CursorStyle) (CursorStyle, bool) {
 }
 
 // ShiftPoint: A whole `extern struct` in and out, presence carried alongside.
+// A nil origin is the absent value.
+// The bool result reports whether a value was present; the value before it is zero when it was not.
 func ShiftPoint(origin *image.Point, delta int16) (image.Point, bool) {
 	var originRaw *raw.PointData
 	if origin != nil {
@@ -211,6 +220,8 @@ func ShiftPoint(origin *image.Point, delta int16) (image.Point, bool) {
 // CheckedShift: An optional payload inside an error union: the status code carries the
 // error and a separate flag carries presence, so all three outcomes are
 // distinguishable.
+// A nil origin is the absent value.
+// The bool result reports whether a value was present; the value before it is zero when it was not.
 // Native failures are returned as generated error values.
 func CheckedShift(origin *image.Point, delta int16) (image.Point, bool, error) {
 	var originRaw *raw.PointData
@@ -227,23 +238,28 @@ func CheckedShift(origin *image.Point, delta int16) (image.Point, bool, error) {
 
 // DescribeText: A `?[]const u8` parameter: the slice's own pointer carries absence, so an
 // absent text and an empty one are different arguments.
+// A nil label is the absent value.
 func DescribeText(label *string) uint8 {
 	return raw.DescribeText(label)
 }
 
 // SumOrZero: A `?[]const i32` parameter, summed when present.
+// A nil values is the absent value.
 func SumOrZero(values *[]int32) int64 {
 	return raw.SumOrZero(values)
 }
 
 // LeadingDigits: A `?[]const i32` return over static storage: absent above the table, and
 // an empty-but-present slice at zero.
+// The bool result reports whether a value was present; the value before it is zero when it was not.
 func LeadingDigits(count uint32) ([]int32, bool) {
 	zigoResult, zigoHas := raw.LeadingDigits(count)
 	return zigoResult, zigoHas
 }
 
 // StyleName: A `?[]const u8` return, which Go sees as `(string, bool)`.
+// A nil style is the absent value.
+// The bool result reports whether a value was present; the value before it is zero when it was not.
 func StyleName(style *CursorStyle) (string, bool) {
 	var styleRaw *uint8
 	if style != nil {

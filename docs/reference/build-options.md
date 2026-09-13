@@ -51,9 +51,9 @@
 | 필드 | 기본값 | 의미 |
 |---|---|---|
 | `go_module` | 필수 | Go 모듈 import 경로 |
-| `go_package` | normalized `name` | 공개 Go 패키지 이름 |
+| `go_package` | normalized `name` | 공개 Go 패키지 이름. 표준 라이브러리 패키지 이름(`errors`, `io` 등)은 `ZIGO064`로 거절 |
 | `go_package_path` | `go_package` | 공개 패키지 relative 경로; `.`은 모듈 root |
-| `raw_package` | `"internal/raw"` | raw 패키지 경로. `raw_colocated`가 참이면 무시 |
+| `raw_package` | `"internal/raw"` | raw 패키지 경로. 경로에 `internal` 요소가 있어야 하며(없으면 build panic, 생성기는 `ZIGO063`) `raw_colocated`가 참이면 무시 |
 | `raw_colocated` | `false` | raw 바인딩을 공개 패키지 안에 함께 생성 |
 
 colocation은 `raw_colocated`로만 선택합니다. `raw_package`가 공개 패키지 경로와 같으면 build가

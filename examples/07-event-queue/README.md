@@ -30,7 +30,7 @@ cgo·purego 테스트가 통과합니다. 수명, 버퍼와 하위 패키지 관
 - [src/root.zig](src/root.zig) — queue, 스트림과 값 타입 구현
 - [src/bindings.zig](src/bindings.zig) — 타입별 Context와 수명 계약
 - [빌드.zig](build.zig) — 여러 패키지와 raw 경로 설정
-- `go/bridge/cgo/cheader` — 생성 헤더와 Go 배치 비교
+- `go/internal/cgo/cheader` — 생성 헤더와 Go 배치 비교
 - `go/event_queue`, `go/event_queue/types` — 패키지 간 타입 참조
 
 ## 동작과 주의사항

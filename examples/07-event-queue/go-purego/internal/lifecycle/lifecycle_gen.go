@@ -6,6 +6,7 @@ package lifecycle
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"strconv"
 	"unsafe"
 )
@@ -22,37 +23,123 @@ var (
 	ErrNilStream      = errors.New("zigo: nil stream argument")
 )
 
-type Handle interface {
-	ZigoAcquire(operation string) (unsafe.Pointer, error)
-	ZigoRelease()
-	ZigoPoison(cause *NativePanicError)
+// Handle is a handle of any generated public package. Each package registers
+// its handle types with Register at init.
+type Handle = any
+
+// ChildHandle is the reservation a dependent child holds on its parent.
+type ChildHandle = any
+
+// Methods are the lifecycle methods of one handle type. AcquireChild and
+// DropChild are nil for a type that has no dependent children.
+type Methods[H any] struct {
+	Acquire      func(H, string) (unsafe.Pointer, error)
+	Release      func(H)
+	Poison       func(H, *NativePanicError)
+	AcquireChild func(H, string) (unsafe.Pointer, ChildHandle, error)
+	DropChild    func(H)
 }
 
-type ChildHandle interface {
-	Handle
-	ZigoAcquireChild(operation string) (unsafe.Pointer, ChildHandle, error)
-	ZigoDropChild()
+type handleMethods struct {
+	acquire      func(Handle, string) (unsafe.Pointer, error)
+	release      func(Handle)
+	poison       func(Handle, *NativePanicError)
+	acquireChild func(Handle, string) (unsafe.Pointer, ChildHandle, error)
+	dropChild    func(Handle)
+}
+
+// Written by package init functions only, which run one after another
+// before main; every read comes later.
+var registry = map[reflect.Type]handleMethods{}
+
+// Register records the lifecycle methods of handle type H.
+func Register[H any](methods Methods[H]) {
+	entry := handleMethods{
+		acquire: func(handle Handle, operation string) (unsafe.Pointer, error) {
+			return methods.Acquire(handle.(H), operation)
+		},
+		release: func(handle Handle) { methods.Release(handle.(H)) },
+		poison:  func(handle Handle, cause *NativePanicError) { methods.Poison(handle.(H), cause) },
+	}
+	if methods.AcquireChild != nil {
+		entry.acquireChild = func(handle Handle, operation string) (unsafe.Pointer, ChildHandle, error) {
+			return methods.AcquireChild(handle.(H), operation)
+		}
+		entry.dropChild = func(handle Handle) { methods.DropChild(handle.(H)) }
+	}
+	registry[reflect.TypeFor[H]()] = entry
+}
+
+func methodsOf(handle Handle) handleMethods {
+	entry, ok := registry[reflect.TypeOf(handle)]
+	if !ok {
+		panic(fmt.Sprintf("zigo: %T is not a registered handle type", handle))
+	}
+	return entry
+}
+
+// Acquire pins handle open for one native call and hands back its pointer;
+// the call ends with Release. A nil, closed, or poisoned handle is the error.
+func Acquire(operation string, handle Handle) (unsafe.Pointer, error) {
+	if handle == nil {
+		return nil, &HandleError{Operation: operation}
+	}
+	return methodsOf(handle).acquire(handle, operation)
+}
+
+func Release(handle Handle) {
+	if handle == nil {
+		return
+	}
+	methodsOf(handle).release(handle)
+}
+
+func Poison(handle Handle, cause *NativePanicError) {
+	if handle == nil {
+		return
+	}
+	methodsOf(handle).poison(handle, cause)
+}
+
+// AcquireChild reserves one dependent child on handle. A handle whose type
+// has no dependent children is reported as invalid.
+func AcquireChild(operation string, handle Handle) (unsafe.Pointer, ChildHandle, error) {
+	if handle == nil {
+		return nil, nil, &HandleError{Operation: operation}
+	}
+	entry := methodsOf(handle)
+	if entry.acquireChild == nil {
+		return nil, nil, &HandleError{Operation: operation}
+	}
+	return entry.acquireChild(handle, operation)
+}
+
+func DropChild(handle ChildHandle) {
+	if handle == nil {
+		return
+	}
+	if entry := methodsOf(handle); entry.dropChild != nil {
+		entry.dropChild(handle)
+	}
 }
 
 func CheckedPointer(operation string, value Handle) (unsafe.Pointer, error) {
-	return value.ZigoAcquire(operation)
+	return Acquire(operation, value)
 }
 func OptionalPointer(operation string, absent bool, value Handle) (unsafe.Pointer, error) {
 	if absent {
 		return nil, nil
 	}
-	return CheckedPointer(operation, value)
+	return Acquire(operation, value)
 }
 func PoisonAfterPanic(err error, handles ...Handle) error {
 	if cause, ok := err.(*NativePanicError); ok {
 		for _, handle := range handles {
-			handle.ZigoPoison(cause)
+			Poison(handle, cause)
 		}
 	}
 	return err
 }
-
-func Release(handle Handle) { handle.ZigoRelease() }
 
 type HandleError struct{ Operation string }
 

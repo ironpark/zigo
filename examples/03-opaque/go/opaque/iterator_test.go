@@ -62,7 +62,7 @@ func TestContextCheckedYieldsErrorOnce(t *testing.T) {
 	}
 
 	var yields int
-	for value, err := range counter.Checked() {
+	for value, err := range counter.AllChecked() {
 		yields++
 		if value != 0 || !errors.Is(err, opaque.ErrNegativeTotal) {
 			t.Fatalf("Checked() yielded (%d, %v), want (0, ErrNegativeTotal)", value, err)

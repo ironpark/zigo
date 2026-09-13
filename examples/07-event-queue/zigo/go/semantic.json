@@ -1767,9 +1767,7 @@
             }
           ],
           "go": {
-            "options": {
-              "prefix": ""
-            }
+            "options": {}
           },
           "name": "options",
           "name_source": "ast",

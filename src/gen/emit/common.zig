@@ -743,9 +743,9 @@ test "tagged union emitters generate checked pointer-only projections" {
     try std.testing.expect(std.mem.indexOf(u8, public_types, "func (v *ValueRef) Tag() (ValueTag, error)") == null);
     try std.testing.expect(std.mem.indexOf(u8, public_types, "ValueRef") == null);
     try std.testing.expect(std.mem.indexOf(u8, public_types, "func (v *Value) AsInteger() (int32, bool, error)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, public_types, "func (v *Value) MustAsInteger() (int32, bool)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, public_types, "func (v *Value) MustAsChild() (*ChildRef, bool)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, public_types, "func (h *HTTPResult) MustAsURLValue() (uint64, bool)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, public_types, "func (v *Value) AsChild() (*ChildRef, bool, error)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, public_types, "func (h *HTTPResult) AsURLValue() (uint64, bool, error)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, public_types, "MustAs") == null);
     try std.testing.expect(std.mem.indexOf(u8, public_types, "append([]int16(nil), result...)") != null);
     try std.testing.expect(std.mem.indexOf(u8, public_types, "ptr, err := zigoCheckedPointer") != null);
     const public_runtime_text = try emit.renderForTest(public.renderPublicRuntimeFile, program);
@@ -770,7 +770,10 @@ test "tagged union emitters generate checked pointer-only projections" {
     try std.testing.expect(std.mem.indexOf(u8, public_types, "tag, err := zigoValueTag(receiver)") != null);
     try std.testing.expect(std.mem.indexOf(u8, public_types, "payload, matched, err := zigoValueAsInteger(receiver)") != null);
     try std.testing.expect(std.mem.indexOf(u8, public_types, "func (v *Value) Variant() (ValueVariant, error) { return zigoValueVariant(v) }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, public_types, "func (v *Value) MustVariant() ValueVariant { return zigoMust(zigoValueVariant(v)) }") != null);
+    // The panicking form follows the MUST plugin, which this rendering
+    // leaves off: no Must* accessor without it.
+    try std.testing.expect(std.mem.indexOf(u8, public_types, "MustVariant") == null);
+    try std.testing.expect(std.mem.indexOf(u8, public_types, "MustTag") == null);
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, public_types, "func zigoValueVariant(receiver zigoHandle)"));
 
     const public_errors = try emit.renderForTest(public_runtime.renderPublicErrors, program);

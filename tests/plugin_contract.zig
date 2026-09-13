@@ -10,7 +10,7 @@ test "external plugin validates and analyzes once, renders every public scope, a
         .{ .json = @embedFile("generator_cases/callback_bool/semantic.json"), .package = "callbacks", .type_marker = "ContractType callback" },
         .{ .json = @embedFile("generator_cases/materialized/semantic.json"), .package = "tree", .type_marker = "ContractType materialized Root" },
         .{ .json = @embedFile("generator_cases/sub_packages/semantic.json"), .package = "packages" },
-        .{ .json = "{\"package\":\"errors\",\"prefix\":\"zg\",\"zig_version\":\"0.16.0\",\"types\":[{\"kind\":\"error_set\",\"name\":\"Failures\"}]}", .package = "errors", .type_marker = "ContractType error_set Failures" },
+        .{ .json = "{\"package\":\"failures\",\"prefix\":\"zg\",\"zig_version\":\"0.16.0\",\"types\":[{\"kind\":\"error_set\",\"name\":\"Failures\"}]}", .package = "failures", .type_marker = "ContractType error_set Failures" },
     };
     for (fixtures) |fixture| inline for (.{ .cgo, .purego }) |backend| {
         var baseline = std.testing.tmpDir(.{ .iterate = true });

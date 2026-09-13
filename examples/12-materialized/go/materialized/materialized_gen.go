@@ -97,6 +97,7 @@ func NewCursor(limit uint32, failAt uint32) (*Cursor, error) {
 }
 
 // Next calls the Zig function Cursor.next.
+// The bool result reports whether a value was present; the value before it is zero when it was not.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (c *Cursor) Next() (Probe, bool, error) {
@@ -135,6 +136,7 @@ func (c *Cursor) All() iter.Seq2[Probe, error] {
 }
 
 // NextChecked calls the Zig function Cursor.nextChecked.
+// The bool result reports whether a value was present; the value before it is zero when it was not.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (c *Cursor) NextChecked() (Probe, bool, error) {
@@ -154,9 +156,9 @@ func (c *Cursor) NextChecked() (Probe, bool, error) {
 	return zigoDecodeProbeBuffer(result), zigoHas, nil
 }
 
-// Checked returns a sequence that calls NextChecked until it reports no value.
+// AllChecked returns a sequence that calls NextChecked until it reports no value.
 // A failed call yields its error once, with the zero Probe, and the sequence ends.
-func (c *Cursor) Checked() iter.Seq2[Probe, error] {
+func (c *Cursor) AllChecked() iter.Seq2[Probe, error] {
 	return func(yield func(Probe, error) bool) {
 		for {
 			value, ok, err := c.NextChecked()
@@ -189,6 +191,7 @@ func (c *Cursor) Count() (uint32, error) {
 }
 
 // OptionalSnapshot calls the Zig function optionalSnapshot.
+// The bool result reports whether a value was present; the value before it is zero when it was not.
 func OptionalSnapshot(present bool) (Probe, bool) {
 	zigoResult, zigoHas := raw.OptionalSnapshot(zigoBoolToUint8(present))
 	if !zigoHas {
@@ -199,6 +202,7 @@ func OptionalSnapshot(present bool) (Probe, bool) {
 }
 
 // OptionalBatch calls the Zig function optionalBatch.
+// The bool result reports whether a value was present; the value before it is zero when it was not.
 func OptionalBatch(present bool, empty bool) ([]Probe, bool) {
 	zigoResult, zigoHas := raw.OptionalBatch(zigoBoolToUint8(present), zigoBoolToUint8(empty))
 	if !zigoHas {
@@ -209,6 +213,7 @@ func OptionalBatch(present bool, empty bool) ([]Probe, bool) {
 }
 
 // OptionalBatchChecked calls the Zig function optionalBatchChecked.
+// The bool result reports whether a value was present; the value before it is zero when it was not.
 // Native failures are returned as generated error values.
 func OptionalBatchChecked(present bool, empty bool, fail bool) ([]Probe, bool, error) {
 	result, zigoHas, code := raw.OptionalBatchChecked(zigoBoolToUint8(present), zigoBoolToUint8(empty), zigoBoolToUint8(fail))

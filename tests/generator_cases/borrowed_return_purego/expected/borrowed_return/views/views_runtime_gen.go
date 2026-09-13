@@ -11,3 +11,10 @@ type zigoHandle = lifecycle.Handle
 
 func zigoCheckedPointer(operation string, value zigoHandle) (unsafe.Pointer, error) { return lifecycle.CheckedPointer(operation, value) }
 func zigoPoisonAfterPanic(err error, handles ...zigoHandle) error { return lifecycle.PoisonAfterPanic(err, handles...) }
+
+// The lifecycle methods of every handle here stay unexported. The shared
+// runtime reaches them through this registration.
+func init() {
+	lifecycle.Register(lifecycle.Methods[*Parent]{Acquire: (*Parent).zigoAcquire, Release: (*Parent).zigoRelease, Poison: (*Parent).zigoPoison})
+	lifecycle.Register(lifecycle.Methods[*View]{Acquire: (*View).zigoAcquire, Release: (*View).zigoRelease, Poison: (*View).zigoPoison})
+}
