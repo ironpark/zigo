@@ -7,7 +7,7 @@ registered_at: "2026-09-13T07:28:55Z"
 
 # Phases
 
-- [ ] [Phase 00: std_options passthrough](phases/00-shim-std-options.md)
+- [x] [Phase 00: std_options passthrough](phases/00-shim-std-options.md)
 - [ ] [Phase 01: Session child plural](phases/01-session-child-plural.md)
 - [ ] [Phase 02: Member docs from source](phases/02-member-docs-capture.md)
 - [ ] [Phase 03: Member doc overrides](phases/03-member-docs-override.md)

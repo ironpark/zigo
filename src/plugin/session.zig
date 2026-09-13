@@ -205,7 +205,7 @@ fn methodIssue(allocator: std.mem.Allocator, session: semantic.Session) !?diagno
     });
     for (session.children) |child| {
         try methods.append(allocator, .{
-            .name = try std.fmt.allocPrint(allocator, "{s}s", .{child.base()}),
+            .name = try child.accessorAlloc(allocator),
             .owner = try std.fmt.allocPrint(allocator, "the accessor for `{s}`", .{child.type}),
         });
         try methods.append(allocator, .{

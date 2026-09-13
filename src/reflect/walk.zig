@@ -612,7 +612,7 @@ test "sessions record their primary and dependent children by registered name" {
             .{ .path = "Streams.free", .destroys = Api.Stream },
         },
         .sessions = &.{
-            .{ .name = "Session", .primary = Api.Queue, .children = &.{.{ .type = Api.Stream, .name = "Feed" }}, .doc = "Closes streams before the queue." },
+            .{ .name = "Session", .primary = Api.Queue, .children = &.{.{ .type = Api.Stream, .name = "Feed", .plural = "Feeds" }}, .doc = "Closes streams before the queue." },
         },
     }, "sample", "zg");
     const session = document.sessions.?[0];
@@ -623,6 +623,7 @@ test "sessions record their primary and dependent children by registered name" {
     try std.testing.expectEqualStrings("Streams", session.children[0].type);
     try std.testing.expectEqualStrings("Feed", session.children[0].name.?);
     try std.testing.expectEqualStrings("Feed", session.children[0].base());
+    try std.testing.expectEqualStrings("Feeds", session.children[0].plural.?);
     try std.testing.expectEqualStrings("Closes streams before the queue.", session.doc.?);
 }
 
@@ -828,6 +829,7 @@ fn reflectSessions(
             .type = comptime registeredOpaqueName(declaration, child.type) orelse
                 @compileError("zigo session members must be registered in `.types` as `.handle`: " ++ @typeName(child.type)),
             .name = child.name,
+            .plural = child.plural,
         };
         const primary = comptime registeredOpaqueName(declaration, entry.primary) orelse
             @compileError("zigo session members must be registered in `.types` as `.handle`: " ++ @typeName(entry.primary));
@@ -845,6 +847,10 @@ fn reflectSessions(
 fn validateSessionEntry(comptime entry: zigo.Session) void {
     if (entry.children.len == 0)
         @compileError("zigo session `" ++ entry.name ++ "` requires a non-empty `.children` list of registered handle types");
+    for (entry.children) |child| {
+        if (child.plural) |plural| if (plural.len == 0)
+            @compileError("zigo session `" ++ entry.name ++ "` gives a child an empty `.plural`; drop it to take `<Base>s`");
+    }
 }
 
 fn validateInterfaceEntry(comptime entry: zigo.Interface) void {

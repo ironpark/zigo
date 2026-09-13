@@ -8,6 +8,7 @@
 typedef struct zg_queue zg_queue;
 typedef struct zg_stream zg_stream;
 typedef struct zg_ticker zg_ticker;
+typedef struct zg_search zg_search;
 // ELF and Mach-O export every non-static symbol of a shared library;
 // COFF exports nothing without an explicit annotation, so a DLL built
 // without this would load and then resolve none of its entry points.
@@ -25,6 +26,8 @@ ZIGO_EXPORT int32_t zg_queue_new_stream(zg_queue * self, zg_stream * * out_resul
 ZIGO_EXPORT int32_t zg_stream_free_stream(zg_stream * self);
 ZIGO_EXPORT int32_t zg_queue_new_ticker(zg_queue * self, zg_ticker * * out_result);
 ZIGO_EXPORT int32_t zg_ticker_free_ticker(zg_ticker * self);
+ZIGO_EXPORT int32_t zg_queue_new_search(zg_queue * self, zg_search * * out_result);
+ZIGO_EXPORT int32_t zg_search_free_search(zg_search * self);
 ZIGO_EXPORT const char *zg_last_error_message(void);
 ZIGO_EXPORT const char *zg_caught_panic_message(int32_t code);
 

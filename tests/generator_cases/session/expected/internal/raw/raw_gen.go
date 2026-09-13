@@ -51,3 +51,14 @@ func TickerFreeTicker(self unsafe.Pointer) int32 {
 	code := int32(C.zg_ticker_free_ticker((*C.zg_ticker)(self)))
 	return code
 }
+// QueueNewSearch calls the generated C ABI wrapper for zg_queue_new_search.
+func QueueNewSearch(self unsafe.Pointer) (unsafe.Pointer, int32) {
+	var outResult *C.zg_search
+	code := int32(C.zg_queue_new_search((*C.zg_queue)(self), &outResult))
+	return unsafe.Pointer(outResult), code
+}
+// SearchFreeSearch calls the generated C ABI wrapper for zg_search_free_search.
+func SearchFreeSearch(self unsafe.Pointer) int32 {
+	code := int32(C.zg_search_free_search((*C.zg_search)(self)))
+	return code
+}

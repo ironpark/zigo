@@ -142,3 +142,27 @@ ZIGO_EXPORT int32_t zg_ticker_free_ticker(zg_ticker * self) {
     zg_panic_active = 0;
     return result;
 }
+
+int32_t zg_queue_new_search_impl(zg_queue * self, zg_search * * out_result);
+ZIGO_EXPORT int32_t zg_queue_new_search(zg_queue * self, zg_search * * out_result) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        return zg_panic_publish();
+    }
+    int32_t result = zg_queue_new_search_impl(self, out_result);
+    zg_panic_active = 0;
+    return result;
+}
+
+int32_t zg_search_free_search_impl(zg_search * self);
+ZIGO_EXPORT int32_t zg_search_free_search(zg_search * self) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        return zg_panic_publish();
+    }
+    int32_t result = zg_search_free_search_impl(self);
+    zg_panic_active = 0;
+    return result;
+}

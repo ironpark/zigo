@@ -64,3 +64,27 @@ func (q *Queue) NewTicker() (*Ticker, error) {
 	zigoChildCreated = true
 	return zigoNewTicker(result, zigoChildParent), nil
 }
+
+// NewSearch creates a caller-owned Search.
+// The caller must call Close on the returned handle.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (q *Queue) NewSearch() (*Search, error) {
+	ptr, zigoChildParent, err := q.zigoAcquireChild("Queue.NewSearch receiver")
+	if err != nil {
+		return nil, err
+	}
+	zigoChildCreated := false
+	defer func() {
+		q.zigoRelease()
+		if !zigoChildCreated {
+			zigoChildParent.zigoDropChild()
+		}
+	}()
+	result, code := raw.QueueNewSearch(ptr)
+	if code != 0 {
+		return nil, zigoPoisonAfterPanic(zigoErrorForCode("Queue.NewSearch", code), q)
+	}
+	zigoChildCreated = true
+	return zigoNewSearch(result, zigoChildParent), nil
+}

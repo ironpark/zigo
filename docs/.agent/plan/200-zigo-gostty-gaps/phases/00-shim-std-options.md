@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-13T07:33:32Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 모든 골든 shim.zig가 `std_options` 줄을 담고 `zig build test`가 통과한다.
 > NEXT: none

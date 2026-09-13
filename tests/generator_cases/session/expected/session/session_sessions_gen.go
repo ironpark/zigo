@@ -17,6 +17,7 @@ type Session struct {
 	queue     *Queue
 	streams   []*Stream
 	ticks     []*Ticker
+	searches  []*Search
 	mu        sync.Mutex
 	closed    bool
 	closeOnce sync.Once
@@ -69,6 +70,26 @@ func (s *Session) AddTick(ticks ...*Ticker) *Session {
 	return s
 }
 
+// AddSearch adopts Search handles the primary handed out and returns the session,
+// so calls chain. A nil handle is ignored. A handle adopted after Close has
+// run is closed immediately rather than leaked.
+func (s *Session) AddSearch(searches ...*Search) *Session {
+	for _, handle := range searches {
+		if handle == nil {
+			continue
+		}
+		s.mu.Lock()
+		if s.closed {
+			s.mu.Unlock()
+			_ = handle.Close()
+			continue
+		}
+		s.searches = append(s.searches, handle)
+		s.mu.Unlock()
+	}
+	return s
+}
+
 // Close closes every child handle the session adopted, most recent first,
 // and then the primary. It is idempotent and safe to call from several
 // goroutines: a later call returns the first result without closing anything
@@ -82,6 +103,8 @@ func (s *Session) Close() error {
 		s.streams = nil
 		ticks := s.ticks
 		s.ticks = nil
+		searches := s.searches
+		s.searches = nil
 		s.mu.Unlock()
 
 		var failures []error
@@ -92,6 +115,11 @@ func (s *Session) Close() error {
 		}
 		for index := len(ticks) - 1; index >= 0; index-- {
 			if err := ticks[index].Close(); err != nil {
+				failures = append(failures, err)
+			}
+		}
+		for index := len(searches) - 1; index >= 0; index-- {
+			if err := searches[index].Close(); err != nil {
 				failures = append(failures, err)
 			}
 		}
@@ -120,6 +148,13 @@ func (s *Session) Ticks() []*Ticker {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return append([]*Ticker(nil), s.ticks...)
+}
+
+// Searches returns the Search handles the session adopted, oldest first.
+func (s *Session) Searches() []*Search {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]*Search(nil), s.searches...)
 }
 
 var _ io.Closer = (*Session)(nil)

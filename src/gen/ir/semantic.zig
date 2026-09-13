@@ -1382,10 +1382,21 @@ pub const Interface = struct {
 pub const SessionChild = struct {
     type: []const u8,
     name: ?[]const u8 = null,
+    /// The accessor's whole name, when the base's plural is not `base ++ "s"`.
+    plural: ?[]const u8 = null,
 
     /// The base the generated `Add<Base>` and `<Base>s` are spelled from.
     pub fn base(self: SessionChild) []const u8 {
         return self.name orelse self.type;
+    }
+
+    /// The accessor's name. `.name` shortens a base that is already plural
+    /// (`Stats` listed as `Stat` reads as `Stats` again); `.plural` is for the
+    /// bases no suffix rule reaches, where `Search` has to be told that it is
+    /// `Searches` and not `Searchs`.
+    pub fn accessorAlloc(self: SessionChild, allocator: std.mem.Allocator) ![]u8 {
+        if (self.plural) |name| return allocator.dupe(u8, name);
+        return std.fmt.allocPrint(allocator, "{s}s", .{self.base()});
     }
 };
 
@@ -1698,6 +1709,24 @@ pub fn containsHandleReference(node: TypeNode, name: []const u8) bool {
         },
         else => false,
     };
+}
+
+test "a session child names its accessor from the base, the rename, or the plural" {
+    const plain: SessionChild = .{ .type = "Stream" };
+    const renamed: SessionChild = .{ .type = "Stats", .name = "Stat" };
+    // `Search` is the case no suffix rule reaches: shortening the base cannot
+    // produce `Searches`, so the binding spells the accessor out.
+    const irregular: SessionChild = .{ .type = "Search", .plural = "Searches" };
+    for ([_]struct { child: SessionChild, base: []const u8, accessor: []const u8 }{
+        .{ .child = plain, .base = "Stream", .accessor = "Streams" },
+        .{ .child = renamed, .base = "Stat", .accessor = "Stats" },
+        .{ .child = irregular, .base = "Search", .accessor = "Searches" },
+    }) |case| {
+        try std.testing.expectEqualStrings(case.base, case.child.base());
+        const accessor = try case.child.accessorAlloc(std.testing.allocator);
+        defer std.testing.allocator.free(accessor);
+        try std.testing.expectEqualStrings(case.accessor, accessor);
+    }
 }
 
 test "stream parameters round-trip through the semantic document" {

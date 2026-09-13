@@ -183,7 +183,7 @@ fn flatten(comptime entries: []const a.Entry, state: *State, comptime package_in
             var children: []const ir.SessionChild = &.{};
             for (s.children) |child| {
                 _ = typeName(child.type, state.*);
-                children = children ++ [_]ir.SessionChild{.{ .type = child.type.type, .name = child.name }};
+                children = children ++ [_]ir.SessionChild{.{ .type = child.type.type, .name = child.name, .plural = child.plural }};
             }
             state.sessions = state.sessions ++ [_]ir.Session{.{ .name = s.name, .primary = s.primary.type, .children = children, .doc = s.doc }};
         },

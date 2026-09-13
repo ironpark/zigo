@@ -200,6 +200,7 @@ zigo.session(.{
     .children = &.{
         .{ .type = Child.typeRef() },
         .{ .type = Stats.typeRef(), .name = "Stat" },
+        .{ .type = Search.typeRef(), .plural = "Searches" },
     },
     .doc = null,
 })
@@ -212,10 +213,15 @@ zigo.session(.{
 | `children` | primary가 `.parent = .receiver`로 내주는 자식 핸들 목록 |
 | `children[].type` | 자식 핸들 타입. `.handle`로 등록되어 있어야 합니다 |
 | `children[].name` | `Add<Name>`과 `<Name>s`를 만들 기준 이름. 기본값은 타입 이름 |
+| `children[].plural` | 접근자 이름 전체. 기본값은 기준 이름 + `s` |
 | `doc` | 생성 타입의 doc comment. 닫는 순서는 생성기가 별도로 적습니다 |
 
-`.name`은 불규칙 복수를 위한 것입니다. `Stats` 핸들을 그대로 두면 접근자가 `Statss`가
-되지만, `.name = "Stat"`이면 `AddStat`과 `Stats`가 됩니다.
+`.name`은 기준 이름을 **줄여** 복수를 맞춥니다. `Stats` 핸들을 그대로 두면 접근자가
+`Statss`가 되지만, `.name = "Stat"`이면 `AddStat`과 `Stats`가 됩니다.
+
+기준을 줄여서는 닿지 않는 복수는 `.plural`로 접근자 이름을 그대로 적습니다. `Search`는
+어떻게 줄여도 `Searches`가 되지 않으므로 `.plural = "Searches"`가 필요하고, 입양 메서드는
+기준 이름을 그대로 써 `AddSearch`로 남습니다.
 
 ## built-in feature
 

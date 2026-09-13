@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `.{ .type = Search, .plural = "Searches" }`가 `Searches()` 접근자를 낸다.
 > NEXT: none

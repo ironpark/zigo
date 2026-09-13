@@ -477,6 +477,9 @@ pub const Interface = struct {
 pub const SessionChild = struct {
     type: type,
     name: ?[]const u8 = null,
+    /// The accessor's whole name, for a base whose plural is not `base ++ "s"`.
+    /// `Search` reads as `Searches` only because it is said here.
+    plural: ?[]const u8 = null,
 };
 
 pub const Session = struct {

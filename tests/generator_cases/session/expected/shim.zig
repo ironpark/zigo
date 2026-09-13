@@ -36,3 +36,12 @@ export fn zg_ticker_free_ticker_impl(self: *target.Ticker) i32 {
     target.Ticker.freeTicker(self);
     return 0;
 }
+export fn zg_queue_new_search_impl(self: *target.Queue, out_result: **target.Search) i32 {
+    const result = target.Queue.newSearch(self);
+    out_result.* = result;
+    return 0;
+}
+export fn zg_search_free_search_impl(self: *target.Search) i32 {
+    target.Search.freeSearch(self);
+    return 0;
+}

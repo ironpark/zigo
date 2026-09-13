@@ -198,7 +198,7 @@ pub fn sessionMembers(allocator: std.mem.Allocator, session: abi.AbiSession) !Me
     @memset(members.adders, &.{});
     members.accessors[0] = try allocator.dupe(u8, session.primary);
     for (session.children, members.accessors[1..], members.adders[1..]) |child, *accessor, *adder| {
-        accessor.* = try std.fmt.allocPrint(allocator, "{s}s", .{child.base()});
+        accessor.* = try child.accessorAlloc(allocator);
         adder.* = try std.fmt.allocPrint(allocator, "Add{s}", .{child.base()});
     }
     // The field is the accessor in lower camel case, so the plural travels to

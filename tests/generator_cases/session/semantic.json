@@ -14,6 +14,11 @@
       "deinit": "freeTicker",
       "init": "newTicker",
       "type": "Ticker"
+    },
+    {
+      "deinit": "freeSearch",
+      "init": "newSearch",
+      "type": "Search"
     }
   ],
   "functions": [
@@ -102,6 +107,36 @@
         "kind": "void"
       },
       "symbol": "ignored"
+    },
+    {
+      "child_of_receiver": true,
+      "go": {
+        "owner": "Search"
+      },
+      "name": "newSearch",
+      "ownership": "caller",
+      "params": [],
+      "receiver": "Queue",
+      "return": {
+        "error_set": [],
+        "kind": "error_union",
+        "payload": {
+          "const": false,
+          "kind": "opaque_ptr",
+          "nullable": false,
+          "ref": "Search"
+        }
+      },
+      "symbol": "ignored"
+    },
+    {
+      "name": "freeSearch",
+      "params": [],
+      "receiver": "Search",
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "ignored"
     }
   ],
   "package": "session",
@@ -115,6 +150,10 @@
         {
           "name": "Tick",
           "type": "Ticker"
+        },
+        {
+          "plural": "Searches",
+          "type": "Search"
         }
       ],
       "doc": "Session owns a queue and every stream it handed out.",
@@ -134,6 +173,10 @@
     {
       "kind": "opaque",
       "name": "Ticker"
+    },
+    {
+      "kind": "opaque",
+      "name": "Search"
     }
   ],
   "zig_version": "0.16.0"
