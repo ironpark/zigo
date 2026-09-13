@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-13T19:35:29Z"
 depends_on:
 - "201-api-consistency-refactor#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `grep -rn "api.in(\|\.members(\|\.named(\|\.documented(\|enumType\|taggedUnion\|api.val(" examples src tests docs` returns nothing.
 > NEXT: none
