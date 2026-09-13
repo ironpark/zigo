@@ -2,7 +2,7 @@
 depends_on:
 - "201-api-consistency-refactor#2"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `grep -rn "func (.*) Zigo" examples/*/go*` returns nothing.
 > NEXT: none
