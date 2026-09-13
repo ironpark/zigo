@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-13T20:19:41Z"
 depends_on:
 - "201-api-consistency-refactor#2"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `grep -rn "func (.*) Zigo" examples/*/go*` returns nothing.
 > NEXT: none
