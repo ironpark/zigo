@@ -14,24 +14,24 @@ const State = struct {
     sessions: []const ir.Session = &.{},
 };
 
-pub fn binding(comptime source: a.Binding) ir.Binding {
+pub fn binding(comptime Root: type, comptime source: a.Binding) ir.Binding {
     return comptime blk: {
         @setEvalBranchQuota(2_000_000);
-        var state: State = .{ .root = source.root };
+        var state: State = .{ .root = Root };
         collectTypes(source.declarations, &state);
         resolveTypeReferences(&state);
         flatten(source.declarations, &state, null, null, source.defaults);
-        var exclusions: []const []const u8 = &.{};
-        const discover: ?ir.Discover = switch (source.discovery) {
+        const discovery: ?ir.Discovery = switch (source.discovery) {
             .explicit => null,
             .public, .recursive => |selection| b: {
+                var exclusions: []const []const u8 = &.{};
                 for (selection.exclude) |ref| {
-                    checkRoot(ref.root, source.root, ref.path);
+                    checkRoot(ref.root, Root, ref.path);
                     const path = functionPath(ref, state);
                     for (exclusions) |previous| if (std.mem.eql(u8, previous, path)) @compileError("zigo duplicate discovery exclusion: " ++ ref.path);
                     exclusions = exclusions ++ [_][]const u8{path};
                 }
-                break :b if (source.discovery == .public) .public else .recursive;
+                break :b .{ .mode = if (source.discovery == .public) .public else .recursive, .exclude = exclusions };
             },
         };
         const release = if (source.string_release) |ref| functionPath(ref, state) else null;
@@ -44,13 +44,12 @@ pub fn binding(comptime source: a.Binding) ir.Binding {
             if (!found) @compileError("zigo release function is not exported: " ++ path);
         };
         break :blk .{
-            .root = source.root,
+            .root = Root,
             .allocator = source.allocator,
             .io = source.io,
             .codepoints = source.defaults.codepoints orelse .explicit,
             .strings = source.defaults.strings orelse .explicit,
-            .discover = discover,
-            .exclude = exclusions,
+            .discovery = discovery,
             .string_release = release,
             .types = state.types,
             .functions = state.functions,
@@ -106,9 +105,9 @@ fn collectTypes(comptime entries: []const a.Entry, state: *State) void {
                 .handle => |o| .{ .handle = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .fields = o.fields, .ext = externalExtensions(t.extensions) } },
                 .value => |o| .{ .value = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .fields = o.fields, .go = o.go, .ext = externalExtensions(t.extensions) } },
                 .materialized => |o| .{ .materialized = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .fields = o.fields, .ext = externalExtensions(t.extensions) } },
-                .enumeration => |o| .{ .enumeration = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .go = o.go, .exhaustive = o.exhaustive, .fields = o.fields, .text = hasText(t.extensions), .ext = externalExtensions(t.extensions) } },
+                .enumeration => |o| .{ .enumeration = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .go = o.go, .exhaustive = o.exhaustive, .fields = o.fields, .text = o.text, .ext = externalExtensions(t.extensions) } },
                 .tagged_union => |o| .{ .tagged_union = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .access = o.access, .omit = o.omit, .ext = externalExtensions(t.extensions) } },
-                .callback => |o| .{ .callback = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .params = callbackParams(t.ref.type, o, t.ref.path), .returns = .{ .semantic = o.returns.semantic }, .userdata = o.userdata, .retention = o.retention, .thread = o.thread, .reentrancy = o.reentrancy, .on_callback_failure = o.on_failure, .ext = externalExtensions(t.extensions) } },
+                .callback => |o| .{ .callback = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .params = callbackParams(t.ref.type, o, t.ref.path), .returns = .{ .semantic = o.returns.semantic }, .userdata = o.userdata, .retention = o.contract.retention, .thread = o.contract.thread, .reentrancy = o.contract.reentrancy, .on_failure = o.contract.on_failure, .ext = externalExtensions(t.extensions) } },
             };
             state.source_types = state.source_types ++ [_]a.Type{t};
             state.types = state.types ++ [_]ir.Type{result};
@@ -183,7 +182,7 @@ fn flatten(comptime entries: []const a.Entry, state: *State, comptime package_in
             var children: []const ir.SessionChild = &.{};
             for (s.children) |child| {
                 _ = typeName(child.type, state.*);
-                children = children ++ [_]ir.SessionChild{.{ .type = child.type.type, .name = child.name, .plural = child.plural }};
+                children = children ++ [_]ir.SessionChild{.{ .type = child.type.type, .accessor = child.accessor }};
             }
             state.sessions = state.sessions ++ [_]ir.Session{.{ .name = s.name, .primary = s.primary.type, .children = children, .doc = s.doc }};
         },
@@ -258,7 +257,7 @@ fn normalizeFunction(comptime f: a.Function, comptime state: State, comptime par
     }
     result.returns.semantic = f.options.returns.semantic;
     result.returns.go = f.options.returns.go;
-    switch (f.options.returns.lifetime) {
+    switch (f.options.returns.ownership) {
         .inferred => {},
         .owned => |owned| {
             result.returns.ownership = .caller;
@@ -308,11 +307,14 @@ fn normalizeFunction(comptime f: a.Function, comptime state: State, comptime par
                         out.options = opt.options;
                     },
                     .callback => |c| {
-                        out.retention = c.retention;
-                        out.reentrancy = c.reentrancy;
-                        out.thread = c.thread;
+                        // The call site wins field by field; what it leaves
+                        // null it inherits from the registered callback type.
+                        const inherited = callbackTypeContract(info.params[index].type.?, state);
+                        out.retention = c.contract.retention orelse inherited.retention;
+                        out.reentrancy = c.contract.reentrancy orelse inherited.reentrancy;
+                        out.thread = c.contract.thread orelse inherited.thread;
                         out.go_error = c.go_error;
-                        out.on_callback_failure = c.on_failure;
+                        out.on_failure = c.contract.on_failure;
                         if (c.userdata) |at| {
                             if (at >= info.params.len or at == receiver_index or injected(info.params[at].type.?)) @compileError("zigo invalid callback userdata index: " ++ f.ref.path);
                             out.userdata = .{ .param = paramName(f, at, info, receiver_index) };
@@ -335,6 +337,20 @@ fn normalizeFunction(comptime f: a.Function, comptime state: State, comptime par
         result.params = params;
     }
     return result;
+}
+/// The contract a registered `.callback` entry declares for `T`, or an empty
+/// one when `T` is not registered. `on_failure` is not inherited here: the
+/// document resolves it per parameter, and reflection records only what the
+/// call site said.
+fn callbackTypeContract(comptime T: type, comptime state: State) a.CallbackContract {
+    for (state.source_types) |t| {
+        if (t.representation == .callback and t.ref.type == T) return .{
+            .retention = t.representation.callback.contract.retention,
+            .reentrancy = t.representation.callback.contract.reentrancy,
+            .thread = t.representation.callback.contract.thread,
+        };
+    }
+    return .{};
 }
 fn validateContract(comptime p: a.Param, comptime T: type, comptime path: []const u8) void {
     const info = @typeInfo(T);
@@ -387,8 +403,9 @@ test "tree normalization owns packages and sparse original argument indices" {
         };
     };
     const api = a.scope(Lib);
-    const doc = api.in("Document");
-    const result = comptime binding(.{ .root = Lib, .declarations = &.{a.package(.{ .path = "io", .declarations = &.{api.handle("Document", .{}).with(.{ .members = &.{ doc.func("create", .{}), doc.func("read", .{ .params = &.{.{ .index = 3, .go_name = "dst", .contract = .{ .buffer = .{ .output = .{ .written = .result } } } }} }), doc.func("deinit", .{}) } })} })} });
+    const p = @import("param.zig");
+    const Doc = api.handle("Document", .{}).context();
+    const result = comptime binding(Lib, .{ .declarations = &.{a.package(.{ .path = "io", .declarations = &.{Doc.members(&.{ Doc.func("create", .{}), Doc.func("read", .{ .params = &.{p.output(3, .result).named("dst")} }), Doc.func("deinit", .{}) })} })} });
     try std.testing.expectEqualStrings("Document.read", result.functions[1].path);
     try std.testing.expectEqual(@as(usize, 2), result.functions[1].params.len);
     try std.testing.expectEqualStrings("dst", result.functions[1].params[1].name.?);
@@ -410,10 +427,10 @@ test "Go renames preserve source references and release ownership" {
         pub fn free(_: []u8) void {}
     };
     const api = a.scope(Lib);
-    const result = comptime binding(.{ .root = Lib, .declarations = &.{
-        api.handle("Store", .{}).named("Renamed"),
-        api.in("Store").func("size", .{}),
-        api.func("take", .{ .returns = .{ .lifetime = .{ .owned = .{ .release = api.ref("free") } }, .semantic = .utf8_string } }),
+    const Store = api.handle("Store", .{}).with(.{ .name = "Renamed" }).context();
+    const result = comptime binding(Lib, .{ .declarations = &.{
+        Store.members(&.{Store.func("size", .{})}),
+        api.func("take", .{ .returns = .{ .ownership = .{ .owned = .{ .release = api.ref("free") } }, .semantic = .utf8_string } }),
         api.func("free", .{}),
     } });
     try std.testing.expectEqualStrings("Renamed.size", result.functions[0].path);
@@ -426,7 +443,7 @@ test "package defaults override only declared authoring defaults" {
         pub fn text(_: []const u8) void {}
     };
     const api = a.scope(Lib);
-    const result = comptime binding(.{ .root = Lib, .defaults = .{ .strings = .infer_utf8, .codepoints = .infer_u21 }, .declarations = &.{
+    const result = comptime binding(Lib, .{ .defaults = .{ .strings = .infer_utf8, .codepoints = .infer_u21 }, .declarations = &.{
         a.package(.{ .path = "text", .defaults = .{ .strings = .explicit }, .declarations = &.{api.func("text", .{})} }),
     } });
     try std.testing.expectEqual(ir.Strings.explicit, result.functions[0].strings.?);
@@ -439,10 +456,6 @@ fn externalExtensions(comptime entries: []const ir.Extension) []const ir.Extensi
         result = result ++ [_]ir.Extension{e};
     };
     return result;
-}
-fn hasText(comptime entries: []const ir.Extension) bool {
-    for (entries) |e| if (e.builtin == .text) return true;
-    return false;
 }
 
 fn automaticReceiver(comptime T: type, comptime entry: ir.Type) bool {
@@ -469,8 +482,9 @@ test "contract helpers and explicit constructor context normalize once" {
         }
     };
     const api = a.scope(Lib);
-    const member = comptime binding(.{ .root = Lib, .declarations = &.{
-        api.handle("Parent", .{}).members(&.{api.func("create", .{
+    const Parent = api.handle("Parent", .{}).context();
+    const member = comptime binding(Lib, .{ .declarations = &.{
+        Parent.members(&.{api.func("create", .{
             .role = .{ .constructor = .{ .type = api.typeRef("Child"), .receiver = .member, .parent = .receiver } },
             .params = &.{p.output(1, .all).named("dst")},
         })}),
@@ -480,8 +494,8 @@ test "contract helpers and explicit constructor context normalize once" {
     try std.testing.expect(member.functions[0].child_of_receiver);
     try std.testing.expectEqual(@as(usize, 1), member.functions[0].params.len);
     try std.testing.expectEqualStrings("dst", member.functions[0].params[0].name.?);
-    const static = comptime binding(.{ .root = Lib, .declarations = &.{
-        api.handle("Parent", .{}).members(&.{api.func("create", .{
+    const static = comptime binding(Lib, .{ .declarations = &.{
+        Parent.members(&.{api.func("create", .{
             .role = .{ .constructor = .{ .type = api.typeRef("Child") } },
             .params = &.{.{ .index = 0, .go_name = "parent" }},
         })}),
@@ -493,9 +507,9 @@ test "contract helpers and explicit constructor context normalize once" {
     try std.testing.expect(static.functions[0].receiver == null);
     try std.testing.expectEqual(@as(usize, 2), static.functions[0].params.len);
     try std.testing.expectEqualStrings("root.release", static.functions[1].returns.release.?);
-    try std.testing.expectEqual(a.Lifetime.inferred, (a.Returns{}).lifetime);
-    try std.testing.expect(r.owned().lifetime.owned.release == null);
-    try std.testing.expect(r.borrowed().lifetime == .borrowed);
+    try std.testing.expect((a.Returns{}).ownership == .inferred);
+    try std.testing.expect(r.owned().ownership.owned.release == null);
+    try std.testing.expect(r.borrowed().ownership == .borrowed);
     try std.testing.expect(p.input(0).contract.buffer == .input);
     try std.testing.expect(p.inout(1, .result).contract.buffer == .inout);
     try std.testing.expectEqual(@as(?u32, 1024), p.stream(2, 1024).contract.stream.buffer);
@@ -547,10 +561,10 @@ test "callback hints use sparse native indices for every userdata position" {
         pub const Last = *const fn (u32, [*]const u8, usize, usize) callconv(.c) void;
     };
     const api = a.scope(Lib);
-    const result = comptime binding(.{ .root = Lib, .declarations = &.{
+    const result = comptime binding(Lib, .{ .declarations = &.{
         api.callback("First", .{ .userdata = .first, .params = &.{
             .{ .index = 2, .semantic = .opaque_bytes }, .{ .index = 1, .semantic = .codepoint },
-        }, .on_failure = .{ .result = 0 } }),
+        }, .contract = .{ .on_failure = .{ .result = 0 } } }),
         api.callback("Middle", .{ .userdata = .{ .index = 1 }, .params = &.{.{ .index = 2, .semantic = .utf8_string }} }),
         api.callback("Last", .{ .params = &.{.{ .index = 1, .semantic = .opaque_bytes }} }),
     } });
@@ -560,5 +574,29 @@ test "callback hints use sparse native indices for every userdata position" {
     try std.testing.expect(result.types[1].callback.params[0].semantic == null);
     try std.testing.expectEqual(ir.SemanticHint.utf8_string, result.types[1].callback.params[1].semantic.?);
     try std.testing.expectEqual(ir.SemanticHint.opaque_bytes, result.types[2].callback.params[1].semantic.?);
-    try std.testing.expectEqual(@as(i64, 0), result.types[0].callback.on_callback_failure.?.result);
+    try std.testing.expectEqual(@as(i64, 0), result.types[0].callback.on_failure.?.result);
+}
+
+test "a call site overrides the registered callback contract field by field" {
+    const Lib = struct {
+        pub const Observer = *const fn (u32, usize) callconv(.c) void;
+        pub fn watch(_: Observer, _: usize) void {}
+        pub fn peek(_: Observer, _: usize) void {}
+    };
+    const p = @import("param.zig");
+    const api = a.scope(Lib);
+    const result = comptime binding(Lib, .{ .declarations = &.{
+        api.callback("Observer", .{ .contract = .{ .retention = .retained, .thread = .any, .on_failure = .{ .result = 0 } } }),
+        api.func("watch", .{ .params = &.{p.callback(0, .{ .contract = .{ .retention = .borrowed } })} }),
+        api.func("peek", .{ .params = &.{p.callback(0, .{ .go_error = true })} }),
+    } });
+    const watch = result.functions[0].params[0];
+    try std.testing.expectEqual(ir.Retention.borrowed, watch.retention.?);
+    try std.testing.expectEqual(ir.Thread.any, watch.thread.?);
+    try std.testing.expect(watch.reentrancy == null);
+    const peek = result.functions[1].params[0];
+    try std.testing.expectEqual(ir.Retention.retained, peek.retention.?);
+    try std.testing.expect(peek.go_error);
+    // The failure result stays on the type; the document resolves it per parameter.
+    try std.testing.expect(peek.on_failure == null);
 }

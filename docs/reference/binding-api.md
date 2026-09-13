@@ -6,8 +6,9 @@
 ## 최상위 바인딩
 
 ```zig
-pub const bindings = zigo.define(.{
-    .root = library,
+const api = zigo.scope(library);
+
+pub const bindings = zigo.define(api, .{
     .allocator = null,
     .io = null,
     .defaults = .{},
@@ -17,9 +18,10 @@ pub const bindings = zigo.define(.{
 });
 ```
 
+root 모듈은 `zigo.scope(library)`가 한 번 말하고, `zigo.define`은 그 scope를 첫 인자로 받습니다.
+
 | 필드 | 기본값 | 의미 |
 |---|---|---|
-| `root` | 필수 | 모든 경로와 타입 식별 정보의 root 모듈 |
 | `allocator` | `null` | allocator 주입과 임시 변환 storage |
 | `io` | `null` | `std.Io` 주입 값 |
 | `defaults.codepoints` | `null` | `.infer_u21` 또는 `.explicit`; `null`은 최상위에서 `.explicit`, 하위 패키지에서 상위 설정 상속 |
@@ -36,13 +38,13 @@ allocator 주입에는 `.c_allocator`, `.page_allocator`, `.smp_allocator` 또�
 
 ```zig
 const api = zigo.scope(library);
-const nested = api.in("namespace");
+const nested = api.namespace("namespace");
 ```
 
 | API | 결과 |
 |---|---|
 | `scope(Root)` | root container의 typed scope |
-| `scope.in("Name")` | 중첩 공개 타입 또는 네임스페이스 scope |
+| `scope.namespace("name")` | 중첩 네임스페이스(struct container) scope. 등록 타입의 멤버는 `.context()`로 접근합니다 |
 | `scope.ref("name")` | checked `FunctionRef` |
 | `scope.typeRef("Name")` | checked `TypeRef` |
 | `scope.func("name", options)` | 함수 entry |
@@ -56,20 +58,22 @@ const nested = api.in("namespace");
 | API | Zig 대상 | 주요 옵션 |
 |---|---|---|
 | `handle(name, options)` | 구조체, opaque 또는 union 객체 | `fields` |
-| `val(name, options)` | extern·packed 구조체 | `fields`, `go` |
+| `value(name, options)` | extern·packed 구조체 | `fields`, `go` |
 | `materialized(name, options)` | 일반 결과 구조체 | `fields` |
-| `enumType(name, options)` | 열거형 | `exhaustive`, `go`, `covers`, `fields` |
-| `taggedUnion(name, options)` | tagged union | `access`, `omit` |
-| `callback(name, options)` | 함수 포인터 alias | 매개변수, userdata와 failure 계약 |
+| `enumeration(name, options)` | 열거형 | `exhaustive`, `text`, `go`, `covers`, `fields` |
+| `@"union"(name, options)` | tagged union | `access`, `omit` |
+| `callback(name, options)` | 함수 포인터 alias | 매개변수, userdata와 `contract` |
+
+`enumeration`의 `.text = true`는 `Parse<Enum>`, `MarshalText`와 `UnmarshalText`를 생성합니다.
 
 `fields`는 멤버별 hint와 문서입니다.
 
 ```zig
-api.val("RenderCell", .{ .fields = &.{
+api.value("RenderCell", .{ .fields = &.{
     .{ .name = "text", .semantic = .utf8_string },
     .{ .name = "fg", .doc = "0xRRGGBB." },
 } }),
-api.enumType("CursorStyle", .{ .fields = &.{
+api.enumeration("CursorStyle", .{ .fields = &.{
     .{ .name = "block", .doc = "The filled cell the terminal starts in." },
 } }),
 ```
@@ -77,7 +81,7 @@ api.enumType("CursorStyle", .{ .fields = &.{
 | 필드 | 의미 |
 |---|---|
 | `name` | Zig 필드 또는 태그 이름. 없는 이름을 적으면 컴파일 시점에 거절됩니다 |
-| `semantic` | 필드의 semantic hint (`val`·`materialized`만) |
+| `semantic` | 필드의 semantic hint (`value`·`materialized`만) |
 | `doc` | 그 멤버의 Go doc |
 
 멤버 문서의 우선순위는 `.doc` → Zig 소스의 `///` → 생성기의 기본 문장입니다. 태그를
@@ -89,15 +93,13 @@ api.enumType("CursorStyle", .{ .fields = &.{
 | 메서드 | 동작 |
 |---|---|
 | `.context()` | 타입 옵션과 소스 scope를 가진 컴파일 시점 context 생성 |
-| `.members(entries)` | 전체 member 목록 교체 |
-| `.named(name)` | Go 이름 교체; `null`은 override 제거 |
-| `.documented(doc)` | Go doc 교체; `null`은 override 제거 |
-| `.with(.{...})` | 지정한 옵션 필드만 교체 |
+| `.with(.{ .name, .doc })` | 지정한 옵션 필드만 교체; `null`은 override 제거 |
 | `.use(plugin, options)` | 플러그인을 중복 없이 추가 |
 | `.replacePlugin(plugin, options)` | 같은 플러그인 옵션을 명시적으로 교체 |
 
-타입 context는 `Target`, `source`, `func`, `funcs`, `ref`, `typeRef()`, `define()`과
-`select()`를 제공합니다.
+타입 context는 `Target`, `source`, `func`, `funcs`, `ref`, `typeRef()`, `members(entries)`와
+`select(selector)`를 제공합니다. 멤버는 `.context().members(...)` 또는 `.select(...)`로만
+선언합니다.
 
 ## 함수 옵션
 
@@ -137,11 +139,11 @@ role:
     .go_name = null,
     .semantic = null,
     .go = null,
-    .contract = .value,
 }
 ```
 
-계약 도우미:
+값이 아닌 계약은 도우미로만 적습니다. 도우미는 완성된 `Param`을 돌려주므로 `.index`와
+계약을 함께 정합니다.
 
 | 도우미 | 계약 |
 |---|---|
@@ -149,7 +151,7 @@ role:
 | `zigo.param.output(index, written)` | 출력 버퍼 |
 | `zigo.param.inout(index, written)` | input/output 버퍼 |
 | `zigo.param.stream(index, buffer)` | `std.Io` 어댑터 |
-| `zigo.param.callback(index, options)` | 콜백 수명과 오류 |
+| `zigo.param.callback(index, site)` | 콜백 호출 지점 계약 (`contract`, `go_error`, `userdata`) |
 | `zigo.param.cancel(index, error_name)` | context cancellation |
 | `zigo.param.flatten(index, fields)` | 구조체 필드를 Go 매개변수로 펼침 |
 | `zigo.param.options(index, fields, options)` | 구조체 필드를 Go functional options로 펼침 |
@@ -164,13 +166,15 @@ role:
 
 ```zig
 .{
-    .lifetime = .inferred,
     .semantic = null,
     .go = null,
 }
 ```
 
-| 도우미 | 수명 |
+소유권은 도우미로만 적습니다. 도우미는 완성된 `Returns`를 돌려주며, `.returns`를 새로 지정하면
+이전 해제 참조는 남지 않습니다.
+
+| 도우미 | 소유권 |
 |---|---|
 | `zigo.result.owned()` | 호출자가 소유하는 핸들 결과 |
 | `zigo.result.releasedBy(ref)` | 지정 함수로 해제할 caller-owned 버퍼 결과 |
@@ -180,17 +184,28 @@ semantic은 `.c_string`, `.opaque_bytes`, `.utf8_string`, `.codepoint`, `.intege
 
 ## 콜백 옵션
 
-타입 등록 옵션과 호출 지점의 계약을 구분합니다. `retention`, `reentrancy`, `thread`,
-`on_failure`는 양쪽에서 사용할 수 있으며 호출 지점에 지정한 값이 우선합니다.
-`go_error`는 `zigo.param.callback`의 호출 지점 전용 옵션입니다.
+콜백 타입 등록과 호출 지점은 같은 `CallbackContract`를 `.contract`로 받습니다. 타입에 적은
+값이 기본이고, 호출 지점이 적은 필드가 그 필드만 덮어씁니다.
+
+```zig
+api.callback("Observer", .{
+    .params = &.{},
+    .returns = .{ .semantic = null },
+    .userdata = null,
+    .contract = .{ .retention = .retained, .on_failure = .{ .result = 0 } },
+}),
+api.func("apply", .{ .params = &.{
+    zigo.param.callback(1, .{ .contract = .{ .retention = .borrowed }, .go_error = true }),
+} }),
+```
 
 | 필드 | 의미 |
 |---|---|
-| `retention` | `.borrowed` 또는 `.retained` |
-| `reentrancy` | `.allowed` 또는 `.forbidden` |
-| `thread` | `.caller` 또는 `.any` |
-| `go_error` | Go 콜백 결과에 `error` 추가 |
-| `on_failure.result` | 실패·panic 때 Zig 콜백에 반환할 정수 값 |
+| `contract.retention` | `.borrowed` 또는 `.retained` |
+| `contract.reentrancy` | `.allowed` 또는 `.forbidden` |
+| `contract.thread` | `.caller` 또는 `.any` |
+| `contract.on_failure.result` | 실패·panic 때 Zig 콜백에 반환할 정수 값 |
+| `go_error` | 호출 지점 전용. Go 콜백 결과에 `error` 추가 |
 | `userdata` | 타입 등록: `.first`, `.last`, `.{ .index = n }`; 호출 지점: 원래 Zig 함수의 토큰 인자 인덱스 |
 
 ## 패키지와 인터페이스
@@ -221,8 +236,7 @@ zigo.session(.{
     .primary = Parent.typeRef(),
     .children = &.{
         .{ .type = Child.typeRef() },
-        .{ .type = Stats.typeRef(), .name = "Stat" },
-        .{ .type = Search.typeRef(), .plural = "Searches" },
+        .{ .type = Search.typeRef(), .accessor = "Searches" },
     },
     .doc = null,
 })
@@ -234,23 +248,20 @@ zigo.session(.{
 | `primary` | 마지막에 닫히는 주 핸들. `.handle`로 등록된 타입이어야 합니다 |
 | `children` | primary가 `.parent = .receiver`로 내주는 자식 핸들 목록 |
 | `children[].type` | 자식 핸들 타입. `.handle`로 등록되어 있어야 합니다 |
-| `children[].name` | `Add<Name>`과 `<Name>s`를 만들 기준 이름. 기본값은 타입 이름 |
-| `children[].plural` | 접근자 이름 전체. 기본값은 기준 이름 + `s` |
+| `children[].accessor` | 접근자 이름 전체. 기본값은 타입 이름 + `s` |
 | `doc` | 생성 타입의 doc comment. 닫는 순서는 생성기가 별도로 적습니다 |
 
-`.name`은 기준 이름을 **줄여** 복수를 맞춥니다. `Stats` 핸들을 그대로 두면 접근자가
-`Statss`가 되지만, `.name = "Stat"`이면 `AddStat`과 `Stats`가 됩니다.
-
-기준을 줄여서는 닿지 않는 복수는 `.plural`로 접근자 이름을 그대로 적습니다. `Search`는
-어떻게 줄여도 `Searches`가 되지 않으므로 `.plural = "Searches"`가 필요하고, 입양 메서드는
-기준 이름을 그대로 써 `AddSearch`로 남습니다.
+입양 메서드는 항상 `Add<Type>`입니다. 접근자는 타입 이름에 `s`를 붙이므로, 그 규칙으로
+닿지 않는 복수는 `.accessor`로 이름을 그대로 적습니다. `Search`는 `.accessor = "Searches"`가
+필요하고, `Stats` 같은 이미 복수인 타입은 `.accessor = "Stats"`로 `Statss`를 피합니다.
 
 ## built-in feature
 
 | 연결 | 결과 |
 |---|---|
 | `.use(zigo.features.iterator, .{ .name = "All" })` | `iter.Seq`/`Seq2` 래퍼 |
-| `.use(zigo.features.implements, .{ .kind = .reader })` | 표준 I/O 메서드 래퍼. kind는 `.writer`, `.reader`, `.writer_to`, `.reader_from`, `.string_writer`. 여러 인터페이스는 `.kinds = &.{ ... }`로 나열합니다. `.string_writer`는 string semantic이 있으면 인자를 그대로, 없으면 string의 바이트를 빌려 넘깁니다 |
-| `.use(zigo.features.text, .{})` | 열거형 text 인코딩 API |
+| `.use(zigo.features.implements, .{ .kinds = &.{.reader} })` | 표준 I/O 메서드 래퍼. kind는 `.writer`, `.reader`, `.writer_to`, `.reader_from`, `.string_writer`이며 항상 목록으로 적습니다. `.string_writer`는 string semantic이 있으면 인자를 그대로, 없으면 string의 바이트를 빌려 넘깁니다 |
+
+열거형 text 인코딩은 feature가 아니라 `enumeration`의 `.text = true` 옵션입니다.
 
 외부 플러그인의 연결과 옵션은 [플러그인 문서](../plugins/README.md)를 참고하세요.

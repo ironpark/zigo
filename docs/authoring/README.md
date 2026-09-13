@@ -8,10 +8,10 @@
 | 필요한 동작 | 선언 | 수명과 비용 |
 |---|---|---|
 | 숫자·불리언을 함수 인자와 결과로 전달 | `api.func` | 지원 스칼라는 별도 타입 등록 없이 변환 |
-| 열거형 또는 ABI에 적합한 작은 구조체 전달 | `api.enumType`, `api.val` | Go 값으로 사용; 지원 필드·위치는 타입 참조 확인 |
+| 열거형 또는 ABI에 적합한 작은 구조체 전달 | `api.enumeration`, `api.value` | Go 값으로 사용; 지원 필드·위치는 타입 참조 확인 |
 | 상태를 변경하며 같은 객체를 여러 번 호출 | `api.handle` | 네이티브 객체를 유지; 소유한 핸들은 `Close` 필요 |
 | 포인터·문자열·슬라이스가 중첩된 결과를 한 번에 읽기 | `api.materialized` | Go 소유 값으로 복사; 직렬화 버퍼 해제 계약 필요 |
-| 현재 태그에 따라 다른 데이터를 읽기 | `api.taggedUnion` | 값·projection·스냅샷별 지원 조건과 비용 확인 |
+| 현재 태그에 따라 다른 데이터를 읽기 | `api.@"union"` | 값·projection·스냅샷별 지원 조건과 비용 확인 |
 
 일반 Zig 구조체를 값으로 전달하기 위해 무조건 `extern`으로 바꾸지는 마세요.
 원래 라이브러리의 메모리 배치와 사용 방식을 유지하면서 적합한 표현을 선택합니다.
@@ -24,14 +24,14 @@ const library = @import("mylib");
 
 const api = zigo.scope(library);
 
-pub const bindings = zigo.define(.{
-    .root = library,
+pub const bindings = zigo.define(api, .{
     .declarations = &.{
         api.func("add", .{}),
     },
 });
 ```
 
+`zigo.scope(library)`가 root 모듈을 한 번 말하고, `zigo.define`은 그 scope를 받습니다.
 `scope`에서 만드는 entry는 실제 Zig 선언을 컴파일 시점에 확인합니다. 존재하지 않는 함수나
 타입을 문자열로 적어도 생성 단계까지 미뤄지지 않고 Zig 컴파일 error가 됩니다.
 
@@ -42,7 +42,7 @@ pub const bindings = zigo.define(.{
 | entry | 만드는 함수 | 용도 |
 |---|---|---|
 | 함수 | `api.func` | 자유 함수 또는 메서드 |
-| 타입 | `api.handle`, `api.val`, `api.materialized`, `api.enumType`, `api.taggedUnion`, `api.callback` | Go 표현 선택 |
+| 타입 | `api.handle`, `api.value`, `api.materialized`, `api.enumeration`, `api.@"union"`, `api.callback` | Go 표현 선택 |
 | 패키지 | `zigo.package` | 공개 Go 하위 패키지 |
 | 인터페이스 | `zigo.interface` | 여러 핸들의 공통 Go 인터페이스 |
 
@@ -51,10 +51,9 @@ pub const bindings = zigo.define(.{
 ```zig
 const Context = api.handle("Context", .{}).context();
 
-pub const bindings = zigo.define(.{
-    .root = library,
+pub const bindings = zigo.define(api, .{
     .declarations = &.{
-        Context.define(&.{
+        Context.members(&.{
             Context.func("create", .{}),
             Context.func("add", .{}),
             Context.func("deinit", .{}),
@@ -63,15 +62,12 @@ pub const bindings = zigo.define(.{
 });
 ```
 
-`context()`는 타입 entry의 옵션과 원래 Zig scope를 함께 보존합니다. `define()`은 전체 멤버
-목록을 지정하고 `select()`는 선택자로 멤버를 고릅니다.
+`context()`는 타입 entry의 옵션과 원래 Zig scope를 함께 보존합니다. `members()`는 전체 멤버
+목록을 지정하고 `select()`는 선택자로 멤버를 고릅니다. 멤버를 선언하는 길은 이 둘뿐입니다.
 
 ## 공통 조합
 
-- `.named("GoName")`: 생성 Go 이름을 바꿉니다.
-- `.documented("...")`: 생성 문서 주석을 바꿉니다.
-- `.with(.{ ... })`: 지정한 옵션만 교체합니다.
-- `.members(&.{ ... })`: 타입의 멤버 목록 전체를 교체합니다.
+- `.with(.{ .name = "GoName", .doc = "..." })`: 지정한 옵션만 교체합니다. `null`은 override를 지웁니다.
 - `.use(plugin, options)`: built-in feature 또는 외부 플러그인을 붙입니다.
 - `.replacePlugin(plugin, options)`: 같은 플러그인의 기존 옵션을 명시적으로 교체합니다.
 

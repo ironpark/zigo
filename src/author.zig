@@ -1,6 +1,7 @@
 //! Public binding authoring: scoped references and typed declaration contracts.
 const std = @import("std");
 const ir = @import("declare.zig");
+const features = @import("features.zig");
 
 pub const SemanticHint = ir.SemanticHint;
 pub const GoAdapter = ir.GoAdapter;
@@ -40,36 +41,48 @@ pub const Role = union(enum) {
     constructor: struct { type: TypeRef, receiver: Receiver = .none, parent: enum { none, receiver } = .none },
     destructor: TypeRef,
 };
-pub const Lifetime = union(enum) {
+/// Who owns a result. Spelled through `zigo.result.*`; the literal form is
+/// not part of the authoring surface.
+const Ownership = union(enum) {
     inferred,
     owned: struct { release: ?FunctionRef = null },
-    borrowed: enum { receiver },
+    /// Owned by the receiver, and unusable once the receiver is closed.
+    borrowed,
     library,
 };
 pub const Returns = struct {
-    lifetime: Lifetime = .inferred,
+    /// Set by `zigo.result.owned()`, `releasedBy()`, `borrowed()`.
+    ownership: Ownership = .inferred,
     semantic: ?SemanticHint = null,
     go: ?GoAdapter = null,
 };
-pub const Buffer = union(enum) {
+const Buffer = union(enum) {
     input,
     output: struct { written: ?ir.Written = null },
     inout: struct { written: ?ir.Written = null },
 };
+/// The contract a callback type and each call site of it share. A callback
+/// declaration states the defaults; `zigo.param.callback` overrides them
+/// field by field, and a field left null inherits the declaration's value.
 pub const CallbackContract = struct {
     retention: ?ir.Retention = null,
     reentrancy: ?ir.Reentrancy = null,
     thread: ?ir.Thread = null,
-    go_error: bool = false,
     on_failure: ?ir.CallbackFailure = null,
+};
+/// What one call site adds to the shared contract.
+pub const CallbackSite = struct {
+    contract: CallbackContract = .{},
+    /// The Go callback returns an `error` (its Zig result is `i32`).
+    go_error: bool = false,
     /// Original Zig argument index carrying the token.
     userdata: ?usize = null,
 };
-pub const ParamContract = union(enum) {
+const ParamContract = union(enum) {
     value,
     buffer: Buffer,
     stream: struct { buffer: ?u32 = null },
-    callback: CallbackContract,
+    callback: CallbackSite,
     cancel: struct { canceled: ?[]const u8 = null },
     flatten: []const []const u8,
     options: struct {
@@ -83,6 +96,7 @@ pub const Param = struct {
     go_name: ?[]const u8 = null,
     semantic: ?SemanticHint = null,
     go: ?GoAdapter = null,
+    /// Set by `zigo.param.*`; a plain `.{ .index = n }` carries a value.
     contract: ParamContract = .value,
 
     pub fn named(comptime self: Param, comptime name: ?[]const u8) Param {
@@ -107,7 +121,14 @@ pub const Function = struct { ref: FunctionRef, options: FunctionOptions = .{}, 
 pub const HandleOptions = struct { fields: []const ir.HandleField = &.{} };
 pub const ValueOptions = struct { fields: []const ir.ValueField = &.{}, go: ?GoAdapter = null };
 pub const MaterializedOptions = struct { fields: []const ir.ValueField = &.{} };
-pub const EnumOptions = struct { exhaustive: bool = true, go: ?GoAdapter = null, covers: []const FunctionRef = &.{}, fields: []const ir.EnumField = &.{} };
+pub const EnumOptions = struct {
+    exhaustive: bool = true,
+    /// Generate `Parse<Enum>`, `MarshalText` and `UnmarshalText`.
+    text: bool = false,
+    go: ?GoAdapter = null,
+    covers: []const FunctionRef = &.{},
+    fields: []const ir.EnumField = &.{},
+};
 pub const UnionOptions = struct { access: ir.Access = .projection, omit: []const []const u8 = &.{} };
 /// Sparse hints indexed by the original native callback signature.
 pub const CallbackParam = struct { index: usize, semantic: ?SemanticHint = null };
@@ -115,10 +136,8 @@ pub const CallbackOptions = struct {
     params: []const CallbackParam = &.{},
     returns: struct { semantic: ?SemanticHint = null } = .{},
     userdata: ?ir.Userdata = null,
-    retention: ?ir.Retention = null,
-    reentrancy: ?ir.Reentrancy = null,
-    thread: ?ir.Thread = null,
-    on_failure: ?ir.CallbackFailure = null,
+    /// Defaults every call site of this type inherits.
+    contract: CallbackContract = .{},
 };
 pub const Representation = union(enum) {
     handle: HandleOptions,
@@ -131,6 +150,7 @@ pub const Representation = union(enum) {
 pub const TypeOptions = struct {
     name: ?[]const u8 = null,
     doc: ?[]const u8 = null,
+    /// Written by `.context().members(...)` and `.select(...)`.
     members: []const Entry = &.{},
 };
 pub const Type = struct {
@@ -153,27 +173,28 @@ pub const Interface = struct {
     closer: bool = true,
     doc: ?[]const u8 = null,
 };
+/// One dependent child a session adopts. The adopt method is `Add<Type>` and
+/// the accessor is `<Type>s` unless `accessor` spells the whole accessor name:
+/// a `Search` handle reads as `Searches` only because it is said here.
+pub const SessionChild = struct {
+    type: TypeRef,
+    accessor: ?[]const u8 = null,
+};
+
 /// A Go type that adopts one handle and the dependent children it handed out,
 /// and closes them in that order. The primary is closed last, and every child
 /// must be a dependent child of it.
-/// One dependent child a session adopts. `name` replaces the registered type
-/// name in the generated `Add<Name>` and `<Name>s`, which is what an irregular
-/// plural needs: a `Stats` handle listed as `.{ .type = Stats.typeRef(),
-/// .name = "Stat" }` reads as `AddStat` and `Stats` rather than `Statss`.
-pub const SessionChild = struct {
-    type: TypeRef,
-    name: ?[]const u8 = null,
-    /// The accessor's whole name, for a base whose plural is not `base ++ "s"`.
-    /// `Search` reads as `Searches` only because it is said here.
-    plural: ?[]const u8 = null,
-};
-
 pub const Session = struct {
     name: []const u8,
     primary: TypeRef,
     children: []const SessionChild,
     doc: ?[]const u8 = null,
 };
+
+/// The declaration kinds a plugin attaches to. The DSL's spelling of
+/// `plugin.Subject`; the two are compared by tag name, so a `plugin.Plugin`
+/// value and one of `zigo.features` pass the same check.
+pub const Subject = enum { function, handle, value, enumeration, tagged_union, callback, materialized, error_set };
 
 /// The authoring tree contains actual declarations, not package membership paths.
 pub const Entry = union(enum) {
@@ -189,7 +210,10 @@ pub const Entry = union(enum) {
         var result = self;
         switch (result) {
             .function => |*f| f.options = replace(f.options, values),
-            .type => |*t| t.options = replace(t.options, values),
+            .type => |*t| {
+                if (@hasField(@TypeOf(values), "members")) @compileError("zigo members are declared through .context().members(...)");
+                t.options = replace(t.options, values);
+            },
             else => @compileError("zigo with requires a function or type declaration"),
         }
         return result;
@@ -199,17 +223,6 @@ pub const Entry = union(enum) {
         return Context(self);
     }
 
-    /// Replace the type's complete member list, retaining its options and plugins.
-    pub fn members(comptime self: Entry, comptime entries: []const Entry) Entry {
-        if (self != .type) @compileError("zigo members requires a type declaration");
-        return self.with(.{ .members = entries });
-    }
-    pub fn named(comptime self: Entry, comptime name: ?[]const u8) Entry {
-        return self.with(.{ .name = name });
-    }
-    pub fn documented(comptime self: Entry, comptime doc: ?[]const u8) Entry {
-        return self.with(.{ .doc = doc });
-    }
     pub fn functionRef(comptime self: Entry) FunctionRef {
         if (self != .function) @compileError("zigo functionRef requires a function");
         return self.function.ref;
@@ -218,6 +231,9 @@ pub const Entry = union(enum) {
         if (self != .type) @compileError("zigo typeRef requires a type");
         return self.type.ref;
     }
+    /// Attach plugin `P` with its typed options. `P` is a `plugin.Plugin`
+    /// value or one of `zigo.features`; the same declaration cannot attach
+    /// the same plugin twice.
     pub fn use(comptime self: Entry, comptime P: anytype, comptime options: pluginOptions(P, self)) Entry {
         comptime checkPluginSubject(P, self);
         var result = self;
@@ -234,12 +250,11 @@ pub const Entry = union(enum) {
             pub const Options = pluginOptions(P, self);
         };
         var captured = ir.extension(Captured, options);
-        if (@hasField(@TypeOf(P), "builtin")) {
-            captured.builtin = switch (P.builtin) {
-                .iterator => .{ .iterator = options },
-                .implements => .{ .implements = implementsKinds(options) },
-                .text => .text,
-            };
+        if (std.mem.eql(u8, P.name, features.iterator.name)) {
+            captured.builtin = .{ .iterator = options };
+        } else if (std.mem.eql(u8, P.name, features.implements.name)) {
+            if (options.kinds.len == 0) @compileError("zigo implements needs a non-empty `.kinds`");
+            captured.builtin = .{ .implements = options.kinds };
         }
         const extended = extensions ++ [_]ir.Extension{captured};
         switch (result) {
@@ -270,29 +285,20 @@ pub const Entry = union(enum) {
     }
 };
 
-/// The kinds an `.implements` attachment names. One declaration says it with
-/// `.kind` or with `.kinds`, never with both: two spellings of the same list
-/// on one attachment would leave the order and the winner unstated.
-fn implementsKinds(comptime options: anytype) []const ir.Implements {
-    if (options.kind != null and options.kinds.len != 0) @compileError("zigo implements takes `.kind` or `.kinds`, not both");
-    if (options.kind) |one| return &[_]ir.Implements{one};
-    if (options.kinds.len == 0) @compileError("zigo implements needs `.kind` or a non-empty `.kinds`");
-    return options.kinds;
-}
-
 fn pluginOptions(comptime P: anytype, comptime entry: Entry) type {
+    inline for (.{ "name", "FunctionOptions", "TypeOptions", "subjects" }) |field| {
+        if (!@hasField(@TypeOf(P), field)) @compileError("zigo use expects a plugin.Plugin value; it has no `" ++ field ++ "`");
+    }
     return if (entry == .function) P.FunctionOptions else P.TypeOptions;
 }
 fn checkPluginSubject(comptime P: anytype, comptime entry: Entry) void {
-    if (@hasField(@TypeOf(P), "subjects")) {
-        const subject = switch (entry) {
-            .function => "function",
-            .type => @tagName(entry.type.representation),
-            else => @compileError("zigo plugins attach to functions or types"),
-        };
-        inline for (P.subjects) |candidate| if (std.mem.eql(u8, @tagName(candidate), subject)) return;
-        @compileError("zigo plugin " ++ P.name ++ " does not support " ++ subject);
-    }
+    const subject = switch (entry) {
+        .function => "function",
+        .type => @tagName(entry.type.representation),
+        else => @compileError("zigo plugins attach to functions or types"),
+    };
+    inline for (P.subjects) |candidate| if (std.mem.eql(u8, @tagName(candidate), subject)) return;
+    @compileError("zigo plugin " ++ P.name ++ " does not support " ++ subject);
 }
 fn replace(comptime original: anytype, comptime values: anytype) @TypeOf(original) {
     if (@typeInfo(@TypeOf(values)) != .@"struct") @compileError("zigo with expects named option fields");
@@ -304,7 +310,7 @@ fn replace(comptime original: anytype, comptime values: anytype) @TypeOf(origina
     return result;
 }
 
-/// A compile-time authoring context; define/select return the existing Entry schema.
+/// A compile-time authoring context; members/select return the existing Entry schema.
 fn Context(comptime entry: Entry) type {
     if (entry != .type) @compileError("zigo context requires a type declaration");
     if (entry.type.representation == .callback)
@@ -321,11 +327,13 @@ fn Context(comptime entry: Entry) type {
             return entry.typeRef();
         }
         /// Replace all members while preserving the captured options and plugins.
-        pub fn define(comptime entries: []const Entry) Entry {
-            return entry.members(entries);
+        pub fn members(comptime entries: []const Entry) Entry {
+            var result = entry;
+            result.type.options.members = entries;
+            return result;
         }
         pub fn select(comptime selector: Selector) Entry {
-            return Self.define(Self.funcs(selector));
+            return Self.members(Self.funcs(selector));
         }
     };
 }
@@ -340,8 +348,14 @@ pub fn scope(comptime Root: type) type {
 }
 fn Scope(comptime Root: type, comptime Container: type, comptime path: []const u8) type {
     return struct {
-        pub fn in(comptime name: []const u8) type {
+        /// The module every reference resolves against; `zigo.define` reads it.
+        pub const root = Root;
+
+        /// A nested namespace container. A registered type's members are not
+        /// reached this way: its `.context()` is.
+        pub fn namespace(comptime name: []const u8) type {
             const T = namedType(Container, name);
+            if (@typeInfo(T) != .@"struct") @compileError("zigo namespace requires a struct container: " ++ path ++ "." ++ name);
             return Scope(Root, T, path ++ "." ++ name);
         }
         pub fn ref(comptime name: []const u8) FunctionRef {
@@ -401,16 +415,16 @@ fn Scope(comptime Root: type, comptime Container: type, comptime path: []const u
         pub fn handle(comptime name: []const u8, comptime options: HandleOptions) Entry {
             return typeEntry(name, .{ .handle = options });
         }
-        pub fn val(comptime name: []const u8, comptime options: ValueOptions) Entry {
+        pub fn value(comptime name: []const u8, comptime options: ValueOptions) Entry {
             return typeEntry(name, .{ .value = options });
         }
         pub fn materialized(comptime name: []const u8, comptime options: MaterializedOptions) Entry {
             return typeEntry(name, .{ .materialized = options });
         }
-        pub fn enumType(comptime name: []const u8, comptime options: EnumOptions) Entry {
+        pub fn enumeration(comptime name: []const u8, comptime options: EnumOptions) Entry {
             return typeEntry(name, .{ .enumeration = options });
         }
-        pub fn taggedUnion(comptime name: []const u8, comptime options: UnionOptions) Entry {
+        pub fn @"union"(comptime name: []const u8, comptime options: UnionOptions) Entry {
             return typeEntry(name, .{ .tagged_union = options });
         }
         pub fn callback(comptime name: []const u8, comptime options: CallbackOptions) Entry {
@@ -439,8 +453,9 @@ pub const Discovery = union(enum) {
     public: DiscoverySelection,
     recursive: DiscoverySelection,
 };
+/// Everything a binding says besides its root, which `zigo.scope(library)`
+/// already states: `zigo.define(api, .{ ... })` takes the scope.
 pub const Binding = struct {
-    root: type,
     allocator: ?Injection = null,
     io: ?Injection = null,
     defaults: Defaults = .{},
@@ -459,25 +474,27 @@ test "scoped references and explicit selection preserve source identity" {
     const entries = comptime api.funcs(.{ .names = &.{ "b", "a" } });
     try std.testing.expectEqualStrings("root.b", comptime entries[0].functionRef().path);
     try std.testing.expect(api.typeRef("Item").type == Lib.Item);
-    const original = comptime api.handle("Item", .{}).members(entries);
-    const replaced = comptime original.members(&.{api.func("a", .{})});
+    const Item = api.handle("Item", .{}).context();
+    const original = comptime Item.members(entries);
+    const replaced = comptime original.context().members(&.{api.func("a", .{})});
     try std.testing.expectEqual(@as(usize, 1), replaced.type.options.members.len);
     try std.testing.expectEqualStrings("root.a", replaced.type.options.members[0].function.ref.path);
     const param = comptime (Param{ .index = 1 }).named("alias").named(null);
     try std.testing.expect(param.go_name == null);
-    const renamed = api.func("a", .{}).named("Other");
+    const renamed = api.func("a", .{}).with(.{ .name = "Other" });
     try std.testing.expectEqualStrings("root.a", renamed.functionRef().path);
 }
-test "contract replacement clears stale lifetime and explicit null clears names" {
+test "contract replacement clears stale ownership and explicit null clears names" {
     const Lib = struct {
         pub fn take() void {}
         pub fn free() void {}
     };
+    const result = @import("result.zig");
     const api = scope(Lib);
-    const owned = api.func("take", .{ .name = "Take", .returns = .{ .lifetime = .{ .owned = .{ .release = api.ref("free") } } } });
-    const borrowed = owned.with(.{ .name = null, .returns = Returns{ .lifetime = .{ .borrowed = .receiver } } });
+    const owned = api.func("take", .{ .name = "Take", .returns = result.releasedBy(api.ref("free")) });
+    const borrowed = owned.with(.{ .name = null, .returns = result.borrowed() });
     try std.testing.expect(borrowed.function.options.name == null);
-    try std.testing.expect(borrowed.function.options.returns.lifetime == .borrowed);
+    try std.testing.expect(borrowed.function.options.returns.ownership == .borrowed);
 }
 
 test "type plugins and explicit replacement keep one typed option payload" {
@@ -485,7 +502,7 @@ test "type plugins and explicit replacement keep one typed option payload" {
         pub const Record = extern struct { value: u32 };
     };
     const P = .{ .name = "TEST", .FunctionOptions = struct {}, .TypeOptions = struct { limit: ?u32 = 10 }, .subjects = [_]enum { value }{.value} };
-    const entry = comptime scope(Lib).val("Record", .{}).use(P, .{ .limit = 5 }).replacePlugin(P, .{ .limit = null });
+    const entry = comptime scope(Lib).value("Record", .{}).use(P, .{ .limit = 5 }).replacePlugin(P, .{ .limit = null });
     try std.testing.expectEqual(@as(usize, 1), entry.type.extensions.len);
     const bytes = try entry.type.extensions[0].jsonAlloc(std.testing.allocator);
     defer std.testing.allocator.free(bytes);
@@ -500,7 +517,7 @@ test "plugin options are selected by attachment target" {
     const P = .{ .name = "DUAL", .FunctionOptions = struct { checked: bool }, .TypeOptions = struct { key: []const u8 }, .subjects = [_]enum { function, value }{ .function, .value } };
     const api = scope(Lib);
     const f = comptime api.func("f", .{}).use(P, .{ .checked = true });
-    const t = comptime api.val("Record", .{}).use(P, .{ .key = "value" });
+    const t = comptime api.value("Record", .{}).use(P, .{ .key = "value" });
     const f_json = try f.function.extensions[0].jsonAlloc(std.testing.allocator);
     defer std.testing.allocator.free(f_json);
     const t_json = try t.type.extensions[0].jsonAlloc(std.testing.allocator);

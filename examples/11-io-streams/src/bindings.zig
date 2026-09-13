@@ -11,12 +11,11 @@ const Source = api.handle("Source", .{}).context();
 
 // Members infer their Go receiver from the owning type and Zig signature. Indices
 // still refer to the original Zig signature, including that receiver.
-pub const bindings = zigo.define(.{
-    .root = library,
+pub const bindings = zigo.define(api, .{
     .allocator = .c_allocator,
     .defaults = .{ .codepoints = .infer_u21 },
     .declarations = &.{
-        Document.define(&.{
+        Document.members(&.{
             Document.func("create", .{}),
             Document.func("deinit", .{}),
             // One method, two interfaces: Write hands the bytes over, and
@@ -26,17 +25,17 @@ pub const bindings = zigo.define(.{
                 .params = &.{.{ .index = 1, .semantic = .utf8_string }},
             }),
             Document.func("count", .{}),
-            Document.func("dump", .{}).use(zigo.features.implements, .{ .kind = .writer_to }),
+            Document.func("dump", .{}).use(zigo.features.implements, .{ .kinds = &.{.writer_to} }),
             Document.func("load", .{ .params = &.{
                 zigo.param.stream(1, 4096),
-            } }).use(zigo.features.implements, .{ .kind = .reader_from }),
+            } }).use(zigo.features.implements, .{ .kinds = &.{.reader_from} }),
             Document.func("readInto", .{
                 .params = &.{
                     zigo.param.output(1, .result),
                 },
-            }).use(zigo.features.implements, .{ .kind = .reader }),
+            }).use(zigo.features.implements, .{ .kinds = &.{.reader} }),
         }),
-        Sink.define(&.{
+        Sink.members(&.{
             Sink.func("create", .{}),
             Sink.func("writer", .{}),
             Sink.func("count", .{}),
@@ -44,7 +43,7 @@ pub const bindings = zigo.define(.{
             // Opaque bytes, so the Go method takes `[]byte`; `.string_writer`
             // adds the `WriteString` that lends a string's bytes instead of
             // copying them.
-            Sink.func("push", .{}).use(zigo.features.implements, .{ .kind = .string_writer }),
+            Sink.func("push", .{}).use(zigo.features.implements, .{ .kinds = &.{.string_writer} }),
         }),
         Source.select(.{ .names = &.{ "create", "reader", "deinit" } }),
         api.func("banner", .{}),
@@ -53,7 +52,7 @@ pub const bindings = zigo.define(.{
         // Full schema spelling: omitting written means the entire output is filled.
         api.func("fillCodepoints", .{
             .params = &.{
-                .{ .index = 0, .contract = .{ .buffer = .{ .output = .{} } } },
+                zigo.param.output(0, .all),
             },
         }),
         api.func("takeCodepoints", .{ .returns = zigo.result.releasedBy(api.ref("freeCodepoints")) }),

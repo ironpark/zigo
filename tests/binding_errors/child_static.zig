@@ -8,7 +8,7 @@ const Lib = struct {
 };
 const api = zigo.scope(Lib);
 comptime {
-    _ = zigo.define(.{ .root = Lib, .declarations = &.{
+    _ = zigo.define(api, .{ .declarations = &.{
         api.handle("A", .{}), api.handle("B", .{}), api.func("make", .{ .role = .{ .constructor = .{ .type = api.typeRef("B"), .parent = .receiver } } }),
     } });
 }

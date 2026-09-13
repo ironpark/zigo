@@ -7,7 +7,9 @@ const std = @import("std");
 /// shape, is an ordinary Zig compile error at the declaration rather than a
 /// diagnostic long afterwards.
 pub const Extension = struct {
-    builtin: union(enum) { none, iterator: Iterator, implements: []const Implements, text } = .none,
+    /// Set by `Entry.use` for `zigo.features`, which the reflector reads as
+    /// typed fields rather than through `ext`.
+    builtin: union(enum) { none, iterator: Iterator, implements: []const Implements } = .none,
     /// The plugin's name. It is the key the options travel under in
     /// `semantic.json`, so two plugins cannot collide silently.
     plugin: []const u8,
@@ -44,7 +46,12 @@ pub const Reentrancy = enum { allowed, forbidden };
 pub const Thread = enum { caller, any };
 pub const Ownership = enum { borrowed, caller, library };
 pub const Access = enum { projection, snapshot };
-pub const Discover = enum { public, recursive };
+/// Automatic function discovery: which containers are walked, and the
+/// resolved paths (`root.name`, `<Type>.name`) left out.
+pub const Discovery = struct {
+    mode: enum { public, recursive },
+    exclude: []const []const u8 = &.{},
+};
 pub const Codepoints = enum { explicit, infer_u21 };
 pub const Strings = enum { explicit, infer_utf8 };
 
@@ -98,7 +105,7 @@ pub const Param = struct {
     retention: ?Retention = null,
     /// The callback may return a Go `error` (its Zig result is `i32`).
     go_error: bool = false,
-    on_callback_failure: ?CallbackFailure = null,
+    on_failure: ?CallbackFailure = null,
     reentrancy: ?Reentrancy = null,
     thread: ?Thread = null,
     /// The parameter carrying this callback's Go token, when it is not the
@@ -297,7 +304,7 @@ pub const Callback = struct {
     retention: ?Retention = null,
     reentrancy: ?Reentrancy = null,
     thread: ?Thread = null,
-    on_callback_failure: ?CallbackFailure = null,
+    on_failure: ?CallbackFailure = null,
     ext: []const Extension = &.{},
 };
 
@@ -358,15 +365,11 @@ pub const Interface = struct {
 /// A session: the primary handle a Go container owns, and the dependent child
 /// handles it hands out. Resolved to Zig types, like every other declaration
 /// here; the reflector turns them into registered opaque names.
-/// One dependent child of a session, resolved to its Zig type. `name`
-/// overrides the registered type name the generated accessor and adopt method
-/// are built from.
+/// One dependent child of a session, resolved to its Zig type. `accessor`
+/// is the whole accessor name, for a type whose plural is not `type ++ "s"`.
 pub const SessionChild = struct {
     type: type,
-    name: ?[]const u8 = null,
-    /// The accessor's whole name, for a base whose plural is not `base ++ "s"`.
-    /// `Search` reads as `Searches` only because it is said here.
-    plural: ?[]const u8 = null,
+    accessor: ?[]const u8 = null,
 };
 
 pub const Session = struct {
@@ -381,9 +384,7 @@ pub const Binding = struct {
     root: type,
     allocator: ?Injection = null,
     io: ?Injection = null,
-    discover: ?Discover = null,
-    /// Paths discovery must leave out. Requires `.discover`.
-    exclude: []const []const u8 = &.{},
+    discovery: ?Discovery = null,
     codepoints: Codepoints = .explicit,
     strings: Strings = .explicit,
     /// Default `Returns.release` for caller-owned string results.
@@ -426,7 +427,7 @@ test "a binding literal coerces, keeps defaults, and exposes type values" {
         std.debug.assert(binding.functions[0].constructs.? == Lib.Terminal);
         std.debug.assert(binding.functions[1].params[1].direction == .out);
         std.debug.assert(binding.functions[2].returns.ownership.? == .caller);
-        std.debug.assert(binding.discover == null and binding.exclude.len == 0);
+        std.debug.assert(binding.discovery == null);
     }
 }
 

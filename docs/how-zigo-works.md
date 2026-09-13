@@ -31,8 +31,7 @@ Zig public API ── bindings.zig
 ```zig
 const api = zigo.scope(library);
 
-pub const bindings = zigo.define(.{
-    .root = library,
+pub const bindings = zigo.define(api, .{
     .declarations = &.{api.func("add", .{})},
 });
 ```

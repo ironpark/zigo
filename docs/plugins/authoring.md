@@ -60,7 +60,7 @@ fn typeHook(
 
 `src/root.zig`에 `pub const Mode = enum(u8) { idle, active };`를 추가합니다.
 `src/bindings.zig` 상단에 `const known = @import("known");`을 추가하고 `.declarations`에
-`api.enumType("Mode", .{}).use(known.plugin, .{})`를 넣습니다.
+`api.enumeration("Mode", .{}).use(known.plugin, .{})`를 넣습니다.
 
 `go/mylib/plugin_test.go`에 다음 테스트를 작성합니다.
 

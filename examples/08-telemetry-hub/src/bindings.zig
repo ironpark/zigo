@@ -4,15 +4,14 @@ const library = @import("telemetry_hub");
 const api = zigo.scope(library);
 const TelemetryHub = api.handle("TelemetryHub", .{}).context();
 
-pub const bindings = zigo.define(.{
-    .root = library,
+pub const bindings = zigo.define(api, .{
     .discovery = .{ .public = .{} },
     .declarations = &.{
-        TelemetryHub.define(&.{
+        TelemetryHub.members(&.{
             TelemetryHub.func("create", .{
                 .params = &.{
                     .{ .index = 0, .semantic = .utf8_string },
-                    zigo.param.callback(4, .{ .retention = .retained }),
+                    zigo.param.callback(4, .{ .contract = .{ .retention = .retained } }),
                 },
             }),
             TelemetryHub.func("rename", .{

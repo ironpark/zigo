@@ -46,11 +46,11 @@ const api = zigo.scope(library);
 
 ## 네임스페이스와 타입 안으로 이동하기
 
-`in()`은 중첩 container를 컴파일 시점에 선택합니다.
+`namespace()`는 중첩 네임스페이스 container를 컴파일 시점에 선택합니다.
 
 ```zig
-const text = api.in("text");
-const unicode = text.in("unicode");
+const text = api.namespace("text");
+const unicode = text.namespace("unicode");
 
 .declarations = &.{
     text.func("width", .{}),
@@ -58,12 +58,13 @@ const unicode = text.in("unicode");
 },
 ```
 
-핸들이나 열거형 멤버를 작성할 때는 타입 entry에서 context를 만드는 편이 좋습니다.
+핸들이나 열거형의 멤버는 타입 entry에서 만든 context로 선언합니다. `namespace()`는 등록
+타입 안으로 들어가지 않습니다.
 
 ```zig
 const Counter = api.handle("Counter", .{}).context();
 
-const counter = Counter.define(&.{
+const counter = Counter.members(&.{
     Counter.func("create", .{}),
     Counter.func("add", .{}),
     Counter.func("deinit", .{}),
@@ -99,8 +100,7 @@ const parser_functions = api.funcs(.{ .public = .{
 자동 발견을 사용하세요.
 
 ```zig
-pub const bindings = zigo.define(.{
-    .root = library,
+pub const bindings = zigo.define(api, .{
     .discovery = .{ .public = .{
         .exclude = &.{api.ref("internalProbe")},
     } },
@@ -175,8 +175,8 @@ zigo.package(.{
     .name = "types",
     .doc = "Package types contains shared values.",
     .declarations = &.{
-        api.enumType("Mode", .{}),
-        api.val("Point", .{}),
+        api.enumeration("Mode", .{}),
+        api.value("Point", .{}),
         api.func("defaultMode", .{}),
     },
 })

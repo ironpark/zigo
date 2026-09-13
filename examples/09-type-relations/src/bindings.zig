@@ -4,20 +4,19 @@ const library = @import("type_relations");
 const api = zigo.scope(library);
 const Counter = api.handle("Counter", .{}).context();
 const Accumulator = api.handle("Accumulator", .{}).context();
-const DeccolmMode = api.enumType("DeccolmMode", .{}).context();
-const text = api.in("text");
+const DeccolmMode = api.enumeration("DeccolmMode", .{}).context();
+const text = api.namespace("text");
 
 // Scopes keep source identity; Go adapters only change the public Go type.
-pub const bindings = zigo.define(.{
-    .root = library,
+pub const bindings = zigo.define(api, .{
     .declarations = &.{
-        Counter.define(&.{
+        Counter.members(&.{
             Counter.func("create", .{}),
             Counter.func("get", .{}),
             Counter.func("add", .{}),
             Counter.func("deinit", .{}),
         }),
-        Accumulator.define(&.{
+        Accumulator.members(&.{
             Accumulator.func("create", .{}),
             Accumulator.func("absorb", .{}),
             Accumulator.func("total", .{}),
@@ -25,16 +24,16 @@ pub const bindings = zigo.define(.{
         }),
         // A table-built enum has no `///` in the source to lend: the tags are
         // strings in a slice. `.fields` is where those members get documented.
-        api.enumType("CursorStyle", .{ .fields = &.{
+        api.enumeration("CursorStyle", .{ .fields = &.{
             .{ .name = "block", .doc = "The filled cell the terminal starts in." },
             .{ .name = "bar", .doc = "A vertical bar between two cells." },
         } }),
-        api.enumType("CharsetSlot", .{}),
-        DeccolmMode.define(&.{
+        api.enumeration("CharsetSlot", .{}),
+        DeccolmMode.members(&.{
             DeccolmMode.func("columns", .{}),
         }),
-        api.enumType("EraseDisplay", .{ .exhaustive = false }),
-        api.val("Point", .{ .go = .{
+        api.enumeration("EraseDisplay", .{ .exhaustive = false }),
+        api.value("Point", .{ .go = .{
             .type = "image.Point",
             .import = "image",
             .to_raw = "pointToRaw",
@@ -48,7 +47,7 @@ pub const bindings = zigo.define(.{
         api.func("isWideColumns", .{}),
         api.func("echoEraseDisplay", .{}),
         text.func("runWidth", .{}),
-        text.in("unicode").func("codepointWidth", .{}),
+        text.namespace("unicode").func("codepointWidth", .{}),
         api.func("doubleWidth", .{}),
         api.func("invert", .{}),
         api.func("styleOrDefault", .{}),

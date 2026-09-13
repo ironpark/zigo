@@ -13,5 +13,5 @@ const api = zigo.scope(Lib);
 comptime {
     const A = api.handle("A", .{}).context();
     const Alias = api.handle("AliasA", .{}).context();
-    _ = zigo.define(.{ .root = Lib, .declarations = &.{ A.define(&.{}), Alias.define(&.{}) } });
+    _ = zigo.define(api, .{ .declarations = &.{ A.members(&.{}), Alias.members(&.{}) } });
 }

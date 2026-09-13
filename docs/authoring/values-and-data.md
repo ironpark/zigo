@@ -61,32 +61,31 @@ api.func("echo", .{
 ## 열거형
 
 ```zig
-api.enumType("Mode", .{})
+api.enumeration("Mode", .{})
 ```
 
 생성 Go 패키지에는 이름이 있는 정수 타입과 Zig 태그에 대응하는 상수가 생깁니다.
 알려지지 않은 값도 왕복해야 하는 open 열거형은 `.exhaustive = false`로 등록합니다.
 
 ```zig
-api.enumType("Signal", .{ .exhaustive = false })
-    .use(zigo.features.text, .{})
+api.enumeration("Signal", .{ .exhaustive = false, .text = true })
 ```
 
-`features.text`는 parse, `MarshalText`와 `UnmarshalText`를 추가합니다.
+`.text = true`는 parse, `MarshalText`와 `UnmarshalText`를 추가합니다.
 
 ## extern·packed 구조체 값
 
-ABI가 값 전달에 적합한 구조체는 `val`로 등록합니다.
+ABI가 값 전달에 적합한 구조체는 `value`로 등록합니다.
 
 ```zig
-api.val("Point", .{})
+api.value("Point", .{})
 ```
 
 `extern struct`의 `u32` 필드를 Go `rune`으로 나타내려면 의미를 지정합니다.
 예를 들어 Zig 타입이 `pub const Codepoint = extern struct { value: u32 };`인 경우:
 
 ```zig
-api.val("Codepoint", .{ .fields = &.{
+api.value("Codepoint", .{ .fields = &.{
     .{ .name = "value", .semantic = .codepoint },
 } })
 ```
@@ -94,7 +93,7 @@ api.val("Codepoint", .{ .fields = &.{
 일반 Zig 구조체는 임의로 값 ABI에 넣지 않습니다. `extern struct`나 지원되는 `packed struct`
 조건을 만족하지 않으면 핸들 또는 materialized 결과를 선택하세요.
 
-값 전달은 다음처럼 Zig 입력과 Go 출력을 연결합니다. `Point`를 `api.val("Point", .{})`로,
+값 전달은 다음처럼 Zig 입력과 Go 출력을 연결합니다. `Point`를 `api.value("Point", .{})`로,
 `echoPoint`를 `api.func("echoPoint", .{})`로 등록합니다.
 
 ```zig
@@ -148,7 +147,7 @@ pub fn init(gpa: std.mem.Allocator, initial_cols: u16, options: TerminalOptions)
 바인딩에서 `zigo.param.options`를 사용해 펼칠 필드와 옵션 사양을 선언합니다.
 
 ```zig
-Terminal.define(&.{
+Terminal.members(&.{
     Terminal.func("init", .{
         .params = &.{
             zigo.param.options(2, &.{ "rows", "max_scrollback_bytes" }, .{ .prefix = "" }),
@@ -238,7 +237,7 @@ func NewTerminal(cols uint16, rows uint16, opts ...TerminalOption) (*Terminal, e
 공개 Go API에서 기존 타입을 사용하려면 변환 함수와 함께 어댑터를 선언합니다.
 
 ```zig
-api.val("Point", .{ .go = .{
+api.value("Point", .{ .go = .{
     .type = "image.Point",
     .import = "image",
     .to_raw = "pointToRaw",

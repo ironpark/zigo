@@ -50,10 +50,10 @@ func (s *Session) AddStream(streams ...*Stream) *Session {
 	return s
 }
 
-// AddTick adopts Ticker handles the primary handed out and returns the session,
+// AddTicker adopts Ticker handles the primary handed out and returns the session,
 // so calls chain. A nil handle is ignored. A handle adopted after Close has
 // run is closed immediately rather than leaked.
-func (s *Session) AddTick(ticks ...*Ticker) *Session {
+func (s *Session) AddTicker(ticks ...*Ticker) *Session {
 	for _, handle := range ticks {
 		if handle == nil {
 			continue

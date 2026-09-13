@@ -10,25 +10,24 @@ const Cursor = api.handle("Cursor", .{}).context();
 const owned_tree = zigo.result.releasedBy(api.ref("release"));
 
 // Owned result trees name their release function with a checked source reference.
-pub const bindings = zigo.define(.{
-    .root = library,
+pub const bindings = zigo.define(api, .{
     .allocator = .c_allocator,
     .declarations = &.{
-        api.enumType("Status", .{}),
-        api.val("Point", .{}),
+        api.enumeration("Status", .{}),
+        api.value("Point", .{}),
         api.materialized("Leaf", .{}),
         api.materialized("Probe", .{ .fields = &.{.{ .name = "raw", .semantic = .opaque_bytes }} }),
-        LegacyLeaf.define(&.{
+        LegacyLeaf.members(&.{
             LegacyLeaf.func("value", .{}),
         }),
-        LegacyProbe.define(&.{
+        LegacyProbe.members(&.{
             LegacyProbe.func("create", .{}),
             LegacyProbe.func("id", .{}),
             LegacyProbe.func("active", .{}),
             LegacyProbe.func("child", .{ .returns = zigo.result.borrowed() }),
             LegacyProbe.func("deinit", .{}),
         }),
-        Cursor.define(&.{
+        Cursor.members(&.{
             Cursor.func("create", .{}),
             Cursor.func("next", .{ .returns = owned_tree }).use(zigo.features.iterator, .{}),
             Cursor.func("nextChecked", .{ .returns = owned_tree }).use(zigo.features.iterator, .{ .name = "Checked" }),

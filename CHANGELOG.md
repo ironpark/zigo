@@ -37,6 +37,34 @@
 `git mv zigo/errors.lock.json zigo/go/errors.lock.json`으로 sidecar를 옮긴 뒤 `zig build go-check`로
 확인합니다.
 
+바인딩 DSL(`bindings.zig`)도 한 개념 한 표기로 정리했습니다. 호환 alias는 없습니다. 생성된
+Go 코드는 session 자식의 `.name` 삭제로 입양 메서드가 타입 이름을 그대로 쓰는 경우
+(`AddTick` → `AddTicker`)를 제외하면 바뀌지 않습니다.
+
+| 이전 | 이후 |
+|---|---|
+| `zigo.define(.{ .root = library, ... })` | `zigo.define(api, .{ ... })` (`api = zigo.scope(library)`가 root를 한 번 말함) |
+| `api.val(...)` | `api.value(...)` |
+| `api.enumType(...)` | `api.enumeration(...)` |
+| `api.taggedUnion(...)` | `api.@"union"(...)` |
+| `api.in("Type").func(...)` + `Entry.members(&.{ ... })` | `const T = api.handle("Type", .{}).context();` + `T.members(&.{ T.func(...) })` |
+| `api.in("namespace")` (네임스페이스) | `api.namespace("namespace")` |
+| `Context.define(entries)` | `Context.members(entries)` |
+| `.named(name)`, `.documented(doc)` | `.with(.{ .name = name })`, `.with(.{ .doc = doc })` |
+| `.with(.{ .members = ... })` | 삭제. `.context().members(...)` 또는 `.select(...)`만 |
+| `.{ .index = n, .contract = .{ .buffer = .{ .output = .{} } } }` (리터럴 계약) | `zigo.param.output(n, .all)` 등 도우미만. `Param.contract`, `Returns.lifetime`의 타입은 비공개 |
+| `.returns = .{ .lifetime = ... }` | `zigo.result.owned()` / `releasedBy(ref)` / `borrowed()`; 내부 필드명은 `ownership` |
+| `Lifetime.borrowed = .receiver` | payload 없는 `borrowed` |
+| `api.callback("T", .{ .retention, .reentrancy, .thread, .on_failure })` | `api.callback("T", .{ .contract = .{ ... } })` (`CallbackContract`) |
+| `zigo.param.callback(n, .{ .retention = ..., .go_error, .userdata })` | `zigo.param.callback(n, .{ .contract = .{ .retention = ... }, .go_error, .userdata })` (`CallbackSite`). 호출 지점 필드가 타입의 값을 필드별로 덮어씀 |
+| `.use(zigo.features.implements, .{ .kind = .writer })` | `.use(zigo.features.implements, .{ .kinds = &.{.writer} })` (`.kind` 삭제) |
+| `api.enumType("E", .{}).use(zigo.features.text, .{})` | `api.enumeration("E", .{ .text = true })` (`features.text` 삭제) |
+| `zigo.features.*`의 `.builtin`, 자체 `Subject` enum | 삭제. `zigo.Subject`와 이름(`ITERATOR`, `IMPLEMENTS`)으로 식별 |
+| session `children[].name`, `children[].plural` | `children[].accessor` (입양 메서드는 항상 `Add<Type>`) |
+| `zigo.ParamContract`, `zigo.Lifetime`, `zigo.Buffer` 재export | 삭제 |
+| 내부 IR `declare.on_callback_failure` | `on_failure` |
+| 내부 IR `Discover` enum + `discover`/`exclude` 필드 | `Discovery` struct (`discovery: ?.{ .mode, .exclude }`) |
+
 ## [0.26.0] - 2026-09-13
 
 gostty를 쓰면서 zigo에 기능이 없어 우회한 자리들입니다.

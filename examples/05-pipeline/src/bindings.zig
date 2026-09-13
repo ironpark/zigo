@@ -9,15 +9,14 @@ const FloatBatch = api.handle("FloatBatch", .{}).context();
 // The same explicit export list applies to both generic instantiations.
 const batch_members: zigo.Selector = .{ .names = &.{ "create", "push", "len", "deinit" } };
 
-pub const bindings = zigo.define(.{
-    .root = library,
+pub const bindings = zigo.define(api, .{
     .declarations = &.{
-        Pipeline.define(&.{
+        Pipeline.members(&.{
             Pipeline.func("create", .{
                 .params = &.{
                     .{ .index = 0, .go_name = "name", .semantic = .utf8_string },
                     .{ .index = 1, .go_name = "mode" },
-                    zigo.param.callback(2, .{ .retention = .retained }),
+                    zigo.param.callback(2, .{ .contract = .{ .retention = .retained } }),
                 },
             }),
             Pipeline.func("process", .{}),

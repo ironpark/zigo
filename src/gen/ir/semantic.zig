@@ -1411,25 +1411,21 @@ pub const Interface = struct {
 /// also spell the type out. A session never crosses the C boundary, so nothing
 /// here reaches the shim or the header.
 /// One dependent child a session adopts: the registered opaque type name, and
-/// the name the generated accessor and adopt method are built from when the
-/// binding wants something other than the type name.
+/// the accessor's whole name when the type's plural is not `type ++ "s"`.
 pub const SessionChild = struct {
     type: []const u8,
-    name: ?[]const u8 = null,
-    /// The accessor's whole name, when the base's plural is not `base ++ "s"`.
-    plural: ?[]const u8 = null,
+    /// The accessor's whole name; `Search` has to be told that it is
+    /// `Searches` and not `Searchs`.
+    accessor: ?[]const u8 = null,
 
-    /// The base the generated `Add<Base>` and `<Base>s` are spelled from.
+    /// The base the generated `Add<Base>` is spelled from.
     pub fn base(self: SessionChild) []const u8 {
-        return self.name orelse self.type;
+        return self.type;
     }
 
-    /// The accessor's name. `.name` shortens a base that is already plural
-    /// (`Stats` listed as `Stat` reads as `Stats` again); `.plural` is for the
-    /// bases no suffix rule reaches, where `Search` has to be told that it is
-    /// `Searches` and not `Searchs`.
+    /// The accessor's name: the spelled one, else `<Base>s`.
     pub fn accessorAlloc(self: SessionChild, allocator: std.mem.Allocator) ![]u8 {
-        if (self.plural) |name| return allocator.dupe(u8, name);
+        if (self.accessor) |name| return allocator.dupe(u8, name);
         return std.fmt.allocPrint(allocator, "{s}s", .{self.base()});
     }
 };
@@ -1745,15 +1741,13 @@ pub fn containsHandleReference(node: TypeNode, name: []const u8) bool {
     };
 }
 
-test "a session child names its accessor from the base, the rename, or the plural" {
+test "a session child names its accessor from the type or the spelled accessor" {
     const plain: SessionChild = .{ .type = "Stream" };
-    const renamed: SessionChild = .{ .type = "Stats", .name = "Stat" };
-    // `Search` is the case no suffix rule reaches: shortening the base cannot
-    // produce `Searches`, so the binding spells the accessor out.
-    const irregular: SessionChild = .{ .type = "Search", .plural = "Searches" };
+    // `Search` is the case no suffix rule reaches: the binding spells the
+    // accessor out, and the adopt method keeps the type's name.
+    const irregular: SessionChild = .{ .type = "Search", .accessor = "Searches" };
     for ([_]struct { child: SessionChild, base: []const u8, accessor: []const u8 }{
         .{ .child = plain, .base = "Stream", .accessor = "Streams" },
-        .{ .child = renamed, .base = "Stat", .accessor = "Stats" },
         .{ .child = irregular, .base = "Search", .accessor = "Searches" },
     }) |case| {
         try std.testing.expectEqualStrings(case.base, case.child.base());

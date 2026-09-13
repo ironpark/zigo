@@ -37,7 +37,7 @@ const bindings = zigo.addGoBindings(b, .{
 ```zig
 const enumkit = @import("zigo_enumkit");
 
-api.enumType("Mode", .{})
+api.enumeration("Mode", .{})
     .use(enumkit.plugin, .{})
 ```
 
@@ -49,7 +49,7 @@ api.enumType("Mode", .{})
 저장소의 `plugins/enumkit`은 독립 플러그인의 기준 예제입니다.
 
 ```zig
-api.enumType("Mode", .{})
+api.enumeration("Mode", .{})
     .use(enumkit.plugin, .{
         .values = true,
         .is_known = true,

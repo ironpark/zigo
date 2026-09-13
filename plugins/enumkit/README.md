@@ -5,7 +5,7 @@
 ```zig
 const enumkit = @import("zigo_enumkit");
 
-api.enumType("Mode", .{}).use(enumkit.plugin, .{}),
+api.enumeration("Mode", .{}).use(enumkit.plugin, .{}),
 ```
 
 ```go
@@ -19,7 +19,7 @@ known := Mode(255).IsKnown()
 - `is_known` (기본 `true`): `IsKnown() bool`을 생성합니다. 열린 enum에서도 알려지지 않은 숫자는 `false`입니다. native 호출 가능 여부를 검사하는 메서드는 아닙니다.
 - 두 옵션은 독립적으로 끌 수 있습니다. 별도 attachment가 없는 타입에는 생성하지 않습니다.
 - Go adapter가 지정된 enum은 지원하지 않으며 `ENUMKIT002` 진단을 냅니다.
-- `features.text` 및 JSON 플러그인과 함께 사용할 수 있습니다. 생성될 `<Type>Values`와 `IsKnown` 이름은 사용자 선언에서 비워 두세요.
+- `.text = true` 및 JSON 플러그인과 함께 사용할 수 있습니다. 생성될 `<Type>Values`와 `IsKnown` 이름은 사용자 선언에서 비워 두세요.
 
 빌드에는 다른 플러그인처럼 등록합니다.
 

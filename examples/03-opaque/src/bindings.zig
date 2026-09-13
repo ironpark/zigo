@@ -5,28 +5,27 @@ const zigo = @import("zigo");
 const library = @import("opaque");
 
 const api = zigo.scope(library);
-const context = api.in("Context");
-const context_view = api.in("ContextView");
+const Context = api.handle("Context", .{}).context();
+const ContextView = api.handle("ContextView", .{}).context();
 
-pub const bindings = zigo.define(.{
-    .root = library,
+pub const bindings = zigo.define(api, .{
     .declarations = &.{
-        api.handle("Context", .{}).members(&.{
-            context.func("create", .{}),
-            context.func("add", .{}),
-            context.func("maybeTotal", .{}),
-            context.func("setTotal", .{}),
-            context.func("next", .{}).use(zigo.features.iterator, .{}),
-            context.func("nextChecked", .{}).use(zigo.features.iterator, .{ .name = "Checked" }),
-            context.func("rewind", .{}),
-            context.func("addCopy", .{}),
-            context.func("borrowView", .{ .returns = zigo.result.borrowed() }),
-            context.func("crash", .{}),
-            context.func("crashInfallible", .{}),
-            context.func("deinit", .{}),
+        Context.members(&.{
+            Context.func("create", .{}),
+            Context.func("add", .{}),
+            Context.func("maybeTotal", .{}),
+            Context.func("setTotal", .{}),
+            Context.func("next", .{}).use(zigo.features.iterator, .{}),
+            Context.func("nextChecked", .{}).use(zigo.features.iterator, .{ .name = "Checked" }),
+            Context.func("rewind", .{}),
+            Context.func("addCopy", .{}),
+            Context.func("borrowView", .{ .returns = zigo.result.borrowed() }),
+            Context.func("crash", .{}),
+            Context.func("crashInfallible", .{}),
+            Context.func("deinit", .{}),
         }),
-        api.handle("ContextView", .{}).members(&.{
-            context_view.func("total", .{}),
+        ContextView.members(&.{
+            ContextView.func("total", .{}),
         }),
         api.func("crashFatal", .{}),
         api.func("liveBytes", .{}),

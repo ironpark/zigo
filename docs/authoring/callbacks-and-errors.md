@@ -23,9 +23,9 @@ pub fn apply(value: i32, callback: Observer, userdata: usize) i32 {
 다음 두 선언을 함께 등록합니다.
 
 ```zig
-api.callback("Observer", .{ .on_failure = .{ .result = 0 } }),
+api.callback("Observer", .{ .contract = .{ .on_failure = .{ .result = 0 } } }),
 api.func("apply", .{ .params = &.{
-    zigo.param.callback(1, .{ .retention = .borrowed, .go_error = true }),
+    zigo.param.callback(1, .{ .contract = .{ .retention = .borrowed }, .go_error = true }),
 } }),
 ```
 
@@ -56,7 +56,7 @@ Zig의 함수 포인터 alias를 콜백으로 등록합니다.
 
 ```zig
 api.callback("Observer", .{
-    .on_failure = .{ .result = 0 },
+    .contract = .{ .on_failure = .{ .result = 0 } },
 })
 ```
 
@@ -76,12 +76,13 @@ userdata가 첫째나 마지막이 아닌 위치에 있으면 `.userdata = .{ .i
 
 ## 호출 지점의 계약
 
-같은 콜백 타입도 함수마다 보관 방식이 다를 수 있습니다.
+같은 콜백 타입도 함수마다 보관 방식이 다를 수 있습니다. 콜백 타입과 호출 지점은 같은
+`.contract`를 받고, 호출 지점이 적은 필드만 타입의 값을 덮어씁니다.
 
 ```zig
 api.func("apply", .{ .params = &.{
     zigo.param.callback(1, .{
-        .retention = .borrowed,
+        .contract = .{ .retention = .borrowed },
         .go_error = true,
     }),
 } })
@@ -89,10 +90,11 @@ api.func("apply", .{ .params = &.{
 
 | 옵션 | 의미 |
 |---|---|
-| `.retention = .borrowed` | 네이티브 호출이 끝나기 전에 콜백 사용도 끝남 |
-| `.retention = .retained` | 네이티브 객체가 이후 호출에서도 콜백을 보관 |
-| `.reentrancy` | 콜백에서 같은 바인딩으로 재진입 가능한지 선언 |
-| `.thread` | 호출자 스레드만 또는 임의 네이티브 스레드에서 호출 가능한지 선언 |
+| `.contract.retention = .borrowed` | 네이티브 호출이 끝나기 전에 콜백 사용도 끝남 |
+| `.contract.retention = .retained` | 네이티브 객체가 이후 호출에서도 콜백을 보관 |
+| `.contract.reentrancy` | 콜백에서 같은 바인딩으로 재진입 가능한지 선언 |
+| `.contract.thread` | 호출자 스레드만 또는 임의 네이티브 스레드에서 호출 가능한지 선언 |
+| `.contract.on_failure` | 실패·panic 때 Zig 콜백에 돌려줄 값 |
 | `.go_error = true` | Go 콜백이 `error`를 반환 |
 | `.userdata` | 콜백 token 매개변수의 원래 Zig index |
 

@@ -56,7 +56,7 @@ const api = zigo.scope(Lib);
 test "generic context Self, target and alias identity stay distinct" {
     const Float = api.handle("FloatBuffer", .{}).context();
     const Int = api.handle("IntBuffer", .{}).context();
-    const Alias = api.in("nested").handle("Alias", .{}).context();
+    const Alias = api.namespace("nested").handle("Alias", .{}).context();
     try std.testing.expect(Float != Int);
     try std.testing.expectEqual(@as(usize, 0), @sizeOf(Float));
     try std.testing.expect(Float != Float.Target);
@@ -64,20 +64,20 @@ test "generic context Self, target and alias identity stay distinct" {
     try std.testing.expectEqualStrings("root.nested.Alias", Alias.typeRef().path);
     try std.testing.expectEqualStrings("root.nested.Alias.push", Alias.ref("push").path);
     const names: zigo.Selector = .{ .names = &.{ "create", "push", "len", "deinit" } };
-    const actual = comptime zigo.define(.{ .root = Lib, .declarations = &.{ Float.select(names), Int.select(names) } });
-    const expected = comptime zigo.define(.{ .root = Lib, .declarations = &.{
-        api.handle("FloatBuffer", .{}).members(api.in("FloatBuffer").funcs(names)),
-        api.handle("IntBuffer", .{}).members(api.in("IntBuffer").funcs(names)),
+    const actual = comptime zigo.define(api, .{ .declarations = &.{ Float.select(names), Int.select(names) } });
+    const expected = comptime zigo.define(api, .{ .declarations = &.{
+        Float.members(Float.funcs(names)),
+        Int.members(Int.funcs(names)),
     } });
     comptime try std.testing.expectEqualDeep(expected, actual);
 }
 
 test "root functions, contextual child constructors and packages preserve normal form" {
-    const Doc = api.handle("Document", .{}).named("TextDocument").context();
+    const Doc = api.handle("Document", .{}).with(.{ .name = "TextDocument" }).context();
     const Stream = api.handle("Stream", .{}).context();
-    const actual = comptime zigo.define(.{ .root = Lib, .declarations = &.{
+    const actual = comptime zigo.define(api, .{ .declarations = &.{
         zigo.package(.{ .path = "io", .declarations = &.{
-            Doc.define(&.{
+            Doc.members(&.{
                 Doc.func("read", .{ .params = &.{zigo.param.output(2, .result)} }),
                 Doc.func("newStream", .{ .role = .{ .constructor = .{
                     .type = Stream.typeRef(),
@@ -85,9 +85,9 @@ test "root functions, contextual child constructors and packages preserve normal
                     .parent = .receiver,
                 } } }),
             }),
-            Stream.define(&.{
+            Stream.members(&.{
                 api.func("freeStream", .{ .role = .{ .destructor = Stream.typeRef() } }),
-                api.func("streamLen", .{}).named("len"),
+                api.func("streamLen", .{}).with(.{ .name = "len" }),
             }),
         } }),
     } });
@@ -102,33 +102,33 @@ test "root functions, contextual child constructors and packages preserve normal
     try std.testing.expectEqualStrings("root.Document", Doc.typeRef().path);
 }
 
-test "decorations before context and after define share existing replacement rules" {
+test "decorations before context and after members share existing replacement rules" {
     const Plugin = .{
         .name = "RESEARCH",
         .FunctionOptions = struct {},
         .TypeOptions = struct { label: ?[]const u8 = "default" },
         .subjects = [_]enum { value }{.value},
     };
-    const Point = api.val("Point", .{}).named("Position").use(Plugin, .{ .label = "point" }).context();
+    const Point = api.value("Point", .{}).with(.{ .name = "Position" }).use(Plugin, .{ .label = "point" }).context();
     const old_members = &[_]zigo.Entry{api.func("take", .{})};
-    const again = Point.define(old_members).context();
-    const cleared = again.define(&.{}).named(null).replacePlugin(Plugin, .{ .label = null });
+    const again = Point.members(old_members).context();
+    const cleared = again.members(&.{}).with(.{ .name = null }).replacePlugin(Plugin, .{ .label = null });
     try std.testing.expectEqual(@as(usize, 0), cleared.type.options.members.len);
     try std.testing.expect(cleared.type.options.name == null);
     try std.testing.expectEqual(@as(usize, 1), cleared.type.extensions.len);
     try std.testing.expectEqualStrings("root.Point", cleared.type.ref.path);
     comptime try std.testing.expectEqualDeep(
-        api.val("Point", .{}).named(null).use(Plugin, .{ .label = null }),
+        api.value("Point", .{}).with(.{ .name = null }).use(Plugin, .{ .label = null }),
         cleared,
     );
 }
 
 test "context is representation-independent for member-bearing declarations" {
-    const Mode = api.enumType("Mode", .{}).use(zigo.features.text, .{}).context();
-    const Value = api.taggedUnion("Value", .{ .access = .snapshot }).context();
+    const Mode = api.enumeration("Mode", .{ .text = true }).context();
+    const Value = api.@"union"("Value", .{ .access = .snapshot }).context();
     const Probe = api.materialized("Probe", .{}).context();
-    const actual = comptime zigo.define(.{ .root = Lib, .declarations = &.{
-        Mode.select(.{ .names = &.{"number"} }), Value.define(&.{}), Probe.define(&.{}),
+    const actual = comptime zigo.define(api, .{ .declarations = &.{
+        Mode.select(.{ .names = &.{"number"} }), Value.members(&.{}), Probe.members(&.{}),
     } });
     try std.testing.expect(actual.types[0].enumeration.text);
     try std.testing.expect(actual.types[1].tagged_union.access == .snapshot);
@@ -139,9 +139,9 @@ test "context is representation-independent for member-bearing declarations" {
 test "context role remains explicit for a static constructor taking another handle" {
     const Doc = api.handle("Document", .{}).context();
     const Stream = api.handle("Stream", .{}).context();
-    const actual = comptime zigo.define(.{ .root = Lib, .declarations = &.{
-        Doc.define(&.{}),
-        Stream.define(&.{
+    const actual = comptime zigo.define(api, .{ .declarations = &.{
+        Doc.members(&.{}),
+        Stream.members(&.{
             api.func("newStream", .{ .role = .{ .constructor = .{ .type = Stream.typeRef(), .receiver = .none } } }),
             api.func("freeStream", .{ .role = .{ .destructor = Stream.typeRef() } }),
         }),

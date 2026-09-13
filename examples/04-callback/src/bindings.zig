@@ -16,13 +16,12 @@ const IntBuffer = api.handle("IntBuffer", .{}).context();
 // The same explicit export list applies to both generic instantiations.
 const buffer_members: zigo.Selector = .{ .names = &.{ "create", "push", "len", "deinit" } };
 
-pub const bindings = zigo.define(.{
-    .root = library,
+pub const bindings = zigo.define(api, .{
     .declarations = &.{
-        CallbackContext.define(&.{
+        CallbackContext.members(&.{
             CallbackContext.func("create", .{
                 .params = &.{
-                    zigo.param.callback(0, .{ .retention = .retained, .go_error = true }),
+                    zigo.param.callback(0, .{ .contract = .{ .retention = .retained }, .go_error = true }),
                 },
             }),
             CallbackContext.func("run", .{}),
@@ -30,7 +29,7 @@ pub const bindings = zigo.define(.{
         }),
         FloatBuffer.select(buffer_members),
         IntBuffer.select(buffer_members),
-        api.callback("Observer", .{ .on_failure = .{ .result = 0 } }),
+        api.callback("Observer", .{ .contract = .{ .on_failure = .{ .result = 0 } } }),
         api.callback("VoidObserver", .{}),
         api.callback("Predicate", .{}),
         api.callback("Reducer", .{ .userdata = .first }),

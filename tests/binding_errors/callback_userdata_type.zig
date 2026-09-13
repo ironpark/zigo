@@ -4,5 +4,5 @@ const Lib = struct {
 };
 const api = zigo.scope(Lib);
 comptime {
-    _ = zigo.define(.{ .root = Lib, .declarations = &.{api.callback("Callback", .{ .userdata = .first })} });
+    _ = zigo.define(api, .{ .declarations = &.{api.callback("Callback", .{ .userdata = .first })} });
 }

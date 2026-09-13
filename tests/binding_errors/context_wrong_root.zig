@@ -15,5 +15,5 @@ comptime {
         pub fn other() void {}
     };
     const A = api.handle("A", .{}).context();
-    _ = zigo.define(.{ .root = Lib, .declarations = &.{A.define(&.{zigo.scope(Other).func("other", .{})})} });
+    _ = zigo.define(api, .{ .declarations = &.{A.members(&.{zigo.scope(Other).func("other", .{})})} });
 }

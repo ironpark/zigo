@@ -21,22 +21,22 @@ pub const EnumOptions = author.EnumOptions;
 pub const UnionOptions = author.UnionOptions;
 pub const CallbackOptions = author.CallbackOptions;
 pub const CallbackParam = author.CallbackParam;
-pub const Buffer = author.Buffer;
 pub const CallbackContract = author.CallbackContract;
+pub const CallbackSite = author.CallbackSite;
 pub const Package = author.Package;
 pub const Interface = author.Interface;
 pub const Session = author.Session;
+pub const SessionChild = author.SessionChild;
 pub const Discovery = author.Discovery;
 pub const param = @import("param.zig");
 pub const result = @import("result.zig");
 pub const Param = author.Param;
-pub const ParamContract = author.ParamContract;
 pub const Returns = author.Returns;
-pub const Lifetime = author.Lifetime;
 pub const Role = author.Role;
 pub const Receiver = author.Receiver;
 pub const Defaults = author.Defaults;
 pub const Selector = author.Selector;
+pub const Subject = author.Subject;
 pub const GoAdapter = author.GoAdapter;
 pub const SemanticHint = author.SemanticHint;
 pub const Injection = author.Injection;
@@ -45,8 +45,10 @@ pub const Injection = author.Injection;
 pub const normalized = @import("declare.zig");
 
 /// Resolve and validate authoring declarations before reflection and lowering.
-pub fn define(comptime binding: Binding) normalized.Binding {
-    return @import("normalize.zig").binding(binding);
+/// `api` is the scope from `zigo.scope(library)`; it names the root once.
+pub fn define(comptime api: type, comptime binding: Binding) normalized.Binding {
+    if (@typeInfo(api) != .@"struct" or !@hasDecl(api, "root")) @compileError("zigo define takes the scope returned by zigo.scope(library)");
+    return @import("normalize.zig").binding(api.root, binding);
 }
 
 test {

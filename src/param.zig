@@ -14,8 +14,8 @@ pub fn inout(index: usize, written: ir.Written) a.Param {
 pub fn stream(index: usize, buffer: ?u32) a.Param {
     return .{ .index = index, .contract = .{ .stream = .{ .buffer = buffer } } };
 }
-pub fn callback(index: usize, contract: a.CallbackContract) a.Param {
-    return .{ .index = index, .contract = .{ .callback = contract } };
+pub fn callback(index: usize, site: a.CallbackSite) a.Param {
+    return .{ .index = index, .contract = .{ .callback = site } };
 }
 pub fn cancel(index: usize, canceled: ?[]const u8) a.Param {
     return .{ .index = index, .contract = .{ .cancel = .{ .canceled = canceled } } };

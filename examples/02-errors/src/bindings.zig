@@ -3,8 +3,7 @@ const errors = @import("errors");
 
 const api = zigo.scope(errors);
 
-pub const bindings = zigo.define(.{
-    .root = errors,
+pub const bindings = zigo.define(api, .{
     .declarations = &.{
         api.func("divide", .{}),
         api.func("sum", .{}),

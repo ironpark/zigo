@@ -70,16 +70,15 @@ const mylib = @import("mylib");
 
 const api = zigo.scope(mylib);
 
-pub const bindings = zigo.define(.{
-    .root = mylib,
+pub const bindings = zigo.define(api, .{
     .declarations = &.{
         api.func("add", .{}),
     },
 });
 ```
 
-`zigo.scope(mylib)`는 선언을 선택할 기준점을 만들고 `api.func("add", .{})`는 루트 모듈의
-공개 함수 하나를 선택합니다. 더 많은 타입과 함수는 이 목록에 명시적으로 추가할 수 있습니다.
+`zigo.scope(mylib)`는 선언을 선택할 기준점이자 root 모듈이고, `api.func("add", .{})`는 루트
+모듈의 공개 함수 하나를 선택합니다. 더 많은 타입과 함수는 이 목록에 명시적으로 추가할 수 있습니다.
 
 ## 4. 빌드 그래프 연결하기
 

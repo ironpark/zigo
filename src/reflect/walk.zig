@@ -119,7 +119,7 @@ pub fn reflect(
                     .doc = callback.doc,
                     .kind = .callback,
                     .name = callback.name,
-                    .on_callback_failure = if (callback.on_callback_failure) |failure| .{ .result = failure.result } else null,
+                    .on_callback_failure = if (callback.on_failure) |failure| .{ .result = failure.result } else null,
                     .zig_path = try registeredZigPath(allocator, declaration, T, type_name),
                 });
             },
@@ -132,7 +132,7 @@ pub fn reflect(
     inline for (declaration.functions) |entry| {
         try appendSelectedPath(allocator, &functions, &types, &pairings, declaration, prefix, entry);
     }
-    if (declaration.discover != null) {
+    if (declaration.discovery != null) {
         // Discovery walks every registered container plus the root, skipping
         // the paths the list already bound and the ones `.exclude` names.
         inline for (declaration.types) |entry| {
@@ -459,20 +459,17 @@ test "duplicate and conflicting function paths are runtime diagnostics" {
     }, "math", "zg"));
     try std.testing.expectError(error.DuplicatePath, reflect(arena.allocator(), .{
         .root = Fixture,
-        .discover = .public,
+        .discovery = .{ .mode = .public, .exclude = &.{"root.add"} },
         .functions = &.{.{ .path = "root.add" }},
-        .exclude = &.{"root.add"},
     }, "math", "zg"));
     try std.testing.expectError(error.DuplicatePath, reflect(arena.allocator(), .{
         .root = Fixture,
-        .discover = .public,
-        .exclude = &.{ "root.sub", "root.sub" },
+        .discovery = .{ .mode = .public, .exclude = &.{ "root.sub", "root.sub" } },
     }, "math", "zg"));
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
-        .discover = .public,
+        .discovery = .{ .mode = .public, .exclude = &.{"root.sub"} },
         .functions = &.{.{ .path = "root.add" }},
-        .exclude = &.{"root.sub"},
     }, "math", "zg");
     try std.testing.expectEqual(@as(usize, 1), document.functions.len);
 }
@@ -512,7 +509,7 @@ test "packages assign explicit functions owning types and longest namespaces" {
     defer arena.deinit();
     const document = try reflect(arena.allocator(), .{
         .root = Api,
-        .discover = .recursive,
+        .discovery = .{ .mode = .recursive },
         .types = &.{.{ .handle = .{ .type = Api.Handle } }},
         .packages = &.{
             .{ .path = "objects", .types = &.{"Handle"} },
@@ -605,18 +602,17 @@ test "sessions record their primary and dependent children by registered name" {
             .{ .path = "Streams.free", .destroys = Api.Stream },
         },
         .sessions = &.{
-            .{ .name = "Session", .primary = Api.Queue, .children = &.{.{ .type = Api.Stream, .name = "Feed", .plural = "Feeds" }}, .doc = "Closes streams before the queue." },
+            .{ .name = "Session", .primary = Api.Queue, .children = &.{.{ .type = Api.Stream, .accessor = "Feeds" }}, .doc = "Closes streams before the queue." },
         },
     }, "sample", "zg");
     const session = document.sessions.?[0];
     try std.testing.expectEqualStrings("Session", session.name);
     try std.testing.expectEqualStrings("Queue", session.primary);
     // The child is spelled by its registered `.name`, not its Zig name, and
-    // carries the override the binding gave it for the generated names.
+    // carries the accessor the binding gave it.
     try std.testing.expectEqualStrings("Streams", session.children[0].type);
-    try std.testing.expectEqualStrings("Feed", session.children[0].name.?);
-    try std.testing.expectEqualStrings("Feed", session.children[0].base());
-    try std.testing.expectEqualStrings("Feeds", session.children[0].plural.?);
+    try std.testing.expectEqualStrings("Streams", session.children[0].base());
+    try std.testing.expectEqualStrings("Feeds", session.children[0].accessor.?);
     try std.testing.expectEqualStrings("Closes streams before the queue.", session.doc.?);
 }
 
@@ -655,7 +651,7 @@ test "package patterns yield to exact names and diagnose empty matches" {
     defer arena.deinit();
     const document = try reflect(arena.allocator(), .{
         .root = Api,
-        .discover = .recursive,
+        .discovery = .{ .mode = .recursive },
         .types = &.{
             .{ .enumeration = .{ .type = Key } },
             .{ .enumeration = .{ .type = Keyboard } },
@@ -674,13 +670,13 @@ test "package patterns yield to exact names and diagnose empty matches" {
 
     try std.testing.expectError(error.PackageDeclaration, reflect(arena.allocator(), .{
         .root = Api,
-        .discover = .recursive,
+        .discovery = .{ .mode = .recursive },
         .types = &.{.{ .enumeration = .{ .type = Key } }},
         .packages = &.{.{ .path = "missing", .types = &.{"Mouse*"} }},
     }, "sample", "zg"));
     try std.testing.expectError(error.PackageDeclaration, reflect(arena.allocator(), .{
         .root = Api,
-        .discover = .recursive,
+        .discovery = .{ .mode = .recursive },
         .packages = &.{.{ .path = "missing", .namespaces = &.{"audio*"} }},
     }, "sample", "zg"));
 }
@@ -821,8 +817,7 @@ fn reflectSessions(
         inline for (entry.children, 0..) |child, index| child_names[index] = .{
             .type = comptime registeredOpaqueName(declaration, child.type) orelse
                 @compileError("zigo session members must be registered in `.types` as `.handle`: " ++ @typeName(child.type)),
-            .name = child.name,
-            .plural = child.plural,
+            .accessor = child.accessor,
         };
         const primary = comptime registeredOpaqueName(declaration, entry.primary) orelse
             @compileError("zigo session members must be registered in `.types` as `.handle`: " ++ @typeName(entry.primary));
@@ -841,8 +836,8 @@ fn validateSessionEntry(comptime entry: zigo.Session) void {
     if (entry.children.len == 0)
         @compileError("zigo session `" ++ entry.name ++ "` requires a non-empty `.children` list of registered handle types");
     for (entry.children) |child| {
-        if (child.plural) |plural| if (plural.len == 0)
-            @compileError("zigo session `" ++ entry.name ++ "` gives a child an empty `.plural`; drop it to take `<Base>s`");
+        if (child.accessor) |accessor| if (accessor.len == 0)
+            @compileError("zigo session `" ++ entry.name ++ "` gives a child an empty `.accessor`; drop it to take `<Type>s`");
     }
 }
 
@@ -1050,7 +1045,7 @@ fn appendFunction(
             };
             if (spec.buffer) |value| reflected.buffer = value;
             if (spec.go_error) reflected.setGoError(true);
-            if (spec.on_callback_failure) |failure| reflected.on_callback_failure = .{ .result = failure.result };
+            if (spec.on_failure) |failure| reflected.on_callback_failure = .{ .result = failure.result };
             if (spec.reentrancy) |value| reflected.reentrancy = ir(semantic.CallbackReentrancy, value);
             if (spec.thread) |value| reflected.thread = ir(semantic.CallbackThread, value);
             if (spec.userdata) |userdata| reflected.userdata = userdata.param;
@@ -1542,7 +1537,7 @@ fn discoverContainer(
             try appendFunction(allocator, functions, types, pairings, declaration, prefix, candidate.name, value, .{ .path = path }, owner, null);
         }
     }
-    if (declaration.discover != .recursive) return;
+    if (declaration.discovery.?.mode != .recursive) return;
     inline for (comptime std.meta.declarations(Container)) |candidate| {
         const value = @field(Container, candidate.name);
         if (@TypeOf(value) != type or comptime !isNestedContainer(Container, value)) continue;
@@ -1659,7 +1654,7 @@ fn isPlainByteSlice(node: semantic.TypeNode, position: StringPosition) bool {
 }
 
 pub fn discoveryEnabled(comptime declaration: zigo.Binding) bool {
-    return declaration.discover != null;
+    return declaration.discovery != null;
 }
 
 /// The hint a value or materialized entry gives one member through
@@ -1690,13 +1685,8 @@ fn validateSelectors(comptime declaration: zigo.Binding) void {
             inline for (entry.enumeration.covers) |path| validateCoveragePath(declaration, path);
         }
     }
-    if (declaration.discover == null) {
-        if (declaration.exclude.len != 0) {
-            @compileError("zigo `.exclude` requires `.discover`; an explicit list simply omits the function");
-        }
-        return;
-    }
-    inline for (declaration.exclude) |path| {
+    const discovery = declaration.discovery orelse return;
+    inline for (discovery.exclude) |path| {
         if (!declarationPathExists(declaration, path)) {
             @compileError("zigo exclusion path does not name a discovered public function: " ++ path);
         }
@@ -1771,11 +1761,11 @@ fn checkDeclaredPaths(allocator: std.mem.Allocator, comptime declaration: zigo.B
         const slot = try paths.listed.getOrPut(path);
         if (slot.found_existing) return selectorIssue(allocator, "duplicate zigo function path: `{s}`", .{path});
     }
-    inline for (declaration.exclude) |path| {
+    if (declaration.discovery) |discovery| inline for (discovery.exclude) |path| {
         const slot = try paths.excluded.getOrPut(path);
         if (slot.found_existing) return selectorIssue(allocator, "duplicate zigo exclusion path: `{s}`", .{path});
         if (paths.listed.contains(path)) return selectorIssue(allocator, "zigo path cannot be both listed and excluded: `{s}`", .{path});
-    }
+    };
     return paths;
 }
 
@@ -3091,11 +3081,11 @@ test "callback failure results reflect from type and parameter metadata" {
     defer arena.deinit();
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
-        .types = &.{.{ .callback = .{ .name = "Observer", .type = Fixture.Observer, .on_callback_failure = .{ .result = 0 } } }},
+        .types = &.{.{ .callback = .{ .name = "Observer", .type = Fixture.Observer, .on_failure = .{ .result = 0 } } }},
         .functions = &.{
             .{
                 .path = "root.apply",
-                .params = &.{ .{ .name = "callback", .on_callback_failure = .{ .result = 1 } }, .{ .name = "userdata" } },
+                .params = &.{ .{ .name = "callback", .on_failure = .{ .result = 1 } }, .{ .name = "userdata" } },
             },
         },
     }, "callbacks", "zg");
@@ -3300,13 +3290,12 @@ test "public discovery combines methods root functions exclusions and entries" {
     };
     const declaration: zigo.Binding = .{
         .root = Api,
-        .discover = .public,
+        .discovery = .{ .mode = .public, .exclude = &.{"Handle.internal"} },
         .types = &.{.{ .handle = .{ .type = Api.Handle } }},
         .functions = &.{
             .{ .path = "Handle.set", .name = "put", .params = &.{.{ .name = "value" }} },
             .{ .path = "root.ping", .name = "health" },
         },
-        .exclude = &.{"Handle.internal"},
     };
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -3339,7 +3328,7 @@ test "discovery selectors use stable owner-qualified paths" {
     };
     const declaration: zigo.Binding = .{
         .root = Api,
-        .discover = .public,
+        .discovery = .{ .mode = .public },
         .types = &.{.{ .handle = .{ .type = Api.Handle } }},
     };
     try std.testing.expect(comptime declarationPathExists(declaration, "Handle.update"));
@@ -3497,11 +3486,11 @@ test "recursive discovery is opt-in and stops at the module boundary" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
-    const shallow = try reflect(arena.allocator(), .{ .root = Api, .discover = .public }, "term", "zg");
+    const shallow = try reflect(arena.allocator(), .{ .root = Api, .discovery = .{ .mode = .public } }, "term", "zg");
     try std.testing.expectEqual(@as(usize, 1), shallow.functions.len);
     try std.testing.expectEqualStrings("topLevel", shallow.functions[0].name);
 
-    const deep = try reflect(arena.allocator(), .{ .root = Api, .discover = .recursive }, "term", "zg");
+    const deep = try reflect(arena.allocator(), .{ .root = Api, .discovery = .{ .mode = .recursive } }, "term", "zg");
     try std.testing.expectEqual(@as(usize, 2), deep.functions.len);
     try std.testing.expectEqualStrings("topLevel", deep.functions[0].name);
     try std.testing.expectEqualStrings("parse", deep.functions[1].name);
@@ -3523,8 +3512,7 @@ test "recursive discovery honours an exclusion on a nested path" {
     defer arena.deinit();
     const document = try reflect(arena.allocator(), .{
         .root = Api,
-        .discover = .recursive,
-        .exclude = &.{"root.osc.internalHelper"},
+        .discovery = .{ .mode = .recursive, .exclude = &.{"root.osc.internalHelper"} },
     }, "term", "zg");
     try std.testing.expectEqual(@as(usize, 1), document.functions.len);
     try std.testing.expectEqualStrings("parse", document.functions[0].name);
@@ -5518,11 +5506,12 @@ test "authoring tree preserves root method paths and package ownership" {
         }
     };
     const api = author.scope(Lib);
-    const tree = author.define(.{ .root = Lib, .declarations = &.{
+    const Item = api.handle("Item", .{}).with(.{ .name = "Record" }).context();
+    const tree = author.define(api, .{ .declarations = &.{
         author.package(.{ .path = "items", .declarations = &.{
-            api.handle("Item", .{}).named("Record").with(.{ .members = &.{
+            Item.members(&.{
                 api.func("inspect", .{ .name = "read", .params = &.{.{ .index = 1, .go_name = "index" }} }),
-            } }),
+            }),
         } }),
     } });
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
@@ -5543,7 +5532,7 @@ test "explicit free role keeps handle parameter visible" {
         }
     };
     const api = author.scope(Lib);
-    const tree = author.define(.{ .root = Lib, .declarations = &.{
+    const tree = author.define(api, .{ .declarations = &.{
         api.handle("Item", .{}),
         api.func("inspect", .{ .role = .free, .params = &.{.{ .index = 0, .go_name = "item" }} }),
     } });
@@ -5566,14 +5555,14 @@ test "authoring static constructor keeps its handle input in the public signatur
         pub fn destroy(_: *Child) void {}
     };
     const api = author.scope(Fixture);
-    const tree = comptime author.define(.{ .root = Fixture, .declarations = &.{
-        api.handle("Parent", .{}).members(&.{
+    const tree = comptime author.define(api, .{ .declarations = &.{
+        api.handle("Parent", .{}).context().members(&.{
             api.func("create", .{
                 .role = .{ .constructor = .{ .type = api.typeRef("Child"), .receiver = .none } },
                 .params = &.{.{ .index = 0, .go_name = "parent" }},
             }),
         }),
-        api.handle("Child", .{}).members(&.{
+        api.handle("Child", .{}).context().members(&.{
             api.func("destroy", .{ .role = .{ .destructor = api.typeRef("Child") } }),
         }),
     } });
@@ -5593,14 +5582,14 @@ test "authoring sparse callback hints survive native userdata and byte pair lowe
         pub fn run(_: Callback, _: usize) void {}
     };
     const api = author.scope(Fixture);
-    const tree = comptime author.define(.{ .root = Fixture, .declarations = &.{
+    const tree = comptime author.define(api, .{ .declarations = &.{
         api.callback("Callback", .{
             .userdata = .{ .index = 1 },
             .params = &.{
                 .{ .index = 2, .semantic = .utf8_string },
                 .{ .index = 0, .semantic = .codepoint },
             },
-            .on_failure = .{ .result = -1 },
+            .contract = .{ .on_failure = .{ .result = -1 } },
         }),
         api.func("run", .{}),
     } });
@@ -5623,7 +5612,7 @@ test "callback and materialized plugin attachments survive authoring and reflect
     };
     const P = .{ .name = "EXTRA", .FunctionOptions = struct {}, .TypeOptions = struct { enabled: bool }, .subjects = [_]enum { callback, materialized }{ .callback, .materialized } };
     const api = public.scope(Fixture);
-    const binding = comptime public.define(.{ .root = Fixture, .declarations = &.{
+    const binding = comptime public.define(api, .{ .declarations = &.{
         api.callback("Observer", .{}).use(P, .{ .enabled = true }),
         api.materialized("Snapshot", .{}).use(P, .{ .enabled = true }),
     } });

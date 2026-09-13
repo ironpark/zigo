@@ -37,7 +37,7 @@ zig build purego-go purego-go-verify
 
 소유한 핸들은 명시적으로 `Close`해야 합니다. GC 정리는 안전망일 뿐 실행 시점을
 보장하지 않습니다. 객체의 동시 호출 안전성은 원래 Zig 구현에 달려 있습니다. 이 예제는
-직접 `api.in()`과 `Entry.members()`를 조합하며 Context 방식은
+`Context.members()`로 멤버를 직접 나열하며, 선택자로 고르는 방식은
 [05-pipeline](../05-pipeline/src/bindings.zig)에서 비교할 수 있습니다.
 
 ## 관련 문서

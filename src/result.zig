@@ -2,11 +2,11 @@
 const a = @import("author.zig");
 
 pub fn owned() a.Returns {
-    return .{ .lifetime = .{ .owned = .{} } };
+    return .{ .ownership = .{ .owned = .{} } };
 }
 pub fn releasedBy(comptime release: a.FunctionRef) a.Returns {
-    return .{ .lifetime = .{ .owned = .{ .release = release } } };
+    return .{ .ownership = .{ .owned = .{ .release = release } } };
 }
 pub fn borrowed() a.Returns {
-    return .{ .lifetime = .{ .borrowed = .receiver } };
+    return .{ .ownership = .borrowed };
 }

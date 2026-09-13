@@ -12,19 +12,19 @@ const Terminal = api.handle("Terminal", .{}).context();
 
 const owned_samples = zigo.result.releasedBy(EventQueue.ref("freeSamples"));
 
-const queue_binding = EventQueue.define(&.{
+const queue_binding = EventQueue.members(&.{
     EventQueue.func("create", .{
         .params = &.{
             .{ .index = 0, .go_name = "name", .semantic = .utf8_string },
             .{ .index = 1, .go_name = "capacity" },
             .{ .index = 2, .go_name = "policy" },
-            zigo.param.callback(3, .{ .retention = .retained }),
+            zigo.param.callback(3, .{ .contract = .{ .retention = .retained } }),
         },
     }),
     EventQueue.func("clone", .{
         .returns = zigo.result.owned(),
         .params = &.{
-            zigo.param.callback(1, .{ .retention = .retained }),
+            zigo.param.callback(1, .{ .contract = .{ .retention = .retained } }),
         },
     }),
     EventQueue.func("newStream", .{
@@ -41,7 +41,7 @@ const queue_binding = EventQueue.define(&.{
     EventQueue.func("process", .{}),
     EventQueue.func("setObserver", .{
         .params = &.{
-            zigo.param.callback(1, .{ .retention = .retained }),
+            zigo.param.callback(1, .{ .contract = .{ .retention = .retained } }),
         },
     }),
     EventQueue.func("name", .{ .returns = .{ .semantic = .utf8_string } }),
@@ -97,8 +97,8 @@ const types_package = zigo.package(.{
     .path = "types",
     .doc = "Package types contains event-queue values and the standalone Ticker handle.",
     .declarations = &.{
-        api.enumType("QueueSignal", .{ .exhaustive = false }).use(zigo.features.text, .{}),
-        Ticker.define(&.{
+        api.enumeration("QueueSignal", .{ .exhaustive = false, .text = true }),
+        Ticker.members(&.{
             api.func("newTicker", .{ .role = .{ .constructor = .{ .type = Ticker.typeRef() } } }),
             api.func("freeTicker", .{ .role = .{ .destructor = Ticker.typeRef() } }),
             api.func("tickerAdvance", .{
@@ -108,28 +108,27 @@ const types_package = zigo.package(.{
                 .name = "elapsed",
             }),
         }),
-        api.val("TickerInfo", .{}),
+        api.value("TickerInfo", .{}),
         api.func("liveTickers", .{}),
     },
 });
 
-pub const bindings = zigo.define(.{
-    .root = library,
+pub const bindings = zigo.define(api, .{
     .allocator = .page_allocator,
     .declarations = &.{
         queue_binding,
-        api.val("Stats", .{}),
-        api.val("Limits", .{}),
-        Stream.define(&.{
+        api.value("Stats", .{}),
+        api.value("Limits", .{}),
+        Stream.members(&.{
             Stream.func("capacity", .{}),
             api.func("freeStream", .{ .role = .{ .destructor = Stream.typeRef() } }),
         }),
-        BorrowBox.define(&.{
+        BorrowBox.members(&.{
             BorrowBox.func("create", .{}),
             BorrowBox.func("view", .{ .returns = zigo.result.borrowed() }),
             BorrowBox.func("deinit", .{}),
         }),
-        BorrowView.define(&.{
+        BorrowView.members(&.{
             BorrowView.func("view", .{ .returns = zigo.result.borrowed() }),
             BorrowView.func("newChild", .{
                 .role = .{
@@ -143,11 +142,11 @@ pub const bindings = zigo.define(.{
             BorrowView.func("get", .{}),
             BorrowView.func("explode", .{}),
         }),
-        BorrowChild.define(&.{
+        BorrowChild.members(&.{
             BorrowChild.func("get", .{}),
             BorrowChild.func("deinit", .{ .role = .{ .destructor = BorrowChild.typeRef() } }),
         }),
-        Terminal.define(&.{
+        Terminal.members(&.{
             Terminal.func("init", .{
                 .params = &.{
                     zigo.param.options(2, &.{ "rows", "max_scrollback_bytes", "blink_interval_ms" }, .{ .prefix = "" }),

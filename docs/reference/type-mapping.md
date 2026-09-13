@@ -37,7 +37,7 @@ nullable 핸들 포인터는 별도 포인터 표현으로 콜백에 전달할 �
 ## 열거형
 
 등록 열거형은 이름이 있는 Go 정수 타입과 상수가 됩니다. non-exhaustive 열거형은 반드시
-`.exhaustive = false`로 등록합니다. `features.text`를 붙이면 parse와 text 인코딩 메서드가
+`.exhaustive = false`로 등록합니다. `.text = true`를 주면 parse와 text 인코딩 메서드가
 추가됩니다.
 
 ## 구조체

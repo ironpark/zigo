@@ -148,11 +148,11 @@
           "type": "Stream"
         },
         {
-          "name": "Tick",
+          "accessor": "Ticks",
           "type": "Ticker"
         },
         {
-          "plural": "Searches",
+          "accessor": "Searches",
           "type": "Search"
         }
       ],

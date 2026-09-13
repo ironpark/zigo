@@ -664,7 +664,8 @@
               "signed": false
             },
             "kind": "slice"
-          }
+          },
+          "written": "all"
         }
       ],
       "return": {

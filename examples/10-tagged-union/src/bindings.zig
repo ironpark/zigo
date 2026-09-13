@@ -5,8 +5,8 @@ const json = @import("zigo_json");
 
 const api = zigo.scope(library);
 const Child = api.handle("Child", .{}).context();
-const Value = api.taggedUnion("Value", .{}).context();
-const Signal = api.taggedUnion("Signal", .{ .access = .snapshot }).context();
+const Value = api.@"union"("Value", .{}).context();
+const Signal = api.@"union"("Signal", .{ .access = .snapshot }).context();
 const Palette = api.handle("Palette", .{ .fields = &.{
     .{ .path = "flags", .set = true },
     .{ .path = "pinned_mode", .name = "pinnedMode", .set = true },
@@ -14,11 +14,10 @@ const Palette = api.handle("Palette", .{ .fields = &.{
 } }).context();
 
 // Plugin attachment targets and their option types are checked at this declaration.
-pub const bindings = zigo.define(.{
-    .root = library,
+pub const bindings = zigo.define(api, .{
     .declarations = &.{
-        api.enumType("Mode", .{}).use(json.plugin, .{}).use(enumkit.plugin, .{}),
-        Child.define(&.{
+        api.enumeration("Mode", .{}).use(json.plugin, .{}).use(enumkit.plugin, .{}),
+        Child.members(&.{
             Child.func("create", .{}),
             Child.func("get", .{}),
             Child.func("deinit", .{}),
@@ -45,15 +44,15 @@ pub const bindings = zigo.define(.{
             "setActive",
             "deinit",
         } }),
-        api.val("RGB", .{}).use(json.plugin, .{ .field_names = .zig }),
-        api.val("Flags", .{}),
-        api.val("ColorRecord", .{}),
-        Palette.define(&.{
+        api.value("RGB", .{}).use(json.plugin, .{ .field_names = .zig }),
+        api.value("Flags", .{}),
+        api.value("ColorRecord", .{}),
+        Palette.members(&.{
             Palette.func("create", .{}),
             Palette.func("deinit", .{}),
         }),
         api.callback("FlagsObserver", .{}),
-        api.taggedUnion("ScrollViewport", .{ .omit = &.{"unknown"} }),
+        api.@"union"("ScrollViewport", .{ .omit = &.{"unknown"} }),
         api.func("liveValues", .{}),
         api.func("divide", .{}),
         api.func("sum", .{}),

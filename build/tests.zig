@@ -1115,7 +1115,7 @@ fn matchesAnyFilter(name: []const u8, filters: []const []const u8) bool {
 
 fn addBindingAuthoringErrors(b: *std.Build, test_step: *std.Build.Step) void {
     const cases = .{
-        .{ "members_function", "zigo members requires a type declaration" },
+        .{ "with_members", "zigo members are declared through .context().members(...)" },
         .{ "receiver_context", "zigo member receiver requires an enclosing type" },
         .{ "receiver_mismatch", "zigo receiver differs from the enclosing member type" },
         .{ "receiver_inferred_mismatch", "zigo receiver differs from the enclosing member type" },

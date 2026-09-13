@@ -279,7 +279,7 @@ fn collectContainer(
             value,
             comptime if (owner) |parent| parent ++ "." ++ candidate.name else candidate.name,
             path_prefix ++ "." ++ candidate.name,
-            comptime discovered and (binding.discover == .recursive),
+            comptime discovered and (binding.discovery.?.mode == .recursive),
         );
     }
 }
@@ -476,7 +476,7 @@ const Selectors = struct {
         };
         errdefer self.deinit();
         for (comptime walk.declaredFunctionPaths(binding)) |path| try self.listed.put(path, {});
-        inline for (binding.exclude) |path| try self.excluded.put(path, {});
+        if (binding.discovery) |discovery| inline for (discovery.exclude) |path| try self.excluded.put(path, {});
         return self;
     }
 
@@ -893,9 +893,11 @@ test "scoped enum covers follow renamed owners regardless of declaration order" 
         };
     };
     const api = author.scope(Api);
-    const binding = author.define(.{ .root = Api, .declarations = &.{
-        api.enumType("Mode", .{ .covers = &.{ api.in("Mode").ref("label"), api.in("Other").ref("label") } }).named("State"),
-        api.enumType("Other", .{}).named("Second"),
+    const Mode = api.enumeration("Mode", .{}).context();
+    const Other = api.enumeration("Other", .{}).context();
+    const binding = author.define(api, .{ .declarations = &.{
+        api.enumeration("Mode", .{ .covers = &.{ Mode.ref("label"), Other.ref("label") } }).with(.{ .name = "State" }),
+        api.enumeration("Other", .{}).with(.{ .name = "Second" }),
     } });
     var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
     defer arena.deinit();

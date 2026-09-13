@@ -14,7 +14,7 @@ opaque 또는 포인터로 다루는 객체 타입을 등록하고 멤버를 묶
 ```zig
 const Context = api.handle("Context", .{}).context();
 
-const context = Context.define(&.{
+const context = Context.members(&.{
     Context.func("create", .{}),
     Context.func("add", .{}),
     Context.func("deinit", .{}),
@@ -176,11 +176,9 @@ open := session.Streams()       // 자식 접근자는 복수형이다
 - primary와 자식 모두 `Close`를 가진 constructed 핸들이어야 하고, 자식은
   `.parent = .receiver`로 선언된 primary의 자식이어야 하며, 모두 같은 생성 패키지에
   있어야 합니다. 어긋나면 `ZIGO062`가 나옵니다.
-- 접근자와 입양 메서드 이름은 자식 타입 이름에서 만듭니다. 기준을 줄여 맞출 수 있는
-  복수는 `.{ .type = Stats.typeRef(), .name = "Stat" }`처럼 기준 이름을 지정해
-  `AddStat`·`Stats`로 바꾸고, 줄여서는 닿지 않는 복수는
-  `.{ .type = Search.typeRef(), .plural = "Searches" }`처럼 접근자 이름을 그대로
-  적습니다. 후자에서 입양 메서드는 `AddSearch`로 남습니다.
+- 입양 메서드는 자식 타입 이름으로 `Add<Type>`이 되고, 접근자는 타입 이름에 `s`를
+  붙입니다. 그 규칙으로 닿지 않는 복수는 `.{ .type = Search.typeRef(), .accessor = "Searches" }`처럼
+  접근자 이름을 그대로 적습니다. 입양 메서드는 `AddSearch`로 남습니다.
 - session은 수명만 다룹니다. 멤버 메서드를 자동으로 올리지 않으므로 `Write`/`Read` 같은
   호출을 위임하려면 `zigo.interface`나 `satisfies` 플러그인을 함께 쓰세요.
 
