@@ -2,7 +2,7 @@
 depends_on:
 - "201-api-consistency-refactor#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: A project calling both `addGoBindings` and `addRustBindings` with default step options builds without a duplicate-step panic.
 > NEXT: none
