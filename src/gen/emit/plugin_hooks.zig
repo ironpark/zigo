@@ -57,6 +57,25 @@ pub fn runMethodHooks(value: plugin.Context, writer: *std.Io.Writer, function: a
     }
 }
 
+/// The unexported name the generated body takes when a plugin claims this
+/// declaration's public surface. It is in the reserved `zigo` namespace, so it
+/// cannot collide with anything the binding or a plugin names.
+pub fn checkedNameAlloc(allocator: std.mem.Allocator, public_name: []const u8) ![]u8 {
+    return std.fmt.allocPrint(allocator, "zigoChecked{s}", .{public_name});
+}
+
+/// Whether a plugin claimed this declaration's public surface. Two claims on
+/// one declaration are refused in `analyze`, so the first answer is the only
+/// one.
+pub fn methodReplaced(value: plugin.Context, function: abi.AbiFn) !bool {
+    inline for (registry.plugins, 0..) |registered, index| {
+        if (registered.replaces_method) |claims| {
+            if (registered.supports(.function) and runs(index, value.options) and try claims(value, function)) return true;
+        }
+    }
+    return false;
+}
+
 /// Runs every registered `type_hook`, in registration order.
 pub fn runTypeHooks(value: plugin.Context, writer: *std.Io.Writer, declaration: semantic.TypeDecl) !void {
     inline for (registry.plugins, 0..) |registered, index| {
@@ -166,6 +185,40 @@ pub fn analyze(allocator: std.mem.Allocator, program: abi.Program, options: emit
     inline for (registry.plugins, 0..) |registered, index| {
         if (registered.analyze) |check| {
             if (runs(index, options)) try check(.{ .render = context(allocator, program, options), .facts = facts, .diagnostics = diagnostics });
+        }
+    }
+    // After the analyses, which is where a plugin decides what it claims.
+    try checkReplacementClaims(allocator, program, options, facts, diagnostics);
+}
+
+/// One declaration has one public surface, so two plugins cannot both replace
+/// it: whichever wrote second would give the Go type two methods of one name.
+fn checkReplacementClaims(
+    allocator: std.mem.Allocator,
+    program: abi.Program,
+    options: emit.Options,
+    facts: *plugin.Facts,
+    diagnostics: *std.ArrayList(@import("diagnostic").Diagnostic),
+) !void {
+    _ = facts;
+    const value = context(allocator, program, options);
+    for (program.functions) |function| {
+        var claimant: ?[]const u8 = null;
+        inline for (registry.plugins, 0..) |registered, index| {
+            if (registered.replaces_method) |claims| {
+                if (registered.supports(.function) and runs(index, options) and try claims(value, function)) {
+                    if (claimant) |first| {
+                        const path = try plugin.site.functionDeclarationAlloc(allocator, function.origin.*);
+                        try diagnostics.append(allocator, .{
+                            .severity = .@"error",
+                            .code = "ZIGO024",
+                            .message = try std.fmt.allocPrint(allocator, "plugins `{s}` and `{s}` both replace the public Go surface of `{s}`", .{ first, registered.name, path }),
+                            .site = plugin.site.functionSiteFor(function.origin.*, path),
+                            .hint = "one declaration has one public method; disable one of the plugins for it",
+                        });
+                    } else claimant = registered.name;
+                }
+            }
         }
     }
 }
@@ -297,7 +350,7 @@ test "plugin result and parameter writers avoid parsing checked signatures" {
     const program = try @import("lower").semanticDocument(allocator, document, "sample", "zg", &.{.{ .name = "Failure", .code = 1 }});
     for (program.functions, 0..) |function, index| {
         const names = try common.goParamNamesForAlloc(allocator, function.origin.params);
-        const ctx = methodContext(allocator, program, .{ .go_module = "example.com/sample" }, .{ .public_name = "Call", .param_names = names });
+        const ctx = methodContext(allocator, program, .{ .go_module = "example.com/sample" }, .{ .public_name = "Call", .checked_name = "Call", .param_names = names });
         var output: std.Io.Writer.Allocating = .init(allocator);
         try ctx.writeParameters(&output.writer, function);
         const count = try ctx.writeResultType(&output.writer, function, .{ .omit_error = true });

@@ -521,6 +521,16 @@ fn renderPublicBody(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
         else
             try allocator.dupe(u8, go_name);
         defer allocator.free(operation);
+        // A plugin that claims this declaration owns the exported name; the
+        // generated body is still written, under a name only the plugin's
+        // wrapper calls. Errors keep naming the exported method, which is the
+        // one the caller invoked.
+        const replaced = try plugin_hooks.methodReplaced(plugin_hooks.context(allocator, program, options), function);
+        const checked_name = if (replaced)
+            try plugin_hooks.checkedNameAlloc(allocator, go_name)
+        else
+            try allocator.dupe(u8, go_name);
+        defer allocator.free(checked_name);
         const shape = signatureShape(function);
         const needs_handle_check = shape.needs_handle_check;
         const needs_range_check = shape.needs_range_check;
@@ -530,14 +540,17 @@ fn renderPublicBody(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
         if (functionOptions(function.origin.*)) |options_info| {
             try renderFunctionOptions(scope, allocator, writer, function, options_info, operation);
         }
-        try docs.writePublicFunctionDoc(writer, function.origin.*, go_name, owned_type, public_writers.functionReachesCallbacks(program, function.origin.*), has_callback_error);
+        if (replaced)
+            try writer.print("\n// {s} is the checked form of {s}, which a plugin replaced.\n", .{ checked_name, go_name })
+        else
+            try docs.writePublicFunctionDoc(writer, function.origin.*, go_name, owned_type, public_writers.functionReachesCallbacks(program, function.origin.*), has_callback_error);
         if (function.origin.receiver) |receiver| {
             // A value receiver is spelled by value: there is no handle to
             // point at, and nothing the method could mutate through a pointer.
             const pointer = if (function.origin.receiverIsValue()) "" else "*";
-            try writer.print("func ({s} {s}{s}) {s}", .{ receiver_name.?, pointer, receiver, go_name });
+            try writer.print("func ({s} {s}{s}) {s}", .{ receiver_name.?, pointer, receiver, checked_name });
         } else {
-            try writer.print("func {s}", .{go_name});
+            try writer.print("func {s}", .{checked_name});
         }
         try writePublicSignature(scope, allocator, writer, function, go_names, constructor);
         try writer.writeAll(" {\n");
@@ -928,6 +941,7 @@ fn renderPublicBody(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
         try writer.writeAll("}\n");
         try plugin_hooks.runMethodHooks(plugin_hooks.methodContext(allocator, program, options, .{
             .public_name = go_name,
+            .checked_name = checked_name,
             .receiver = function.origin.receiver,
             .receiver_name = receiver_name,
             .param_names = go_names,

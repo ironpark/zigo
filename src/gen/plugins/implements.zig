@@ -24,7 +24,9 @@ fn methodHook(context: plugin_api.Context, writer: *std.Io.Writer, function: abi
     const method = context.method.?;
     // One wrapper per named interface, in the order the declaration named
     // them; every one of them calls the same public method.
-    for (kinds) |kind| try renderImplementsWrapper(writer, function, kind, method.receiver_name.?, method.public_name, method.needs_check);
+    // The name the generated body was written under: a declaration another
+    // plugin claimed still has one, and it is what the adapter has to call.
+    for (kinds) |kind| try renderImplementsWrapper(writer, function, kind, method.receiver_name.?, method.checked_name, method.needs_check);
 }
 
 fn validateDocument(context: plugin_api.ValidateContext) !void {

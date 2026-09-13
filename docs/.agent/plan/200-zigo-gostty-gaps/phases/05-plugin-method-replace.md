@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: 억제한 선언의 Go 표면이 플러그인이 쓴 메서드 하나뿐이고 C 심볼은 그대로다.
 > NEXT: none

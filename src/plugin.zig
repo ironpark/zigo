@@ -20,7 +20,7 @@ const targets = @import("targets");
 
 /// Major versions are incompatible; minor versions add capabilities.
 pub const ContractVersion = struct { major: u16, minor: u16 };
-pub const contract_version: ContractVersion = .{ .major = 3, .minor = 0 };
+pub const contract_version: ContractVersion = .{ .major = 3, .minor = 1 };
 
 /// Serialized build configuration; decoded as the registered plugin's Config.
 pub const Configuration = struct { name: []const u8, json: []const u8 };
@@ -425,8 +425,14 @@ pub const Writers = struct {
 /// The names are the ones the method itself used, so a wrapper that calls it
 /// can never spell the call differently.
 pub const Method = struct {
-    /// The method's exported name in the output language.
+    /// The method's exported name in the output language. A declaration a
+    /// plugin claimed with `replaces_method` has no method under this name
+    /// yet: the name is what the hook is expected to write.
     public_name: []const u8,
+    /// The name the generated body was actually written under. The same as
+    /// `public_name`, except on a declaration this plugin claimed, where it is
+    /// the unexported name the wrapper has to call.
+    checked_name: []const u8,
     /// The Go receiver type, absent for a free function.
     receiver: ?[]const u8 = null,
     /// The receiver variable name, absent for a free function.
@@ -610,6 +616,15 @@ pub const Plugin = struct {
     validate: ?*const fn (ValidateContext) anyerror!void = null,
     /// Written after each public method, into the file that owns it.
     method_hook: ?*const fn (Context, *std.Io.Writer, abi.AbiFn) anyerror!void = null,
+    /// Whether this declaration's public surface belongs to this plugin alone.
+    /// A claimed declaration still gets its whole generated body, under an
+    /// unexported name the `method_hook` reads from `Method.checked_name`; what
+    /// changes is that nothing exported is written for it, so the hook's
+    /// wrapper replaces the method instead of sitting next to it. The C symbol,
+    /// the shim and the raw package are untouched.
+    ///
+    /// Two plugins cannot claim one declaration; the generator refuses it.
+    replaces_method: ?*const fn (Context, abi.AbiFn) anyerror!bool = null,
     /// Written after each handle, value struct and enum, into the file that
     /// owns it.
     type_hook: ?*const fn (Context, *std.Io.Writer, semantic.TypeDecl) anyerror!void = null,

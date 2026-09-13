@@ -24,7 +24,7 @@ configuration and dependency checks
 
 | 필드 | 기본값 | 역할 |
 |---|---|---|
-| `min_contract` | 현재 3.0 | 필요한 계약 version |
+| `min_contract` | 현재 3.1 | 필요한 계약 version |
 | `name` | 필수 | 식별 정보와 진단 접두사 |
 | `Config` | `struct {}` | 빌드 전체 설정 타입 |
 | `Facts` | `struct {}` | analyze 결과의 typed storage |
@@ -41,6 +41,7 @@ configuration and dependency checks
 | `validate` | null | core 이후 플러그인 진단 |
 | `analyze` | null | lowering 뒤 typed fact 계산 |
 | `method_hook` | null | 공개 function/메서드 직후 body |
+| `replaces_method` | null | 이 선언의 공개 Go 표면을 이 플러그인이 가져감 |
 | `type_hook` | null | 공개 타입 직후 body |
 | `file_hook` | null | 공개 file body begin/end |
 | `package_hook` | null | 패키지별 플러그인 file body |
@@ -50,6 +51,24 @@ configuration and dependency checks
 
 semantic transform은 C ABI에 영향을 줄 수 있습니다. 렌더링 hook과 출력은 additive
 Go surface만 만들며 shim, 헤더와 raw API를 바꾸지 않습니다.
+
+## 메서드 대체
+
+`method_hook`은 더하기만 합니다. 생성된 checked 메서드 **대신** 자신의 것을 놓으려면
+`replaces_method`가 그 선언을 주장합니다.
+
+```zig
+.replaces_method = replacesMethod,   // fn (Context, abi.AbiFn) anyerror!bool
+```
+
+주장한 선언은 생성된 본문을 그대로 받되 exported 되지 않는 이름으로 받습니다.
+`method_hook`은 `Method.checked_name`으로 그 이름을, `Method.public_name`으로 비어 있는
+exported 이름을 읽어 자신의 래퍼를 씁니다. 결과는 Go 메서드 하나입니다.
+
+- C 심볼, shim, 헤더, raw 패키지는 움직이지 않습니다. 바뀌는 것은 공개 Go 표면뿐입니다.
+- 한 선언을 두 플러그인이 주장하면 `ZIGO024`로 거절됩니다.
+- exported 이름의 시그니처는 이제 플러그인의 것입니다. 그 선언이 `zigo.interface`나
+  `implements`의 계약에 걸려 있다면 그 계약을 맞추는 것도 플러그인의 몫입니다.
 
 ## context
 

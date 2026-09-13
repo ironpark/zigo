@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-13T07:57:40Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `fn printAttributes(buf: []u8) ![]const u8` 모양이 래퍼 없이 바인딩된다.
 > NEXT: none

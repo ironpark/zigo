@@ -9,7 +9,7 @@ pub var analysis_runs: usize = 0;
 pub var package_renders: usize = 0;
 pub const plugin: api.Plugin = .{
     .name = "CONTRACT",
-    .Config = struct { label: []const u8 = "default", customize: bool = false, invalid_order: bool = false, invalid_adapter: bool = false, invalid_name: bool = false, collision: bool = false },
+    .Config = struct { label: []const u8 = "default", customize: bool = false, invalid_order: bool = false, invalid_adapter: bool = false, invalid_name: bool = false, collision: bool = false, replace: []const u8 = "" },
     .transform = transform,
     .map_type = mapType,
     .name_function = nameFunction,
@@ -18,6 +18,7 @@ pub const plugin: api.Plugin = .{
     .validate = validate,
     .analyze = analyze,
     .method_hook = methodHook,
+    .replaces_method = replacesMethod,
     .type_hook = typeHook,
     .file_hook = fileHook,
     .package_hook = packageHook,
@@ -40,6 +41,30 @@ fn analyze(context: api.AnalyzeContext) !void {
 fn methodHook(context: api.Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
     _ = (try context.options.facts.get(plugin, .function(function.origin.*))) orelse return error.MissingAnalysisFact;
     try writer.writeAll("\n// ContractAnalyzed\n");
+    if (!try replacesMethod(context, function)) return;
+    // The whole Go surface of a claimed declaration: the exported name, with
+    // the generated body called under the name it was written with.
+    const method = context.method.?;
+    try writer.print("\n// {s} is the ContractReplacement.\nfunc ", .{method.public_name});
+    if (method.receiver) |receiver| try writer.print("({s} *{s}) ", .{ method.receiver_name.?, receiver });
+    try writer.print("{s}", .{method.public_name});
+    try context.writeParameters(writer, function);
+    const count = try context.writeResultType(writer, function, .{ .omit_error = true });
+    try writer.writeAll(" { ");
+    try writer.writeAll(switch (count) {
+        0 => "_ = zigoMust(struct{}{}, ",
+        1 => "return zigoMust(",
+        else => "return zigoMustMatch(",
+    });
+    if (method.receiver_name) |receiver| try writer.print("{s}.", .{receiver});
+    try writer.print("{s}(", .{method.checked_name});
+    try context.writeCallArguments(writer, function);
+    try writer.writeAll(")) }\n");
+}
+
+fn replacesMethod(context: api.Context, function: abi.AbiFn) !bool {
+    const claimed = (try context.config(plugin)).replace;
+    return claimed.len != 0 and std.mem.eql(u8, claimed, function.origin.name);
 }
 
 fn typeHook(_: api.Context, writer: *std.Io.Writer, declaration: semantic.TypeDecl) !void {

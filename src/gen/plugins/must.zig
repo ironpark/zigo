@@ -114,7 +114,9 @@ fn methodHook(context: plugin_api.Context, writer: *std.Io.Writer, function: abi
         else => "return zigoMustMatch(",
     });
     if (method.receiver_name) |receiver| try writer.print("{s}.", .{receiver});
-    try writer.print("{s}(", .{method.public_name});
+    // The name the generated body was written under, which differs from the
+    // exported one when another plugin claimed this declaration.
+    try writer.print("{s}(", .{method.checked_name});
     try context.writeCallArguments(writer, function);
     try writer.writeAll(")) }\n");
 }

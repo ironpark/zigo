@@ -120,6 +120,45 @@ test "external semantic customization rewrites IR, conversions, names and preser
     }
 }
 
+test "a plugin that claims a declaration replaces its method instead of adding one" {
+    const fixture = @embedFile("generator_cases/scalar/semantic.json");
+    var output = std.testing.tmpDir(.{ .iterate = true });
+    defer output.cleanup();
+    var baseline = std.testing.tmpDir(.{ .iterate = true });
+    defer baseline.cleanup();
+    const options: generator.Options = .{
+        .package = "scalar",
+        .prefix = "zg",
+        .go_module = "example.com/contract",
+        .configurations = &.{.{ .name = "CONTRACT", .json = "{\"replace\":\"add\"}" }},
+    };
+    var plain = options;
+    plain.configurations = &.{};
+    try generator.generate(std.testing.allocator, std.testing.io, fixture, baseline.dir, plain);
+    try generator.generate(std.testing.allocator, std.testing.io, fixture, output.dir, options);
+
+    const claimed = try output.dir.readFileAlloc(std.testing.io, "scalar/scalar_gen.go", std.testing.allocator, .limited(1024 * 1024));
+    defer std.testing.allocator.free(claimed);
+    // The generated body is still there, under a name only the wrapper calls,
+    // and the exported name is written once -- by the plugin.
+    try std.testing.expect(std.mem.indexOf(u8, claimed, "func zigoCheckedAdd(") != null);
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, claimed, "func Add("));
+    try std.testing.expect(std.mem.indexOf(u8, claimed, "// Add is the ContractReplacement.") != null);
+
+    // Nothing below the public layer moved: the C symbol and the raw call are
+    // what they were without the plugin.
+    const raw_path = "internal/raw/raw_gen.go";
+    const claimed_raw = try output.dir.readFileAlloc(std.testing.io, raw_path, std.testing.allocator, .limited(1024 * 1024));
+    defer std.testing.allocator.free(claimed_raw);
+    const plain_raw = try baseline.dir.readFileAlloc(std.testing.io, raw_path, std.testing.allocator, .limited(1024 * 1024));
+    defer std.testing.allocator.free(plain_raw);
+    try std.testing.expectEqualStrings(plain_raw, claimed_raw);
+
+    const plain_public = try baseline.dir.readFileAlloc(std.testing.io, "scalar/scalar_gen.go", std.testing.allocator, .limited(1024 * 1024));
+    defer std.testing.allocator.free(plain_public);
+    try std.testing.expect(std.mem.indexOf(u8, plain_public, "zigoChecked") == null);
+}
+
 test "invalid transformed output fails before validation callbacks and leaves output untouched" {
     const diagnostic = @import("diagnostic");
     const cases = .{
