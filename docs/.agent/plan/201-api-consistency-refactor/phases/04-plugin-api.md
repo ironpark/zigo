@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-13T20:52:07Z"
 depends_on:
 - "201-api-consistency-refactor#3"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `tests/plugin_contract.zig` and `zig build test` pass; examples 10 and 11 (which use shipped plugins) verify.
 > NEXT: none

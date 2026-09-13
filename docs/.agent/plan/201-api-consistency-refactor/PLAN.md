@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-13T20:52:07Z"
 description: Breaking refactor of zigo's public surface (DSL, build.zig/CLI, generated Go, plugin API) for usability and consistency
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-13T18:43:12Z"
 ---
 > NEXT: Docs, comments, dead code: risk-free cleanup that establishes the baseline for the renames. ([Phase 0](phases/00-docs-and-dead-code.md))
@@ -11,7 +12,7 @@ registered_at: "2026-09-13T18:43:12Z"
 - [x] [Phase 01: build.zig and CLI options](phases/01-build-options.md)
 - [x] [Phase 02: DSL naming and single spellings](phases/02-dsl-consistency.md)
 - [x] [Phase 03: Generated Go conventions](phases/03-generated-go.md)
-- [ ] [Phase 04: Plugin API surface](phases/04-plugin-api.md)
+- [x] [Phase 04: Plugin API surface](phases/04-plugin-api.md)
 
 # Shared Verification
 
