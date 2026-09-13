@@ -7,7 +7,7 @@ registered_at: "2026-09-13T18:43:12Z"
 
 # Phases
 
-- [ ] [Phase 00: Docs, comments, dead code](phases/00-docs-and-dead-code.md)
+- [x] [Phase 00: Docs, comments, dead code](phases/00-docs-and-dead-code.md)
 - [ ] [Phase 01: build.zig and CLI options](phases/01-build-options.md)
 - [ ] [Phase 02: DSL naming and single spellings](phases/02-dsl-consistency.md)
 - [ ] [Phase 03: Generated Go conventions](phases/03-generated-go.md)

@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-13T18:48:55Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `grep -rn "extend(" build.zig plugins src/gen/plugins` returns nothing referring to the DSL.
 > NEXT: none
