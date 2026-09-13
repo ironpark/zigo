@@ -7,6 +7,7 @@ fn panicHandler(message: []const u8, _: ?usize) noreturn {
     zg_panic_bridge(message.ptr, message.len);
 }
 pub const panic = std.debug.FullPanic(panicHandler);
+pub const std_options: std.Options = if (@hasDecl(target, "std_options")) target.std_options else .{};
 
 extern fn zg_visit_go_callback_callback(p0: u16, p1: usize) callconv(.c) void;
 fn zg_visit_callback_packed_thunk(p0: target.Flags, p1: usize) callconv(.c) void {

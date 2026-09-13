@@ -1074,7 +1074,7 @@ fn addGoldenArtifactChecks(
         // the generated shim does, so the test links libc explicitly: macOS
         // links it implicitly and hides the omission, Linux does not.
         const roundtrip = b.addSystemCommand(&.{ b.graph.zig_exe, "test", "-lc", "--dep", "zigo_target" });
-        roundtrip.setName(b.fmt("{s} walker round trip", .{name}));
+        roundtrip.setName(b.fmt("{s} golden shim round trip", .{name}));
         roundtrip.addPrefixedFileArg("-Mroot=", case.path(b, "roundtrip.zig"));
         roundtrip.addPrefixedFileArg("-Mzigo_target=", case.path(b, "target.zig"));
         roundtrip.addFileInput(expected.path(b, "shim.zig"));

@@ -7,6 +7,7 @@ fn panicHandler(message: []const u8, _: ?usize) noreturn {
     zg_panic_bridge(message.ptr, message.len);
 }
 pub const panic = std.debug.FullPanic(panicHandler);
+pub const std_options: std.Options = if (@hasDecl(target, "std_options")) target.std_options else .{};
 
 export fn zg_double_impl(value: ?*const i32, out_result: *i32) u8 {
     const result = target.double(if (value) |zigo_value| zigo_value.* else null) orelse {

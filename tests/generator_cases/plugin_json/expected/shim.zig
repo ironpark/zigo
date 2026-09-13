@@ -7,6 +7,7 @@ fn panicHandler(message: []const u8, _: ?usize) noreturn {
     zg_panic_bridge(message.ptr, message.len);
 }
 pub const panic = std.debug.FullPanic(panicHandler);
+pub const std_options: std.Options = if (@hasDecl(target, "std_options")) target.std_options else .{};
 
 export fn zg_echo_color_impl(value: *const target.Color, mode: u8, out_result: *target.Color) void {
     out_result.* = target.echoColor(value.*, @enumFromInt(mode));

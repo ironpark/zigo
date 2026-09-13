@@ -7,6 +7,7 @@ fn panicHandler(message: []const u8, _: ?usize) noreturn {
     zg_panic_bridge(message.ptr, message.len);
 }
 pub const panic = std.debug.FullPanic(panicHandler);
+pub const std_options: std.Options = if (@hasDecl(target, "std_options")) target.std_options else .{};
 
 export fn zg_apply_purego_v2_impl(value: i32, callback: *const fn (i32, usize) callconv(.c) i32, userdata: usize) i32 {
     return target.apply(value, callback, userdata);

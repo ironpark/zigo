@@ -7,6 +7,7 @@ fn panicHandler(message: []const u8, _: ?usize) noreturn {
     zg_panic_bridge(message.ptr, message.len);
 }
 pub const panic = std.debug.FullPanic(panicHandler);
+pub const std_options: std.Options = if (@hasDecl(target, "std_options")) target.std_options else .{};
 
 export fn zg_translate_impl(origin: *const target.Point, dx: i16, out_result: *target.Point) void {
     out_result.* = target.translate(origin.*, dx);

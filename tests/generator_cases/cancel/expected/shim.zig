@@ -7,6 +7,7 @@ fn panicHandler(message: []const u8, _: ?usize) noreturn {
     zg_panic_bridge(message.ptr, message.len);
 }
 pub const panic = std.debug.FullPanic(panicHandler);
+pub const std_options: std.Options = if (@hasDecl(target, "std_options")) target.std_options else .{};
 
 export fn zg_job_crunch_impl(self: *target.Job, rounds: u32, cancel: *const u32, out_result: *f64) i32 {
     const result = target.Job.crunch(self, rounds, @ptrCast(cancel)) catch |err| return switch (err) {

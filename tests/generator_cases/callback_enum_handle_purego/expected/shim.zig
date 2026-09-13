@@ -7,6 +7,7 @@ fn panicHandler(message: []const u8, _: ?usize) noreturn {
     zg_panic_bridge(message.ptr, message.len);
 }
 pub const panic = std.debug.FullPanic(panicHandler);
+pub const std_options: std.Options = if (@hasDecl(target, "std_options")) target.std_options else .{};
 
 var zg_on_location_purego_v2_bits_target_callback: std.atomic.Value(?*const fn (i32, usize) callconv(.c) void) = .init(null);
 fn zg_on_location_purego_v2_bits_thunk_callback(p0: target.Location, p1: usize) callconv(.c) void {

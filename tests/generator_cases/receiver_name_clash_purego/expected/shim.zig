@@ -7,6 +7,7 @@ fn panicHandler(message: []const u8, _: ?usize) noreturn {
     zg_panic_bridge(message.ptr, message.len);
 }
 pub const panic = std.debug.FullPanic(panicHandler);
+pub const std_options: std.Options = if (@hasDecl(target, "std_options")) target.std_options else .{};
 
 export fn zg_terminal_set_title_impl(self: *target.Terminal, t_ptr: [*c]const u8, t_len: usize) i32 {
     target.Terminal.setTitle(self, if (t_len == 0) &.{} else t_ptr[0..t_len]) catch |err| return switch (err) {

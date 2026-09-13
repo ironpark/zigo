@@ -7,6 +7,7 @@ fn panicHandler(message: []const u8, _: ?usize) noreturn {
     zg_panic_bridge(message.ptr, message.len);
 }
 pub const panic = std.debug.FullPanic(panicHandler);
+pub const std_options: std.Options = if (@hasDecl(target, "std_options")) target.std_options else .{};
 
 export fn zg_apply_impl(behavior_tag: u8, behavior_delta: isize, behavior_page: usize, behavior_ratio: f64, behavior_animated: u8, behavior_mode: u8, behavior_rgb: u32, behavior_region_x: i16, behavior_region_enabled: u8) i64 {
     return target.apply(switch (behavior_tag) {

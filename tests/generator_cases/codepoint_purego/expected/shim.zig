@@ -7,6 +7,7 @@ fn panicHandler(message: []const u8, _: ?usize) noreturn {
     zg_panic_bridge(message.ptr, message.len);
 }
 pub const panic = std.debug.FullPanic(panicHandler);
+pub const std_options: std.Options = if (@hasDecl(target, "std_options")) target.std_options else .{};
 
 export fn zg_codepoint_width_impl(cp: u32, out_result: *i8) i32 {
     if (cp > std.math.maxInt(u21)) @panic("zigo: argument `cp` is out of range for u21");

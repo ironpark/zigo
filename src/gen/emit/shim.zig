@@ -24,7 +24,14 @@ pub fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program:
             "fn panicHandler(message: []const u8, _: ?usize) noreturn {{\n" ++
             "    {0s}_panic_bridge(message.ptr, message.len);\n" ++
             "}}\n" ++
-            "pub const panic = std.debug.FullPanic(panicHandler);\n\n",
+            "pub const panic = std.debug.FullPanic(panicHandler);\n" ++
+            // `std.log` reads the compilation root's `std_options`, and the
+            // root of a zigo build is this file, not the bound module. Passing
+            // the target's declaration through is what lets a library keep its
+            // own `logFn` -- and lets a binding install one that hands the
+            // record to the embedder -- instead of silently taking the std
+            // default.
+            "pub const std_options: std.Options = if (@hasDecl(target, \"std_options\")) target.std_options else .{{}};\n\n",
         .{program.prefix},
     );
     // Set by whatever the prelude wrote after the panic bridge, so the blank

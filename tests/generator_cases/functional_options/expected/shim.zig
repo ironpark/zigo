@@ -7,6 +7,7 @@ fn panicHandler(message: []const u8, _: ?usize) noreturn {
     zg_panic_bridge(message.ptr, message.len);
 }
 pub const panic = std.debug.FullPanic(panicHandler);
+pub const std_options: std.Options = if (@hasDecl(target, "std_options")) target.std_options else .{};
 
 export fn zg_terminal_init_impl(initial_cols: u16, rows: u16, max_scrollback_bytes: usize, out_result: **target.Terminal) i32 {
     const result = target.Terminal.init(initial_cols, target.TerminalOptions{ .rows = rows, .max_scrollback_bytes = max_scrollback_bytes });

@@ -7,6 +7,7 @@ fn panicHandler(message: []const u8, _: ?usize) noreturn {
     zg_panic_bridge(message.ptr, message.len);
 }
 pub const panic = std.debug.FullPanic(panicHandler);
+pub const std_options: std.Options = if (@hasDecl(target, "std_options")) target.std_options else .{};
 
 export fn zg_store_open_impl(name_ptr: [*c]const u8, name_len: usize, out_result: **target.Store) i32 {
     const result = target.Store.open(std.heap.smp_allocator, if (name_len == 0) &.{} else name_ptr[0..name_len]) catch |err| return switch (err) {

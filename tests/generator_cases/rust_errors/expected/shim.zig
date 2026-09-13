@@ -7,6 +7,7 @@ fn panicHandler(message: []const u8, _: ?usize) noreturn {
     zg_panic_bridge(message.ptr, message.len);
 }
 pub const panic = std.debug.FullPanic(panicHandler);
+pub const std_options: std.Options = if (@hasDecl(target, "std_options")) target.std_options else .{};
 
 export fn zg_divide_impl(numerator: i32, denominator: i32, out_result: *i32) i32 {
     const result = target.divide(numerator, denominator) catch |err| return switch (err) {

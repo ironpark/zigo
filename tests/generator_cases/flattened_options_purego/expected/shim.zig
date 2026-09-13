@@ -7,6 +7,7 @@ fn panicHandler(message: []const u8, _: ?usize) noreturn {
     zg_panic_bridge(message.ptr, message.len);
 }
 pub const panic = std.debug.FullPanic(panicHandler);
+pub const std_options: std.Options = if (@hasDecl(target, "std_options")) target.std_options else .{};
 
 export fn zg_configure_impl(enabled: u8, options_rows: u16, scale: f32, mode: u8, limit: ?*const u32, rows: u32) void {
     target.configure(target.Terminal.Options{ .enabled = enabled != 0, .rows = options_rows, .scale = scale, .mode = @enumFromInt(mode), .limit = if (limit) |zigo_limit| zigo_limit.* else null }, rows);

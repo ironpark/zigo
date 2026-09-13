@@ -7,6 +7,7 @@ fn panicHandler(message: []const u8, _: ?usize) noreturn {
     zg_panic_bridge(message.ptr, message.len);
 }
 pub const panic = std.debug.FullPanic(panicHandler);
+pub const std_options: std.Options = if (@hasDecl(target, "std_options")) target.std_options else .{};
 
 export fn zg_sum_impl(values_ptr: [*c]const i32, values_len: usize) i64 {
     return target.sum(if (values_len == 0) &.{} else values_ptr[0..values_len]);
