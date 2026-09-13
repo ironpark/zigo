@@ -8,7 +8,7 @@ depends_on:
 - "200-zigo-gostty-gaps#5"
 - "200-zigo-gostty-gaps#6"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `zig build test`가 통과하고 문서가 실제 동작과 일치한다.
 > NEXT: none

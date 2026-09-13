@@ -4,6 +4,62 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+gostty를 쓰면서 zigo에 기능이 없어 우회한 자리들입니다.
+
+### Added
+
+- 생성된 shim이 바인딩된 모듈의 `std_options`를 root에서 전달합니다. `std.log`는 컴파일
+  root의 `std_options`만 읽고 zigo 빌드의 root는 shim이므로, 자체 `logFn`을 선언한
+  라이브러리는 지금까지 std 기본값을 받았습니다. 이제 라이브러리가 선언한 것이 그대로
+  쓰이고, 선언이 없으면 종전대로 std 기본값입니다. embedder 콜백으로 로그를 빼는 길이
+  여기서 열립니다.
+- 컨테이너 멤버의 doc comment가 생성된 Go로 실립니다. enum 상수와 값 struct 필드가
+  `X corresponds to the Zig field x.` 대신 Zig 소스의 `///`를 답니다. 함수 문서와 같은
+  경로입니다: 리플렉션이 `fields[].doc`을 비워 두고 소스 스캔이 채웁니다. 컨테이너는
+  lexical path가 등록 타입과 맞고 멤버 목록이 문서와 일치할 때만 문서를 빌려주므로,
+  각자 `Options`를 선언한 두 파일이 서로의 문장을 가져가지 않습니다.
+- `.fields[].doc`으로 바인딩이 멤버 문서를 직접 씁니다. `enumType`도 `.fields` 목록을
+  받습니다. 바인딩이 쓴 것이 소스의 `///`보다 우선하며, 태그를 문자열 테이블에서 만드는
+  enum처럼 소스에 `///`를 붙일 자리가 없는 타입에는 이것이 유일한 경로입니다.
+- `.written = .returned_slice`가 호출자 버퍼에 쓰고 그 앞부분을 slice로 돌려주는 함수를
+  받습니다(`fn printAttributes(buf: []u8) ![]const u8`). 돌아온 slice는 호출자가 이미 가진
+  메모리이므로 길이만 넘어갑니다. C 서명과 Go 시그니처는 `.written = .result`와 같고,
+  shim이 결과 대신 `.len`을 읽습니다. 지금까지는 `.len`만 돌려주는 래퍼 Zig 함수를 손으로
+  써야 했습니다.
+- session 자식이 `.plural`로 접근자 이름을 그대로 적습니다. 접근자는 기준 이름 + `s`이고
+  `.name`은 기준을 줄이기만 하므로 `Search`는 `Searchs`가 되었습니다. `.plural = "Searches"`가
+  그 자리를 채우고, 입양 메서드는 기준 이름을 그대로 써 `AddSearch`로 남습니다.
+- 한 핸들을 여러 방법으로 만들 수 있습니다. 타입마다 생성자는 하나였기 때문에 스냅샷에서
+  새 핸들을 돌려줄 길이 없었습니다. 이제 `.constructs` 주장마다 그 타입의 하나뿐인
+  소멸자와 짝지어집니다. 두 생성자가 같은 Go 이름으로 풀리면 여전히 `ZIGO024`가 나고,
+  타입 rename은 둘을 함께 옮기므로 note가 둘 중 하나에 `.name`을 주라고 알려 줍니다.
+- 값 tagged union이 error union의 payload 자리에 올 수 있습니다. `!Attribute`는 지금까지
+  중첩으로 보여 `ZIGO006`이 났고, 실패할 수 없는 래퍼가 필요했습니다. Zig 오류는 평소처럼
+  `Err<Tag>`가 되고 `.omit`한 variant는 그것과 구분되는 `OmittedVariant`로 남습니다.
+- 플러그인 계약 3.1: `replaces_method`가 한 선언의 공개 Go 표면을 플러그인 것으로 만듭니다.
+  `method_hook`은 더하기만 하므로, 짧은 이름을 panic 형에 주려는 플러그인은 표면을 두 배로
+  늘릴 수밖에 없었습니다. 주장된 선언은 생성 본문을 exported 되지 않는 이름으로 받고,
+  hook이 `Method.checked_name`으로 그것을 부릅니다. C 심볼, shim, 헤더, raw 패키지는
+  움직이지 않고, 한 선언을 두 플러그인이 주장하면 `ZIGO024`로 거절됩니다.
+
+### Changed
+
+- `semantic.json`에 `types[].fields[].doc`, `sessions[].children[].plural`이 더해지고
+  `params[].written`이 `returned_slice`를 받습니다. 모두 선택 항목이라 기존 문서는 그대로
+  읽힙니다. 값 union을 payload로 가진 error union 반환은 이제 거절되지 않습니다.
+- `ValueField.semantic`이 선택 항목이 되었습니다. 기존 `.{ .name = ..., .semantic = ... }`
+  표기는 그대로 컴파일됩니다.
+- `ZIGO017`이 `.returned_slice`의 두 경우(결과가 `usize`가 아님, 두 매개변수가 함께 주장함)를
+  각자의 문구로 보고합니다.
+
+### Known gaps
+
+- 값 tagged union은 여전히 slice 원소 자리에 올 수 없습니다. out slice에 담으려면 shim이
+  원소마다 Zig union과 C 미러를 오가는 staging을 새로 써야 하고, 그 경로는 아직 없습니다.
+  `[]Attribute` 출력 버퍼는 계속 인덱스 하나씩 접근해야 합니다.
+
 ## [0.25.0] - 2026-09-13
 
 ### Added

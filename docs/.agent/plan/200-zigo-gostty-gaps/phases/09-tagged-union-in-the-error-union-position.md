@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-13T08:16:33Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `fn sgrAttribute(...) error{Invalid}!Attribute`가 래퍼 없이 바인딩되고, Go가
 > NEXT: none
