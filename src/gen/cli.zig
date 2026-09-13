@@ -1,9 +1,24 @@
 const std = @import("std");
 
 pub const Backend = enum { cgo, purego };
-/// Only the distinction the generator acts on: Windows constrains the purego
-/// callback ABI in ways the other systems do not.
 pub const LinkMode = enum { static, dynamic };
+
+/// How the Go side reaches the native library, the one axis every subcommand
+/// takes as `--link`. The backend and link mode the generator acts on are
+/// derived from it, so no flag combination can describe a purego static link.
+pub const Link = enum {
+    cgo_static,
+    cgo_dynamic,
+    purego,
+
+    pub fn backend(self: Link) Backend {
+        return if (self == .purego) .purego else .cgo;
+    }
+
+    pub fn linkMode(self: Link) LinkMode {
+        return if (self == .cgo_static) .static else .dynamic;
+    }
+};
 
 /// One `--cgo-target <goos>/<goarch>` value.
 pub const CgoTarget = struct { goos: []const u8, goarch: []const u8 };
@@ -44,7 +59,9 @@ pub const Generate = struct {
     output_path: []const u8,
     package: []const u8,
     prefix: []const u8 = "zg",
-    go_module: []const u8,
+    /// Required by the Go emitter, which writes it to `go.mod` and imports
+    /// through it; other output targets have no use for it.
+    go_module: ?[]const u8 = null,
     include_dir: []const u8 = "${SRCDIR}/../../../zig-out/include",
     library_dir: []const u8 = "${SRCDIR}/../../../zig-out/lib",
     header_name: []const u8 = "",
@@ -53,7 +70,7 @@ pub const Generate = struct {
     extra_ldflags: []const u8 = "",
     ldflags_external: bool = false,
     system_ldflags: []const u8 = "",
-    pkg_config_libs: []const u8 = "",
+    /// A file holding the build-time-resolved `#cgo pkg-config:` names.
     pkg_config_libs_path: ?[]const u8 = null,
     framework_ldflags: []const u8 = "",
     raw_package_path: []const u8 = "internal/raw",
@@ -62,10 +79,8 @@ pub const Generate = struct {
     go_package: []const u8 = "",
     go_package_path: []const u8 = "",
     go_package_doc: []const u8 = "",
-    plugin_config: []const u8 = "{}",
     errors_lock_path: ?[]const u8 = null,
-    backend: Backend = .cgo,
-    link_mode: LinkMode = .static,
+    link: Link = .cgo_static,
     /// cgo platforms in `--cgo-target` order; empty means one unqualified link line.
     cgo_targets: []const CgoTarget = &.{},
     /// Per-platform appended link lines in `--target-ldflags` order.
@@ -111,17 +126,16 @@ pub const AbiDiff = struct {
     current_path: []const u8,
     json: bool = false,
     fail_on_breaking: bool = false,
-    base_backend: Backend = .cgo,
-    current_backend: Backend = .cgo,
+    base_link: Link = .cgo_static,
+    current_link: Link = .cgo_static,
 };
 
 pub const Report = struct {
-    plugin_config: []const u8 = "{}",
     semantic_path: []const u8,
     go_module: []const u8 = "",
     raw_package_path: []const u8 = "internal/raw",
     raw_colocated: bool = false,
-    backend: Backend = .cgo,
+    link: Link = .cgo_static,
     go_package: []const u8 = "",
     go_package_path: []const u8 = "",
     library_search_paths: []const u8 = "",
@@ -135,7 +149,7 @@ pub const Doctor = struct {
     go_executable: []const u8 = "go",
     gofmt_executable: []const u8 = "gofmt",
     native_target: bool = true,
-    backend: Backend = .cgo,
+    link: Link = .cgo_static,
     library_path: ?[]const u8 = null,
     go_mod_path: ?[]const u8 = null,
 };
@@ -160,18 +174,18 @@ pub fn writeUsage(writer: *std.Io.Writer) std.Io.Writer.Error!void {
         \\commands:
         \\  generate  --semantic <file> --output <dir> --package <name> [options]
         \\            [--output-target go|rust] [--gofmt <path>] [--rustfmt <path>]
-        \\            [--go-package <name>] [--go-package-path <path>] [--plugin-config <json-object>]
-        \\            [--link-mode static|dynamic] [--cgo-target <goos>/<goarch>]...
+        \\            [--go-module <path>] [--go-package <name>] [--go-package-path <path>]
+        \\            [--link cgo-static|cgo-dynamic|purego] [--cgo-target <goos>/<goarch>]...
         \\            [--target-ldflags <goos>[,<goarch>]=<flags>]...
         \\  check     --generated <dir> --source <dir> [--file <generated> <source>]...
-        \\  abi-diff  --base <file> --current <file> [--base-backend cgo|purego] [--current-backend cgo|purego] [--json] [--fail-on breaking]
+        \\  abi-diff  --base <file> --current <file> [--base-link <link>] [--current-link <link>] [--json] [--fail-on breaking]
         \\            [--output-target go|rust]
         \\  report    --semantic <file> [--go-module <path>] [options]
-        \\            [--go-package <name>] [--go-package-path <path>] [--plugin-config <json-object>]
+        \\            [--go-package <name>] [--go-package-path <path>] [--link cgo-static|cgo-dynamic|purego]
         \\            [--library-search-paths <a:b>] [--library-env-vars <A,B>]
         \\            [--library-automatic] [--library-internal-api] [--library-platform-dirs]
         \\  doctor    [--go <path>] [--gofmt <path>] [--target native|cross]
-        \\            [--backend cgo|purego] [--library <path>] [--go-mod <path>]
+        \\            [--link cgo-static|cgo-dynamic|purego] [--library <path>] [--go-mod <path>]
         \\
     );
 }
@@ -252,7 +266,6 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
     var extra_ldflags: ?[]const u8 = null;
     var ldflags_external = false;
     var system_ldflags: ?[]const u8 = null;
-    var pkg_config_libs: ?[]const u8 = null;
     var pkg_config_libs_path: ?[]const u8 = null;
     var framework_ldflags: ?[]const u8 = null;
     var raw_package_path: ?[]const u8 = null;
@@ -263,9 +276,7 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
     var errors_lock_path: ?[]const u8 = null;
     var raw_colocated = false;
     var raw_colocated_seen = false;
-    var plugin_config: ?[]const u8 = null;
-    var backend: ?Backend = null;
-    var link_mode: ?LinkMode = null;
+    var link: ?Link = null;
     var cgo_targets: std.ArrayList(CgoTarget) = .empty;
     var target_ldflags: std.ArrayList(TargetLdflags) = .empty;
     var library_stem: ?[]const u8 = null;
@@ -279,8 +290,6 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
             if (raw_colocated_seen) return error.DuplicateArgument;
             raw_colocated_seen = true;
             raw_colocated = true;
-        } else if (std.mem.eql(u8, flag, "--plugin-config")) {
-            try set(&plugin_config, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--semantic")) {
             try set(&semantic_path, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--output")) {
@@ -308,8 +317,6 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
             ldflags_external = true;
         } else if (std.mem.eql(u8, flag, "--system-ldflags")) {
             try set(&system_ldflags, try takeValue(args, &index));
-        } else if (std.mem.eql(u8, flag, "--pkg-config-libs")) {
-            try set(&pkg_config_libs, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--pkg-config-libs-file")) {
             try set(&pkg_config_libs_path, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--framework-ldflags")) {
@@ -326,12 +333,9 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
             try set(&raw_package_name, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--errors-lock")) {
             try set(&errors_lock_path, try takeValue(args, &index));
-        } else if (std.mem.eql(u8, flag, "--backend")) {
-            if (backend != null) return error.DuplicateArgument;
-            backend = parseBackend(try takeValue(args, &index)) orelse return error.InvalidValue;
-        } else if (std.mem.eql(u8, flag, "--link-mode")) {
-            if (link_mode != null) return error.DuplicateArgument;
-            link_mode = parseLinkMode(try takeValue(args, &index)) orelse return error.InvalidValue;
+        } else if (std.mem.eql(u8, flag, "--link")) {
+            if (link != null) return error.DuplicateArgument;
+            link = parseLink(try takeValue(args, &index)) orelse return error.InvalidValue;
         } else if (try loading.parseFlag(flag, args, &index)) {
             // handled by the shared loading-policy parser
         } else if (std.mem.eql(u8, flag, "--cgo-target")) {
@@ -356,19 +360,20 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
         }
     }
 
-    if (pkg_config_libs != null and pkg_config_libs_path != null) return error.DuplicateArgument;
     const resolved_target = output_target orelse "go";
     // A formatter flag names one language's formatter. Obeying `--gofmt`
     // while generating Rust would run gofmt over `.rs` files; ignoring it
     // would hide a typo. Refusing it says which flag the caller wanted.
     if (formatter) |value| if (!std.mem.eql(u8, value.target, resolved_target)) return error.InvalidValue;
+    // Only Go writes a module path anywhere, so only Go insists on one.
+    if (std.mem.eql(u8, resolved_target, "go") and go_module == null) return error.MissingRequiredArgument;
     const resolved_package = package orelse return error.MissingRequiredArgument;
     return .{
         .semantic_path = semantic_path orelse return error.MissingRequiredArgument,
         .output_path = output_path orelse return error.MissingRequiredArgument,
         .package = resolved_package,
         .prefix = prefix orelse "zg",
-        .go_module = go_module orelse resolved_package,
+        .go_module = go_module,
         .include_dir = include_dir orelse "${SRCDIR}/../../../zig-out/include",
         .library_dir = library_dir orelse "${SRCDIR}/../../../zig-out/lib",
         .header_name = header_name orelse "",
@@ -377,7 +382,6 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
         .extra_ldflags = extra_ldflags orelse "",
         .ldflags_external = ldflags_external,
         .system_ldflags = system_ldflags orelse "",
-        .pkg_config_libs = pkg_config_libs orelse "",
         .pkg_config_libs_path = pkg_config_libs_path,
         .framework_ldflags = framework_ldflags orelse "",
         .raw_package_path = raw_package_path orelse "internal/raw",
@@ -385,11 +389,9 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
         .go_package = go_package orelse "",
         .go_package_path = go_package_path orelse go_package orelse "",
         .go_package_doc = go_package_doc orelse "",
-        .plugin_config = plugin_config orelse "{}",
         .raw_colocated = raw_colocated,
         .errors_lock_path = errors_lock_path,
-        .backend = backend orelse .cgo,
-        .link_mode = link_mode orelse .static,
+        .link = link orelse .cgo_static,
         .cgo_targets = cgo_targets.items,
         .target_ldflags = target_ldflags.items,
         .library_stem = library_stem orelse "",
@@ -445,8 +447,8 @@ fn parseAbiDiff(args: []const []const u8) ParseError!AbiDiff {
     var json_seen = false;
     var fail_on_breaking = false;
     var fail_on_seen = false;
-    var base_backend: ?Backend = null;
-    var current_backend: ?Backend = null;
+    var base_link: ?Link = null;
+    var current_link: ?Link = null;
     var index: usize = 0;
     while (index < args.len) {
         const flag = args[index];
@@ -464,12 +466,12 @@ fn parseAbiDiff(args: []const []const u8) ParseError!AbiDiff {
             fail_on_seen = true;
             if (!std.mem.eql(u8, try takeValue(args, &index), "breaking")) return error.InvalidValue;
             fail_on_breaking = true;
-        } else if (std.mem.eql(u8, flag, "--base-backend")) {
-            if (base_backend != null) return error.DuplicateArgument;
-            base_backend = parseBackend(try takeValue(args, &index)) orelse return error.InvalidValue;
-        } else if (std.mem.eql(u8, flag, "--current-backend")) {
-            if (current_backend != null) return error.DuplicateArgument;
-            current_backend = parseBackend(try takeValue(args, &index)) orelse return error.InvalidValue;
+        } else if (std.mem.eql(u8, flag, "--base-link")) {
+            if (base_link != null) return error.DuplicateArgument;
+            base_link = parseLink(try takeValue(args, &index)) orelse return error.InvalidValue;
+        } else if (std.mem.eql(u8, flag, "--current-link")) {
+            if (current_link != null) return error.DuplicateArgument;
+            current_link = parseLink(try takeValue(args, &index)) orelse return error.InvalidValue;
         } else if (std.mem.eql(u8, flag, "--output-target")) {
             try set(&output_target, try takeValue(args, &index));
         } else {
@@ -482,19 +484,18 @@ fn parseAbiDiff(args: []const []const u8) ParseError!AbiDiff {
         .current_path = current_path orelse return error.MissingRequiredArgument,
         .json = json,
         .fail_on_breaking = fail_on_breaking,
-        .base_backend = base_backend orelse .cgo,
-        .current_backend = current_backend orelse .cgo,
+        .base_link = base_link orelse .cgo_static,
+        .current_link = current_link orelse .cgo_static,
     };
 }
 
 fn parseReport(args: []const []const u8) ParseError!Report {
-    var plugin_config: ?[]const u8 = null;
     var semantic_path: ?[]const u8 = null;
     var go_module: ?[]const u8 = null;
     var raw_package_path: ?[]const u8 = null;
     var raw_colocated = false;
     var raw_colocated_seen = false;
-    var backend: ?Backend = null;
+    var link: ?Link = null;
     var go_package: ?[]const u8 = null;
     var go_package_path: ?[]const u8 = null;
     var loading: LibraryLoadingArgs = .{};
@@ -504,8 +505,6 @@ fn parseReport(args: []const []const u8) ParseError!Report {
         index += 1;
         if (try loading.parseFlag(flag, args, &index)) {
             // handled by the shared loading-policy parser
-        } else if (std.mem.eql(u8, flag, "--plugin-config")) {
-            try set(&plugin_config, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--semantic")) {
             try set(&semantic_path, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--go-module")) {
@@ -520,20 +519,19 @@ fn parseReport(args: []const []const u8) ParseError!Report {
             if (raw_colocated_seen) return error.DuplicateArgument;
             raw_colocated_seen = true;
             raw_colocated = true;
-        } else if (std.mem.eql(u8, flag, "--backend")) {
-            if (backend != null) return error.DuplicateArgument;
-            backend = parseBackend(try takeValue(args, &index)) orelse return error.InvalidValue;
+        } else if (std.mem.eql(u8, flag, "--link")) {
+            if (link != null) return error.DuplicateArgument;
+            link = parseLink(try takeValue(args, &index)) orelse return error.InvalidValue;
         } else {
             return error.UnknownArgument;
         }
     }
     return .{
-        .plugin_config = plugin_config orelse "{}",
         .semantic_path = semantic_path orelse return error.MissingRequiredArgument,
         .go_module = go_module orelse "",
         .raw_package_path = raw_package_path orelse "internal/raw",
         .raw_colocated = raw_colocated,
-        .backend = backend orelse .cgo,
+        .link = link orelse .cgo_static,
         .go_package = go_package orelse "",
         .go_package_path = go_package_path orelse go_package orelse "",
         .library_search_paths = loading.search_paths orelse "",
@@ -549,7 +547,7 @@ fn parseDoctor(args: []const []const u8) ParseError!Doctor {
     var gofmt_executable: ?[]const u8 = null;
     var native_target = true;
     var target_seen = false;
-    var backend: ?Backend = null;
+    var link: ?Link = null;
     var library_path: ?[]const u8 = null;
     var go_mod_path: ?[]const u8 = null;
     var index: usize = 0;
@@ -575,9 +573,9 @@ fn parseDoctor(args: []const []const u8) ParseError!Doctor {
             } else {
                 return error.InvalidValue;
             }
-        } else if (std.mem.eql(u8, flag, "--backend")) {
-            if (backend != null) return error.DuplicateArgument;
-            backend = parseBackend(try takeValue(args, &index)) orelse return error.InvalidValue;
+        } else if (std.mem.eql(u8, flag, "--link")) {
+            if (link != null) return error.DuplicateArgument;
+            link = parseLink(try takeValue(args, &index)) orelse return error.InvalidValue;
         } else {
             return error.UnknownArgument;
         }
@@ -586,15 +584,16 @@ fn parseDoctor(args: []const []const u8) ParseError!Doctor {
         .go_executable = go_executable orelse "go",
         .gofmt_executable = gofmt_executable orelse "gofmt",
         .native_target = native_target,
-        .backend = backend orelse .cgo,
+        .link = link orelse .cgo_static,
         .library_path = library_path,
         .go_mod_path = go_mod_path,
     };
 }
 
-fn parseLinkMode(value: []const u8) ?LinkMode {
-    if (std.mem.eql(u8, value, "static")) return .static;
-    if (std.mem.eql(u8, value, "dynamic")) return .dynamic;
+fn parseLink(value: []const u8) ?Link {
+    if (std.mem.eql(u8, value, "cgo-static")) return .cgo_static;
+    if (std.mem.eql(u8, value, "cgo-dynamic")) return .cgo_dynamic;
+    if (std.mem.eql(u8, value, "purego")) return .purego;
     return null;
 }
 
@@ -630,12 +629,6 @@ fn isGoPlatformWord(word: []const u8) bool {
         if (!std.ascii.isLower(byte) and !std.ascii.isDigit(byte)) return false;
     }
     return true;
-}
-
-fn parseBackend(value: []const u8) ?Backend {
-    if (std.mem.eql(u8, value, "cgo")) return .cgo;
-    if (std.mem.eql(u8, value, "purego")) return .purego;
-    return null;
 }
 
 fn takeValue(args: []const []const u8, index: *usize) ParseError![]const u8 {
@@ -692,13 +685,11 @@ test "generate command parses named arguments" {
         "--raw-colocated",
         "--errors-lock",
         "errors.lock.json",
-        "--plugin-config",
-        "{\"MUST\":{\"enabled\":true}}",
     });
     const options = command.generate;
     try std.testing.expectEqualStrings("semantic.json", options.semantic_path);
     try std.testing.expectEqualStrings("scalar", options.package);
-    try std.testing.expectEqualStrings("example.com/scalar", options.go_module);
+    try std.testing.expectEqualStrings("example.com/scalar", options.go_module.?);
     try std.testing.expectEqualStrings("scalarapi", options.go_package);
     try std.testing.expectEqualStrings(".", options.go_package_path);
     try std.testing.expectEqualStrings("-Icustom", options.cflags);
@@ -708,63 +699,74 @@ test "generate command parses named arguments" {
     try std.testing.expectEqualStrings("scalar", options.raw_package_path);
     try std.testing.expect(options.raw_colocated);
     try std.testing.expectEqualStrings("errors.lock.json", options.errors_lock_path.?);
-    try std.testing.expectEqualStrings("{\"MUST\":{\"enabled\":true}}", options.plugin_config);
+    try std.testing.expectEqual(Link.cgo_static, options.link);
 
-    const dynamic_generate = (try parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--link-mode", "dynamic", "--library-stem", "scalar_zigo" })).generate;
-    try std.testing.expectEqual(LinkMode.dynamic, dynamic_generate.link_mode);
+    const dynamic_generate = (try parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--go-module", "m", "--link", "cgo-dynamic", "--library-stem", "scalar_zigo" })).generate;
+    try std.testing.expectEqual(Link.cgo_dynamic, dynamic_generate.link);
+    try std.testing.expectEqual(LinkMode.dynamic, dynamic_generate.link.linkMode());
+    try std.testing.expectEqual(Backend.cgo, dynamic_generate.link.backend());
     try std.testing.expectEqualStrings("scalar_zigo", dynamic_generate.library_stem);
-    try std.testing.expectError(error.InvalidValue, parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--link-mode", "shared" }));
+    const purego_generate = (try parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--go-module", "m", "--link", "purego" })).generate;
+    try std.testing.expectEqual(Backend.purego, purego_generate.link.backend());
+    try std.testing.expectEqual(LinkMode.dynamic, purego_generate.link.linkMode());
+    // The old two-flag spellings are gone, not aliased.
+    try std.testing.expectError(error.InvalidValue, parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--go-module", "m", "--link", "static" }));
+    try std.testing.expectError(error.DuplicateArgument, parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--go-module", "m", "--link", "purego", "--link", "purego" }));
 
-    const multi_target = (try parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--cgo-target", "darwin/arm64", "--cgo-target", "linux/amd64" })).generate;
+    const multi_target = (try parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--go-module", "m", "--cgo-target", "darwin/arm64", "--cgo-target", "linux/amd64" })).generate;
     try std.testing.expectEqual(@as(usize, 2), multi_target.cgo_targets.len);
     try std.testing.expectEqualStrings("darwin", multi_target.cgo_targets[0].goos);
     try std.testing.expectEqualStrings("arm64", multi_target.cgo_targets[0].goarch);
     try std.testing.expectEqualStrings("linux", multi_target.cgo_targets[1].goos);
     try std.testing.expectEqualStrings("amd64", multi_target.cgo_targets[1].goarch);
     try std.testing.expectEqual(@as(usize, 0), dynamic_generate.cgo_targets.len);
-    try std.testing.expectError(error.InvalidValue, parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--cgo-target", "darwin-arm64" }));
-    try std.testing.expectError(error.InvalidValue, parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--cgo-target", "darwin/" }));
-    try std.testing.expectError(error.DuplicateArgument, parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--cgo-target", "linux/amd64", "--cgo-target", "linux/amd64" }));
+    try std.testing.expectError(error.InvalidValue, parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--go-module", "m", "--cgo-target", "darwin-arm64" }));
+    try std.testing.expectError(error.InvalidValue, parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--go-module", "m", "--cgo-target", "darwin/" }));
+    try std.testing.expectError(error.DuplicateArgument, parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--go-module", "m", "--cgo-target", "linux/amd64", "--cgo-target", "linux/amd64" }));
 
-    const platform_flags = (try parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--target-ldflags", "linux=-ldl", "--target-ldflags", "darwin,arm64=-framework Metal" })).generate;
+    const platform_flags = (try parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--go-module", "m", "--target-ldflags", "linux=-ldl", "--target-ldflags", "darwin,arm64=-framework Metal" })).generate;
     try std.testing.expectEqual(@as(usize, 2), platform_flags.target_ldflags.len);
     try std.testing.expectEqualStrings("linux", platform_flags.target_ldflags[0].constraint);
     try std.testing.expectEqualStrings("-ldl", platform_flags.target_ldflags[0].flags);
     try std.testing.expectEqualStrings("darwin,arm64", platform_flags.target_ldflags[1].constraint);
     try std.testing.expectEqualStrings("-framework Metal", platform_flags.target_ldflags[1].flags);
-    try std.testing.expectError(error.InvalidValue, parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--target-ldflags", "linux" }));
-    try std.testing.expectError(error.InvalidValue, parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--target-ldflags", "linux=" }));
-    try std.testing.expectError(error.InvalidValue, parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--target-ldflags", "Linux/amd64=-ldl" }));
+    try std.testing.expectError(error.InvalidValue, parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--go-module", "m", "--target-ldflags", "linux" }));
+    try std.testing.expectError(error.InvalidValue, parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--go-module", "m", "--target-ldflags", "linux=" }));
+    try std.testing.expectError(error.InvalidValue, parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--go-module", "m", "--target-ldflags", "Linux/amd64=-ldl" }));
 
-    const loading = (try parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--library-search-paths", "${EXECUTABLE_DIR}:/opt/app/lib", "--library-env-vars", "ZIGO_SCALAR_LIBRARY_PATH,ZIGO_LIBRARY_PATH", "--library-automatic", "--library-internal-api" })).generate;
+    const loading = (try parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--go-module", "m", "--library-search-paths", "${EXECUTABLE_DIR}:/opt/app/lib", "--library-env-vars", "ZIGO_SCALAR_LIBRARY_PATH,ZIGO_LIBRARY_PATH", "--library-automatic", "--library-internal-api" })).generate;
     try std.testing.expectEqualStrings("${EXECUTABLE_DIR}:/opt/app/lib", loading.library_search_paths);
     try std.testing.expectEqualStrings("ZIGO_SCALAR_LIBRARY_PATH,ZIGO_LIBRARY_PATH", loading.library_env_vars.?);
     try std.testing.expect(loading.library_automatic);
     try std.testing.expect(!loading.library_exported_api);
     try std.testing.expect(!loading.library_platform_dirs);
-    try std.testing.expectError(error.DuplicateArgument, parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--library-automatic", "--library-automatic" }));
-    const platform_dirs = (try parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--library-platform-dirs" })).generate;
+    try std.testing.expectError(error.DuplicateArgument, parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--go-module", "m", "--library-automatic", "--library-automatic" }));
+    const platform_dirs = (try parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--go-module", "m", "--library-platform-dirs" })).generate;
     try std.testing.expect(platform_dirs.library_platform_dirs);
-    try std.testing.expectError(error.DuplicateArgument, parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--library-platform-dirs", "--library-platform-dirs" }));
+    try std.testing.expectError(error.DuplicateArgument, parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--go-module", "m", "--library-platform-dirs", "--library-platform-dirs" }));
 
     // The same policy flags configure the report so it can explain the contract.
-    const loading_report = (try parse(&.{ "report", "--semantic", "s.json", "--backend", "purego", "--library-env-vars", "" })).report;
+    const loading_report = (try parse(&.{ "report", "--semantic", "s.json", "--link", "purego", "--library-env-vars", "" })).report;
     try std.testing.expectEqualStrings("", loading_report.library_env_vars.?);
     try std.testing.expect(loading_report.library_exported_api);
+    try std.testing.expectEqual(Link.purego, loading_report.link);
 }
 
 test "generate command retains defaults" {
-    const command = try parse(&.{ "generate", "--semantic", "semantic.json", "--output", "out", "--package", "scalar" });
+    const command = try parse(&.{ "generate", "--semantic", "semantic.json", "--output", "out", "--package", "scalar", "--go-module", "example.com/scalar" });
     const options = command.generate;
     try std.testing.expectEqualStrings("zg", options.prefix);
-    try std.testing.expectEqualStrings("scalar", options.go_module);
+    try std.testing.expectEqualStrings("example.com/scalar", options.go_module.?);
     try std.testing.expectEqualStrings("internal/raw", options.raw_package_path);
     try std.testing.expectEqualStrings("", options.go_package_path);
     try std.testing.expect(!options.raw_colocated);
     try std.testing.expect(options.errors_lock_path == null);
-    try std.testing.expectEqualStrings("{}", options.plugin_config);
+    try std.testing.expectEqual(Link.cgo_static, options.link);
+    // The Go emitter is the only reader of the module path, so only Go
+    // requires it and no other target sees a placeholder.
+    try std.testing.expectError(error.MissingRequiredArgument, parse(&.{ "generate", "--semantic", "semantic.json", "--output", "out", "--package", "scalar" }));
 
-    const named = (try parse(&.{ "generate", "--semantic", "semantic.json", "--output", "out", "--package", "scalar", "--go-package", "scalarapi" })).generate;
+    const named = (try parse(&.{ "generate", "--semantic", "semantic.json", "--output", "out", "--package", "scalar", "--go-module", "example.com/scalar", "--go-package", "scalarapi" })).generate;
     try std.testing.expectEqualStrings("scalarapi", named.go_package_path);
     // Naming no output target is Go, so every invocation written before a
     // second target existed parses to exactly what it did before.
@@ -778,8 +780,9 @@ test "the output target is selected by name and pairs with its own formatter fla
     const rust = (try parse(&(base ++ [_][]const u8{ "--output-target", "rust", "--rustfmt", "/tools/rustfmt" }))).generate;
     try std.testing.expectEqualStrings("rust", rust.output_target);
     try std.testing.expectEqualStrings("/tools/rustfmt", rust.formatter_executable.?);
+    try std.testing.expect(rust.go_module == null);
 
-    const go = (try parse(&(base ++ [_][]const u8{ "--output-target", "go", "--gofmt", "/tools/gofmt" }))).generate;
+    const go = (try parse(&(base ++ [_][]const u8{ "--output-target", "go", "--go-module", "m", "--gofmt", "/tools/gofmt" }))).generate;
     try std.testing.expectEqualStrings("go", go.output_target);
     try std.testing.expectEqualStrings("/tools/gofmt", go.formatter_executable.?);
 
@@ -787,10 +790,10 @@ test "the output target is selected by name and pairs with its own formatter fla
     // obeyed: running gofmt over `.rs` files is not what the caller meant, and
     // silently dropping the flag would hide a typo.
     try std.testing.expectError(error.InvalidValue, parse(&(base ++ [_][]const u8{ "--output-target", "rust", "--gofmt", "/tools/gofmt" })));
-    try std.testing.expectError(error.InvalidValue, parse(&(base ++ [_][]const u8{ "--rustfmt", "/tools/rustfmt" })));
+    try std.testing.expectError(error.InvalidValue, parse(&(base ++ [_][]const u8{ "--go-module", "m", "--rustfmt", "/tools/rustfmt" })));
     // Two formatter flags at once name two languages, so the second is a
     // duplicate of the same option rather than an addition.
-    try std.testing.expectError(error.DuplicateArgument, parse(&(base ++ [_][]const u8{ "--gofmt", "/a", "--rustfmt", "/b" })));
+    try std.testing.expectError(error.DuplicateArgument, parse(&(base ++ [_][]const u8{ "--go-module", "m", "--gofmt", "/a", "--rustfmt", "/b" })));
 
     // The name itself is not validated here: `cli` is a `std`-only leaf, so
     // `main` resolves it against `targets.all` and reports the known names.
@@ -806,11 +809,12 @@ test "check and abi-diff commands parse named arguments" {
     try std.testing.expectEqualStrings("out/semantic.json", check.files[0].generated_path);
     try std.testing.expectEqualStrings("zigo/semantic.json", check.files[0].source_path);
 
-    const diff = (try parse(&.{ "abi-diff", "--base", "old.json", "--current", "new.json", "--base-backend", "cgo", "--current-backend", "purego", "--json", "--fail-on", "breaking" })).abi_diff;
+    const diff = (try parse(&.{ "abi-diff", "--base", "old.json", "--current", "new.json", "--base-link", "cgo-dynamic", "--current-link", "purego", "--json", "--fail-on", "breaking" })).abi_diff;
     try std.testing.expect(diff.json);
     try std.testing.expect(diff.fail_on_breaking);
-    try std.testing.expectEqual(Backend.cgo, diff.base_backend);
-    try std.testing.expectEqual(Backend.purego, diff.current_backend);
+    try std.testing.expectEqual(Link.cgo_dynamic, diff.base_link);
+    try std.testing.expectEqual(Link.purego, diff.current_link);
+    try std.testing.expectError(error.UnknownArgument, parse(&.{ "abi-diff", "--base", "old.json", "--current", "new.json", "--base-backend", "cgo" }));
     try std.testing.expectEqualStrings("go", diff.output_target);
 
     const rust_diff = (try parse(&.{ "abi-diff", "--base", "old.json", "--current", "new.json", "--output-target", "rust" })).abi_diff;
@@ -829,8 +833,8 @@ test "report and doctor commands parse effective configuration" {
     try std.testing.expect(!doctor.native_target);
     try std.testing.expect(doctor.library_path == null);
 
-    const purego_doctor = (try parse(&.{ "doctor", "--backend", "purego", "--library", "zig-out/lib/libscalar_zigo.so", "--go-mod", "go/go.mod" })).doctor;
-    try std.testing.expectEqual(Backend.purego, purego_doctor.backend);
+    const purego_doctor = (try parse(&.{ "doctor", "--link", "purego", "--library", "zig-out/lib/libscalar_zigo.so", "--go-mod", "go/go.mod" })).doctor;
+    try std.testing.expectEqual(Link.purego, purego_doctor.link);
     try std.testing.expectEqualStrings("zig-out/lib/libscalar_zigo.so", purego_doctor.library_path.?);
     try std.testing.expectEqualStrings("go/go.mod", purego_doctor.go_mod_path.?);
     try std.testing.expectError(error.DuplicateArgument, parse(&.{ "doctor", "--library", "one", "--library", "two" }));
@@ -842,11 +846,13 @@ test "parser rejects incomplete unknown and duplicate arguments" {
     try std.testing.expectError(error.MissingValue, parse(&.{ "check", "--generated" }));
     try std.testing.expectError(error.MissingValue, parse(&.{ "check", "--generated", "a", "--source", "b", "--file", "only" }));
     try std.testing.expectError(error.UnknownArgument, parse(&.{ "check", "--wat", "value" }));
-    try std.testing.expectError(error.UnknownArgument, parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--auto-cleanup" }));
+    try std.testing.expectError(error.UnknownArgument, parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--go-module", "m", "--auto-cleanup" }));
     try std.testing.expectError(error.DuplicateArgument, parse(&.{ "check", "--generated", "one", "--generated", "two", "--source", "go" }));
-    try std.testing.expectError(error.DuplicateArgument, parse(&.{ "generate", "--semantic", "semantic.json", "--output", "out", "--package", "scalar", "--raw-colocated", "--raw-colocated" }));
-    try std.testing.expectError(error.DuplicateArgument, parse(&.{ "generate", "--semantic", "semantic.json", "--output", "out", "--package", "scalar", "--plugin-config", "{}", "--plugin-config", "{}" }));
-    try std.testing.expectError(error.DuplicateArgument, parse(&.{ "generate", "--semantic", "semantic.json", "--output", "out", "--package", "scalar", "--pkg-config-libs", "avformat", "--pkg-config-libs-file", "resolved.txt" }));
+    try std.testing.expectError(error.DuplicateArgument, parse(&.{ "generate", "--semantic", "semantic.json", "--output", "out", "--package", "scalar", "--go-module", "m", "--raw-colocated", "--raw-colocated" }));
+    // Plugin configuration reaches the generator through its registry, and
+    // pkg-config names only through the resolved file.
+    try std.testing.expectError(error.UnknownArgument, parse(&.{ "generate", "--semantic", "semantic.json", "--output", "out", "--package", "scalar", "--go-module", "m", "--plugin-config", "{}" }));
+    try std.testing.expectError(error.UnknownArgument, parse(&.{ "generate", "--semantic", "semantic.json", "--output", "out", "--package", "scalar", "--go-module", "m", "--pkg-config-libs", "avformat" }));
     try std.testing.expectError(error.InvalidValue, parse(&.{ "abi-diff", "--base", "old", "--current", "new", "--fail-on", "all" }));
 }
 
@@ -858,10 +864,4 @@ test "help and parse errors render actionable usage" {
     try writeParseError(&rendered.writer, error.MissingRequiredArgument);
     try std.testing.expect(std.mem.indexOf(u8, rendered.written(), "required argument is missing") != null);
     try std.testing.expect(std.mem.indexOf(u8, rendered.written(), "generate  --semantic") != null);
-}
-
-test "report uses explicit plugin configuration" {
-    const command = try parse(&.{ "report", "--semantic", "semantic.json", "--plugin-config", "{\"CUSTOM\":{}}" });
-    try std.testing.expectEqualStrings("{\"CUSTOM\":{}}", command.report.plugin_config);
-    try std.testing.expectError(error.DuplicateArgument, parse(&.{ "report", "--semantic", "semantic.json", "--plugin-config", "{}", "--plugin-config", "{}" }));
 }

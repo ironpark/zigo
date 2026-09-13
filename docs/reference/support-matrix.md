@@ -95,5 +95,5 @@ retained 콜백의 스레드와 재진입 옵션은 계약 정보입니다. arbi
 `zigo.param.options`의 functional options는 Go 표면에만 나타나고 C 심볼과 shim 시그니처는
 `.flatten`과 같으므로, 이 목록의 ABI 변경에 해당하지 않습니다.
 
-호환성을 유지해야 하면 `abi_base`와 `zig build abi-check`를 사용하세요. 내부 C 표현은
+호환성을 유지해야 하면 `abi_base`와 `zig build go-abi-check`를 사용하세요. 내부 C 표현은
 [ABI 문서](../internals/abi.md)에서 설명합니다.

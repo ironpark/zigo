@@ -4,7 +4,6 @@ const zigo = @import("zigo");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-    const coverage_json = b.option([]const u8, "coverage-json", "Write the go-coverage report as JSON at this path");
     const telemetry_hub = b.addModule("telemetry_hub", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
@@ -14,33 +13,28 @@ pub fn build(b: *std.Build) void {
     const tests = b.addTest(.{ .root_module = telemetry_hub });
     b.step("test", "Run broad telemetry hub tests").dependOn(&b.addRunArtifact(tests).step);
 
-    const bindings = zigo.addGoBindings(b, .{
+    _ = zigo.addGoBindings(b, .{
         .name = "telemetry_hub",
         .module = telemetry_hub,
-        .bindings = b.path("src/bindings.zig"),
         .source_root = b.path("src/root.zig"),
-        .go_dir = b.path("go"),
-        .go_module = "example.com/zigo/telemetry-hub",
+        .layout = .{ .go_module = "example.com/zigo/telemetry-hub", .raw_package = "internal/native" },
         .target = target,
         .optimize = optimize,
-        .abi_base = "HEAD",
-        .raw_package = "internal/native",
-        .coverage_json = coverage_json,
     });
-    _ = bindings.addStandardSteps(b, .{});
 
-    const purego_bindings = zigo.addGoBindings(b, .{
+    _ = zigo.addGoBindings(b, .{
         .name = "telemetry_hub",
         .module = telemetry_hub,
-        .bindings = b.path("src/bindings.zig"),
         .source_root = b.path("src/root.zig"),
         .go_dir = b.path("go-purego"),
-        .go_module = "example.com/zigo/telemetry-hub-purego",
+        .layout = .{ .go_module = "example.com/zigo/telemetry-hub-purego", .raw_package = "internal/native" },
         .target = target,
         .optimize = optimize,
-        .abi_base = "HEAD",
-        .raw_package = "internal/native",
-        .link = .purego,
+        // The configured install directory is used automatically when no
+        // explicit search_paths are supplied. The public package exposes no
+        // loader; deployment may select another copy through the environment.
+        .link = .{ .purego = .{ .loader = .automatic_internal } },
+        .standard_steps = .{ .variant = "purego" },
         // One more platform than the host, so the tree carries two shared
         // libraries under purego-layout/lib/<goos>_<goarch>/ and the loader
         // picks the running platform's directory. The second entry is chosen
@@ -55,12 +49,5 @@ pub fn build(b: *std.Build) void {
             .library_name = "telemetry_native",
             .header_name = "telemetry_native.h",
         },
-        // The configured install directory is used automatically when no
-        // explicit search_paths are supplied. The public package exposes no
-        // loader; deployment may select another copy through the environment.
-        .library_loading = .{
-            .loader = .automatic_internal,
-        },
     });
-    _ = purego_bindings.addStandardSteps(b, .{ .name_prefix = "purego" });
 }

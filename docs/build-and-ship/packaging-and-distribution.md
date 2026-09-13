@@ -79,8 +79,8 @@ go test ./...
 purego는 Go 빌드에 C 컴파일러가 필요 없지만 실행 시 공유 라이브러리가 반드시 필요합니다.
 생성 모듈은 `github.com/ebitengine/purego v0.10.2`를 사용합니다.
 
-[시작 가이드](../getting-started.md)의 `addGoBindings`에 `.link = .purego`를 추가하고,
-`go_dir = b.path("go")`와 기본 `addStandardSteps(b, .{})`를 유지한 경우:
+[시작 가이드](../getting-started.md)의 `addGoBindings`에 `.link = .{ .purego = .{} }`를 추가하고,
+기본 `go_dir`와 표준 단계 이름을 유지한 경우:
 
 ```bash
 (cd go && go get github.com/ebitengine/purego@v0.10.2)
@@ -91,8 +91,8 @@ zig build go-verify
 ```
 
 테스트에서도 첫 바인딩 호출 전에 아래의 로드 코드를 실행해야 합니다.
-별도 바인딩에 `.name_prefix = "purego"`와 `go_dir = b.path("go-purego")`를 설정했다면
-단계는 `purego-go`·`purego-go-verify`, Go 작업 디렉터리는 `go-purego`로 바뀝니다.
+별도 바인딩에 `.standard_steps = .{ .variant = "purego" }`와 `.go_dir = b.path("go-purego")`를
+설정했다면 단계는 `go-purego`·`go-purego-verify`, Go 작업 디렉터리는 `go-purego`로 바뀝니다.
 
 기본 명시적 정책에서는 애플리케이션 시작 시 라이브러리를 로드합니다.
 
@@ -123,10 +123,10 @@ app/
 `runtime.GOOS + "_" + runtime.GOARCH` 디렉터리를 선택합니다.
 
 ```zig
-.library_loading = .{
+.link = .{ .purego = .{
     .search_paths = &.{"${EXECUTABLE_DIR}/lib"},
     .loader = .automatic,
-},
+} },
 ```
 
 명시적 `LoadLibrary(path)`와 환경 변수에 파일 경로를 주면 플랫폼 디렉터리를 자동으로

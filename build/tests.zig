@@ -370,7 +370,11 @@ pub fn addRepositorySteps(
         },
     }) });
     test_step.dependOn(&b.addRunArtifact(contract_tests).step);
-    const output_cli = modules.addGeneratorWithModules(b, b.path("src/main.zig"), target, optimize, contract_modules);
+    // The transform round trip needs the contract plugin customising and the
+    // outputs plugin enabled. Plugin configuration is compiled into the
+    // generator's registry, so this is a second generator rather than a flag.
+    const transform_modules = modules.createGeneratorModules(b, b.path("src"), target, optimize, &.{ .{ .path = b.path("tests/plugins/transform_observer.zig") }, .{ .path = b.path("tests/plugins/contract.zig"), .config = "{\"customize\":true}" }, .{ .path = b.path("tests/plugins/outputs.zig"), .config = "{\"enabled\":true}" } });
+    const output_cli = modules.addGeneratorWithModules(b, b.path("src/main.zig"), target, optimize, transform_modules);
     const transform_runner = b.addExecutable(.{ .name = "zigo-plugin-transform-case", .root_module = b.createModule(.{
         .root_source_file = b.path("tests/plugin_transform_main.zig"),
         .target = target,
@@ -380,7 +384,7 @@ pub fn addRepositorySteps(
     inline for (.{ "cgo", "purego" }) |backend| {
         const generated = b.addRunArtifact(transform_runner);
         const output = generated.addOutputDirectoryArg(b.fmt("plugin-transform-{s}", .{backend}));
-        generated.addArg(backend);
+        generated.addArg(if (comptime std.mem.eql(u8, backend, "cgo")) "cgo-static" else "purego");
         generated.addArtifactArg(output_cli);
         generated.addFileArg(b.path("tests/plugin_transform/semantic.json"));
         const native = b.addTest(.{ .root_module = b.createModule(.{
@@ -472,7 +476,7 @@ pub fn addRepositorySteps(
     multi_diagnostics.addFileArg(b.path("tests/fixtures/plugin-multiple-diagnostics.json"));
     multi_diagnostics.addArg("--output");
     _ = multi_diagnostics.addOutputDirectoryArg("plugin-diagnostics-output");
-    multi_diagnostics.addArgs(&.{ "--package", "bad" });
+    multi_diagnostics.addArgs(&.{ "--package", "bad", "--go-module", "example.com/bad" });
     multi_diagnostics.expectExitCode(1);
     multi_diagnostics.expectStdErrMatch("interface `NoPackage`");
     multi_diagnostics.expectStdErrMatch("interface `fmt.`");
@@ -616,7 +620,7 @@ fn addProcessContractTests(b: *std.Build, test_step: *std.Build.Step, generator:
     invalid_semantic.addFileArg(b.path("tests/fixtures/zigo007.json"));
     invalid_semantic.addArg("--output");
     _ = invalid_semantic.addOutputDirectoryArg("invalid-semantic-output");
-    invalid_semantic.addArgs(&.{ "--package", "bad" });
+    invalid_semantic.addArgs(&.{ "--package", "bad", "--go-module", "example.com/bad" });
     invalid_semantic.expectExitCode(1);
     invalid_semantic.expectStdErrMatch("error[ZIGO036]: C identifier `zg_lookup_id` collides between function `lookupID` and function `lookup_id`");
     test_step.dependOn(&invalid_semantic.step);
@@ -629,7 +633,7 @@ fn addProcessContractTests(b: *std.Build, test_step: *std.Build.Step, generator:
     unsupported_width.addFileArg(b.path("tests/fixtures/zigo018.json"));
     unsupported_width.addArg("--output");
     _ = unsupported_width.addOutputDirectoryArg("unsupported-width-output");
-    unsupported_width.addArgs(&.{ "--package", "bad" });
+    unsupported_width.addArgs(&.{ "--package", "bad", "--go-module", "example.com/bad" });
     unsupported_width.expectExitCode(1);
     unsupported_width.expectStdErrMatch("error[ZIGO045]: narrow integer slice parameter `cps` needs temporary storage");
     unsupported_width.expectStdErrMatch("--> semantic.json (unicode.codepointWidths)");
@@ -644,7 +648,7 @@ fn addProcessContractTests(b: *std.Build, test_step: *std.Build.Step, generator:
     located_diagnostic.addFileArg(b.path("tests/fixtures/zigo025.json"));
     located_diagnostic.addArg("--output");
     _ = located_diagnostic.addOutputDirectoryArg("located-diagnostic-output");
-    located_diagnostic.addArgs(&.{ "--package", "bad" });
+    located_diagnostic.addArgs(&.{ "--package", "bad", "--go-module", "example.com/bad" });
     located_diagnostic.expectExitCode(1);
     located_diagnostic.expectStdErrMatch("error[ZIGO045]: narrow integer slice parameter `cps` needs temporary storage");
     located_diagnostic.expectStdErrMatch("--> src/bindings.zig:12:5 (unicode.codepointWidths)");
@@ -659,7 +663,7 @@ fn addProcessContractTests(b: *std.Build, test_step: *std.Build.Step, generator:
     invalid_identifier.addFileArg(b.path("tests/fixtures/zigo021.json"));
     invalid_identifier.addArg("--output");
     _ = invalid_identifier.addOutputDirectoryArg("invalid-identifier-output");
-    invalid_identifier.addArgs(&.{ "--package", "bad" });
+    invalid_identifier.addArgs(&.{ "--package", "bad", "--go-module", "example.com/bad" });
     invalid_identifier.expectExitCode(1);
     invalid_identifier.expectStdErrMatch("error[ZIGO021]: registered type name `4])` from Zig type `vt.lib.Enum(");
     invalid_identifier.expectStdErrMatch("hint: register the type in `.types` with an explicit `.name`");
@@ -674,7 +678,7 @@ fn addProcessContractTests(b: *std.Build, test_step: *std.Build.Step, generator:
     public_name_collision.addFileArg(b.path("tests/fixtures/zigo024.json"));
     public_name_collision.addArg("--output");
     _ = public_name_collision.addOutputDirectoryArg("public-name-collision-output");
-    public_name_collision.addArgs(&.{ "--package", "bad" });
+    public_name_collision.addArgs(&.{ "--package", "bad", "--go-module", "example.com/bad" });
     public_name_collision.expectExitCode(1);
     public_name_collision.expectStdErrMatch("error[ZIGO024]: public Go name `Open` collides between `File.open` and `Socket.open`");
     test_step.dependOn(&public_name_collision.step);
@@ -759,7 +763,7 @@ fn addProcessContractTests(b: *std.Build, test_step: *std.Build.Step, generator:
 
     const purego_doctor = b.addRunArtifact(generator);
     purego_doctor.setName("CLI contract (purego deployment doctor)");
-    purego_doctor.addArgs(&.{ "doctor", "--backend", "purego", "--target", "native", "--library", "/definitely/missing/zigo-library.so", "--go-mod" });
+    purego_doctor.addArgs(&.{ "doctor", "--link", "purego", "--target", "native", "--library", "/definitely/missing/zigo-library.so", "--go-mod" });
     purego_doctor.addFileArg(b.path("tests/fixtures/doctor/go.mod"));
     purego_doctor.expectExitCode(1);
     purego_doctor.expectStdOutMatch("FAIL purego module: ");
@@ -776,6 +780,18 @@ fn addProcessContractTests(b: *std.Build, test_step: *std.Build.Step, generator:
     plugin_path.expectExitCode(0);
     plugin_path.expectStdOutMatch("ping -> Ping");
     test_step.dependOn(&plugin_path.step);
+
+    // A Go and a Rust binding set in one build, every step option at its
+    // default. Listing the steps constructs the whole graph, which is where a
+    // duplicate step or duplicate build option would panic.
+    const go_and_rust = b.addSystemCommand(&.{ b.graph.zig_exe, "build", "-l" });
+    go_and_rust.setName("Go and Rust binding sets coexist with default step names");
+    go_and_rust.setCwd(b.path("tests/fixtures/go-and-rust"));
+    go_and_rust.has_side_effects = true;
+    go_and_rust.expectExitCode(0);
+    go_and_rust.expectStdOutMatch("go-abi-check");
+    go_and_rust.expectStdOutMatch("rust-abi-check");
+    test_step.dependOn(&go_and_rust.step);
 
     const invalid_project = b.addSystemCommand(&.{ b.graph.zig_exe, "build", "go", "--summary", "none" });
     invalid_project.setName("invalid project contract (ZIGO036)");

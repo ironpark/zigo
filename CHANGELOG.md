@@ -4,6 +4,39 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Changed (breaking)
+
+빌드 API와 `zigo-gen` CLI의 옵션 표면을 한 개념 한 표기로 정리했습니다. 호환 alias는 없습니다.
+생성된 Go 코드는 바뀌지 않으며, sidecar JSON의 위치만 옮겨집니다.
+
+| 이전 | 이후 |
+|---|---|
+| `zig build abi-check` (Go) | `zig build go-abi-check` |
+| `zig build abi-check` (Rust) | `zig build rust-abi-check` |
+| `addStandardSteps(b, .{ .name_prefix = "purego" })` → `purego-go`, `purego-go-check` | `.standard_steps = .{ .variant = "purego" }` → `go-purego`, `go-purego-check` |
+| `_ = bindings.addStandardSteps(b, .{})` | 기본으로 `addGoBindings`/`addRustBindings`가 등록. 끄려면 `.standard_steps = null` |
+| `b.option(..., "coverage-json", ...)` + `.coverage_json = ...` | `addStandardSteps`가 `-D[<variant>-]coverage-json` 옵션을 직접 선언 |
+| `.link = .purego` + `.library_loading = .{ ... }` | `.link = .{ .purego = .{ ... } }` (`Link`는 tagged union) |
+| `.go_module`, `.go_package`, `.go_package_path`, `.raw_package` | `.layout = .{ .go_module, .go_package, .go_package_path, .raw_package, .raw_colocated }` |
+| `raw_package == go_package_path`(또는 `raw_package = "."`)로 colocation | `.layout.raw_colocated = true` |
+| `.bindings = b.path("src/bindings.zig")` | 기본값: `module.root_source_file` 옆의 `bindings.zig` |
+| `.go_dir = b.path("go")` | 기본값 `b.path("go")` |
+| `.abi_base = "HEAD"` | 기본값 `"HEAD"`, `null`이면 검사 없음 |
+| `.plugin_config = zigo.configJson(b, .{ .MUST = ... })` | `.plugins = &.{.{ .name = "MUST", .config = zigo.configJson(b, ...) }}` (`PluginModule.config`가 유일한 경로, 내장 플러그인은 `root_source_file` 없이 이름으로 지정) |
+| `.cgo_flags.ldflags` (LDFLAGS 전체 교체) | 삭제. `extra_ldflags`와 `target_ldflags`만 유지 |
+| `zigo/semantic.json`, `zigo/errors.lock.json` | `zigo/go/semantic.json`, `zigo/go/errors.lock.json` (Rust는 `zigo/rust/`) |
+| CLI `--backend cgo\|purego --link-mode static\|dynamic` | `--link cgo-static\|cgo-dynamic\|purego` (`generate`, `report`, `doctor`) |
+| CLI `abi-diff --base-backend --current-backend` | `--base-link --current-link` |
+| CLI `--plugin-config <json>` | 삭제. 플러그인 설정은 생성기의 registry에 컴파일됨 |
+| CLI `--pkg-config-libs <names>` | 삭제. `--pkg-config-libs-file`만 유지 |
+| CLI `--go-module` 필수 | Go 대상에서만 필수. Rust 경로는 더 이상 전달하지 않음 |
+
+기존 프로젝트는 `git mv zigo/semantic.json zigo/go/semantic.json`과
+`git mv zigo/errors.lock.json zigo/go/errors.lock.json`으로 sidecar를 옮긴 뒤 `zig build go-check`로
+확인합니다.
+
 ## [0.26.0] - 2026-09-13
 
 gostty를 쓰면서 zigo에 기능이 없어 우회한 자리들입니다.

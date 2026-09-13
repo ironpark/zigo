@@ -84,8 +84,7 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
     const pkg_config_libs = if (options.pkg_config_libs_path) |path|
         std.mem.trim(u8, try std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(1024 * 1024)), " \r\n\t")
     else
-        options.pkg_config_libs;
-    const configurations = try @import("plugin").configurationsAlloc(allocator, @import("plugin_registry").configurations, options.plugin_config);
+        "";
     try std.Io.Dir.cwd().createDirPath(io, options.output_path);
     var output = try std.Io.Dir.cwd().openDir(io, options.output_path, .{ .iterate = true });
     defer output.close(io);
@@ -107,7 +106,7 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
         .write_manifest = true,
         .package = options.package,
         .prefix = options.prefix,
-        .go_module = options.go_module,
+        .go_module = options.go_module orelse "",
         .cflags_override = if (options.cflags.len == 0) null else options.cflags,
         .ldflags_override = if (options.ldflags.len == 0) null else options.ldflags,
         .extra_ldflags = options.extra_ldflags,
@@ -124,13 +123,15 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
         .go_package = options.go_package,
         .go_package_path = options.go_package_path,
         .go_package_doc = options.go_package_doc,
-        .configurations = configurations,
+        // Plugin settings travel inside the generator: the registry the build
+        // integration generated already carries each plugin's config.
+        .configurations = @import("plugin_registry").configurations,
         .errors_lock_bytes = errors_lock_bytes,
-        .backend = switch (options.backend) {
+        .backend = switch (options.link.backend()) {
             .cgo => .cgo,
             .purego => .purego,
         },
-        .link_mode = switch (options.link_mode) {
+        .link_mode = switch (options.link.linkMode()) {
             .static => .static,
             .dynamic => .dynamic,
         },
@@ -246,10 +247,10 @@ fn runAbiDiff(allocator: std.mem.Allocator, io: std.Io, options: cli.AbiDiff) !v
     // documents come from outside this run, so both are judged first.
     try rejectInvalidAbiInput(allocator, io, base.value, options.base_path, target);
     try rejectInvalidAbiInput(allocator, io, current.value, options.current_path, target);
-    var report = try abi_diff.diffForTarget(allocator, base.value, switch (options.base_backend) {
+    var report = try abi_diff.diffForTarget(allocator, base.value, switch (options.base_link.backend()) {
         .cgo => .cgo,
         .purego => .purego,
-    }, current.value, switch (options.current_backend) {
+    }, current.value, switch (options.current_link.backend()) {
         .cgo => .cgo,
         .purego => .purego,
     }, target);
@@ -292,7 +293,7 @@ fn runReport(allocator: std.mem.Allocator, io: std.Io, options: cli.Report) !voi
     var parsed = try semantic.Semantic.parse(allocator, semantic_bytes);
     defer parsed.deinit();
     const api = @import("plugin");
-    const configurations = try api.configurationsAlloc(allocator, @import("gen/plugins/registry.zig").configurations, options.plugin_config);
+    const configurations = @import("gen/plugins/registry.zig").configurations;
     var facts: api.Facts = .{};
     var issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
     const document = try generator.prepareDocument(allocator, parsed.value, null, configurations, &facts, &issues, reportTarget());
@@ -314,7 +315,7 @@ fn runReport(allocator: std.mem.Allocator, io: std.Io, options: cli.Report) !voi
         .go_module = options.go_module,
         .raw_package_path = options.raw_package_path,
         .raw_colocated = options.raw_colocated,
-        .backend = switch (options.backend) {
+        .backend = switch (options.link.backend()) {
             .cgo => .cgo,
             .purego => .purego,
         },
@@ -336,7 +337,7 @@ fn runDoctor(allocator: std.mem.Allocator, io: std.Io, options: cli.Doctor) !voi
         .go_executable = options.go_executable,
         .gofmt_executable = options.gofmt_executable,
         .native_target = options.native_target,
-        .backend = switch (options.backend) {
+        .backend = switch (options.link.backend()) {
             .cgo => .cgo,
             .purego => .purego,
         },

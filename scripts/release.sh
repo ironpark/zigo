@@ -97,8 +97,8 @@ if [[ $skip_checks -eq 0 ]]; then
     if grep -q 'addRustBindings' "$example/build.zig"; then
       continue
     fi
-    if grep -q 'name_prefix = "purego"' "$example/build.zig"; then
-      (cd "$example" && zig build go-check purego-go-check --summary all)
+    if grep -q 'variant = "purego"' "$example/build.zig"; then
+      (cd "$example" && zig build go-check go-purego-check --summary all)
     else
       (cd "$example" && zig build go-check --summary all)
     fi
@@ -108,7 +108,7 @@ if [[ $skip_checks -eq 0 ]]; then
   step "example generated trees (rust-check)"
   for example in examples/*/; do
     if grep -q 'addRustBindings' "$example/build.zig"; then
-      (cd "$example" && zig build rust-check abi-check --summary all)
+      (cd "$example" && zig build rust-check rust-abi-check --summary all)
     fi
   done
   if [[ -n "$(git status --porcelain examples)" ]]; then

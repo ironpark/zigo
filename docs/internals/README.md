@@ -9,5 +9,5 @@
 - [생성 Go runtime](generated-runtime.md) — 파일 역할, handle과 callback runtime
 
 이 문서는 public Go API보다 낮은 계층을 설명합니다. raw package와 metadata schema는 zigo
-release 사이에서 바뀔 수 있으며, compatibility가 필요한 C ABI는 `abi-check`로 명시적으로
+release 사이에서 바뀔 수 있으며, compatibility가 필요한 C ABI는 `go-abi-check`로 명시적으로
 관리합니다.

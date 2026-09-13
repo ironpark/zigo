@@ -99,18 +99,14 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    const bindings = zigo.addGoBindings(b, .{
+    _ = zigo.addGoBindings(b, .{
         .name = "mylib",
         .module = mylib,
-        .bindings = b.path("src/bindings.zig"),
         .source_root = b.path("src/root.zig"),
-        .go_dir = b.path("go"),
-        .go_module = "example.com/mylib/go",
+        .layout = .{ .go_module = "example.com/mylib/go" },
         .target = target,
         .optimize = optimize,
     });
-
-    _ = bindings.addStandardSteps(b, .{});
 }
 ```
 
@@ -183,7 +179,7 @@ zig build go-doctor
 - `go-report`: 최종 이름, 소유권과 콜백 retention 결정을 설명합니다.
 - `go-check`: 커밋한 생성물이 현재 선언과 같은지 검사합니다.
 
-생성된 Go 소스와 `zigo/semantic.json`, `zigo/errors.lock.json`은 일반적으로 커밋합니다.
+생성된 Go 소스와 `zigo/go/semantic.json`, `zigo/go/errors.lock.json`은 일반적으로 커밋합니다.
 정확한 파일 범위와 CI 구성은 [생성물과 CI](build-and-ship/generated-files-and-ci.md)를
 참고하세요.
 

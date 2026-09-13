@@ -98,7 +98,7 @@ jobs:
             (
               cd "$example"
               zig build test --summary all
-              zig build go-check abi-check --summary all
+              zig build go-check go-abi-check --summary all
               zig build go
             )
           done
@@ -129,7 +129,7 @@ jobs:
           rustfmt --version
           cd examples/13-rust-quick-start
           zig build test --summary all
-          zig build rust-check abi-check rust-coverage --summary all
+          zig build rust-check rust-abi-check rust-coverage --summary all
           zig build rust
           (cd rust && cargo fmt --check)
           (cd rust && cargo clippy --all-targets -- -D warnings)
@@ -242,7 +242,7 @@ jobs:
         run: |
           set -euo pipefail
           for example in 04-callback 08-telemetry-hub 11-io-streams 12-materialized; do
-            (cd "examples/$example" && zig build purego-go purego-go-verify --summary all)
+            (cd "examples/$example" && zig build go-purego go-purego-verify --summary all)
           done
           (cd examples/10-tagged-union && zig build go go-verify -Dpurego --summary all)
 
@@ -259,7 +259,7 @@ jobs:
           set -euo pipefail
           cd examples/07-event-queue
           rm -rf zig-out
-          zig build go purego-go purego-go-verify --summary all
+          zig build go go-purego go-purego-verify --summary all
           test -f "zig-out/lib/libevent_queue_zigo.a"
           test -f "zig-out/lib/libevent_queue_zigo$LIB_SUFFIX"
           test -f zig-out/include/zigo_event_queue.h
@@ -306,7 +306,7 @@ jobs:
       # dispatches callbacks rather than merely linking.
       - name: Cross-build the Windows DLL for 07-event-queue
         working-directory: examples/07-event-queue
-        run: zig build purego-go-lib -Dtarget=x86_64-windows-gnu --summary all
+        run: zig build go-purego-lib -Dtarget=x86_64-windows-gnu --summary all
       - uses: actions/upload-artifact@v4
         with:
           name: event-queue-windows-dll
@@ -375,7 +375,7 @@ jobs:
         run: |
           set -euo pipefail
           for example in 07-event-queue 08-telemetry-hub 12-materialized; do
-            (cd "examples/$example" && zig build purego-go purego-go-verify --summary all)
+            (cd "examples/$example" && zig build go-purego go-purego-verify --summary all)
           done
           (cd examples/10-tagged-union && zig build go go-verify -Dpurego --summary all)
 

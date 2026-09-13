@@ -4,7 +4,10 @@ const std = @import("std");
 const build_options = @import("../src/build_options.zig");
 const naming = @import("../src/gen/naming.zig");
 
-pub const PluginSource = struct { path: std.Build.LazyPath, config: []const u8 = "{}" };
+/// One plugin the generator is built with. `path` names an added plugin's
+/// root file; a null path configures a built-in plugin called `name`, so the
+/// registry carries one `configurations` list for both kinds.
+pub const PluginSource = struct { path: ?std.Build.LazyPath = null, name: []const u8 = "", config: []const u8 = "{}" };
 
 pub fn addGenerator(
     b: *std.Build,
@@ -120,10 +123,11 @@ pub fn createGeneratorModules(
     // modules built from the same files are different types in Zig. A shared
     // module would have the plugin and the generator running it talk about
     // two `Plugin`s that only look alike.
-    const plugin_modules = b.allocator.alloc(*std.Build.Module, plugins.len) catch @panic("OOM");
-    for (plugins, plugin_modules) |root, *module| {
-        module.* = b.createModule(.{
-            .root_source_file = root.path,
+    var plugin_modules: std.ArrayList(*std.Build.Module) = .empty;
+    for (plugins) |root| {
+        const path = root.path orelse continue;
+        plugin_modules.append(b.allocator, b.createModule(.{
+            .root_source_file = path,
             .target = target,
             .optimize = optimize,
             .imports = &.{
@@ -133,9 +137,9 @@ pub fn createGeneratorModules(
                 .{ .name = "diagnostic", .module = diagnostic_module },
                 .{ .name = "naming", .module = naming_module },
             },
-        });
+        })) catch @panic("OOM");
     }
-    const plugin_registry_module = createPluginRegistry(b, target, optimize, plugin_module, plugin_modules, plugins);
+    const plugin_registry_module = createPluginRegistry(b, target, optimize, plugin_module, plugin_modules.items, plugins);
     const errors_lock_module = b.createModule(.{
         .root_source_file = source_root.path(b, "gen/ir/errors_lock.zig"),
         .target = target,
@@ -248,9 +252,18 @@ fn createPluginRegistry(
     }
     source.appendSlice(b.allocator, "};\n") catch @panic("OOM");
     source.appendSlice(b.allocator, "pub const configurations: []const plugin.Configuration = &.{\n") catch @panic("OOM");
-    for (sources, 0..) |entry, index| {
+    // Added plugins are named by the module they came from; a built-in is
+    // named by the caller, since it has no module of its own here.
+    var module_index: usize = 0;
+    for (sources) |entry| {
         const encoded = b.fmt("\"{f}\"", .{std.zig.fmtString(entry.config)});
-        source.appendSlice(b.allocator, b.fmt("    .{{ .name = @import(\"p{d}\").plugin.name, .json = {s} }},\n", .{ index, encoded })) catch @panic("OOM");
+        if (entry.path != null) {
+            source.appendSlice(b.allocator, b.fmt("    .{{ .name = @import(\"p{d}\").plugin.name, .json = {s} }},\n", .{ module_index, encoded })) catch @panic("OOM");
+            module_index += 1;
+        } else {
+            if (entry.name.len == 0) @panic("a built-in plugin entry (no root_source_file) must be named");
+            source.appendSlice(b.allocator, b.fmt("    .{{ .name = \"{f}\", .json = {s} }},\n", .{ std.zig.fmtString(entry.name), encoded })) catch @panic("OOM");
+        }
     }
     source.appendSlice(b.allocator, "};\n") catch @panic("OOM");
     const written = b.addWriteFiles().add("plugin_registry.zig", source.items);

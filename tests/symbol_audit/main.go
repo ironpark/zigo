@@ -1,5 +1,5 @@
 // Command symbol-audit checks that the `symbol` recorded for every function in
-// a generated `zigo/semantic.json` is the name the bindings actually export:
+// a generated `zigo/go/semantic.json` is the name the bindings actually export:
 // unique across the document, and present in the generated cgo call sites.
 package main
 
@@ -44,7 +44,7 @@ func main() {
 }
 
 func audit(root string) error {
-	raw, err := os.ReadFile(filepath.Join(root, "zigo", "semantic.json"))
+	raw, err := os.ReadFile(filepath.Join(root, "zigo", "go", "semantic.json"))
 	if err != nil {
 		return err
 	}

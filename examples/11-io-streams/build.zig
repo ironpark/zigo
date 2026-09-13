@@ -4,7 +4,6 @@ const zigo = @import("zigo");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-    const coverage_json = b.option([]const u8, "coverage-json", "Write the go-coverage report as JSON at this path");
     const streams = b.addModule("streams", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
@@ -22,31 +21,24 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.dependency("zigo_satisfies", .{}).path("src/plugin.zig"),
     };
 
-    const bindings = zigo.addGoBindings(b, .{
+    _ = zigo.addGoBindings(b, .{
         .name = "streams",
         .module = streams,
-        .bindings = b.path("src/bindings.zig"),
-        .go_dir = b.path("go"),
-        .go_module = "example.com/zigo/streams",
+        .layout = .{ .go_module = "example.com/zigo/streams" },
         .target = target,
         .optimize = optimize,
-        .abi_base = "HEAD",
-        .coverage_json = coverage_json,
         .plugins = &.{satisfies},
     });
-    _ = bindings.addStandardSteps(b, .{});
 
-    const purego_bindings = zigo.addGoBindings(b, .{
+    _ = zigo.addGoBindings(b, .{
         .name = "streams",
         .module = streams,
-        .bindings = b.path("src/bindings.zig"),
         .go_dir = b.path("go-purego"),
-        .go_module = "example.com/zigo/streams-purego",
+        .layout = .{ .go_module = "example.com/zigo/streams-purego" },
         .target = target,
         .optimize = optimize,
-        .abi_base = "HEAD",
-        .link = .purego,
+        .link = .{ .purego = .{} },
         .plugins = &.{satisfies},
+        .standard_steps = .{ .variant = "purego" },
     });
-    _ = purego_bindings.addStandardSteps(b, .{ .name_prefix = "purego" });
 }

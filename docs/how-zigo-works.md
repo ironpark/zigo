@@ -79,7 +79,7 @@ pub const bindings = zigo.define(.{
 | `go-doctor` | Go와 네이티브 도구 모음 전제 검사 |
 | `go-report` | 최종 바인딩 결정 설명 |
 | `go-coverage` | 공개 Zig 함수의 바인딩 포함 여부 보고 |
-| `abi-check` | 설정한 기준과 ABI 호환성 비교 |
+| `go-abi-check` | 설정한 기준과 ABI 호환성 비교 |
 | `go-verify` | 검사, 도구 모음, 라이브러리와 선택적 ABI 검사를 집계 |
 
 일상 개발에서는 `go`로 갱신하고, CI에서는 `go-check` 또는 `go-verify`로 누락을 찾습니다.

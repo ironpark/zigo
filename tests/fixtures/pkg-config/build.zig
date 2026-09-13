@@ -16,9 +16,7 @@ pub fn build(b: *std.Build) void {
     const bindings = zigo.addGoBindings(b, .{
         .name = "pkg_config_fixture",
         .module = module,
-        .bindings = b.path("src/bindings.zig"),
-        .go_dir = b.path("go"),
-        .go_module = "example.com/zigo/pkg-config-fixture",
+        .layout = .{ .go_module = "example.com/zigo/pkg-config-fixture" },
         .target = target,
         .optimize = .Debug,
     });

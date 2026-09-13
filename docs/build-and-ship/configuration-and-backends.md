@@ -6,21 +6,20 @@
 ## 기본 구성
 
 ```zig
-const bindings = zigo.addGoBindings(b, .{
+_ = zigo.addGoBindings(b, .{
     .name = "mylib",
     .module = mylib,
-    .bindings = b.path("src/bindings.zig"),
     .source_root = b.path("src/root.zig"),
-    .go_dir = b.path("go"),
-    .go_module = "example.com/mylib/go",
+    .layout = .{ .go_module = "example.com/mylib/go" },
     .target = target,
     .optimize = optimize,
 });
-_ = bindings.addStandardSteps(b, .{});
 ```
 
-기본값은 cgo 정적 링크와 `internal/raw` 패키지입니다. 공개 패키지는 이름을 snake_case로
-변환한 `go_package`를 사용하며, 기본 import 경로는 `<go_module>/<go_package>`입니다.
+기본값은 cgo 정적 링크, `internal/raw` 패키지, 모듈 root 옆의 `src/bindings.zig`, Go 디렉터리
+`go`, ABI 기준 `HEAD`입니다. 표준 단계(`go`, `go-check`, ...)는 `addGoBindings`가 함께
+등록합니다. 공개 패키지는 이름을 snake_case로 변환한 `go_package`를 사용하며, 기본 import
+경로는 `<go_module>/<go_package>`입니다.
 
 ## 백엔드 선택
 
@@ -28,7 +27,7 @@ _ = bindings.addStandardSteps(b, .{});
 |---|---|---|---|
 | `.cgo_static` | `CGO_ENABLED=1` | 정적 아카이브 | 기본값, 실행 파일에 네이티브 코드를 링크 |
 | `.cgo_dynamic` | `CGO_ENABLED=1` | 공유 라이브러리 | 네이티브 라이브러리를 별도 배포·교체 |
-| `.purego` | `CGO_ENABLED=0` 가능 | 공유 라이브러리 | Go 빌드에서 C 컴파일러 제거 |
+| `.{ .purego = .{} }` | `CGO_ENABLED=0` 가능 | 공유 라이브러리 | Go 빌드에서 C 컴파일러 제거 |
 
 백엔드는 공개 Go API를 가능한 한 바꾸지 않습니다. 라이브러리를 빌드 시 링크하는지 실행 시
 로드하는지와 배포 파일이 달라집니다.
@@ -36,9 +35,12 @@ _ = bindings.addStandardSteps(b, .{});
 ## Go 패키지 배치
 
 ```zig
-.go_package = "client",
-.go_package_path = "client/v2",
-.raw_package = "internal/native",
+.layout = .{
+    .go_module = "example.com/mylib/go",
+    .go_package = "client",
+    .go_package_path = "client/v2",
+    .raw_package = "internal/native",
+},
 .go_package_doc = "Package client exposes the native library.",
 ```
 
@@ -46,15 +48,17 @@ _ = bindings.addStandardSteps(b, .{});
 - `go_package_path`는 `go_dir` 안의 디렉터리이자 import 경로 접미사입니다.
 - `.`을 사용하면 공개 패키지를 Go 모듈 root에 둡니다.
 - `raw_package`는 기본값 `internal/raw`로 분리하는 것을 권장합니다.
+- `raw_colocated = true`는 raw 바인딩을 공개 패키지 안에 생성합니다. 경로가 같다고 자동으로
+  합쳐지지 않으며, 이 플래그를 켜면 `raw_package`는 무시합니다.
 
 한 Go 모듈에 여러 바인딩 set을 생성하면 `go_dir`, 공개 경로, raw 경로와 C `prefix`가
-서로 충돌하지 않아야 합니다. 표준 단계에도 접두사를 붙입니다.
+서로 충돌하지 않아야 합니다. 표준 단계에는 variant 이름을 붙입니다.
 
 ```zig
-_ = admin_bindings.addStandardSteps(b, .{ .name_prefix = "admin" });
+.standard_steps = .{ .variant = "admin" },
 ```
 
-이 경우 `admin-go`, `admin-go-check`, `admin-go-verify`가 등록됩니다.
+이 경우 `go-admin`, `go-admin-check`, `go-admin-verify`가 등록됩니다.
 
 ## 설치 위치와 이름
 
@@ -109,9 +113,9 @@ zigo는 모듈의 시스템 라이브러리, 프레임워크와 링크된 산출
 },
 ```
 
-비어 있지 않은 `cflags`와 `ldflags`는 계산된 기본값을 교체하고 `extra_ldflags`는 뒤에 추가합니다. 전체
-교체는 헤더와 바인딩 라이브러리 경로까지 직접 책임져야 하므로 일반적으로
-`extra_ldflags`와 `target_ldflags`를 사용하세요.
+비어 있지 않은 `cflags`는 계산된 CFLAGS를 교체하고 `extra_ldflags`는 zigo가 만든 LDFLAGS 뒤에
+추가합니다. LDFLAGS를 통째로 교체하는 옵션은 없습니다. 헤더와 바인딩 라이브러리 경로는 zigo가
+소유하므로 `extra_ldflags`와 `target_ldflags`로 보강합니다.
 
 `.cgo_dynamic`은 배포 환경의 rpath를 자동으로 정하지 않습니다. macOS의
 `DYLD_LIBRARY_PATH`, Linux의 `LD_LIBRARY_PATH` 또는 애플리케이션에 맞는
@@ -123,7 +127,7 @@ zigo는 모듈의 시스템 라이브러리, 프레임워크와 링크된 산출
 `addGoBindings` 옵션에 다음 한 줄을 추가합니다. `go_dir`와 표준 단계 이름은 유지합니다.
 
 ```zig
-.link = .purego,
+.link = .{ .purego = .{} },
 ```
 
 시작 가이드를 완료하여 `go/go.mod`가 이미 있다면, 생성 전에 purego 의존성을 추가합니다.
@@ -140,21 +144,20 @@ cgo와 purego를 함께 제공하려면 별도 `addGoBindings`를 구성하고 G
 `target`, `optimize`를 사용합니다.
 
 ```zig
-const purego_bindings = zigo.addGoBindings(b, .{
+_ = zigo.addGoBindings(b, .{
     .name = "mylib",
     .module = mylib,
-    .bindings = b.path("src/bindings.zig"),
     .source_root = b.path("src/root.zig"),
     .go_dir = b.path("go-purego"),
-    .go_module = "example.com/mylib/go-purego",
+    .layout = .{ .go_module = "example.com/mylib/go-purego" },
     .target = target,
     .optimize = optimize,
-    .link = .purego,
+    .link = .{ .purego = .{} },
+    .standard_steps = .{ .variant = "purego" },
 });
-_ = purego_bindings.addStandardSteps(b, .{ .name_prefix = "purego" });
 ```
 
-이 추가 바인딩은 `zig build purego-go`로 생성합니다. `go-purego/go.mod`가 없으면 zigo가
+이 추가 바인딩은 `zig build go-purego`로 생성합니다. `go-purego/go.mod`가 없으면 zigo가
 purego 의존성을 포함해 만들고, 이미 있다면 생성 전에 해당 디렉터리에서 위 `go get`을
 실행합니다. 생성 후 `go mod tidy`로 체크섬을 준비합니다.
 
@@ -166,14 +169,15 @@ if err := mylib.LoadLibrary("/opt/myapp/lib/" + mylib.DefaultLibraryName); err !
 }
 ```
 
-자동 로딩이 필요하면 검색 위치와 함께 명시합니다.
+자동 로딩이 필요하면 `.purego` payload에 검색 위치와 함께 명시합니다. loading 정책은 purego에만
+있으므로 cgo 바인딩에 쓰면 컴파일 오류입니다.
 
 ```zig
-.library_loading = .{
+.link = .{ .purego = .{
     .search_paths = &.{ "${EXECUTABLE_DIR}", "${EXECUTABLE_DIR}/../lib" },
     .env_vars = &.{"MYLIB_LIBRARY_PATH"},
     .loader = .automatic,
-},
+} },
 ```
 
 | loader | 동작 |

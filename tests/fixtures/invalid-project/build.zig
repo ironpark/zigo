@@ -10,11 +10,12 @@ pub fn build(b: *std.Build) void {
     const bindings = zigo.addGoBindings(b, .{
         .name = "invalid",
         .module = module,
-        .bindings = b.path("src/bindings.zig"),
-        .go_dir = b.path("go"),
-        .go_module = "example.com/zigo/invalid",
+        .layout = .{ .go_module = "example.com/zigo/invalid" },
         .target = target,
         .optimize = .Debug,
+        .abi_base = null,
+        // This fixture names its own `go` step.
+        .standard_steps = null,
     });
     std.debug.assert(bindings.abi_check == null);
     b.step("go", "Expected diagnostic failure").dependOn(&bindings.update.step);

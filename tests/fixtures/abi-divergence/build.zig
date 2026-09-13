@@ -10,12 +10,10 @@ pub fn build(b: *std.Build) void {
     const bindings = zigo.addGoBindings(b, .{
         .name = "divergence",
         .module = module,
-        .bindings = b.path("src/bindings.zig"),
-        .go_dir = b.path("go"),
-        .go_module = "example.com/zigo/divergence",
+        .layout = .{ .go_module = "example.com/zigo/divergence" },
         .target = target,
         .optimize = .Debug,
-        .link = .purego,
+        .link = .{ .purego = .{} },
     });
     // The guards live in the shim, so compiling the library is what proves
     // them: generation itself never sees the target's own layout.

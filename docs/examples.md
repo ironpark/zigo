@@ -57,7 +57,7 @@ Rust로 미러링하며, C ABI shim과 C 헤더가 두 타겟에서 바이트 �
 `03`, `04`, `07`, `08`, `11`, `12`는 별도 `go-purego` 모듈을 생성합니다.
 
 ```bash
-zig build purego-go purego-go-verify
+zig build go-purego go-purego-verify
 (cd go-purego && CGO_ENABLED=0 go test ./...)
 ```
 

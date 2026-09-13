@@ -11,14 +11,15 @@ const steps = @import("build/steps.zig");
 const tests = @import("build/tests.zig");
 
 pub const CgoFlags = struct {
+    /// Replaces the computed `#cgo CFLAGS` line when non-empty.
     cflags: []const []const u8 = &.{},
-    ldflags: []const []const u8 = &.{},
-    /// Additional linker flags appended after zigo's default (or overridden)
-    /// binding-library flags, on every platform.
+    /// Additional linker flags appended after zigo's binding-library flags,
+    /// on every platform. The library line itself is never replaced: zigo
+    /// owns the header and archive paths it writes.
     extra_ldflags: []const []const u8 = &.{},
     /// Linker flags for one platform only, each emitted as its own
     /// `#cgo <goos>[,<goarch>] LDFLAGS:` line after the library lines. They
-    /// apply whether or not `targets` is set, and survive `ldflags` overrides.
+    /// apply whether or not `targets` is set.
     target_ldflags: []const TargetLdflags = &.{},
 
     pub const TargetLdflags = struct {
@@ -36,13 +37,19 @@ const Backend = enum { cgo, purego };
 /// How the Go side reaches the native library. One axis, because the two it
 /// replaced could describe combinations that do not exist: purego never links
 /// statically, and it never goes through cgo.
-pub const Link = enum {
+///
+/// Options that only apply to one way of reaching the library live in that
+/// variant's payload, so setting a purego loading policy under cgo is a type
+/// error rather than a build-time panic.
+pub const Link = union(enum) {
     /// cgo against a static archive.
     cgo_static,
     /// cgo against a shared library.
     cgo_dynamic,
-    /// No cgo. Symbols are resolved at run time from a shared library.
-    purego,
+    /// No cgo. Symbols are resolved at run time from a shared library found
+    /// by the given loading policy; `.{ .purego = .{} }` requires an explicit
+    /// `LoadLibrary` call and consults `ZIGO_LIBRARY_PATH`.
+    purego: LibraryLoading,
 
     fn backend(self: Link) Backend {
         return if (self == .purego) .purego else .cgo;
@@ -50,6 +57,15 @@ pub const Link = enum {
 
     fn linkMode(self: Link) LinkMode {
         return if (self == .cgo_static) .static else .dynamic;
+    }
+
+    /// The value the generator's `--link` flag takes.
+    fn flag(self: Link) []const u8 {
+        return switch (self) {
+            .cgo_static => "cgo-static",
+            .cgo_dynamic => "cgo-dynamic",
+            .purego => "purego",
+        };
     }
 };
 
@@ -76,14 +92,17 @@ pub const Install = struct {
 /// since a plugin that a declaration cannot reach has nothing to read.
 pub const PluginModule = struct {
     /// The name `bindings.zig` imports the plugin under, so a declaration can
-    /// name its options with `use`.
+    /// name its options with `use`. For a built-in plugin (no
+    /// `root_source_file`) this is the plugin's own name, such as `MUST`.
     name: []const u8,
     /// The plugin's root source file, the one declaring `pub const plugin`.
     /// A path rather than a module: the generator compiles it against its own
     /// `plugin`, `abi` and `semantic`, since two modules built from the same
-    /// files are different types in Zig.
-    root_source_file: std.Build.LazyPath,
-    /// JSON encoded Config. Use configJson to serialize a Zig struct.
+    /// files are different types in Zig. Null configures one of zigo's
+    /// built-in plugins by `name` instead of adding a module.
+    root_source_file: ?std.Build.LazyPath = null,
+    /// JSON encoded Config, the only way a build configures a plugin. Use
+    /// `configJson` to serialize a Zig struct.
     config: []const u8 = "{}",
 };
 
@@ -91,13 +110,37 @@ pub fn configJson(b: *std.Build, value: anytype) []const u8 {
     return std.json.Stringify.valueAlloc(b.allocator, value, .{}) catch @panic("OOM");
 }
 
+/// Where the generated Go lands inside `go_dir` and how it is imported.
+pub const Layout = struct {
+    /// Go module import path, written to a generated `go.mod` and used for
+    /// the public package's import of the raw package.
+    go_module: []const u8,
+    /// Public Go package name. Defaults to the snake_case binding name, which
+    /// can contain underscores; set it to choose an idiomatic Go name. The C
+    /// header and the native library keep the binding name either way.
+    go_package: ?[]const u8 = null,
+    /// Slash-separated public package path inside `go_dir`. Defaults to
+    /// `go_package`; `.` publishes the package at the `go_dir` root.
+    go_package_path: ?[]const u8 = null,
+    /// Slash-separated path of the raw package inside `go_dir`. Ignored when
+    /// `raw_colocated` is set.
+    raw_package: []const u8 = "internal/raw",
+    /// Emit the raw bindings into the public package instead of a package of
+    /// their own. Explicit, so two paths that happen to match never colocate
+    /// by accident.
+    raw_colocated: bool = false,
+};
+
 pub const Options = struct {
     name: []const u8,
     module: *std.Build.Module,
-    bindings: std.Build.LazyPath,
+    /// The file exporting `zigo.define`. Defaults to `bindings.zig` next to
+    /// `module.root_source_file`.
+    bindings: ?std.Build.LazyPath = null,
     source_root: ?std.Build.LazyPath = null,
-    go_dir: std.Build.LazyPath,
-    go_module: []const u8,
+    /// The Go module directory. Defaults to `b.path("go")`.
+    go_dir: ?std.Build.LazyPath = null,
+    layout: Layout,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     prefix: []const u8 = "zg",
@@ -115,33 +158,19 @@ pub const Options = struct {
     /// surface, so listing one can never move the C ABI.
     plugins: []const PluginModule = &.{},
     cgo_flags: ?CgoFlags = null,
-    abi_base: ?[]const u8 = null,
-    /// Slash-separated path of the raw package inside `go_dir`. Setting it to
-    /// the public package path colocates the two.
-    raw_package: []const u8 = "internal/raw",
+    /// Git ref whose committed `zigo/go/semantic.json` the ABI check compares
+    /// against. Null registers no ABI check.
+    abi_base: ?[]const u8 = "HEAD",
     /// `gofmt` used to format generated Go. Defaults to the one on `PATH`.
     gofmt: ?[]const u8 = null,
-    /// Public Go package name. Defaults to the snake_case binding name, which
-    /// can contain underscores; set it to choose an idiomatic Go name. The C
-    /// header and the native library keep the binding name either way.
-    go_package: ?[]const u8 = null,
-    /// Slash-separated public package path inside `go_dir`. Defaults to
-    /// `go_package`; `.` publishes the package at the `go_dir` root.
-    go_package_path: ?[]const u8 = null,
     /// Body of the generated `// Package ...` doc. Null falls back to the `//!`
     /// container doc of the bindings file, then to a default sentence.
     go_package_doc: ?[]const u8 = null,
-    /// JSON object of per-plugin settings, keyed by plugin name and merged
-    /// over each plugin's `Config` defaults. Passed to the generator as
-    /// `--plugin-config`; `zigo.configJson` builds it from a Zig value.
-    plugin_config: []const u8 = "{}",
-    /// Optional source path for the JSON form of `go-coverage`.
-    coverage_json: ?[]const u8 = null,
-    /// purego-only run-time loading policy. The default requires an explicit
-    /// `LoadLibrary` call and consults `ZIGO_LIBRARY_PATH`.
-    library_loading: LibraryLoading = .{},
     /// Native library and C header install directories and filenames.
     install: Install = .{},
+    /// Registers the conventional `go*` steps as part of `addGoBindings`.
+    /// Null registers none, for a build that names its own steps.
+    standard_steps: ?GoBindings.StandardStepOptions = .{},
 };
 
 const ResolvedRawPackage = struct {
@@ -171,8 +200,13 @@ pub const GoBindings = struct {
     /// binding set has exactly one.
     native_libraries: []const NativeLibrary,
     semantic_json: std.Build.LazyPath,
+    /// The JSON form of the coverage report, for a build that publishes it
+    /// somewhere other than the `-D[<variant>-]coverage-json` option does.
+    coverage_json: std.Build.LazyPath,
     /// Build-time-resolved names used by the generated `#cgo pkg-config:` line.
     resolved_pkg_config: ?std.Build.LazyPath,
+    /// The steps `Options.standard_steps` registered; null when it was null.
+    standard_steps: ?StandardSteps = null,
 
     pub const NativeLibrary = struct {
         target: std.Build.ResolvedTarget,
@@ -186,10 +220,11 @@ pub const GoBindings = struct {
     };
 
     pub const StandardStepOptions = struct {
-        /// Prefixes conventional step names for projects with multiple binding sets.
-        /// For example, `.name_prefix = "admin"` registers `admin-go` and
-        /// `admin-go-check` instead of `go` and `go-check`.
-        name_prefix: ?[]const u8 = null,
+        /// Names this binding set among several in one build. The variant
+        /// follows the language token: `.variant = "purego"` registers
+        /// `go-purego`, `go-purego-check`, ... instead of `go`, `go-check`.
+        /// The coverage JSON option becomes `-Dpurego-coverage-json`.
+        variant: ?[]const u8 = null,
         /// Installs the native binding library as part of the default install
         /// step. Disable this when the caller manages installation separately.
         install_library_by_default: bool = true,
@@ -209,21 +244,27 @@ pub const GoBindings = struct {
     };
 
     /// Registers conventional user-facing build steps for this binding set.
+    /// `addGoBindings` calls this itself unless `Options.standard_steps` is
+    /// null. Also declares the `-D[<variant>-]coverage-json=<path>` option
+    /// that makes `go-coverage` write its JSON form into the source tree.
     pub fn addStandardSteps(self: GoBindings, b: *std.Build, options: StandardStepOptions) StandardSteps {
-        if (options.name_prefix) |prefix| {
-            if (prefix.len == 0) @panic("Go binding step name_prefix must not be empty");
-        }
-        const update = b.step(standardStepName(b, options.name_prefix, "go"), "Generate and build Go bindings");
+        const names = StepNames.init("go", options.variant);
+        const update = b.step(names.step(b, ""), "Generate and build Go bindings");
         update.dependOn(&self.update.step);
-        const check = b.step(standardStepName(b, options.name_prefix, "go-check"), "Fail if generated Go bindings are stale");
+        const check = b.step(names.step(b, "check"), "Fail if generated Go bindings are stale");
         check.dependOn(&self.check.step);
-        const report = b.step(standardStepName(b, options.name_prefix, "go-report"), "Explain the effective Go binding contract");
+        const report = b.step(names.step(b, "report"), "Explain the effective Go binding contract");
         report.dependOn(&self.report.step);
-        const doctor = b.step(standardStepName(b, options.name_prefix, "go-doctor"), "Check Go binding toolchain prerequisites");
+        const doctor = b.step(names.step(b, "doctor"), "Check Go binding toolchain prerequisites");
         doctor.dependOn(&self.doctor.step);
-        const coverage = b.step(standardStepName(b, options.name_prefix, "go-coverage"), "Report public Zig API binding coverage");
+        const coverage = b.step(names.step(b, "coverage"), "Report public Zig API binding coverage");
         coverage.dependOn(&self.coverage.step);
-        const library = b.step(standardStepName(b, options.name_prefix, "go-lib"), "Build and install the native Go binding library");
+        if (b.option([]const u8, names.option(b, "coverage-json"), "Write the coverage report as JSON at this source path")) |destination| {
+            const publish = b.addUpdateSourceFiles();
+            publish.addCopyFileToSource(self.coverage_json, destination);
+            self.coverage.step.dependOn(&publish.step);
+        }
+        const library = b.step(names.step(b, "lib"), "Build and install the native Go binding library");
         for (self.native_libraries) |native| {
             library.dependOn(&native.install_library.step);
             if (options.install_library_by_default) {
@@ -231,11 +272,11 @@ pub const GoBindings = struct {
             }
         }
         const abi_check = if (self.abi_check) |run| step: {
-            const value = b.step(standardStepName(b, options.name_prefix, "abi-check"), "Fail on a breaking Go binding ABI change");
+            const value = b.step(names.step(b, "abi-check"), "Fail on a breaking Go binding ABI change");
             value.dependOn(&run.step);
             break :step value;
         } else null;
-        const verify = b.step(standardStepName(b, options.name_prefix, "go-verify"), "Validate generated bindings, toolchain, and the native library");
+        const verify = b.step(names.step(b, "verify"), "Validate generated bindings, toolchain, and the native library");
         verify.dependOn(check);
         verify.dependOn(library);
         verify.dependOn(doctor);
@@ -244,9 +285,29 @@ pub const GoBindings = struct {
     }
 };
 
-fn standardStepName(b: *std.Build, prefix: ?[]const u8, suffix: []const u8) []const u8 {
-    return if (prefix) |value| b.fmt("{s}-{s}", .{ value, suffix }) else suffix;
-}
+/// `<language>[-<variant>][-<suffix>]` step names and `[<variant>-]<name>`
+/// build options, so a Go and a Rust binding set (or two Go variants) in one
+/// build never claim the same step.
+const StepNames = struct {
+    language: []const u8,
+    variant: ?[]const u8,
+
+    fn init(language: []const u8, variant: ?[]const u8) StepNames {
+        if (variant) |value| {
+            if (value.len == 0) std.debug.panic("{s} binding step variant must not be empty", .{language});
+        }
+        return .{ .language = language, .variant = variant };
+    }
+
+    fn step(self: StepNames, b: *std.Build, suffix: []const u8) []const u8 {
+        const head = if (self.variant) |value| b.fmt("{s}-{s}", .{ self.language, value }) else self.language;
+        return if (suffix.len == 0) head else b.fmt("{s}-{s}", .{ head, suffix });
+    }
+
+    fn option(self: StepNames, b: *std.Build, name: []const u8) []const u8 {
+        return if (self.variant) |value| b.fmt("{s}-{s}", .{ value, name }) else name;
+    }
+};
 
 const ResolvedInstall = struct {
     library_dir: std.Build.InstallDir,
@@ -385,6 +446,8 @@ const Reflection = struct {
     semantic_json: std.Build.LazyPath,
     /// Reports public Zig API binding coverage.
     coverage: *std.Build.Step.Run,
+    /// The same report as JSON, captured but published only on request.
+    coverage_json: std.Build.LazyPath,
 };
 
 const ReflectionOptions = struct {
@@ -394,18 +457,25 @@ const ReflectionOptions = struct {
     module: *std.Build.Module,
     optimize: std.builtin.OptimizeMode,
     source_root: ?std.Build.LazyPath = null,
-    coverage_json: ?[]const u8 = null,
     plugins: []const PluginModule = &.{},
 };
 
-/// Where a binding set's committed error-code lock lives, relative to the
-/// build root. Neutral: the lock records the C ABI's status codes, which every
-/// target reads from the same document.
-const errors_lock_path = "zigo/errors.lock.json";
+/// The committed sidecars of one binding set, namespaced per output language
+/// so a Go and a Rust set in one project never overwrite each other's copy:
+/// `zigo/<language>/semantic.json` and `zigo/<language>/errors.lock.json`.
+/// Both documents are language-neutral bytes; only their home is per language.
+const Sidecars = struct {
+    language: []const u8,
+
+    fn path(self: Sidecars, bld: *std.Build, name: []const u8) []const u8 {
+        return bld.fmt("zigo/{s}/{s}", .{ self.language, name });
+    }
+};
 
 /// Hands the generator the committed error-code lock when there is one, so a
 /// code already published keeps its number. Absent on a first generation.
-fn addErrorsLockArg(bld: *std.Build, generate: *std.Build.Step.Run) void {
+fn addErrorsLockArg(bld: *std.Build, generate: *std.Build.Step.Run, sidecars: Sidecars) void {
+    const errors_lock_path = sidecars.path(bld, "errors.lock.json");
     const has_errors_lock = blk: {
         bld.build_root.handle.access(bld.graph.io, errors_lock_path, .{}) catch |err| switch (err) {
             error.FileNotFound => break :blk false,
@@ -421,14 +491,14 @@ fn addErrorsLockArg(bld: *std.Build, generate: *std.Build.Step.Run) void {
 /// The staleness check: committed output against what this build would write.
 /// The sidecar files the update step copies outside the language directory are
 /// part of the committed output too, so a stale one fails here rather than in
-/// a post-generation diff. Both are neutral -- `semantic.json` and the error
-/// lock are the same bytes whichever target rendered the tree.
+/// a post-generation diff.
 fn addStalenessCheck(
     bld: *std.Build,
     generator: *std.Build.Step.Compile,
     generated_dir: std.Build.LazyPath,
     source_dir: std.Build.LazyPath,
     semantic_json: std.Build.LazyPath,
+    sidecars: Sidecars,
 ) *std.Build.Step.Run {
     const check = bld.addRunArtifact(generator);
     check.addArgs(&.{ "check", "--generated" });
@@ -437,29 +507,36 @@ fn addStalenessCheck(
     check.addDirectoryArg(source_dir);
     check.addArg("--file");
     check.addFileArg(semantic_json);
-    check.addArg(bld.pathFromRoot("zigo/semantic.json"));
+    check.addArg(bld.pathFromRoot(sidecars.path(bld, "semantic.json")));
     check.addArg("--file");
     check.addFileArg(generated_dir.path(bld, "errors.lock.json"));
-    check.addArg(bld.pathFromRoot(errors_lock_path));
+    check.addArg(bld.pathFromRoot(sidecars.path(bld, "errors.lock.json")));
     return check;
+}
+
+/// Copies the sidecars into the source tree as part of the update step.
+fn publishSidecars(bld: *std.Build, update: *std.Build.Step.UpdateSourceFiles, generated_dir: std.Build.LazyPath, semantic_json: std.Build.LazyPath, sidecars: Sidecars) void {
+    update.addCopyFileToSource(generated_dir.path(bld, "errors.lock.json"), sidecars.path(bld, "errors.lock.json"));
+    update.addCopyFileToSource(semantic_json, sidecars.path(bld, "semantic.json"));
 }
 
 /// Compares this build's `semantic.json` against the one committed at
 /// `abi_base`. The baseline read is a `git show`, whose ref can move without
 /// changing argv, so it must not reuse a build-cache entry from an older
-/// commit. `target_args` carries the backend or output-target flags the
+/// commit. `target_args` carries the link or output-target flags the
 /// comparison is made under; everything else here is neutral.
 fn addAbiCheck(
     bld: *std.Build,
     generator: *std.Build.Step.Compile,
     semantic_json: std.Build.LazyPath,
     abi_base: []const u8,
+    sidecars: Sidecars,
     target_args: []const []const u8,
 ) *std.Build.Step.Run {
     const baseline = bld.addSystemCommand(&.{ "git", "show" });
     baseline.has_side_effects = true;
     baseline.setCwd(bld.path("."));
-    baseline.addArg(bld.fmt("{s}:./zigo/semantic.json", .{abi_base}));
+    baseline.addArg(bld.fmt("{s}:./{s}", .{ abi_base, sidecars.path(bld, "semantic.json") }));
     const baseline_semantic = baseline.captureStdOut(.{ .basename = "semantic-base.json", .trim_whitespace = .none });
     const run = bld.addRunArtifact(generator);
     run.addArgs(&.{ "abi-diff", "--base" });
@@ -474,7 +551,7 @@ fn addAbiCheck(
 fn addReflection(b: *std.Build, options: ReflectionOptions) Reflection {
     const zigo_dependency = b.dependencyFromBuildZig(@This(), .{});
     const plugin_sources = b.allocator.alloc(modules.PluginSource, options.plugins.len) catch @panic("OOM");
-    for (options.plugins, plugin_sources) |entry, *source| source.* = .{ .path = entry.root_source_file, .config = entry.config };
+    for (options.plugins, plugin_sources) |entry, *source| source.* = .{ .path = entry.root_source_file, .name = entry.name, .config = entry.config };
     const generator = modules.addGenerator(b, zigo_dependency.path("src/main.zig"), b.graph.host, .Debug, plugin_sources);
     // Reflection runs the bindings module as an executable on the host, so the
     // whole reflection pipeline builds for `b.graph.host` even when the library
@@ -553,8 +630,10 @@ fn addReflection(b: *std.Build, options: ReflectionOptions) Reflection {
     // The declaration side gets its own module from the same file. It only
     // reads the plugin's name and the type of its options, so nothing it
     // declares has to be the same type as what the generator runs.
+    // A built-in plugin is already part of `zigo`, so only an added module
+    // needs importing here.
     for (options.plugins) |entry| bindings_module.addImport(entry.name, b.createModule(.{
-        .root_source_file = entry.root_source_file,
+        .root_source_file = entry.root_source_file orelse continue,
         .target = b.graph.host,
         .optimize = options.optimize,
         .imports = &.{
@@ -611,25 +690,32 @@ fn addReflection(b: *std.Build, options: ReflectionOptions) Reflection {
         coverage.addFileArg(source_root);
         for (dependency_roots) |root| coverage.addFileArg(root);
     }
-    if (options.coverage_json) |destination| {
-        const coverage_json_run = b.addRunArtifact(reflector);
-        coverage_json_run.addArgs(&.{ "coverage-json", options.name, options.prefix });
-        coverage_json_run.addFileArg(options.bindings);
-        if (options.source_root) |source_root| {
-            coverage_json_run.addFileArg(source_root);
-            for (dependency_roots) |root| coverage_json_run.addFileArg(root);
-        }
-        const coverage_json = coverage_json_run.captureStdOut(.{ .basename = "coverage.json", .trim_whitespace = .none });
-        const publish_coverage = b.addUpdateSourceFiles();
-        publish_coverage.addCopyFileToSource(coverage_json, destination);
-        coverage.step.dependOn(&publish_coverage.step);
+    // Captured unconditionally: a run nothing depends on never executes, and
+    // `addStandardSteps` decides whether it is published.
+    const coverage_json_run = b.addRunArtifact(reflector);
+    coverage_json_run.addArgs(&.{ "coverage-json", options.name, options.prefix });
+    coverage_json_run.addFileArg(options.bindings);
+    if (options.source_root) |source_root| {
+        coverage_json_run.addFileArg(source_root);
+        for (dependency_roots) |root| coverage_json_run.addFileArg(root);
     }
+    const coverage_json = coverage_json_run.captureStdOut(.{ .basename = "coverage.json", .trim_whitespace = .none });
     return .{
         .generator = generator,
         .semantic_run = semantic_run,
         .semantic_json = semantic_json,
         .coverage = coverage,
+        .coverage_json = coverage_json,
     };
+}
+
+/// `bindings.zig` beside the module's root source file, the layout every
+/// example uses. A module without a root source (C sources only) has no
+/// "beside", so the caller must name the file.
+fn defaultBindings(b: *std.Build, module: *std.Build.Module) std.Build.LazyPath {
+    const root = module.root_source_file orelse
+        @panic("bindings is required when the module has no root_source_file to place bindings.zig beside");
+    return root.dirname().path(b, "bindings.zig");
 }
 
 pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
@@ -640,32 +726,41 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
             @panic("`.link = .purego` supports macOS, Linux and Windows on amd64/arm64 only");
     }
     const artifact_package = naming.snakeAlloc(b.allocator, options.name) catch @panic("OOM");
-    const go_package = if (options.go_package) |value| blk: {
+    const bindings = options.bindings orelse defaultBindings(b, options.module);
+    const go_dir = options.go_dir orelse b.path("go");
+    const sidecars: Sidecars = .{ .language = "go" };
+    const go_package = if (options.layout.go_package) |value| blk: {
         go_words.validatePackageName(value) catch
-            @panic("go_package must be a valid Go package identifier");
+            @panic("layout.go_package must be a valid Go package identifier");
         break :blk value;
     } else artifact_package;
-    const go_package_path = resolveGoPackagePath(options.go_package_path orelse go_package);
-    const raw_package = resolveRawPackage(b, options.raw_package, go_package_path, go_package);
-    const raw_source_dir = options.go_dir.path(b, raw_package.path).getPath(b);
-    const public_source_dir = options.go_dir.path(b, go_package_path).getPath(b);
+    const go_package_path = resolveGoPackagePath(options.layout.go_package_path orelse go_package);
+    const raw_package = resolveRawPackage(b, options.layout, go_package_path, go_package);
+    const raw_source_dir = go_dir.path(b, raw_package.path).getPath(b);
+    const public_source_dir = go_dir.path(b, go_package_path).getPath(b);
     const install = resolveInstall(b, options.install, artifact_package, backend, raw_source_dir, public_source_dir);
-    const library_loading = resolvedLibraryLoading(options.library_loading, install);
-    build_options.validateLibraryLoading(library_loading, backend == .purego) catch |err| switch (err) {
-        error.UnsupportedBackend => @panic("library_loading is only supported by .link = .purego"),
-        error.EmptySearchPath => @panic("library_loading.search_paths entries must not be empty"),
-        error.InvalidSearchPath => @panic("library_loading.search_paths entries must not contain quotes, backslashes or control characters"),
-        error.InvalidEnvironmentName => @panic("library_loading.env_vars entries must be ASCII letters, digits and underscores, and must not start with a digit"),
+    // Only purego carries a loading policy; the type of `Link` says so.
+    const library_loading: LibraryLoading = switch (options.link) {
+        .purego => |loading| blk: {
+            const resolved = resolvedLibraryLoading(loading, install);
+            build_options.validateLibraryLoading(resolved, true) catch |err| switch (err) {
+                error.UnsupportedBackend => unreachable,
+                error.EmptySearchPath => @panic("link.purego.search_paths entries must not be empty"),
+                error.InvalidSearchPath => @panic("link.purego.search_paths entries must not contain quotes, backslashes or control characters"),
+                error.InvalidEnvironmentName => @panic("link.purego.env_vars entries must be ASCII letters, digits and underscores, and must not start with a digit"),
+            };
+            break :blk resolved;
+        },
+        else => .{},
     };
     const native_targets = resolveNativeTargets(b, options, backend, install);
     const reflection = addReflection(b, .{
         .name = options.name,
         .prefix = options.prefix,
-        .bindings = options.bindings,
+        .bindings = bindings,
         .module = options.module,
         .optimize = options.optimize,
         .source_root = options.source_root,
-        .coverage_json = options.coverage_json,
         .plugins = options.plugins,
     });
     const generator = reflection.generator;
@@ -681,12 +776,11 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     // be spelled out here.
     if (options.gofmt) |gofmt| generate.addArgs(&.{ "--gofmt", gofmt });
     const cflags_override = if (options.cgo_flags) |flags| steps.joinFlags(b, flags.cflags) else "";
-    const ldflags_override = if (options.cgo_flags) |flags| steps.joinFlags(b, flags.ldflags) else "";
     const extra_ldflags = if (options.cgo_flags) |flags| steps.joinFlags(b, flags.extra_ldflags) else "";
     var link_inputs: steps.LinkInputCollector = .{};
     link_inputs.collect(b, options.module);
     const system_ldflags = steps.systemLibraryFlags(b, &link_inputs);
-    const static_link_inputs = if (backend == .cgo and link_mode == .static and ldflags_override.len == 0)
+    const static_link_inputs = if (backend == .cgo and link_mode == .static)
         link_inputs.staticLibraryInputs()
     else
         steps.StaticLinkInputs.empty;
@@ -698,20 +792,18 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     generate.addArgs(&.{
         "--package",           options.name,
         "--prefix",            options.prefix,
-        "--go-module",         options.go_module,
+        "--go-module",         options.layout.go_module,
         "--include-dir",       install.cgo_header_dir,
         "--library-dir",       install.cgo_library_dir,
         "--header-name",       install.header_name,
         "--cflags",            cflags_override,
-        "--ldflags",           ldflags_override,
         "--extra-ldflags",     extra_ldflags,
         "--system-ldflags",    system_ldflags,
         "--framework-ldflags", framework_ldflags,
         "--raw-package-path",  raw_package.path,
         "--raw-package-name",  raw_package.name,
-        "--backend",           @tagName(backend),
+        "--link",              options.link.flag(),
         "--library-stem",      install.library_stem,
-        "--link-mode",         @tagName(link_mode),
         "--go-package",        go_package,
         "--go-package-path",   go_package_path,
         "--go-package-doc",    options.go_package_doc orelse "",
@@ -740,16 +832,15 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
             generate.addArgs(&.{ "--target-ldflags", b.fmt("{s}={s}", .{ constraint, steps.joinFlags(b, entry.ldflags) }) });
         }
     }
-    generate.addArgs(&.{ "--plugin-config", options.plugin_config });
     if (backend == .purego) addLibraryLoadingArgs(b, generate, library_loading);
     if (raw_package.colocated) generate.addArg("--raw-colocated");
-    addErrorsLockArg(b, generate);
-    const check = addStalenessCheck(b, generator, generated_dir, options.go_dir, semantic_json);
+    addErrorsLockArg(b, generate, sidecars);
+    const check = addStalenessCheck(b, generator, generated_dir, go_dir, semantic_json, sidecars);
     const report = b.addRunArtifact(generator);
     report.addArgs(&.{ "report", "--semantic" });
     report.addFileArg(semantic_json);
-    report.addArgs(&.{ "--go-module", options.go_module, "--raw-package-path", raw_package.path, "--go-package", go_package, "--go-package-path", go_package_path });
-    report.addArgs(&.{ "--backend", @tagName(backend) });
+    report.addArgs(&.{ "--go-module", options.layout.go_module, "--raw-package-path", raw_package.path, "--go-package", go_package, "--go-package-path", go_package_path });
+    report.addArgs(&.{ "--link", options.link.flag() });
     if (backend == .purego) addLibraryLoadingArgs(b, report, library_loading);
     if (library_platform_dirs) report.addArg("--library-platform-dirs");
     if (raw_package.colocated) report.addArg("--raw-colocated");
@@ -761,11 +852,11 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         if (isRunnableOnHost(native.resolved.result, b.graph.host.result)) break true;
     } else false;
     doctor.addArgs(&.{ "doctor", "--target", if (any_native_target) "native" else "cross" });
-    doctor.addArgs(&.{ "--backend", @tagName(backend) });
+    doctor.addArgs(&.{ "--link", options.link.flag() });
     // Report the same gofmt the update step will format with.
     if (options.gofmt) |gofmt| doctor.addArgs(&.{ "--gofmt", gofmt });
     const abi_check: ?*std.Build.Step.Run = if (options.abi_base) |abi_base|
-        addAbiCheck(b, generator, semantic_json, abi_base, &.{ "--base-backend", @tagName(backend), "--current-backend", @tagName(backend) })
+        addAbiCheck(b, generator, semantic_json, abi_base, sidecars, &.{ "--base-link", options.link.flag(), "--current-link", options.link.flag() })
     else
         null;
 
@@ -849,7 +940,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     );
     const volatile_link_flags = if (static_link_inputs.paths.len != 0)
         steps.PublishCgoLinkFlags.create(b, .{
-            .output_path = sourcePath(b, options.go_dir, b.pathJoin(&.{ raw_package.path, steps.volatile_cgo_link_file })),
+            .output_path = sourcePath(b, go_dir, b.pathJoin(&.{ raw_package.path, steps.volatile_cgo_link_file })),
             .package = raw_package.name,
             .targets = target_link_flags.items,
             .extra_ldflags = extra_ldflags,
@@ -857,15 +948,14 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         })
     else
         null;
-    const publish = steps.PublishGenerated.create(b, generated_dir, sourcePath(b, options.go_dir, "."));
+    const publish = steps.PublishGenerated.create(b, generated_dir, sourcePath(b, go_dir, "."));
     const update = b.addUpdateSourceFiles();
     update.step.dependOn(&publish.step);
-    update.addCopyFileToSource(generated_dir.path(b, "errors.lock.json"), errors_lock_path);
-    update.addCopyFileToSource(semantic_json, "zigo/semantic.json");
-    const go_mod_path = sourcePath(b, options.go_dir, "go.mod");
+    publishSidecars(b, update, generated_dir, semantic_json, sidecars);
+    const go_mod_path = sourcePath(b, go_dir, "go.mod");
     b.build_root.handle.access(b.graph.io, go_mod_path, .{}) catch |err| switch (err) {
         error.FileNotFound => update.addBytesToSource(b.fmt("module {s}\n\ngo {s}\n{s}", .{
-            options.go_module,
+            options.layout.go_module,
             "1.24",
             if (backend == .purego) b.fmt("\nrequire {s} {s}\n", .{ build_options.purego_module, build_options.purego_version }) else "",
         }), go_mod_path),
@@ -914,7 +1004,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         }
     }
 
-    return .{
+    var result: GoBindings = .{
         .update = update,
         .check = check,
         .abi_check = abi_check,
@@ -927,8 +1017,11 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         .library_path = primary.library_path,
         .native_libraries = native_libraries.items,
         .semantic_json = semantic_json,
+        .coverage_json = reflection.coverage_json,
         .resolved_pkg_config = if (pkg_config_resolution) |resolution| resolution.output() else null,
     };
+    if (options.standard_steps) |step_options| result.standard_steps = result.addStandardSteps(b, step_options);
+    return result;
 }
 
 /// One platform the native library is built for.
@@ -942,7 +1035,9 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
 pub const RustOptions = struct {
     name: []const u8,
     module: *std.Build.Module,
-    bindings: std.Build.LazyPath,
+    /// The file exporting `zigo.define`. Defaults to `bindings.zig` next to
+    /// `module.root_source_file`.
+    bindings: ?std.Build.LazyPath = null,
     source_root: ?std.Build.LazyPath = null,
     /// The crate directory. `src/lib.rs`, `src/raw.rs` and `src/error.rs` are
     /// generated inside it; `Cargo.toml` and `build.rs` are the user's, the
@@ -953,8 +1048,13 @@ pub const RustOptions = struct {
     prefix: []const u8 = "zg",
     /// `rustfmt` used to format generated Rust. Defaults to the one on `PATH`.
     rustfmt: ?[]const u8 = null,
-    abi_base: ?[]const u8 = null,
+    /// Git ref whose committed `zigo/rust/semantic.json` the ABI check
+    /// compares against. Null registers no ABI check.
+    abi_base: ?[]const u8 = "HEAD",
     install: Install = .{},
+    /// Registers the conventional `rust*` steps as part of `addRustBindings`.
+    /// Null registers none.
+    standard_steps: ?RustBindings.StandardStepOptions = .{},
 };
 
 pub const RustBindings = struct {
@@ -972,9 +1072,13 @@ pub const RustBindings = struct {
     install_library: *std.Build.Step.InstallArtifact,
     library_path: []const u8,
     semantic_json: std.Build.LazyPath,
+    /// The steps `RustOptions.standard_steps` registered; null when it was null.
+    standard_steps: ?StandardSteps = null,
 
     pub const StandardStepOptions = struct {
-        name_prefix: ?[]const u8 = null,
+        /// Names this binding set among several: `.variant = "admin"`
+        /// registers `rust-admin`, `rust-admin-check`, ...
+        variant: ?[]const u8 = null,
         install_library_by_default: bool = true,
     };
 
@@ -987,27 +1091,26 @@ pub const RustBindings = struct {
     };
 
     /// Registers `rust`, `rust-check`, `rust-lib`, `rust-coverage` and, when
-    /// `abi_base` is set, `abi-check`.
+    /// `abi_base` is set, `rust-abi-check`. `addRustBindings` calls this
+    /// itself unless `RustOptions.standard_steps` is null.
     ///
     /// There is no `rust-test` step. `cargo` resolves and downloads
     /// dependencies, so running it from `zig build` would make a build step
     /// that reaches the network; the examples run `cargo test` themselves,
     /// which is also what the Go examples do with `go test`.
     pub fn addStandardSteps(self: RustBindings, b: *std.Build, options: StandardStepOptions) StandardSteps {
-        if (options.name_prefix) |prefix| {
-            if (prefix.len == 0) @panic("Rust binding step name_prefix must not be empty");
-        }
-        const update = b.step(standardStepName(b, options.name_prefix, "rust"), "Generate and build Rust bindings");
+        const names = StepNames.init("rust", options.variant);
+        const update = b.step(names.step(b, ""), "Generate and build Rust bindings");
         update.dependOn(&self.update.step);
-        const check = b.step(standardStepName(b, options.name_prefix, "rust-check"), "Fail if generated Rust bindings are stale");
+        const check = b.step(names.step(b, "check"), "Fail if generated Rust bindings are stale");
         check.dependOn(&self.check.step);
-        const coverage = b.step(standardStepName(b, options.name_prefix, "rust-coverage"), "Report public Zig API binding coverage");
+        const coverage = b.step(names.step(b, "coverage"), "Report public Zig API binding coverage");
         coverage.dependOn(&self.coverage.step);
-        const library = b.step(standardStepName(b, options.name_prefix, "rust-lib"), "Build and install the native Rust binding library");
+        const library = b.step(names.step(b, "lib"), "Build and install the native Rust binding library");
         library.dependOn(&self.install_library.step);
         if (options.install_library_by_default) b.getInstallStep().dependOn(&self.install_library.step);
         const abi_check = if (self.abi_check) |run| step: {
-            const value = b.step(standardStepName(b, options.name_prefix, "abi-check"), "Fail on a breaking binding ABI change");
+            const value = b.step(names.step(b, "abi-check"), "Fail on a breaking Rust binding ABI change");
             value.dependOn(&run.step);
             break :step value;
         } else null;
@@ -1026,11 +1129,12 @@ pub fn addRustBindings(b: *std.Build, options: RustOptions) RustBindings {
     rust_words.validateCrateName(artifact_package) catch
         @panic("the binding name must normalize to a valid Rust crate identifier");
     const crate_source_dir = options.rust_dir.path(b, "src").getPath(b);
+    const sidecars: Sidecars = .{ .language = "rust" };
     const install = resolveInstall(b, options.install, artifact_package, .cgo, crate_source_dir, crate_source_dir);
     const reflection = addReflection(b, .{
         .name = options.name,
         .prefix = options.prefix,
-        .bindings = options.bindings,
+        .bindings = options.bindings orelse defaultBindings(b, options.module),
         .module = options.module,
         .optimize = options.optimize,
         .source_root = options.source_root,
@@ -1046,17 +1150,13 @@ pub fn addRustBindings(b: *std.Build, options: RustOptions) RustBindings {
         "--package",       options.name,
         "--prefix",        options.prefix,
         "--header-name",   install.header_name,
-        // Go's module path is required by the CLI and unread by the Rust
-        // emitter; the binding name is a value that cannot mislead anyone
-        // reading the generated crate, because nothing in it appears.
-        "--go-module",     options.name,
     });
     if (options.rustfmt) |rustfmt| generate.addArgs(&.{ "--rustfmt", rustfmt });
-    addErrorsLockArg(b, generate);
-    const check = addStalenessCheck(b, reflection.generator, generated_dir, options.rust_dir, reflection.semantic_json);
+    addErrorsLockArg(b, generate, sidecars);
+    const check = addStalenessCheck(b, reflection.generator, generated_dir, options.rust_dir, reflection.semantic_json, sidecars);
 
     const abi_check: ?*std.Build.Step.Run = if (options.abi_base) |abi_base|
-        addAbiCheck(b, reflection.generator, reflection.semantic_json, abi_base, &.{ "--output-target", "rust" })
+        addAbiCheck(b, reflection.generator, reflection.semantic_json, abi_base, sidecars, &.{ "--output-target", "rust" })
     else
         null;
 
@@ -1083,14 +1183,13 @@ pub fn addRustBindings(b: *std.Build, options: RustOptions) RustBindings {
     const publish = steps.PublishGenerated.create(b, generated_dir, sourcePath(b, options.rust_dir, "."));
     const update = b.addUpdateSourceFiles();
     update.step.dependOn(&publish.step);
-    update.addCopyFileToSource(generated_dir.path(b, "errors.lock.json"), errors_lock_path);
-    update.addCopyFileToSource(reflection.semantic_json, "zigo/semantic.json");
+    publishSidecars(b, update, generated_dir, reflection.semantic_json, sidecars);
     update.step.dependOn(&install_lib.step);
     // Every shim has to compile for the tree to be valid.
     check.step.dependOn(&lib.step);
     if (abi_check) |run| run.step.dependOn(&lib.step);
 
-    return .{
+    var result: RustBindings = .{
         .update = update,
         .check = check,
         .abi_check = abi_check,
@@ -1100,6 +1199,8 @@ pub fn addRustBindings(b: *std.Build, options: RustOptions) RustBindings {
         .library_path = installedLibraryPath(b, install_lib),
         .semantic_json = reflection.semantic_json,
     };
+    if (options.standard_steps) |step_options| result.standard_steps = result.addStandardSteps(b, step_options);
+    return result;
 }
 
 const NativeTarget = struct {
@@ -1230,27 +1331,32 @@ fn isRunnableOnHost(target: std.Target, host: std.Target) bool {
 fn resolveGoPackagePath(path: []const u8) []const u8 {
     if (std.mem.eql(u8, path, ".")) return path;
     build_options.validateRawPackagePath(path) catch |err| switch (err) {
-        error.InvalidPath => @panic("go_package_path must be '.' or a non-empty relative slash-separated path"),
-        error.InvalidComponent => @panic("go_package_path must not contain empty, '.' or '..' components"),
-        error.InvalidCharacter => @panic("go_package_path components may contain only ASCII letters, digits, '_', '-' and '.'"),
+        error.InvalidPath => @panic("layout.go_package_path must be '.' or a non-empty relative slash-separated path"),
+        error.InvalidComponent => @panic("layout.go_package_path must not contain empty, '.' or '..' components"),
+        error.InvalidCharacter => @panic("layout.go_package_path components may contain only ASCII letters, digits, '_', '-' and '.'"),
     };
     return path;
 }
 
-/// Colocation is not a separate option: naming the public package path as the
-/// raw package path is what colocates them.
-fn resolveRawPackage(b: *std.Build, path: []const u8, go_package_path: []const u8, go_package: []const u8) ResolvedRawPackage {
-    if (std.mem.eql(u8, path, go_package_path)) return .{ .path = go_package_path, .name = go_package, .colocated = true };
-    if (std.mem.eql(u8, path, "."))
-        @panic("raw_package may be '.' only when go_package_path is also '.' (colocated)");
+/// Colocation is `layout.raw_colocated`, never inferred: a raw path that
+/// happens to equal the public path is a mistake to report, not a request.
+fn resolveRawPackage(b: *std.Build, layout: Layout, go_package_path: []const u8, go_package: []const u8) ResolvedRawPackage {
+    const path = layout.raw_package;
+    if (layout.raw_colocated) {
+        if (!std.mem.eql(u8, path, (Layout{ .go_module = "" }).raw_package))
+            @panic("layout.raw_package has no effect with raw_colocated; leave it at its default");
+        return .{ .path = go_package_path, .name = go_package, .colocated = true };
+    }
+    if (std.mem.eql(u8, path, go_package_path))
+        @panic("layout.raw_package equals the public package path; set layout.raw_colocated = true to share the package");
     build_options.validateRawPackagePath(path) catch |err| switch (err) {
-        error.InvalidPath => @panic("raw_package must be a non-empty relative slash-separated path"),
-        error.InvalidComponent => @panic("raw_package must not contain empty, '.' or '..' components"),
-        error.InvalidCharacter => @panic("raw_package components may contain only ASCII letters, digits, '_', '-' and '.'"),
+        error.InvalidPath => @panic("layout.raw_package must be a non-empty relative slash-separated path"),
+        error.InvalidComponent => @panic("layout.raw_package must not contain empty, '.' or '..' components"),
+        error.InvalidCharacter => @panic("layout.raw_package components may contain only ASCII letters, digits, '_', '-' and '.'"),
     };
     const name = naming.snakeAlloc(b.allocator, std.fs.path.basename(path)) catch @panic("OOM");
     go_words.validatePackageName(name) catch
-        @panic("raw_package basename must normalize to a valid Go package name");
+        @panic("layout.raw_package basename must normalize to a valid Go package name");
     return .{ .path = path, .name = name, .colocated = false };
 }
 

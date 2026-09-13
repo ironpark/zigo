@@ -27,7 +27,7 @@ snapshot 변경은 공개 생성 코드의 변경입니다. 단순 refactor에�
 
 ```bash
 cd examples/05-pipeline
-zig build test go-check abi-check go-coverage --summary all
+zig build test go-check go-abi-check go-coverage --summary all
 zig build go
 (cd go && go test -count=1 ./...)
 ```
@@ -39,7 +39,7 @@ set -eu
 for example in examples/*; do
   # 13-rust-quick-start는 Go 단계가 없습니다. 아래 Rust 절에서 따로 실행합니다.
   [ -d "$example/go" ] || continue
-  (cd "$example" && zig build test go-check go-lib abi-check go-coverage --summary all)
+  (cd "$example" && zig build test go-check go-lib go-abi-check go-coverage --summary all)
   (cd "$example/go" && go test ./...)
 done
 ```
@@ -50,7 +50,7 @@ Rust 예제는 단계 이름이 다릅니다(`go-*`가 아니라 `rust-*`). Rust
 ```bash
 set -eu
 cd examples/13-rust-quick-start
-zig build test rust-check abi-check rust-coverage --summary all
+zig build test rust-check rust-abi-check rust-coverage --summary all
 zig build rust
 (cd rust && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test)
 (cd rust && cargo run --example demo)   # `2 + 3 = 5`가 나와야 합니다
@@ -62,7 +62,7 @@ purego를 제공하는 예제는 공유 library를 만든 뒤 cgo를 끄고 테�
 set -eu
 for example in examples/03-opaque examples/04-callback examples/07-event-queue \
   examples/08-telemetry-hub examples/11-io-streams examples/12-materialized; do
-  (cd "$example" && zig build purego-go purego-go-verify --summary all)
+  (cd "$example" && zig build go-purego go-purego-verify --summary all)
   (cd "$example/go-purego" && CGO_ENABLED=0 go test ./...)
 done
 

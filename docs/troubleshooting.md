@@ -1,9 +1,9 @@
 # 문제 해결
 
 명령은 문제가 발생한 프로젝트 루트에서 실행합니다. 아래는
-`bindings.addStandardSteps(b, .{})`의 기본 단계 이름과 `go_dir = b.path("go")`를
-사용합니다. 접두사를 지정한 프로젝트는 `go-doctor` 대신 `admin-go-doctor`처럼 해당 이름을
-사용하세요. 등록된 단계는 `zig build --help`에서 확인할 수 있습니다.
+`addGoBindings`가 등록하는 기본 단계 이름과 기본 `go_dir`(`go`)를
+사용합니다. `standard_steps.variant`를 지정한 프로젝트는 `go-doctor` 대신 `go-admin-doctor`처럼
+해당 이름을 사용하세요. 등록된 단계는 `zig build --help`에서 확인할 수 있습니다.
 
 ## 증상으로 찾기
 
@@ -70,7 +70,7 @@ zig build go-lib go-doctor
 - 생성 raw 패키지의 `#cgo` 경로와 `zigo_link_inputs_gen.go`에 기록된 추가 링크 입력을 확인합니다.
   다른 머신에서 복사한 절대 경로는 재빌드하여 갱신합니다.
 - `pkg-config`, 시스템 라이브러리, 프레임워크 또는 추가 정적 아카이브가 필요하면 소비자
-  환경에도 준비합니다. 사용자 지정 `cflags`·`ldflags`가 기본 경로를 교체했는지도 확인합니다.
+  환경에도 준비합니다. 사용자 지정 `cflags`가 기본 include 경로를 교체했는지도 확인합니다.
 
 생성 파일을 직접 수정하지 말고 [빌드 설정](build-and-ship/configuration-and-backends.md)을
 고친 뒤 다시 생성합니다. Windows cgo는 지원하는 GNU ABI에서 `CC="zig cc"`를 사용할 수
