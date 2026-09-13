@@ -13,9 +13,10 @@ registered_at: "2026-09-13T07:28:55Z"
 - [x] [Phase 03: Member doc overrides](phases/03-member-docs-override.md)
 - [x] [Phase 04: Returned slice written hint](phases/04-returned-slice-written.md)
 - [x] [Phase 05: Plugin method replacement](phases/05-plugin-method-replace.md)
-- [ ] [Phase 06: Multiple constructors per handle](phases/06-multiple-constructors.md)
-- [ ] [Phase 07: Tagged union in slice and error union positions](phases/07-union-slice-and-error-union.md)
+- [x] [Phase 06: Multiple constructors per handle](phases/06-multiple-constructors.md)
+- [ ] [Phase 07: Tagged union as a slice element](phases/07-union-slice-and-error-union.md)
 - [ ] [Phase 08: Docs, changelog and release](phases/08-docs-and-release.md)
+- [ ] [Phase 09: Tagged union in the error union position](phases/09-tagged-union-in-the-error-union-position.md)
 
 # Shared Verification
 

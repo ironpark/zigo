@@ -19,6 +19,8 @@ test "implemented diagnostic snapshots are stable" {
     const word_slice_node: semantic.TypeNode = .{ .slice = .{ .@"const" = false, .element = &word_element } };
     var optional_word_node: semantic.TypeNode = .{ .optional = .{ .child = &word_element } };
     const count_node: semantic.TypeNode = .{ .int = .{ .bits = 64, .is_usize = true, .signed = false } };
+    var union_element: semantic.TypeNode = .{ .value_struct = .{ .ref = "Value" } };
+    var union_slice_node: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &union_element } };
     var wide_element: semantic.TypeNode = .{ .int = .{ .bits = 21, .signed = false } };
     const wide_slice_node: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &wide_element } };
     var wide_callback_params = [_]semantic.TypeNode{.{ .int = .{ .bits = 21, .signed = false } }};
@@ -133,6 +135,23 @@ test "implemented diagnostic snapshots are stable" {
             },
             .zig_version = "0.16.0",
         }, .snapshot = "error[ZIGO006]: cannot pass a tagged union by value\n  --> semantic.json (consume)\n  hint: variant `child` has an unsupported value payload; omit it with `.omit` or use void, scalar, enum, packed struct, or extern struct payloads\n" },
+        // A union is the result on its own or as an error union's payload.
+        // One position further in is still nothing the boundary can carry.
+        .{ .document = .{
+            .functions = &.{.{
+                .name = "attributes",
+                .params = &.{},
+                .@"return" = .{ .error_union = .{ .error_set = &.{"Invalid"}, .payload = &union_slice_node } },
+                .symbol = "zg_attributes",
+            }},
+            .package = "bad",
+            .prefix = "zg",
+            .types = &.{
+                .{ .fields = &.{.{ .name = "bold", .type = .{ .void = {} }, .value = 0 }}, .kind = .tagged_union, .name = "Value", .tag_type = .{ .@"enum" = .{ .ref = "ValueTag" } } },
+                .{ .fields = &.{.{ .name = "bold", .value = 0 }}, .kind = .@"enum", .name = "ValueTag", .tag_type = .{ .int = .{ .bits = 8, .signed = false } } },
+            },
+            .zig_version = "0.16.0",
+        }, .snapshot = "error[ZIGO006]: cannot return a tagged union by value\n  --> semantic.json (attributes)\n  hint: return an eligible tagged union directly; nested tagged-union values are not supported\n" },
         .{ .document = .{
             .functions = &.{
                 .{ .name = "lookupID", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "ignored" },

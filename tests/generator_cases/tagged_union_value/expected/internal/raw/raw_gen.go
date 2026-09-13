@@ -10,12 +10,26 @@ package raw
 #include "zigo_viewport.h"
 */
 import "C"
+import "unsafe"
 
 // LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
 
 // PanicMessage returns the message of the native panic a status code of -256 or below names.
 func PanicMessage(code int32) string { return C.GoString(C.zg_caught_panic_message(C.int32_t(code))) }
+
+// zigoZeroSlot is what an empty slice or string points at instead of NULL, so
+// the native side always receives a valid address beside a zero length.
+var zigoZeroSlot uint64
+
+// zigoStringPtr is the address of a string's bytes, read in place, or of
+// zigoZeroSlot for an empty string.
+func zigoStringPtr(value string) unsafe.Pointer {
+	if len(value) == 0 {
+		return unsafe.Pointer(&zigoZeroSlot)
+	}
+	return unsafe.Pointer(unsafe.StringData(value))
+}
 
 // Apply calls the generated C ABI wrapper for zg_apply.
 func Apply(behavior_tag uint8, behavior_delta int, behavior_page uint, behavior_ratio float64, behavior_animated uint8, behavior_mode uint8, behavior_rgb uint32, behavior_region_x int16, behavior_region_enabled uint8) int64 {
@@ -25,6 +39,23 @@ func Apply(behavior_tag uint8, behavior_delta int, behavior_page uint, behavior_
 func Current() (ScrollViewportData, int32) {
 	var outResult C.zg_scroll_viewport_snapshot_t
 	code := int32(C.zg_current(&outResult))
+	return ScrollViewportData{
+		Tag: uint8(outResult.tag),
+		Delta: int(outResult.delta),
+		Page: uint(outResult.page),
+		Ratio: float64(outResult.ratio),
+		Animated: uint8(outResult.animated),
+		Mode: uint8(outResult.mode),
+		Rgb: uint32(outResult.rgb),
+		RegionX: int16(outResult.region_x),
+		RegionEnabled: uint8(outResult.region_enabled),
+	}, code
+}
+// Parse calls the generated C ABI wrapper for zg_parse.
+func Parse(text string) (ScrollViewportData, int32) {
+	textPtr := (*C.uint8_t)(zigoStringPtr(text))
+	var outResult C.zg_scroll_viewport_snapshot_t
+	code := int32(C.zg_parse(textPtr, C.size_t(len(text)), &outResult))
 	return ScrollViewportData{
 		Tag: uint8(outResult.tag),
 		Delta: int(outResult.delta),

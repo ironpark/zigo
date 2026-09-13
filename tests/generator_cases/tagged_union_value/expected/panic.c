@@ -94,3 +94,15 @@ ZIGO_EXPORT int32_t zg_current(zg_scroll_viewport_snapshot_t * out_result) {
     zg_panic_active = 0;
     return result;
 }
+
+int32_t zg_parse_impl(const uint8_t * text_ptr, size_t text_len, zg_scroll_viewport_snapshot_t * out_result);
+ZIGO_EXPORT int32_t zg_parse(const uint8_t * text_ptr, size_t text_len, zg_scroll_viewport_snapshot_t * out_result) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        return zg_panic_publish();
+    }
+    int32_t result = zg_parse_impl(text_ptr, text_len, out_result);
+    zg_panic_active = 0;
+    return result;
+}

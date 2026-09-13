@@ -501,7 +501,9 @@ pub fn semanticDocumentForBackend(
                 structRecord(structs, function.@"return".error_union.payload.optional.child.value_struct.ref)
             else
                 null,
-            .value_union_return = taggedUnionValueDeclaration(source_document, source_document.functions[function_index].@"return") != null,
+            // A value union is the result whether the Zig function declared
+            // an error union around it or lowering promoted one.
+            .value_union_return = taggedUnionValueDeclaration(source_document, source_document.functions[function_index].@"return".errorPayload()) != null,
             .param_strings = try classifyParamStrings(allocator, function.*),
             .ret_string = returnStringRole(function.*),
             .slice_return_element = if (materialized_return != null)

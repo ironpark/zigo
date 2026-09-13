@@ -1,7 +1,9 @@
 {
-  "codes": {},
+  "codes": {
+    "Invalid": 1
+  },
   "ir_version": 1,
-  "next_code": 1,
+  "next_code": 2,
   "reserved": {
     "-1": "Unknown",
     "-2": "PanicCaught",

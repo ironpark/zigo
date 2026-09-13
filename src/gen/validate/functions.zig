@@ -254,7 +254,11 @@ pub fn functionIssue(allocator: std.mem.Allocator, document: semantic.Semantic, 
         }
         if (try streamReturnIssue(allocator, function)) |issue| return issue;
         if (try cancelIssue(allocator, function)) |issue| return issue;
-        if (types.taggedUnionValueDeclaration(document, function.@"return")) |declaration| {
+        // A value union may be the result on its own or the payload of an
+        // error union the Zig function declared. Anything further in -- an
+        // optional, a slice element -- still has no representation.
+        const returned_union = types.taggedUnionValueDeclaration(document, function.@"return".errorPayload());
+        if (returned_union) |declaration| {
             if (document.taggedUnionUsedAsHandle(declaration.name)) return .{
                 .severity = .@"error",
                 .code = "ZIGO006",
@@ -280,7 +284,7 @@ pub fn functionIssue(allocator: std.mem.Allocator, document: semantic.Semantic, 
             .site = site.functionSite(function),
             .hint = "return an eligible tagged union directly; nested tagged-union values are not supported",
         };
-        if (types.taggedUnionValueDeclaration(document, function.@"return") == null and
+        if (returned_union == null and
             unsupportedValueStruct(document, function.@"return") != null) return .{
             .severity = .@"error",
             .code = "ZIGO003",

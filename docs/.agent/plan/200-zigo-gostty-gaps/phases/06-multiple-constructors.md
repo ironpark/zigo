@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-13T08:10:53Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 한 핸들이 `NewTerminal`과 `TerminalFromSnapshot`을 함께 낸다.
 > NEXT: none

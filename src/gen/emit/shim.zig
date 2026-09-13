@@ -183,7 +183,11 @@ pub fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program:
                 const declaration = type_spelling.enumDecl(program, error_union.payload.*.value_struct.ref);
                 try writer.writeAll("const result = ");
                 try writeTargetCall(allocator, writer, program, function);
-                try writer.print(";\n    out_result.* = std.mem.zeroes({s});\n    switch (result) {{\n", .{function.payload_struct.?.c_name});
+                // The error set is the Zig function's own when it declared
+                // one, and empty when lowering promoted a bare union return so
+                // that a panic has a code to travel in.
+                try writeShimErrorCatch(writer, function);
+                try writer.print("    out_result.* = std.mem.zeroes({s});\n    switch (result) {{\n", .{function.payload_struct.?.c_name});
                 for (declaration.fields) |field| {
                     if (declaration.variantOmitted(field.name)) {
                         try writer.print("        .{s} => return -3,\n", .{field.name});

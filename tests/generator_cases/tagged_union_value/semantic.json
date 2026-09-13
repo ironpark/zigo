@@ -21,7 +21,41 @@
     {
       "name": "current",
       "params": [],
-      "return": { "kind": "value_struct", "ref": "ScrollViewport" },
+      "return": {
+        "kind": "value_struct",
+        "ref": "ScrollViewport"
+      },
+      "symbol": "ignored"
+    },
+    {
+      "doc": "Parses a viewport behavior, which the caller's text may not name.",
+      "name": "parse",
+      "params": [
+        {
+          "name": "text",
+          "semantic": "utf8_string",
+          "type": {
+            "const": true,
+            "element": {
+              "bits": 8,
+              "is_usize": false,
+              "kind": "int",
+              "signed": false
+            },
+            "kind": "slice"
+          }
+        }
+      ],
+      "return": {
+        "error_set": [
+          "Invalid"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "kind": "value_struct",
+          "ref": "ScrollViewport"
+        }
+      },
       "symbol": "ignored"
     }
   ],
@@ -30,44 +64,177 @@
   "types": [
     {
       "fields": [
-        { "name": "top", "type": { "kind": "void" }, "value": 0 },
-        { "name": "delta", "type": { "bits": 64, "is_usize": true, "kind": "int", "signed": true }, "value": 1 },
-        { "name": "page", "type": { "bits": 64, "is_usize": true, "kind": "int", "signed": false }, "value": 2 },
-        { "name": "ratio", "type": { "bits": 64, "kind": "float" }, "value": 3 },
-        { "name": "animated", "type": { "kind": "bool" }, "value": 4 },
-        { "name": "mode", "type": { "kind": "enum", "ref": "Mode" }, "value": 5 },
-        { "name": "rgb", "type": { "kind": "value_struct", "ref": "RGB" }, "value": 6 },
-        { "name": "region", "type": { "kind": "value_struct", "ref": "Region" }, "value": 7 },
-        { "name": "unknown", "type": { "const": true, "element": { "bits": 8, "kind": "int", "signed": false }, "kind": "slice" }, "value": 8 }
+        {
+          "name": "top",
+          "type": {
+            "kind": "void"
+          },
+          "value": 0
+        },
+        {
+          "name": "delta",
+          "type": {
+            "bits": 64,
+            "is_usize": true,
+            "kind": "int",
+            "signed": true
+          },
+          "value": 1
+        },
+        {
+          "name": "page",
+          "type": {
+            "bits": 64,
+            "is_usize": true,
+            "kind": "int",
+            "signed": false
+          },
+          "value": 2
+        },
+        {
+          "name": "ratio",
+          "type": {
+            "bits": 64,
+            "kind": "float"
+          },
+          "value": 3
+        },
+        {
+          "name": "animated",
+          "type": {
+            "kind": "bool"
+          },
+          "value": 4
+        },
+        {
+          "name": "mode",
+          "type": {
+            "kind": "enum",
+            "ref": "Mode"
+          },
+          "value": 5
+        },
+        {
+          "name": "rgb",
+          "type": {
+            "kind": "value_struct",
+            "ref": "RGB"
+          },
+          "value": 6
+        },
+        {
+          "name": "region",
+          "type": {
+            "kind": "value_struct",
+            "ref": "Region"
+          },
+          "value": 7
+        },
+        {
+          "name": "unknown",
+          "type": {
+            "const": true,
+            "element": {
+              "bits": 8,
+              "kind": "int",
+              "signed": false
+            },
+            "kind": "slice"
+          },
+          "value": 8
+        }
       ],
       "kind": "tagged_union",
       "name": "ScrollViewport",
-      "omitted_variants": ["unknown"],
-      "tag_type": { "kind": "enum", "ref": "ScrollViewportTag" }
+      "omitted_variants": [
+        "unknown"
+      ],
+      "tag_type": {
+        "kind": "enum",
+        "ref": "ScrollViewportTag"
+      }
     },
     {
       "fields": [
-        { "name": "top", "value": 0 },
-        { "name": "delta", "value": 1 },
-        { "name": "page", "value": 2 },
-        { "name": "ratio", "value": 3 },
-        { "name": "animated", "value": 4 },
-        { "name": "mode", "value": 5 },
-        { "name": "rgb", "value": 6 },
-        { "name": "region", "value": 7 },
-        { "name": "unknown", "value": 8 }
+        {
+          "name": "top",
+          "value": 0
+        },
+        {
+          "name": "delta",
+          "value": 1
+        },
+        {
+          "name": "page",
+          "value": 2
+        },
+        {
+          "name": "ratio",
+          "value": 3
+        },
+        {
+          "name": "animated",
+          "value": 4
+        },
+        {
+          "name": "mode",
+          "value": 5
+        },
+        {
+          "name": "rgb",
+          "value": 6
+        },
+        {
+          "name": "region",
+          "value": 7
+        },
+        {
+          "name": "unknown",
+          "value": 8
+        }
       ],
       "kind": "enum",
       "name": "ScrollViewportTag",
-      "omitted_variants": ["unknown"],
-      "tag_type": { "bits": 8, "kind": "int", "signed": false }
+      "omitted_variants": [
+        "unknown"
+      ],
+      "tag_type": {
+        "bits": 8,
+        "kind": "int",
+        "signed": false
+      }
     },
     {
-      "backing_type": { "bits": 24, "kind": "int", "signed": false },
+      "backing_type": {
+        "bits": 24,
+        "kind": "int",
+        "signed": false
+      },
       "fields": [
-        { "name": "r", "type": { "bits": 8, "kind": "int", "signed": false } },
-        { "name": "g", "type": { "bits": 8, "kind": "int", "signed": false } },
-        { "name": "b", "type": { "bits": 8, "kind": "int", "signed": false } }
+        {
+          "name": "r",
+          "type": {
+            "bits": 8,
+            "kind": "int",
+            "signed": false
+          }
+        },
+        {
+          "name": "g",
+          "type": {
+            "bits": 8,
+            "kind": "int",
+            "signed": false
+          }
+        },
+        {
+          "name": "b",
+          "type": {
+            "bits": 8,
+            "kind": "int",
+            "signed": false
+          }
+        }
       ],
       "kind": "value_struct",
       "layout": "packed",
@@ -75,8 +242,20 @@
     },
     {
       "fields": [
-        { "name": "x", "type": { "bits": 16, "kind": "int", "signed": true } },
-        { "name": "enabled", "type": { "kind": "bool" } }
+        {
+          "name": "x",
+          "type": {
+            "bits": 16,
+            "kind": "int",
+            "signed": true
+          }
+        },
+        {
+          "name": "enabled",
+          "type": {
+            "kind": "bool"
+          }
+        }
       ],
       "kind": "value_struct",
       "layout": "extern",
@@ -84,12 +263,22 @@
     },
     {
       "fields": [
-        { "name": "instant", "value": 0 },
-        { "name": "smooth", "value": 1 }
+        {
+          "name": "instant",
+          "value": 0
+        },
+        {
+          "name": "smooth",
+          "value": 1
+        }
       ],
       "kind": "enum",
       "name": "Mode",
-      "tag_type": { "bits": 8, "kind": "int", "signed": false }
+      "tag_type": {
+        "bits": 8,
+        "kind": "int",
+        "signed": false
+      }
     }
   ],
   "zig_version": "0.16.0"

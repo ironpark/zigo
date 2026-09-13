@@ -39,6 +39,8 @@ Go race detector는 cgo가 필요하므로 `CGO_ENABLED=0` purego 테스트에�
 - 중첩된 포인터·슬라이스 결과 tree는 materialized 또는 핸들로 표현합니다.
 - 일반 슬라이스 원소에 Go 포인터가 포함될 수 없습니다.
 - tagged union의 value, 스냅샷과 projection은 서로 다른 페이로드 제한을 가집니다.
+- 값 tagged union은 매개변수, 결과, 그리고 결과를 감싼 error union 자리에 올 수 있습니다.
+  optional 안이나 slice 원소 자리는 아직 지원하지 않습니다.
 
 전체 형태는 [타입 대응](type-mapping.md)을 확인하세요.
 

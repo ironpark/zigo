@@ -20,3 +20,13 @@ func Current() (ScrollViewport, error) {
 	}
 	return zigoScrollViewportFromRaw(result), nil
 }
+
+// Parse: Parses a viewport behavior, which the caller's text may not name.
+// Native failures are returned as generated error values.
+func Parse(text string) (ScrollViewport, error) {
+	result, code := raw.Parse(text)
+	if code != 0 {
+		return ScrollViewport{}, zigoErrorForCode("Parse", code)
+	}
+	return zigoScrollViewportFromRaw(result), nil
+}

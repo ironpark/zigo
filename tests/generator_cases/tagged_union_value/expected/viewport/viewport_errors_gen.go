@@ -57,6 +57,8 @@ func (err *Error) Is(target error) bool {
 	return ok && err.Code == other.Code
 }
 
+// ErrInvalid represents Zig error.Invalid.
+var ErrInvalid = &Error{Code: 1, Name: "Invalid"}
 
 func zigoErrorForCode(operation string, code int32) error {
 	if code <= -256 {
@@ -64,6 +66,10 @@ func zigoErrorForCode(operation string, code int32) error {
 	}
 	if code == -3 {
 		return &Error{Code: -3, Name: "OmittedVariant", Operation: operation}
+	}
+	switch code {
+	case 1:
+		return &Error{Code: code, Name: "Invalid", Operation: operation}
 	}
 	return &Error{Code: code, Name: "Unknown(" + strconv.Itoa(int(code)) + ")", Operation: operation}
 }

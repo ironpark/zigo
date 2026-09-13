@@ -108,6 +108,20 @@ ABI-safe 페이로드만 가진 tagged union은 함수 매개변수나 결과에
 포인터, 슬라이스, 핸들 또는 중첩 구조체 페이로드가 있으면 자동으로 값 ABI라고 가정하지 마세요.
 [지원 범위](../reference/support-matrix.md)와 생성 진단을 확인해야 합니다.
 
+결과 자리는 union 그 자체와 union을 감싼 error union 둘입니다.
+
+```zig
+pub fn parse(text: []const u8) error{Invalid}!ScrollViewport { ... }
+```
+
+```go
+func Parse(text string) (ScrollViewport, error)
+```
+
+Zig 오류는 평소처럼 `Err<Tag>` sentinel이 되고, `.omit`으로 뺀 variant가 실제로 돌아오면
+그것과 구분되는 `OmittedVariant` 오류가 됩니다. 한 자리 더 들어간 곳 — `?Attribute`,
+`[]Attribute` — 은 아직 ZIGO006으로 거절됩니다.
+
 ## variant 제외
 
 Go API에 공개할 수 없거나 의도적으로 숨길 variant는 `.omit`에 나열합니다.
