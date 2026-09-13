@@ -15,7 +15,7 @@ const semantic = @import("semantic");
 /// of the diagnostics it reports.
 pub const name = "SATIS";
 
-/// What a declaration says with `extend(satisfies.plugin, .{ ... })`.
+/// What a declaration says with `use(satisfies.plugin, .{ ... })`.
 pub const Options = struct {
     /// Which method set the assertion checks; pointer preserves the legacy default.
     form: enum { pointer, value } = .pointer,

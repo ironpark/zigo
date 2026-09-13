@@ -13,7 +13,7 @@ pub var validation_enabled = false;
 pub var path_override: ?[]const u8 = null;
 
 /// What the test plugin can be told to do. It exists so a test can prove that
-/// a typed option survives `extend`, the document, and the parse on the way
+/// a typed option survives `use`, the document, and the parse on the way
 /// back, and that a value outside the type is a diagnostic rather than a panic.
 pub const Options = struct {
     mode: enum { a, b } = .a,

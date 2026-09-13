@@ -5,7 +5,7 @@
 //! `semantic.json` spelling, and reads the typed field directly instead of
 //! going through `ext`: an in-tree plugin may, and every document and golden
 //! that predates the plugin frame stays exactly as it was. An out-of-tree
-//! plugin transports its options with `extend`.
+//! plugin transports its options with `use`.
 const std = @import("std");
 const abi = @import("abi");
 const diagnostic = @import("diagnostic");

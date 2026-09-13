@@ -2,7 +2,7 @@
 //! Public binding files use scope(), declaration entries and typed contracts in author.zig.
 const std = @import("std");
 
-/// One plugin's options on a declaration. `extend` captures the value at
+/// One plugin's options on a declaration. `use` captures the value at
 /// comptime, so a field the plugin does not have, or a value of the wrong
 /// shape, is an ordinary Zig compile error at the declaration rather than a
 /// diagnostic long afterwards.
@@ -133,28 +133,6 @@ pub const Cancel = struct {
     canceled: ?[]const u8 = null,
 };
 
-/// Fields a function-building helper may overlay on an existing entry.
-/// `null` keeps the current value.
-pub const FunctionOptions = struct {
-    name: ?[]const u8 = null,
-    doc: ?[]const u8 = null,
-    params: ?[]const Param = null,
-    returns: ?Returns = null,
-    receiver: ?type = null,
-    force_free: bool = false,
-    constructs: ?type = null,
-    destroys: ?type = null,
-    child_of_receiver: ?bool = null,
-    iterator: ?Iterator = null,
-    implements: ?[]const Implements = null,
-    cancel: ?Cancel = null,
-    covers: ?[]const []const u8 = null,
-    symbol: ?[]const u8 = null,
-    /// Plugin options to add. They are appended, never replaced, so a helper
-    /// that extends a function cannot drop what another one attached.
-    ext: ?[]const Extension = null,
-};
-
 /// One bound function. `.path` is `root.<name>`, `<Type>.<name>`, or
 /// `root.<namespace>.<name>`.
 pub const Function = struct {
@@ -184,86 +162,8 @@ pub const Function = struct {
     /// prefix, the receiver or namespace, and the Go name -- which doubles
     /// the container when a namespace function is `.name`d after it.
     symbol: ?[]const u8 = null,
-    /// Plugin options, one entry per plugin. Written by `extend`.
+    /// Plugin options, one entry per plugin. Written by `use`.
     ext: []const Extension = &.{},
-
-    /// Return a copy with the supplied DSL options overlaid.
-    pub fn with(comptime self: Function, comptime options: FunctionOptions) Function {
-        var result = self;
-        if (options.name) |value| result.name = value;
-        if (options.doc) |value| result.doc = value;
-        if (options.params) |value| result.params = value;
-        if (options.returns) |value| result.returns = value;
-        if (options.receiver) |value| result.receiver = value;
-        if (options.constructs) |value| result.constructs = value;
-        if (options.destroys) |value| result.destroys = value;
-        if (options.child_of_receiver) |value| result.child_of_receiver = value;
-        if (options.iterator) |value| result.iterator = value;
-        if (options.implements) |value| result.implements = value;
-        if (options.cancel) |value| result.cancel = value;
-        if (options.covers) |value| result.covers = value;
-        if (options.symbol) |value| result.symbol = value;
-        if (options.ext) |value| result.ext = result.ext ++ value;
-        return result;
-    }
-
-    /// Attach `value` as plugin `P`'s options for this function.
-    pub fn extend(comptime self: Function, comptime P: anytype, comptime value: P.Options) Function {
-        var result = self;
-        result.ext = self.ext ++ [_]Extension{extension(P, value)};
-        return result;
-    }
-
-    /// Mark the function as constructing a handle of `T`.
-    pub fn constructor(comptime self: Function, comptime T: type) Function {
-        var result = self;
-        result.constructs = T;
-        return result;
-    }
-
-    /// Mark the function as destroying a handle of `T`.
-    pub fn destructor(comptime self: Function, comptime T: type) Function {
-        var result = self;
-        result.destroys = T;
-        return result;
-    }
-
-    /// Mark the constructed handle as borrowing its receiver's lifetime.
-    pub fn childOfReceiver(comptime self: Function) Function {
-        var result = self;
-        result.child_of_receiver = true;
-        return result;
-    }
-
-    /// Mark a handle result as owned by the caller.
-    pub fn callerOwned(comptime self: Function) Function {
-        var result = self;
-        result.returns.ownership = .caller;
-        return result;
-    }
-
-    /// Mark a buffer result as caller-owned and name its release function.
-    pub fn releasedBy(comptime self: Function, comptime path: []const u8) Function {
-        var result = self;
-        result.returns.ownership = .caller;
-        result.returns.release = path;
-        return result;
-    }
-
-    /// Mark a handle result as borrowed from its receiver.
-    pub fn borrowed(comptime self: Function) Function {
-        var result = self;
-        result.returns.ownership = .borrowed;
-        return result;
-    }
-};
-
-/// Free functions attached to one receiver, with a shared name prefix
-/// removed from each.
-pub const Methods = struct {
-    receiver: type,
-    strip_prefix: []const u8 = "",
-    functions: []const Function,
 };
 
 /// A getter (and optionally setter) on a handle, reached by a dotted field
@@ -273,7 +173,7 @@ pub const HandleField = struct {
     name: ?[]const u8 = null,
     set: bool = false,
     doc: ?[]const u8 = null,
-    /// Plugin options, one entry per plugin. Written by `extend`. The
+    /// Plugin options, one entry per plugin. Written by `use`. The
     /// getter and the setter both carry them, the way they share `doc`.
     ext: []const Extension = &.{},
 
@@ -321,15 +221,8 @@ pub const Handle = struct {
     /// Go doc override; absent uses the generated description.
     doc: ?[]const u8 = null,
     fields: []const HandleField = &.{},
-    /// Plugin options, one entry per plugin. Written by `extend`.
+    /// Plugin options, one entry per plugin. Written by `use`.
     ext: []const Extension = &.{},
-
-    /// Attach `value` as plugin `P`'s options for this type.
-    pub fn extend(comptime self: @This(), comptime P: anytype, comptime value: P.Options) @This() {
-        var result = self;
-        result.ext = self.ext ++ [_]Extension{extension(P, value)};
-        return result;
-    }
 };
 
 pub const Value = struct {
@@ -339,15 +232,8 @@ pub const Value = struct {
     doc: ?[]const u8 = null,
     go: ?GoAdapter = null,
     fields: []const ValueField = &.{},
-    /// Plugin options, one entry per plugin. Written by `extend`.
+    /// Plugin options, one entry per plugin. Written by `use`.
     ext: []const Extension = &.{},
-
-    /// Attach `value` as plugin `P`'s options for this type.
-    pub fn extend(comptime self: @This(), comptime P: anytype, comptime value: P.Options) @This() {
-        var result = self;
-        result.ext = self.ext ++ [_]Extension{extension(P, value)};
-        return result;
-    }
 };
 
 pub const Materialized = struct {
@@ -374,15 +260,8 @@ pub const Enum = struct {
     /// Go docs for individual tags. Listing a tag is optional, and a tag left
     /// out takes the Zig source's `///`.
     fields: []const EnumField = &.{},
-    /// Plugin options, one entry per plugin. Written by `extend`.
+    /// Plugin options, one entry per plugin. Written by `use`.
     ext: []const Extension = &.{},
-
-    /// Attach `value` as plugin `P`'s options for this type.
-    pub fn extend(comptime self: @This(), comptime P: anytype, comptime value: P.Options) @This() {
-        var result = self;
-        result.ext = self.ext ++ [_]Extension{extension(P, value)};
-        return result;
-    }
 };
 
 pub const TaggedUnion = struct {
@@ -393,15 +272,8 @@ pub const TaggedUnion = struct {
     access: Access = .projection,
     /// Variants left out of the Go type.
     omit: []const []const u8 = &.{},
-    /// Plugin options, one entry per plugin. Written by `extend`.
+    /// Plugin options, one entry per plugin. Written by `use`.
     ext: []const Extension = &.{},
-
-    /// Attach `value` as plugin `P`'s options for this type.
-    pub fn extend(comptime self: @This(), comptime P: anytype, comptime value: P.Options) @This() {
-        var result = self;
-        result.ext = self.ext ++ [_]Extension{extension(P, value)};
-        return result;
-    }
 };
 
 /// The hint for one value parameter of a callback, positionally; the
@@ -518,7 +390,6 @@ pub const Binding = struct {
     string_release: ?[]const u8 = null,
     types: []const Type = &.{},
     functions: []const Function = &.{},
-    methods: []const Methods = &.{},
     packages: []const Package = &.{},
     interfaces: []const Interface = &.{},
     sessions: []const Session = &.{},
@@ -547,7 +418,6 @@ test "a binding literal coerces, keeps defaults, and exposes type values" {
             .{ .path = "root.render", .params = &.{ .{ .name = "text", .semantic = .utf8_string }, out_buffer } },
             .{ .path = "root.take", .returns = .{ .ownership = .caller, .release = "root.free" }, .covers = &.{"Terminal.take"} },
         },
-        .methods = &.{.{ .receiver = Lib.Key, .strip_prefix = "key", .functions = &.{.{ .path = "root.keyName" }} }},
     };
     comptime {
         std.debug.assert(binding.types[0].zigType() == Lib.Terminal);
@@ -556,7 +426,6 @@ test "a binding literal coerces, keeps defaults, and exposes type values" {
         std.debug.assert(binding.functions[0].constructs.? == Lib.Terminal);
         std.debug.assert(binding.functions[1].params[1].direction == .out);
         std.debug.assert(binding.functions[2].returns.ownership.? == .caller);
-        std.debug.assert(binding.methods[0].receiver == Lib.Key);
         std.debug.assert(binding.discover == null and binding.exclude.len == 0);
     }
 }

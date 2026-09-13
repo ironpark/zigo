@@ -72,11 +72,11 @@ pub const Install = struct {
 
 /// One generator plugin: the module whose root file declares
 /// `pub const plugin`, and the name `bindings.zig` imports it under so a
-/// declaration can name its options with `extend`. Both sides are one entry,
+/// declaration can name its options with `use`. Both sides are one entry,
 /// since a plugin that a declaration cannot reach has nothing to read.
 pub const PluginModule = struct {
     /// The name `bindings.zig` imports the plugin under, so a declaration can
-    /// name its options with `extend`.
+    /// name its options with `use`.
     name: []const u8,
     /// The plugin's root source file, the one declaring `pub const plugin`.
     /// A path rather than a module: the generator compiles it against its own
@@ -131,8 +131,9 @@ pub const Options = struct {
     /// Body of the generated `// Package ...` doc. Null falls back to the `//!`
     /// container doc of the bindings file, then to a default sentence.
     go_package_doc: ?[]const u8 = null,
-    /// Emit `Must*` companions for public functions whose generated Go
-    /// signature returns an error. Disabled by default.
+    /// JSON object of per-plugin settings, keyed by plugin name and merged
+    /// over each plugin's `Config` defaults. Passed to the generator as
+    /// `--plugin-config`; `zigo.configJson` builds it from a Zig value.
     plugin_config: []const u8 = "{}",
     /// Optional source path for the JSON form of `go-coverage`.
     coverage_json: ?[]const u8 = null,
@@ -504,7 +505,7 @@ fn addReflection(b: *std.Build, options: ReflectionOptions) Reflection {
         },
     });
     // The declaration side of a plugin: what `bindings.zig` imports so
-    // `extend` can name the plugin and its option type. Only created because
+    // `use` can name the plugin and its option type. Only created because
     // a plugin's root file is written against the whole contract; a module
     // nothing references is never compiled.
     const abi_declaration_module = b.createModule(.{
@@ -546,7 +547,7 @@ fn addReflection(b: *std.Build, options: ReflectionOptions) Reflection {
             .{ .name = options.name, .module = reflected_module },
         },
     });
-    // `extend` reads the plugin's name and its option type off the same value
+    // `use` reads the plugin's name and its option type off the same value
     // the generator runs, so the declaration and the generator can never
     // disagree about what the options are.
     // The declaration side gets its own module from the same file. It only

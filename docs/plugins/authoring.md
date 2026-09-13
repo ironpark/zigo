@@ -96,7 +96,7 @@ zig build go
 - 진단 접두사
 - 플러그인 출력 owner와 file 접미사
 
-대문자 ASCII 이름을 사용하세요. `targets`는 옵션을 붙일 수 있는 선언 kind를
+대문자 ASCII 이름을 사용하세요. `subjects`는 옵션을 붙일 수 있는 선언 kind를
 제한하며 `.function`, `.handle`, `.value`, `.enumeration`, `.tagged_union`, `.callback`,
 `.materialized`, `.error_set`을 선택할 수 있습니다.
 

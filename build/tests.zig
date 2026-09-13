@@ -1141,7 +1141,7 @@ fn addBindingAuthoringErrors(b: *std.Build, test_step: *std.Build.Step) void {
         run.setName("authoring rejects " ++ case[0]);
         run.addPrefixedFileArg("-Mroot=", b.path("tests/binding_errors/" ++ case[0] ++ ".zig"));
         run.addPrefixedFileArg("-Mzigo=", b.path("src/root.zig"));
-        inline for (.{ "author", "normalize", "declare", "dsl", "features", "param", "result", "callback_layout", "context_tests" }) |source|
+        inline for (.{ "author", "normalize", "declare", "features", "param", "result", "callback_layout", "context_tests" }) |source|
             run.addFileInput(b.path("src/" ++ source ++ ".zig"));
         run.expectExitCode(1);
         run.expectStdErrMatch(case[1]);

@@ -1,6 +1,5 @@
 //! Typed declaration trees for authoring Zig-to-Go bindings.
 const author = @import("author.zig");
-pub const dsl = @import("dsl.zig");
 pub const scope = author.scope;
 pub const package = author.package;
 pub const interface = author.interface;
@@ -54,6 +53,5 @@ test {
     _ = author;
     _ = @import("normalize.zig");
     _ = features;
-    _ = dsl;
     _ = @import("context_tests.zig");
 }

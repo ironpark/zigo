@@ -130,14 +130,7 @@ pub fn reflect(
     // then only adds what the list did not claim, so the two passes never
     // need to compare an entry against a declaration at comptime.
     inline for (declaration.functions) |entry| {
-        try appendSelectedPath(allocator, &functions, &types, &pairings, declaration, prefix, entry, null, null);
-    }
-    inline for (declaration.methods) |group| {
-        const receiver_name = comptime registeredContainerName(declaration, group.receiver) orelse
-            @compileError("zigo `.methods` receiver must be a type registered as a handle, tagged union, or enumeration: " ++ @typeName(group.receiver));
-        inline for (group.functions) |entry| {
-            try appendSelectedPath(allocator, &functions, &types, &pairings, declaration, prefix, entry, receiver_name, group.strip_prefix);
-        }
+        try appendSelectedPath(allocator, &functions, &types, &pairings, declaration, prefix, entry);
     }
     if (declaration.discover != null) {
         // Discovery walks every registered container plus the root, skipping
@@ -229,8 +222,6 @@ fn appendSelectedPath(
     comptime declaration: zigo.Binding,
     prefix: []const u8,
     comptime metadata: zigo.Function,
-    comptime inherited_receiver: ?[]const u8,
-    comptime inherited_prefix: ?[]const u8,
 ) !void {
     const path = metadata.path;
     const owner = comptime pathOwner(path);
@@ -241,7 +232,7 @@ fn appendSelectedPath(
         registeredContainerName(declaration, Receiver) orelse
             @compileError("zigo `.receiver` must be a type registered as a handle, tagged union, or enumeration: " ++ @typeName(Receiver))
     else
-        inherited_receiver;
+        null;
     try appendFunction(
         allocator,
         functions,
@@ -254,7 +245,6 @@ fn appendSelectedPath(
         metadata,
         owner,
         explicit_receiver,
-        inherited_prefix,
     );
 }
 
@@ -901,7 +891,6 @@ fn appendFunction(
     comptime metadata: zigo.Function,
     comptime discovered_owner: ?[]const u8,
     comptime explicit_receiver: ?[]const u8,
-    comptime strip_prefix: ?[]const u8,
 ) !void {
     const declaration = comptime blk: {
         var effective = source_declaration;
@@ -915,10 +904,7 @@ fn appendFunction(
     };
     // `.path` addresses the declaration; `.name` only renames it on the Go
     // side, so there is still exactly one way to say which function is meant.
-    const stripped_name: ?[]const u8 = comptime if (strip_prefix) |value| naming.stripFunctionPrefix(source_name, value) else source_name;
-    if (strip_prefix != null and stripped_name == null)
-        return receiverIssue(allocator, "function `{s}` does not begin with group prefix `{s}`", .{ source_name, strip_prefix.? });
-    const function_name: []const u8 = if (metadata.name) |name| name else stripped_name.?;
+    const function_name: []const u8 = metadata.name orelse source_name;
     // The receiver is the first parameter Go would see: an injected
     // `std.mem.Allocator` or `std.Io` ahead of the handle never reaches the
     // C signature, so it does not stop the function from being a method.
@@ -1553,7 +1539,7 @@ fn discoverContainer(
         // ran; an excluded one is left out. Either way this is one hash
         // lookup at runtime, not a comptime scan of the binding.
         if (!declared.claims(path)) {
-            try appendFunction(allocator, functions, types, pairings, declaration, prefix, candidate.name, value, .{ .path = path }, owner, null, null);
+            try appendFunction(allocator, functions, types, pairings, declaration, prefix, candidate.name, value, .{ .path = path }, owner, null);
         }
     }
     if (declaration.discover != .recursive) return;
@@ -1697,9 +1683,6 @@ pub fn typeEntryName(comptime entry: zigo.Type) []const u8 {
 
 fn validateSelectors(comptime declaration: zigo.Binding) void {
     inline for (declaration.functions) |entry| validateFunctionEntry(declaration, entry);
-    inline for (declaration.methods) |group| {
-        inline for (group.functions) |entry| validateFunctionEntry(declaration, entry);
-    }
     // A registered enum contributes no functions of its own, so the Go enum
     // it produces may stand in for the Zig methods it makes redundant.
     inline for (declaration.types) |entry| {
@@ -1739,26 +1722,14 @@ fn validateFunctionPath(comptime declaration: zigo.Binding, comptime path: []con
     }
 }
 
-/// Every function path the declaration lists, `.functions` then each
-/// `.methods` group, in order. Built once, linearly, so the cross-entry checks
+/// Every function path the declaration lists, in order. Built once,
+/// linearly, so the cross-entry checks
 /// can run at runtime over a hash set instead of comparing every entry
 /// against every other at comptime.
 pub fn declaredFunctionPaths(comptime declaration: zigo.Binding) []const []const u8 {
     comptime {
-        var count: usize = declaration.functions.len;
-        for (declaration.methods) |group| count += group.functions.len;
-        var paths: [count][]const u8 = undefined;
-        var index: usize = 0;
-        for (declaration.functions) |entry| {
-            paths[index] = entry.path;
-            index += 1;
-        }
-        for (declaration.methods) |group| {
-            for (group.functions) |entry| {
-                paths[index] = entry.path;
-                index += 1;
-            }
-        }
+        var paths: [declaration.functions.len][]const u8 = undefined;
+        for (declaration.functions, 0..) |entry, index| paths[index] = entry.path;
         const frozen = paths;
         return &frozen;
     }
@@ -4445,55 +4416,6 @@ test "explicit borrowed return is recorded without changing ownership defaults" 
     try std.testing.expect(std.mem.indexOf(u8, implicit_json, "borrowed_return") == null);
 }
 
-test "function groups attach free functions and strip their shared prefix" {
-    const Fixture = struct {
-        const Screen = opaque {};
-
-        pub fn screenSelectAll(screen: *Screen) void {
-            _ = screen;
-        }
-
-        pub fn screenClearSelection(screen: *const Screen) void {
-            _ = screen;
-        }
-
-        pub fn screenMove(gpa: std.mem.Allocator, screen: *Screen, count: u32) void {
-            _ = gpa;
-            _ = screen;
-            _ = count;
-        }
-    };
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    const document = try reflect(arena.allocator(), .{
-        .allocator = .smp_allocator,
-        .root = Fixture,
-        .types = &.{.{ .handle = .{ .type = Fixture.Screen } }},
-        .methods = &.{
-            .{
-                .receiver = Fixture.Screen,
-                .strip_prefix = "screen",
-                .functions = &.{
-                    .{ .path = "root.screenSelectAll" },
-                    .{ .path = "root.screenClearSelection", .name = "wipe" },
-                    .{ .path = "root.screenMove", .params = &.{.{ .name = "count" }} },
-                },
-            },
-        },
-    }, "display", "zg");
-
-    try std.testing.expectEqual(@as(usize, 3), document.functions.len);
-    try std.testing.expectEqualStrings("selectAll", document.functions[0].name);
-    try std.testing.expectEqualStrings("wipe", document.functions[1].name);
-    try std.testing.expectEqualStrings("move", document.functions[2].name);
-    for (document.functions) |function| try std.testing.expectEqualStrings("Screen", function.receiver.?);
-    try std.testing.expectEqualStrings("screenSelectAll", document.functions[0].zig_path.?);
-    try std.testing.expectEqualStrings("zg_screen_select_all", document.functions[0].symbol);
-    try std.testing.expectEqual(@as(?usize, 1), document.functions[2].receiver_at);
-    try std.testing.expectEqual(semantic.Injection.allocator, document.functions[2].params[0].injected.?);
-    try std.testing.expectEqualStrings("count", document.functions[2].params[1].name);
-}
-
 test "per-function explicit receivers validate the first non-injected parameter" {
     const Fixture = struct {
         const Screen = opaque {};
@@ -4580,9 +4502,6 @@ test "a registered enum owns the methods addressed through it" {
             .{ .path = "root.keyModifier", .receiver = Fixture.Key },
             .{ .path = "root.defaultKey", .params = &.{.{ .name = "key" }} },
         },
-        .methods = &.{
-            .{ .receiver = Fixture.Key, .strip_prefix = "key", .functions = &.{.{ .path = "root.keyKeypad" }} },
-        },
     }, "input", "zg");
 
     const method = document.functions[0];
@@ -4601,10 +4520,6 @@ test "a registered enum owns the methods addressed through it" {
     // A function that merely takes the enum keeps its parameter.
     try std.testing.expect(document.functions[2].receiver == null);
     try std.testing.expectEqual(@as(usize, 1), document.functions[2].params.len);
-
-    const grouped = document.functions[3];
-    try std.testing.expectEqualStrings("Key", grouped.receiver.?);
-    try std.testing.expectEqualStrings("keypad", grouped.name);
 
     const json = try document.serialize(arena.allocator());
     try std.testing.expect(std.mem.indexOf(u8, json, "\"receiver_kind\": \"value\"") != null);
@@ -4672,28 +4587,6 @@ test "registered opaque values become receiver and parameter handles" {
     const json = try document.serialize(arena.allocator());
     try std.testing.expect(std.mem.indexOf(u8, json, "\"receiver_by_value\": true") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"by_value\": true") != null);
-}
-
-test "function groups reject paths without their prefix" {
-    const Fixture = struct {
-        const Screen = opaque {};
-        pub fn selectAll(screen: *Screen) void {
-            _ = screen;
-        }
-    };
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    try std.testing.expectError(error.ReceiverMetadata, reflect(arena.allocator(), .{
-        .root = Fixture,
-        .types = &.{.{ .handle = .{ .type = Fixture.Screen } }},
-        .methods = &.{
-            .{
-                .receiver = Fixture.Screen,
-                .strip_prefix = "screen",
-                .functions = &.{.{ .path = "root.selectAll" }},
-            },
-        },
-    }, "display", "zg"));
 }
 
 test "an injected argument ahead of the handle does not stop a function being a method" {
@@ -5566,8 +5459,8 @@ test "extend attaches typed plugin options to a function and to a type" {
     defer arena.deinit();
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
-        .types = &.{.{ .handle = (zigo.Handle{ .type = Fixture.Counter }).extend(Sample, .{ .depth = 2 }) }},
-        .functions = &.{(zigo.Function{ .path = "root.bump", .receiver = Fixture.Counter }).extend(Sample, .{ .mode = .b })},
+        .types = &.{.{ .handle = .{ .type = Fixture.Counter, .ext = &.{zigo.extension(Sample, .{ .depth = 2 })} } }},
+        .functions = &.{.{ .path = "root.bump", .receiver = Fixture.Counter, .ext = &.{zigo.extension(Sample, .{ .mode = .b })} }},
     }, "meter", "zg");
 
     const bytes = try document.serialize(arena.allocator());
@@ -5604,8 +5497,8 @@ test "plugin options preserve explicit null through reflection and semantic pars
     const allocator = arena.allocator();
     const document = try reflect(allocator, .{
         .root = Fixture,
-        .types = &.{.{ .handle = (zigo.Handle{ .type = Fixture.Counter }).extend(Sample, .{ .limit = null, .required = null }) }},
-        .functions = &.{(zigo.Function{ .path = "root.bump", .receiver = Fixture.Counter }).extend(Sample, .{ .limit = null, .required = null })},
+        .types = &.{.{ .handle = .{ .type = Fixture.Counter, .ext = &.{zigo.extension(Sample, .{ .limit = null, .required = null })} } }},
+        .functions = &.{.{ .path = "root.bump", .receiver = Fixture.Counter, .ext = &.{zigo.extension(Sample, .{ .limit = null, .required = null })} }},
     }, "meter", "zg");
     var parsed = try semantic.Semantic.parse(allocator, try document.serialize(allocator));
     defer parsed.deinit();

@@ -16,7 +16,7 @@ const semantic = @import("semantic");
 /// of the diagnostics it reports.
 pub const name = "JSON";
 
-/// What a declaration says with `extend(json.plugin, .{ ... })`.
+/// What a declaration says with `use(json.plugin, .{ ... })`.
 pub const Options = struct {
     /// How a struct field's JSON key is spelled. An enum ignores it: an enum
     /// encodes as its Zig tag name, which is the one spelling it has.
