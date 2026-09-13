@@ -1057,6 +1057,7 @@ fn appendFunction(
             if (spec.written) |value| reflected.written = switch (value) {
                 .all => .all,
                 .result => .@"return",
+                .returned_slice => .returned_slice,
             };
             if (spec.buffer) |value| reflected.buffer = value;
             if (spec.go_error) reflected.setGoError(true);
@@ -1094,6 +1095,24 @@ fn appendFunction(
     const reflected_return = if (boxed_type) |type_name| blk: {
         const payload = try allocator.create(semantic.TypeNode);
         payload.* = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = type_name } };
+        break :blk semantic.TypeNode{ .error_union = .{
+            .error_set = comptime boxedErrorNames(info),
+            .payload = payload,
+        } };
+    } else if (comptime returnsWrittenSliceLength(metadata)) blk: {
+        // `.written = .returned_slice` says the function writes into the
+        // caller's buffer and hands back the prefix it filled. The slice is
+        // the caller's own memory going back out, so what crosses the C
+        // boundary is its length and nothing else -- the same signature
+        // `.written = .result` has. The shim takes `.len`; from here on the
+        // document describes the count.
+        comptime validateReturnedSlice(info, owner_label ++ function_label);
+        const count: semantic.TypeNode = .{ .int = .{ .bits = 64, .is_usize = true, .signed = false } };
+        if (comptime @typeInfo(info.return_type.?) != .error_union) break :blk count;
+        // The error union the Zig function declared is kept: a fill that can
+        // fail still reports its errors, only its payload is now the count.
+        const payload = try allocator.create(semantic.TypeNode);
+        payload.* = count;
         break :blk semantic.TypeNode{ .error_union = .{
             .error_set = comptime boxedErrorNames(info),
             .payload = payload,
@@ -1375,6 +1394,29 @@ fn registeredContainerName(comptime declaration: zigo.Binding, comptime T: type)
 /// What a `.constructs`/`.destroys` claim the signatures do not support is
 /// told. Like `ZIGO027`, this is raised while reflecting, before there is a
 /// `semantic.json` for the generator's own diagnostics to point at.
+/// Whether any parameter of this declaration reports its written count as the
+/// length of the slice the function returns.
+fn returnsWrittenSliceLength(comptime metadata: zigo.Function) bool {
+    for (metadata.params) |spec| {
+        if (spec.written == .returned_slice) return true;
+    }
+    return false;
+}
+
+fn validateReturnedSlice(comptime info: std.builtin.Type.Fn, comptime label: []const u8) void {
+    const message = "zigo `.written = .returned_slice` needs `" ++ label ++ "` to return a slice of the buffer it filled";
+    const return_type = info.return_type orelse @compileError(message);
+    const payload = switch (@typeInfo(return_type)) {
+        .error_union => |error_union| error_union.payload,
+        else => return_type,
+    };
+    const pointer = switch (@typeInfo(payload)) {
+        .pointer => |pointer| pointer,
+        else => @compileError(message),
+    };
+    if (pointer.size != .slice) @compileError(message);
+}
+
 fn pairingIssue(allocator: std.mem.Allocator, comptime detail: []const u8, args: anytype) error{ ConstructorPairing, OutOfMemory } {
     const message = try pairingMessageAlloc(allocator, detail, args);
     defer allocator.free(message);
@@ -3984,6 +4026,36 @@ test "a registered enum records the text encoding opt-in" {
     const bytes = try document.serialize(std.testing.allocator);
     defer std.testing.allocator.free(bytes);
     try std.testing.expect(std.mem.indexOf(u8, bytes, "\"text\": true") != null);
+}
+
+test "a returned slice of the out buffer is recorded as the written count" {
+    const Fixture = struct {
+        pub fn printAttributes(buffer: []u8) error{NoSpaceLeft}![]const u8 {
+            if (buffer.len == 0) return error.NoSpaceLeft;
+            return buffer[0..1];
+        }
+        pub fn copyDigits(buffer: []u8) []const u8 {
+            return buffer[0..0];
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .functions = &.{
+            .{ .path = "root.printAttributes", .params = &.{.{ .name = "buffer", .direction = .out, .written = .returned_slice }} },
+            .{ .path = "root.copyDigits", .params = &.{.{ .name = "buffer", .direction = .out, .written = .returned_slice }} },
+        },
+    }, "terminal", "zg");
+
+    const fallible = document.functions[0];
+    try std.testing.expectEqual(semantic.Written.returned_slice, fallible.params[0].writtenHint());
+    // What crosses is the count; the slice is the caller's own buffer coming
+    // back, so the error union keeps its errors and loses the payload type.
+    try std.testing.expectEqual(@as(usize, 1), fallible.@"return".error_union.error_set.len);
+    try std.testing.expect(fallible.@"return".error_union.payload.int.is_usize);
+    const infallible = document.functions[1];
+    try std.testing.expect(infallible.@"return".int.is_usize);
 }
 
 test "a binding documents individual enum tags and struct fields" {

@@ -10,7 +10,7 @@ registered_at: "2026-09-13T07:28:55Z"
 - [x] [Phase 00: std_options passthrough](phases/00-shim-std-options.md)
 - [x] [Phase 01: Session child plural](phases/01-session-child-plural.md)
 - [x] [Phase 02: Member docs from source](phases/02-member-docs-capture.md)
-- [ ] [Phase 03: Member doc overrides](phases/03-member-docs-override.md)
+- [x] [Phase 03: Member doc overrides](phases/03-member-docs-override.md)
 - [ ] [Phase 04: Returned slice written hint](phases/04-returned-slice-written.md)
 - [ ] [Phase 05: Plugin method replacement](phases/05-plugin-method-replace.md)
 - [ ] [Phase 06: Multiple constructors per handle](phases/06-multiple-constructors.md)

@@ -269,10 +269,17 @@ api.func("transform", .{ .params = &.{
 | `param.input(index)` | 읽기 전용 입력 버퍼 |
 | `param.output(index, .all)` | 호출 성공 시 전체 버퍼가 채워짐 |
 | `param.output(index, .result)` | 함수 결과가 채운 원소 수 |
+| `param.output(index, .returned_slice)` | 함수가 돌려준 slice의 길이가 채운 원소 수 |
 | `param.inout(index, written)` | 입력을 읽고 같은 버퍼에 결과 작성 |
 
 `.result`를 사용하면 원래 Zig 반환값은 Go에서 `n`으로 소비되어야 하며 범위를 벗어난 값은
 오류가 됩니다.
+
+`.returned_slice`는 `fn printAttributes(buf: []u8) ![]const u8`처럼 호출자 버퍼에 쓰고 그
+버퍼의 앞부분을 slice로 돌려주는 함수를 위한 것입니다. 돌아온 slice는 호출자가 이미 가진
+메모리이므로 경계를 넘지 않고, 그 길이만 넘어갑니다. C 서명과 Go 시그니처는 `.result`와
+같고, 다른 것은 shim이 결과 대신 `.len`을 읽는다는 것뿐입니다. 반환 타입이 slice가 아니면
+바인딩이 컴파일되지 않고, 한 함수에서 두 매개변수가 이것을 주장하면 `ZIGO017`이 납니다.
 
 ## caller-owned 결과
 

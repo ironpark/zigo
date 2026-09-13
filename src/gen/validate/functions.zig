@@ -327,8 +327,21 @@ pub fn functionIssue(allocator: std.mem.Allocator, document: semantic.Semantic, 
             .site = site.functionSite(function),
             .hint = "return a pointer to a registered handle type that has both a constructor and a destructor, or drop `.returns.ownership = .caller`",
         };
+        var returned_slice_count: usize = 0;
         for (function.params) |parameter| {
             if (parameter.written == null) continue;
+            if (parameter.writtenHint() == .returned_slice) {
+                returned_slice_count += 1;
+                // One returned slice is one length, and the result carries
+                // exactly one count.
+                if (returned_slice_count > 1) return .{
+                    .severity = .@"error",
+                    .code = "ZIGO017",
+                    .message = "two parameters declare `.written = .returned_slice`",
+                    .site = site.functionSite(function),
+                    .hint = "the returned slice reports one count; leave the other buffers at the default `.written = .all`",
+                };
+            }
             if (parameter.direction != .out) return .{
                 .severity = .@"error",
                 .code = "ZIGO017",
@@ -336,12 +349,18 @@ pub fn functionIssue(allocator: std.mem.Allocator, document: semantic.Semantic, 
                 .site = site.functionSite(function),
                 .hint = "add `.direction = .out` to the parameter, or drop `.written`",
             };
-            if (parameter.writtenHint() == .@"return" and !ownership.returnsCount(function.@"return")) return .{
+            if (parameter.reportsWrittenAsResult() and !ownership.returnsCount(function.@"return")) return .{
                 .severity = .@"error",
                 .code = "ZIGO017",
-                .message = "`.written = .result` needs a `usize` result to report the count",
+                .message = if (parameter.writtenHint() == .returned_slice)
+                    "`.written = .returned_slice` needs a `usize` result to report the count"
+                else
+                    "`.written = .result` needs a `usize` result to report the count",
                 .site = site.functionSite(function),
-                .hint = "return `usize` or `!usize` from the function, or use the default `.written = .all`",
+                .hint = if (parameter.writtenHint() == .returned_slice)
+                    "return a slice of the out buffer, which zigo records as the count, or use the default `.written = .all`"
+                else
+                    "return `usize` or `!usize` from the function, or use the default `.written = .all`",
             };
         }
         if (function.release != null and !ownership.isReleasableSliceReturn(function) and abi.materializedReturn(function.@"return") == null and abi.materializedOut(function) == null) return .{

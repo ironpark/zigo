@@ -35,7 +35,7 @@ zigo는 생성 전에 소스 reflection, semantic 계약과 최종 출력을 검
 | `ZIGO014` | purego 콜백 결과가 지원되지 않습니다. `void`, `bool`, `i32`를 사용합니다. |
 | `ZIGO015` | caller-owned 핸들 결과와 생성자/소멸자가 연결되지 않았습니다. 역할과 쌍을 확인합니다. |
 | `ZIGO016` | caller-owned 버퍼의 해제 함수가 없습니다. `result.releasedBy(ref)`를 사용합니다. |
-| `ZIGO017` | `written`을 출력 슬라이스가 아닌 곳에 지정했습니다. output/inout 계약로 바꿉니다. |
+| `ZIGO017` | `written`을 출력 슬라이스가 아닌 곳에 지정했거나, 결과로 개수를 보고하는 `written`(`.result`·`.returned_slice`)에 `usize` 결과가 없거나, 두 매개변수가 `.returned_slice`를 주장합니다. |
 | `ZIGO018` | 정수 또는 float 폭이 지원되지 않습니다. 정수 ≤64 bit, `f32`/`f64`를 사용합니다. |
 | `ZIGO019` | 타입을 허용되지 않는 위치에 사용했습니다. [타입 대응](type-mapping.md)을 확인합니다. |
 | `ZIGO020` | semantic IR version이 generator와 다릅니다. 같은 zigo version으로 다시 생성합니다. |

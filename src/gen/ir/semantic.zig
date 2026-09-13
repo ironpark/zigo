@@ -452,7 +452,12 @@ pub const max_codepoint: u32 = 0x10FFFF;
 pub const Ownership = enum { borrowed, caller, library };
 /// How much of an `.out` slice the shim reports back as written. `.all` keeps
 /// the whole buffer, `.return` trusts the function's `usize` result.
-pub const Written = enum { all, @"return" };
+/// How much of an out slice the caller may read back. `all` carries a
+/// `_written` out parameter; the other two report the count through the
+/// function's own result, so they share one C signature. `returned_slice`
+/// differs from `@"return"` only inside the shim, which takes the length of
+/// the slice the Zig function returned instead of the number it returned.
+pub const Written = enum { all, @"return", returned_slice };
 
 /// A parameter's location in the source that declared it, from
 /// `names.zig`'s AST scan. Unlike `SourceLocation` this carries no path: a
@@ -584,7 +589,23 @@ pub const Parameter = struct {
     pub fn writtenHint(self: Parameter) Written {
         return self.written orelse .all;
     }
+
+    /// Whether the count comes back as the function's own result rather than
+    /// through a `_written` out parameter. The two forms that do share one C
+    /// signature, so most of the generator only has to ask this.
+    pub fn reportsWrittenAsResult(self: Parameter) bool {
+        return self.writtenHint() != .all;
+    }
 };
+
+/// The out slice whose count is the length of a slice the function returns.
+/// At most one parameter may say so, which validation checks.
+pub fn returnedSliceParam(function: SemanticFn) ?Parameter {
+    for (function.params) |parameter| {
+        if (parameter.writtenHint() == .returned_slice) return parameter;
+    }
+    return null;
+}
 
 /// Which half of a boxed constructor pair a function is. A Zig `init` that
 /// returns its value has no C representation, so the shim allocates storage

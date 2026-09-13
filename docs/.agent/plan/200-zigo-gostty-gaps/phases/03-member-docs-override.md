@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-13T07:50:09Z"
 depends_on:
 - "200-zigo-gostty-gaps#2"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 바인딩이 쓴 멤버 doc이 Zig 소스의 `///`를 이긴다.
 > NEXT: none

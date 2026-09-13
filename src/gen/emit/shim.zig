@@ -205,9 +205,15 @@ pub fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program:
                 try writeTargetCall(allocator, writer, program, function);
                 try writeShimErrorCatch(writer, function);
             } else {
-                try writer.writeAll("const result = ");
+                // A returned-slice fill hands back the caller's own buffer;
+                // the count is its length, and the slice itself does not
+                // cross. Naming the slice first keeps every later reference to
+                // `result` the count it is everywhere else.
+                const returned_slice = semantic.returnedSliceParam(function.origin.*) != null;
+                try writer.writeAll(if (returned_slice) "const zigo_filled = " else "const result = ");
                 try writeTargetCall(allocator, writer, program, function);
                 try writeShimErrorCatch(writer, function);
+                if (returned_slice) try writer.writeAll("    const result = zigo_filled.len;\n");
                 // The out parameters stay untouched on the error path: the
                 // early `return` above leaves before either assignment, so a
                 // caller that checks the code first never reads them.
@@ -249,7 +255,8 @@ pub fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program:
         // struct return is written through the out pointer.
         const packed_return = type_spelling.isPackedValue(program, function.origin.@"return");
         const struct_return = function.origin.@"return" == .value_struct and !packed_return;
-        const binds_result = function.origin.@"return" != .void and !struct_return and hasOutSliceParam(function);
+        const returned_slice = semantic.returnedSliceParam(function.origin.*) != null;
+        const binds_result = function.origin.@"return" != .void and !struct_return and (hasOutSliceParam(function) or returned_slice);
         const atomic_struct_return = struct_return and
             raw.recordHasAtomicFields(program, raw.structRecord(program, function.origin.@"return".value_struct.ref));
         if (atomic_struct_return) {
@@ -267,6 +274,7 @@ pub fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program:
         if (packed_return) try type_spelling.writePackedZigToBackingPrefix(writer, program, function.origin.@"return");
         if (narrow_return) try writer.writeAll("@intCast(");
         try writeTargetCall(allocator, writer, program, function);
+        if (returned_slice) try writer.writeAll(".len");
         if (narrow_return) try writer.writeByte(')');
         if (packed_return) try writer.writeAll(")))");
         try writer.writeAll(";\n");
@@ -1362,7 +1370,7 @@ fn writeShimSliceReturn(writer: *std.Io.Writer, program: abi.Program, function: 
 fn writeSliceWrittenAssignments(writer: *std.Io.Writer, function: abi.AbiFn) !void {
     for (function.origin.params) |parameter| {
         if (parameter.direction == .out and abi.narrowSliceElement(parameter.type) != null) {
-            if (parameter.writtenHint() == .@"return")
+            if (parameter.reportsWrittenAsResult())
                 try writer.print("    for (zigo_{0s}_slice[0..@min(result, {0s}_len)], 0..) |zigo_value, zigo_i| {0s}_ptr[zigo_i] = @intCast(zigo_value);\n", .{parameter.name})
             else
                 try writer.print("    for (zigo_{0s}_slice, 0..) |zigo_value, zigo_i| {0s}_ptr[zigo_i] = @intCast(zigo_value);\n", .{parameter.name});

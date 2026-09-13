@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `fn printAttributes(buf: []u8) ![]const u8` 모양이 래퍼 없이 바인딩된다.
 > NEXT: none

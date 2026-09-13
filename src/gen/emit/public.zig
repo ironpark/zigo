@@ -110,7 +110,7 @@ fn writePublicValueStructSliceCopyBacks(
         try writer.print("\tzigo{s}SliceCopyFromRaw({s}, {s}Raw, ", .{ parameter.type.slice.element.*.value_struct.ref, name, name });
         switch (parameter.writtenHint()) {
             .all => try writer.print("len({s})", .{name}),
-            .@"return" => try writer.writeAll("int(result)"),
+            .@"return", .returned_slice => try writer.writeAll("int(result)"),
         }
         try writer.writeAll(")\n");
     }

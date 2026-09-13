@@ -35,7 +35,10 @@ pub const SemanticHint = enum { c_string, opaque_bytes, utf8_string, codepoint, 
 pub const Direction = enum { in, inout, out };
 /// How much of an `.out` buffer was filled: all of it, or the count the
 /// function returns.
-pub const Written = enum { all, result };
+/// How much of an out slice the caller may read back. `all` is the whole
+/// buffer; `result` is the `usize` the function returns; `returned_slice` is
+/// the length of the slice it returns into that same buffer.
+pub const Written = enum { all, result, returned_slice };
 pub const Retention = enum { borrowed, retained };
 pub const Reentrancy = enum { allowed, forbidden };
 pub const Thread = enum { caller, any };

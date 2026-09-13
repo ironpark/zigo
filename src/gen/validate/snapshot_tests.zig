@@ -323,6 +323,31 @@ test "implemented diagnostic snapshots are stable" {
         }, .snapshot = "error[ZIGO017]: `.written = .result` needs a `usize` result to report the count\n  --> semantic.json (fillInto)\n  hint: return `usize` or `!usize` from the function, or use the default `.written = .all`\n" },
         .{ .document = .{
             .functions = &.{.{
+                .name = "printInto",
+                .params = &.{.{ .direction = .out, .name = "dst", .type = word_slice_node, .written = .returned_slice }},
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_print_into",
+            }},
+            .package = "bad",
+            .prefix = "zg",
+            .zig_version = "0.16.0",
+        }, .snapshot = "error[ZIGO017]: `.written = .returned_slice` needs a `usize` result to report the count\n  --> semantic.json (printInto)\n  hint: return a slice of the out buffer, which zigo records as the count, or use the default `.written = .all`\n" },
+        .{ .document = .{
+            .functions = &.{.{
+                .name = "printBoth",
+                .params = &.{
+                    .{ .direction = .out, .name = "dst", .type = word_slice_node, .written = .returned_slice },
+                    .{ .direction = .out, .name = "alt", .type = word_slice_node, .written = .returned_slice },
+                },
+                .@"return" = count_node,
+                .symbol = "zg_print_both",
+            }},
+            .package = "bad",
+            .prefix = "zg",
+            .zig_version = "0.16.0",
+        }, .snapshot = "error[ZIGO017]: two parameters declare `.written = .returned_slice`\n  --> semantic.json (printBoth)\n  hint: the returned slice reports one count; leave the other buffers at the default `.written = .all`\n" },
+        .{ .document = .{
+            .functions = &.{.{
                 .name = "codepointWidth",
                 .namespace = "unicode",
                 .params = &.{.{ .name = "cp", .type = .{ .int = .{ .bits = 128, .signed = false } } }},

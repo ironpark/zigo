@@ -1,0 +1,76 @@
+{
+  "functions": [
+    {
+      "doc": "Writes the attributes into the caller's buffer and hands back the prefix it filled.",
+      "name": "printAttributes",
+      "params": [
+        {
+          "direction": "out",
+          "name": "buffer",
+          "type": {
+            "const": false,
+            "element": {
+              "bits": 8,
+              "kind": "int",
+              "signed": false
+            },
+            "kind": "slice"
+          },
+          "written": "returned_slice"
+        }
+      ],
+      "return": {
+        "error_set": [
+          "NoSpaceLeft"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "bits": 64,
+          "is_usize": true,
+          "kind": "int",
+          "signed": false
+        }
+      },
+      "symbol": "ignored"
+    },
+    {
+      "doc": "The same shape without an error set.",
+      "name": "copyDigits",
+      "params": [
+        {
+          "direction": "out",
+          "name": "buffer",
+          "type": {
+            "const": false,
+            "element": {
+              "bits": 8,
+              "kind": "int",
+              "signed": false
+            },
+            "kind": "slice"
+          },
+          "written": "returned_slice"
+        },
+        {
+          "name": "count",
+          "type": {
+            "bits": 64,
+            "is_usize": true,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "return": {
+        "bits": 64,
+        "is_usize": true,
+        "kind": "int",
+        "signed": false
+      },
+      "symbol": "ignored"
+    }
+  ],
+  "package": "attrs",
+  "prefix": "zg",
+  "zig_version": "0.16.0"
+}
