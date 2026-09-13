@@ -8,9 +8,9 @@ import "strconv"
 type CursorStyle uint8
 
 const (
-	// CursorStyleBlock corresponds to the Zig tag block.
+	// CursorStyleBlock: The filled cell the terminal starts in.
 	CursorStyleBlock CursorStyle = 0
-	// CursorStyleBar corresponds to the Zig tag bar.
+	// CursorStyleBar: A vertical bar between two cells.
 	CursorStyleBar CursorStyle = 1
 	// CursorStyleUnderline corresponds to the Zig tag underline.
 	CursorStyleUnderline CursorStyle = 2

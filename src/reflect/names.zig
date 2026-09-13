@@ -1441,6 +1441,24 @@ test "container members take their doc comments from the source that declares th
     try std.testing.expect(mutable[1].fields[1].doc == null);
 }
 
+test "what the binding wrote about a member outranks the source" {
+    const source =
+        \\pub const Mode = enum(u8) {
+        \\    /// What the library's own readers are told.
+        \\    fast,
+        \\};
+    ;
+    var types = [_]semantic.TypeDecl{.{ .kind = .@"enum", .name = "Mode", .zig_path = "stream.Mode", .fields = &.{
+        .{ .name = "fast", .doc = "What the binding tells Go readers.", .value = 0 },
+    } }};
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const mutable = try mutableTypesAlloc(allocator, &types);
+    try std.testing.expectEqual(@as(usize, 0), try scanSourceWithTypes(allocator, source, &.{}, mutable, "stream.zig"));
+    try std.testing.expectEqualStrings("What the binding tells Go readers.", mutable[0].fields[0].doc.?);
+}
+
 test "a container whose members disagree with the document lends nothing" {
     // Two files can each declare an `Options`, and the type name alone cannot
     // say which one the document registered. The recorded members decide.

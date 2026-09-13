@@ -58,9 +58,31 @@ const nested = api.in("namespace");
 | `handle(name, options)` | 구조체, opaque 또는 union 객체 | `fields` |
 | `val(name, options)` | extern·packed 구조체 | `fields`, `go` |
 | `materialized(name, options)` | 일반 결과 구조체 | `fields` |
-| `enumType(name, options)` | 열거형 | `exhaustive`, `go`, `covers` |
+| `enumType(name, options)` | 열거형 | `exhaustive`, `go`, `covers`, `fields` |
 | `taggedUnion(name, options)` | tagged union | `access`, `omit` |
 | `callback(name, options)` | 함수 포인터 alias | 매개변수, userdata와 failure 계약 |
+
+`fields`는 멤버별 hint와 문서입니다.
+
+```zig
+api.val("RenderCell", .{ .fields = &.{
+    .{ .name = "text", .semantic = .utf8_string },
+    .{ .name = "fg", .doc = "0xRRGGBB." },
+} }),
+api.enumType("CursorStyle", .{ .fields = &.{
+    .{ .name = "block", .doc = "The filled cell the terminal starts in." },
+} }),
+```
+
+| 필드 | 의미 |
+|---|---|
+| `name` | Zig 필드 또는 태그 이름. 없는 이름을 적으면 컴파일 시점에 거절됩니다 |
+| `semantic` | 필드의 semantic hint (`val`·`materialized`만) |
+| `doc` | 그 멤버의 Go doc |
+
+멤버 문서의 우선순위는 `.doc` → Zig 소스의 `///` → 생성기의 기본 문장입니다. 태그를
+테이블에서 만드는 enum처럼 소스에 `///`를 붙일 자리가 없는 타입은 `.doc`이 유일한
+경로입니다.
 
 공통 entry 메서드:
 

@@ -106,7 +106,7 @@ fn collectTypes(comptime entries: []const a.Entry, state: *State) void {
                 .handle => |o| .{ .handle = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .fields = o.fields, .ext = externalExtensions(t.extensions) } },
                 .value => |o| .{ .value = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .fields = o.fields, .go = o.go, .ext = externalExtensions(t.extensions) } },
                 .materialized => |o| .{ .materialized = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .fields = o.fields, .ext = externalExtensions(t.extensions) } },
-                .enumeration => |o| .{ .enumeration = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .go = o.go, .exhaustive = o.exhaustive, .text = hasText(t.extensions), .ext = externalExtensions(t.extensions) } },
+                .enumeration => |o| .{ .enumeration = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .go = o.go, .exhaustive = o.exhaustive, .fields = o.fields, .text = hasText(t.extensions), .ext = externalExtensions(t.extensions) } },
                 .tagged_union => |o| .{ .tagged_union = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .access = o.access, .omit = o.omit, .ext = externalExtensions(t.extensions) } },
                 .callback => |o| .{ .callback = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .params = callbackParams(t.ref.type, o, t.ref.path), .returns = .{ .semantic = o.returns.semantic }, .userdata = o.userdata, .retention = o.retention, .thread = o.thread, .reentrancy = o.reentrancy, .on_callback_failure = o.on_failure, .ext = externalExtensions(t.extensions) } },
             };

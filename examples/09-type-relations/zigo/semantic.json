@@ -935,10 +935,12 @@
       "exhaustive": true,
       "fields": [
         {
+          "doc": "The filled cell the terminal starts in.",
           "name": "block",
           "value": 0
         },
         {
+          "doc": "A vertical bar between two cells.",
           "name": "bar",
           "value": 1
         },

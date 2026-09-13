@@ -23,7 +23,12 @@ pub const bindings = zigo.define(.{
             Accumulator.func("total", .{}),
             Accumulator.func("deinit", .{}),
         }),
-        api.enumType("CursorStyle", .{}),
+        // A table-built enum has no `///` in the source to lend: the tags are
+        // strings in a slice. `.fields` is where those members get documented.
+        api.enumType("CursorStyle", .{ .fields = &.{
+            .{ .name = "block", .doc = "The filled cell the terminal starts in." },
+            .{ .name = "bar", .doc = "A vertical bar between two cells." },
+        } }),
         api.enumType("CharsetSlot", .{}),
         DeccolmMode.define(&.{
             DeccolmMode.func("columns", .{}),

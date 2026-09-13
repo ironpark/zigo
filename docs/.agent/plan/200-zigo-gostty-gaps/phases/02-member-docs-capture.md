@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-13T07:46:48Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `/// 0xRRGGBB.`가 붙은 Zig 필드가 생성된 Go에서 같은 문장을 단다.
 > NEXT: none

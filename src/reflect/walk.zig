@@ -99,7 +99,7 @@ pub fn reflect(
             // built by a comptime function has a `@typeName` that ends in
             // the expression that built it, and no name of its own.
             .enumeration => |enumeration| switch (info) {
-                .@"enum" => try appendEnum(allocator, &types, declaration, T, type_name, enumeration.doc, !enumeration.exhaustive, enumeration.text, comptime goAdapter(enumeration.go), try registeredZigPath(allocator, declaration, T, type_name)),
+                .@"enum" => try appendEnum(allocator, &types, declaration, T, type_name, enumeration.doc, !enumeration.exhaustive, enumeration.text, comptime goAdapter(enumeration.go), try registeredZigPath(allocator, declaration, T, type_name), enumeration.fields),
                 else => @compileError("zigo `.enumeration` type entries must name an enum"),
             },
             .tagged_union => |tagged| switch (info) {
@@ -1637,7 +1637,8 @@ pub fn discoveryEnabled(comptime declaration: zigo.Binding) bool {
 fn fieldSemantic(comptime fields: []const zigo.ValueField, comptime name: []const u8) ?semantic.SemanticHint {
     inline for (fields) |field| {
         if (comptime std.mem.eql(u8, field.name, name)) {
-            return if (field.semantic == .integer) null else ir(semantic.SemanticHint, field.semantic);
+            const hint = field.semantic orelse return null;
+            return if (hint == .integer) null else ir(semantic.SemanticHint, hint);
         }
     }
     return null;
@@ -2107,7 +2108,7 @@ fn typeNode(
             for (types.items) |type_declaration| {
                 if (std.mem.eql(u8, type_declaration.name, name)) exists = true;
             }
-            if (!exists) try appendEnum(allocator, types, declaration, T, name, null, false, false, null, @typeName(T));
+            if (!exists) try appendEnum(allocator, types, declaration, T, name, null, false, false, null, @typeName(T), &.{});
             break :blk .{ .@"enum" = .{ .ref = name } };
         },
         .@"struct" => blk: {
@@ -2573,10 +2574,16 @@ fn appendEnum(
     text: bool,
     go_adapter: ?semantic.GoAdapter,
     zig_path: []const u8,
+    comptime field_meta: []const zigo.EnumField,
 ) !void {
     const info = @typeInfo(T).@"enum";
+    comptime validateEnumFieldMeta(T, field_meta);
     const fields = try allocator.alloc(semantic.TypeField, info.fields.len);
-    inline for (info.fields, 0..) |field, index| fields[index] = .{ .name = field.name, .value = @intCast(field.value) };
+    inline for (info.fields, 0..) |field, index| fields[index] = .{
+        .doc = comptime memberDoc(zigo.EnumField, field_meta, field.name),
+        .name = field.name,
+        .value = @intCast(field.value),
+    };
     const tag_type = try typeNode(allocator, declaration, info.tag_type, types, "the tag type of enum `" ++ @typeName(T) ++ "`");
     try types.append(allocator, .{
         .doc = doc,
@@ -2607,6 +2614,20 @@ fn validateFieldMeta(comptime T: type, comptime fields: []const zigo.ValueField)
     for (fields) |field| {
         if (!@hasField(T, field.name)) @compileError("zigo `.fields` names `" ++ field.name ++ "`, which is not a field of `" ++ shortTypeName(@typeName(T)) ++ "`");
     }
+}
+
+fn validateEnumFieldMeta(comptime T: type, comptime fields: []const zigo.EnumField) void {
+    for (fields) |field| {
+        if (!@hasField(T, field.name)) @compileError("zigo `.fields` names `" ++ field.name ++ "`, which is not a tag of `" ++ shortTypeName(@typeName(T)) ++ "`");
+    }
+}
+
+/// The doc a `.fields` entry wrote for one member, if it named it at all.
+fn memberDoc(comptime Field: type, comptime fields: []const Field, comptime name: []const u8) ?[]const u8 {
+    inline for (fields) |field| {
+        if (comptime std.mem.eql(u8, field.name, name)) return field.doc;
+    }
+    return null;
 }
 
 fn appendValueStruct(
@@ -2647,6 +2668,7 @@ fn appendValueStruct(
     inline for (info.fields, 0..) |field, field_index| {
         fields[field_index] = .{
             .atomic = if (comptime atomicScalar(field.type) != null) true else null,
+            .doc = comptime memberDoc(zigo.ValueField, field_meta, field.name),
             .name = field.name,
             .semantic = comptime fieldSemantic(field_meta, field.name),
             .type = if (info.layout == .@"packed")
@@ -3962,6 +3984,34 @@ test "a registered enum records the text encoding opt-in" {
     const bytes = try document.serialize(std.testing.allocator);
     defer std.testing.allocator.free(bytes);
     try std.testing.expect(std.mem.indexOf(u8, bytes, "\"text\": true") != null);
+}
+
+test "a binding documents individual enum tags and struct fields" {
+    const Mode = enum(u8) { fast, slow };
+    const Point = extern struct { x: i16, y: i16 };
+    const Fixture = struct {
+        pub fn echo(value: Mode, at: Point) Point {
+            _ = value;
+            return at;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = &.{
+            .{ .enumeration = .{ .type = Mode, .fields = &.{.{ .name = "slow", .doc = "Waits for the sync." }} } },
+            .{ .value = .{ .type = Point, .fields = &.{.{ .name = "x", .doc = "Column, from the left edge." }} } },
+        },
+        .functions = &.{.{ .path = "root.echo", .params = &.{ .{ .name = "value" }, .{ .name = "at" } } }},
+    }, "terminal", "zg");
+
+    const mode = semantic.typeDecl(document.types, "Mode").?;
+    try std.testing.expect(mode.fields[0].doc == null);
+    try std.testing.expectEqualStrings("Waits for the sync.", mode.fields[1].doc.?);
+    const point = semantic.typeDecl(document.types, "Point").?;
+    try std.testing.expectEqualStrings("Column, from the left edge.", point.fields[0].doc.?);
+    try std.testing.expect(point.fields[1].doc == null);
 }
 
 test "an unregistered generated enum is named from @typeName and rejected downstream" {

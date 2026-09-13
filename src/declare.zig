@@ -300,7 +300,16 @@ pub const HandleField = struct {
 /// A hint for one field of a value or materialized struct.
 pub const ValueField = struct {
     name: []const u8,
-    semantic: SemanticHint,
+    semantic: ?SemanticHint = null,
+    /// Go doc for this field. Absent takes the Zig source's `///`, and
+    /// failing that the generated description.
+    doc: ?[]const u8 = null,
+};
+
+/// Go doc for one member of a registered enum, by its Zig tag name.
+pub const EnumField = struct {
+    name: []const u8,
+    doc: ?[]const u8 = null,
 };
 
 pub const Handle = struct {
@@ -359,6 +368,9 @@ pub const Enum = struct {
     go: ?GoAdapter = null,
     /// Zig methods the generated Go enum makes redundant, for `go-coverage`.
     covers: []const []const u8 = &.{},
+    /// Go docs for individual tags. Listing a tag is optional, and a tag left
+    /// out takes the Zig source's `///`.
+    fields: []const EnumField = &.{},
     /// Plugin options, one entry per plugin. Written by `extend`.
     ext: []const Extension = &.{},
 

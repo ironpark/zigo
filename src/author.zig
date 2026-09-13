@@ -107,7 +107,7 @@ pub const Function = struct { ref: FunctionRef, options: FunctionOptions = .{}, 
 pub const HandleOptions = struct { fields: []const ir.HandleField = &.{} };
 pub const ValueOptions = struct { fields: []const ir.ValueField = &.{}, go: ?GoAdapter = null };
 pub const MaterializedOptions = struct { fields: []const ir.ValueField = &.{} };
-pub const EnumOptions = struct { exhaustive: bool = true, go: ?GoAdapter = null, covers: []const FunctionRef = &.{} };
+pub const EnumOptions = struct { exhaustive: bool = true, go: ?GoAdapter = null, covers: []const FunctionRef = &.{}, fields: []const ir.EnumField = &.{} };
 pub const UnionOptions = struct { access: ir.Access = .projection, omit: []const []const u8 = &.{} };
 /// Sparse hints indexed by the original native callback signature.
 pub const CallbackParam = struct { index: usize, semantic: ?SemanticHint = null };
