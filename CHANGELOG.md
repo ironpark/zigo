@@ -4,7 +4,7 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
-## [Unreleased]
+## [0.26.0] - 2026-09-13
 
 gostty를 쓰면서 zigo에 기능이 없어 우회한 자리들입니다.
 
