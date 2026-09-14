@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-14T08:05:18Z"
 depends_on:
 - "202-plugin-extensibility#2"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `grep -rn "goIterator\|goImplements" src` returns nothing.
 > NEXT: none

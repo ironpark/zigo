@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-14T08:05:18Z"
 depends_on:
 - api-consistency-refactor
 description: "Plugin contract 5.0: Go builder layer, node-level ext with param/field use, visitor hooks, built-ins on the public contract"
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-14T06:30:33Z"
 ---
 > NEXT: Go builder layer: replaces string templates so later phases port hooks once. ([Phase 0](phases/00-go-builder.md))
@@ -12,7 +13,7 @@ registered_at: "2026-09-14T06:30:33Z"
 - [x] [Phase 00: Go builder layer](phases/00-go-builder.md)
 - [x] [Phase 01: Node-level extensions and DSL use](phases/01-node-ext.md)
 - [x] [Phase 02: Visitor hooks](phases/02-visitor-hooks.md)
-- [ ] [Phase 03: Built-ins on the public contract](phases/03-builtins-on-contract.md)
+- [x] [Phase 03: Built-ins on the public contract](phases/03-builtins-on-contract.md)
 
 # Shared Verification
 
