@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-14T07:40:17Z"
 depends_on:
 - "202-plugin-extensibility#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `grep -rn "method_hook\|type_hook\|file_hook\|package_hook" src plugins docs` returns nothing.
 > NEXT: none
