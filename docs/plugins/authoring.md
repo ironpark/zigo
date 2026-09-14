@@ -52,8 +52,8 @@ fn typeHook(
 }
 ```
 
-선언에 붙은 옵션은 모든 context에서 같은 한 가지 방법, `optionsOf(plugin, .function | .type, ext)`로
-읽습니다. Go 출력은 `context.builder()`가 돌려주는 [builder](api-reference.md#go-builder)로
+선언과 그 안쪽 node에 붙은 옵션은 모든 context에서 같은 한 가지 방법,
+`optionsOf(plugin, attachment, ext)`로 읽습니다. Go 출력은 `context.builder()`가 돌려주는 [builder](api-reference.md#go-builder)로
 조립합니다. 플러그인은 Go 문법을 문자열로 쓰지 않습니다. Zig 이름에서 파생하는 Go 식별자는
 `identifierAlloc(allocator, name, .pascal | .camel)`로 얻어야 generator가 core 타입에 쓰는 것과
 같은 표기(initialism 규칙)를 플러그인도 얻습니다. builder node는 context allocator(run arena)에
@@ -115,9 +115,10 @@ zig build go
 - 진단 접두사
 - 플러그인 출력 owner와 file 접미사
 
-대문자 ASCII 이름을 사용하세요. `subjects`는 옵션을 붙일 수 있는 선언 kind를
-제한하며 `.function`, `.handle`, `.value`, `.enumeration`, `.tagged_union`, `.callback`,
-`.materialized`, `.error_set`을 선택할 수 있습니다.
+대문자 ASCII 이름을 사용하세요. `subjects`는 옵션을 붙일 수 있는 node kind를
+제한하며 선언 kind인 `.function`, `.handle`, `.value`, `.enumeration`, `.tagged_union`,
+`.callback`, `.materialized`, `.error_set`과 선언 안쪽 node인 `.param`, `.result`,
+`.field`, `.enum_tag`를 선택할 수 있습니다.
 
 ## 옵션
 
@@ -131,9 +132,48 @@ pub const TypeOptions = struct {
 };
 ```
 
-`FunctionOptions`와 `TypeOptions`는 JSON으로 직렬화 가능한 타입이어야 합니다. 사용자가
+선언 안쪽 node도 각자의 옵션 타입을 가집니다.
+
+```zig
+pub const ParamOptions = struct {
+    trusted: bool = false,
+};
+
+pub const FieldOptions = struct {
+    column: []const u8,
+};
+```
+
+여섯 옵션 타입은 모두 JSON으로 직렬화 가능한 타입이어야 합니다. 사용자가
 `.use(plugin, value)`를 쓰는 위치에서 Zig 타입 checking이 먼저 적용되고 generator에서 다시
 decode됩니다.
+
+binding은 매개변수와 field에 같은 방식으로 붙입니다.
+
+```zig
+api.func("insert", .{
+    .params = &.{zigo.param.input(1).use(known.plugin, .{ .trusted = true })},
+}),
+api.value("Row", .{
+    .fields = &.{(zigo.ValueField{ .name = "id" }).use(known.plugin, .{ .column = "row_id" })},
+}),
+```
+
+hook은 그 node의 `ext`를 해당 attachment로 읽습니다.
+
+```zig
+for (function.origin.params) |parameter| {
+    const options = try context.optionsOf(plugin, .param, parameter.ext) orelse continue;
+    if (options.trusted) ...;
+}
+for (declaration.fields) |field| {
+    const options = try context.optionsOf(plugin, .field, field.ext) orelse continue;
+    ...;
+}
+```
+
+`subjects`에 `.param`이나 `.field`를 넣지 않은 플러그인에 그 node로 `use`하면 선언
+위치에서 컴파일 error입니다.
 
 빌드 전체 설정은 `Config`로 분리하고 `plugin` 선언에도 `.Config = Config`를 지정합니다.
 

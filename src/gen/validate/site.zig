@@ -5,3 +5,7 @@ pub const functionDeclarationAlloc = site.functionDeclarationAlloc;
 pub const typeSiteFor = site.typeSiteFor;
 pub const typeSite = site.typeSite;
 pub const documentSite = site.documentSite;
+pub const paramSite = site.paramSite;
+pub const resultSite = site.resultSite;
+pub const fieldSite = site.fieldSite;
+pub const tagSite = site.tagSite;

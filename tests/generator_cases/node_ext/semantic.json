@@ -1,0 +1,49 @@
+{
+  "functions": [
+    {
+      "name": "bump",
+      "params": [
+        {
+          "name": "by",
+          "type": {"bits": 32, "kind": "int", "signed": true},
+          "ext": {"NODEEXT": {"marker": "step"}}
+        }
+      ],
+      "receiver": "Counter",
+      "result_ext": {"NODEEXT": {"marker": "total"}},
+      "return": {"kind": "value_struct", "ref": "Point"},
+      "symbol": "zg_counter_bump"
+    },
+    {
+      "name": "mode",
+      "params": [],
+      "receiver": "Counter",
+      "return": {"kind": "enum", "ref": "Mode"},
+      "symbol": "zg_counter_mode"
+    }
+  ],
+  "package": "nodes",
+  "prefix": "zg",
+  "types": [
+    {"kind": "opaque", "name": "Counter"},
+    {
+      "fields": [
+        {"name": "x", "type": {"bits": 32, "kind": "int", "signed": true}, "ext": {"NODEEXT": {"marker": "across"}}},
+        {"name": "y", "type": {"bits": 32, "kind": "int", "signed": true}}
+      ],
+      "kind": "value_struct",
+      "layout": "extern",
+      "name": "Point"
+    },
+    {
+      "fields": [
+        {"name": "idle", "value": 0, "ext": {"NODEEXT": {"marker": "zero"}}},
+        {"name": "active", "value": 1}
+      ],
+      "kind": "enum",
+      "name": "Mode",
+      "tag_type": {"bits": 8, "kind": "int", "signed": false}
+    }
+  ],
+  "zig_version": "0.16.0"
+}

@@ -95,6 +95,9 @@ fn collectTypes(comptime entries: []const a.Entry, state: *State) void {
             checkRoot(t.ref.root, state.root, t.ref.path);
             checkExtensions(t.extensions);
             if (t.representation == .handle) for (t.representation.handle.fields) |field| checkExtensions(field.ext);
+            if (t.representation == .value) for (t.representation.value.fields) |field| checkExtensions(field.ext);
+            if (t.representation == .materialized) for (t.representation.materialized.fields) |field| checkExtensions(field.ext);
+            if (t.representation == .enumeration) for (t.representation.enumeration.fields) |field| checkExtensions(field.ext);
             for (state.source_types) |previous| {
                 if (std.mem.eql(u8, previous.ref.path, t.ref.path)) @compileError("zigo duplicate type declaration: " ++ t.ref.path);
                 if (previous.ref.type == t.ref.type) @compileError("zigo ambiguous registration of the same Zig type: " ++ t.ref.path);
@@ -260,6 +263,8 @@ fn normalizeFunction(comptime f: a.Function, comptime state: State, comptime par
     }
     result.returns.semantic = f.options.returns.semantic;
     result.returns.go = f.options.returns.go;
+    checkExtensions(f.options.returns.extensions);
+    result.returns.ext = f.options.returns.extensions;
     switch (f.options.returns.ownership) {
         .inferred => {},
         .owned => |owned| {
@@ -290,6 +295,8 @@ fn normalizeFunction(comptime f: a.Function, comptime state: State, comptime par
                 out.name = p.go_name;
                 out.semantic = p.semantic;
                 out.go = p.go;
+                checkExtensions(p.extensions);
+                out.ext = p.extensions;
                 switch (p.contract) {
                     .value => {},
                     .buffer => |b| switch (b) {

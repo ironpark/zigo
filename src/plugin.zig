@@ -123,7 +123,7 @@ pub const TransformContext = struct {
     pub fn diagnose(self: TransformContext, issue: diagnostic.Diagnostic) !void {
         try self.diagnostics.append(self.allocator, issue);
     }
-    pub fn optionsOf(self: TransformContext, comptime P: Plugin, comptime attachment: Attachment, ext: ?semantic.Extensions) !?(if (attachment == .function) P.FunctionOptions else P.TypeOptions) {
+    pub fn optionsOf(self: TransformContext, comptime P: Plugin, comptime attachment: Attachment, ext: ?semantic.Extensions) !?Options(P, attachment) {
         return readOptions(P, attachment, self.allocator, ext);
     }
 
@@ -154,7 +154,36 @@ pub const TypeUse = union(enum) {
     result: semantic.SemanticFn,
 };
 
-pub const Attachment = enum { function, type };
+/// Which node an `ext` object came off, and so which of the plugin's option
+/// types reads it. `function` and `type` are the declaration-level pair;
+/// `param`, `result`, `field` and `enum_tag` are the nodes inside one.
+pub const Attachment = enum { function, type, param, result, field, enum_tag };
+
+/// The option type `P` declares for `attachment`.
+pub fn Options(comptime P: Plugin, comptime attachment: Attachment) type {
+    return switch (attachment) {
+        .function => P.FunctionOptions,
+        .type => P.TypeOptions,
+        .param => P.ParamOptions,
+        .result => P.ResultOptions,
+        .field => P.FieldOptions,
+        .enum_tag => P.TagOptions,
+    };
+}
+
+/// The subject a plugin has to declare in `subjects` to attach to
+/// `attachment`. `type` has no single subject -- the declaration's kind is
+/// its subject -- so it is resolved through `typeSubject` instead.
+pub fn attachmentSubject(attachment: Attachment) ?Subject {
+    return switch (attachment) {
+        .function => .function,
+        .type => null,
+        .param => .param,
+        .result => .result,
+        .field => .field,
+        .enum_tag => .enum_tag,
+    };
+}
 
 pub const ValidateContext = struct {
     allocator: std.mem.Allocator,
@@ -173,7 +202,7 @@ pub const ValidateContext = struct {
         return readConfig(P, self.allocator, self.configurations);
     }
 
-    pub fn optionsOf(self: ValidateContext, comptime P: Plugin, comptime attachment: Attachment, ext: ?semantic.Extensions) !?(if (attachment == .function) P.FunctionOptions else P.TypeOptions) {
+    pub fn optionsOf(self: ValidateContext, comptime P: Plugin, comptime attachment: Attachment, ext: ?semantic.Extensions) !?Options(P, attachment) {
         return readOptions(P, attachment, self.allocator, ext);
     }
 };
@@ -457,7 +486,7 @@ pub const Context = struct {
     /// `P`'s options on the declaration whose `ext` this is -- the function
     /// being written or the type being hooked -- or null when the declaration
     /// did not attach `P`.
-    pub fn optionsOf(self: Context, comptime P: Plugin, comptime attachment: Attachment, ext: ?semantic.Extensions) !?(if (attachment == .function) P.FunctionOptions else P.TypeOptions) {
+    pub fn optionsOf(self: Context, comptime P: Plugin, comptime attachment: Attachment, ext: ?semantic.Extensions) !?Options(P, attachment) {
         return readOptions(P, attachment, self.allocator, ext);
     }
 
@@ -485,15 +514,32 @@ pub fn optionsCode(comptime P: anytype) []const u8 {
 /// attach `P`. The result is allocated from `allocator` and never freed
 /// individually: the generator backs it with the arena that owns the run.
 /// Every context exposes it as `optionsOf`; that is the one way to read it.
-fn readOptions(comptime P: Plugin, comptime attachment: Attachment, allocator: std.mem.Allocator, ext: ?semantic.Extensions) !?(if (attachment == .function) P.FunctionOptions else P.TypeOptions) {
+fn readOptions(comptime P: Plugin, comptime attachment: Attachment, allocator: std.mem.Allocator, ext: ?semantic.Extensions) !?Options(P, attachment) {
     const attached = (ext orelse return null).get(P.name) orelse return null;
-    return std.json.parseFromValueLeaky(if (attachment == .function) P.FunctionOptions else P.TypeOptions, allocator, attached, .{}) catch return error.InvalidPluginOptions;
+    return std.json.parseFromValueLeaky(Options(P, attachment), allocator, attached, .{}) catch return error.InvalidPluginOptions;
 }
 
 /// What a plugin attaches to: the kind of declaration, not the output
 /// language. The two axes are separate and `targets.Target` is the other one,
 /// so this deliberately does not use the word.
-pub const Subject = enum { function, handle, value, enumeration, tagged_union, callback, materialized, error_set };
+pub const Subject = enum {
+    function,
+    handle,
+    value,
+    enumeration,
+    tagged_union,
+    callback,
+    materialized,
+    error_set,
+    /// One parameter of a function.
+    param,
+    /// One function's result.
+    result,
+    /// One field of a value, materialized or handle declaration.
+    field,
+    /// One tag of a registered enum.
+    enum_tag,
+};
 
 pub fn typeSubject(kind: semantic.TypeKind) Subject {
     return switch (kind) {
@@ -537,9 +583,16 @@ pub const Plugin = struct {
     /// struct. A plugin that takes none leaves it at the empty struct.
     FunctionOptions: type = struct {},
     TypeOptions: type = struct {},
-    /// The declaration kinds this plugin attaches to. A plugin left at the
-    /// default attaches to all of them.
-    subjects: []const Subject = &.{ .function, .handle, .value, .enumeration, .tagged_union, .callback, .materialized, .error_set },
+    /// The node options this plugin reads, in the same shape and for the
+    /// same reason as the declaration ones: a parameter, a result, a struct
+    /// or handle field, and an enum tag each carry their own `ext`.
+    ParamOptions: type = struct {},
+    ResultOptions: type = struct {},
+    FieldOptions: type = struct {},
+    TagOptions: type = struct {},
+    /// The node kinds this plugin attaches to. A plugin left at the default
+    /// attaches to all of them.
+    subjects: []const Subject = &.{ .function, .handle, .value, .enumeration, .tagged_union, .callback, .materialized, .error_set, .param, .result, .field, .enum_tag },
     /// The output languages this plugin can render for, by `targets.Target`
     /// name. The default is Go alone, because the rendering surface a plugin
     /// writes through -- `Context.writeGoType` and its siblings -- writes Go.
@@ -672,7 +725,7 @@ pub const AnalyzeContext = struct {
         return self.render.config(P);
     }
 
-    pub fn optionsOf(self: AnalyzeContext, comptime P: Plugin, comptime attachment: Attachment, ext: ?semantic.Extensions) !?(if (attachment == .function) P.FunctionOptions else P.TypeOptions) {
+    pub fn optionsOf(self: AnalyzeContext, comptime P: Plugin, comptime attachment: Attachment, ext: ?semantic.Extensions) !?Options(P, attachment) {
         return readOptions(P, attachment, self.render.allocator, ext);
     }
 };
@@ -776,11 +829,20 @@ pub const FileInfo = struct {
     kind: enum { api, enums, structs, handles, runtime, errors, tagged_union, plugin, package },
 };
 
-test "validation and transformation contexts read both declaration option types" {
+test "validation and transformation contexts read every attachment's option type" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
-    const p: Plugin = .{ .name = "LOOKUP", .FunctionOptions = struct { enabled: bool }, .TypeOptions = struct { enabled: bool } };
+    const Enabled = struct { enabled: bool };
+    const p: Plugin = .{
+        .name = "LOOKUP",
+        .FunctionOptions = Enabled,
+        .TypeOptions = Enabled,
+        .ParamOptions = Enabled,
+        .ResultOptions = Enabled,
+        .FieldOptions = Enabled,
+        .TagOptions = Enabled,
+    };
     const options = try std.json.parseFromSliceLeaky(std.json.Value, allocator, "{\"enabled\":true}", .{});
     const value: semantic.Extensions = .{ .entries = &.{.{ .plugin = "LOOKUP", .options = options }} };
     var issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
@@ -789,7 +851,7 @@ test "validation and transformation contexts read both declaration option types"
     const transform: TransformContext = .{ .allocator = allocator, .document = validate.document, .diagnostics = &issues };
     const render = testing.context(allocator, .{ .package = "test", .prefix = "test", .functions = &.{} });
     const analyze: AnalyzeContext = .{ .render = render, .facts = &facts, .diagnostics = &issues };
-    inline for (.{ Attachment.function, Attachment.type }) |attachment| {
+    inline for (.{ Attachment.function, .type, .param, .result, .field, .enum_tag }) |attachment| {
         try std.testing.expect((try validate.optionsOf(p, attachment, value)).?.enabled);
         try std.testing.expect((try transform.optionsOf(p, attachment, value)).?.enabled);
         try std.testing.expect((try render.optionsOf(p, attachment, value)).?.enabled);

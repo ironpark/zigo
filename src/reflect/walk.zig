@@ -1030,6 +1030,7 @@ fn appendFunction(
             ));
         var reflected: semantic.Parameter = .{
             .atomic = if (comptime atomicScalar(param.type.?) != null) true else null,
+            .ext = if (comptime has_spec and spec.ext.len != 0) try extensionsAlloc(allocator, spec.ext) else null,
             .cancel = if (names_cancel) true else null,
             .injected = injection,
             .name = parameter_name,
@@ -1172,6 +1173,7 @@ fn appendFunction(
     // `.release` addresses the freeing function the same way `.path` does, so
     // the last segment names it inside the generated document.
     if (metadata.returns.release) |release| reflected_function.release = comptime pathMember(release);
+    if (metadata.returns.ext.len != 0) reflected_function.result_ext = try extensionsAlloc(allocator, metadata.returns.ext);
     if (metadata.cancel) |cancel| {
         reflected_function.cancel = cancel.param;
         if (cancel.canceled) |canceled| reflected_function.cancel_error = canceled;
@@ -2611,6 +2613,7 @@ fn appendEnum(
     const fields = try allocator.alloc(semantic.TypeField, info.fields.len);
     inline for (info.fields, 0..) |field, index| fields[index] = .{
         .doc = comptime memberDoc(zigo.EnumField, field_meta, field.name),
+        .ext = try memberExtensions(allocator, zigo.EnumField, field_meta, field.name),
         .name = field.name,
         .value = @intCast(field.value),
     };
@@ -2650,6 +2653,22 @@ fn validateEnumFieldMeta(comptime T: type, comptime fields: []const zigo.EnumFie
     for (fields) |field| {
         if (!@hasField(T, field.name)) @compileError("zigo `.fields` names `" ++ field.name ++ "`, which is not a tag of `" ++ shortTypeName(@typeName(T)) ++ "`");
     }
+}
+
+/// The plugin options a `.fields` entry attached to one member, if it named
+/// it at all. Absent stays absent, so a document whose members no plugin
+/// extended carries no `ext` key.
+fn memberExtensions(
+    allocator: std.mem.Allocator,
+    comptime Field: type,
+    comptime fields: []const Field,
+    comptime name: []const u8,
+) !?semantic.Extensions {
+    inline for (fields) |field| {
+        if (comptime std.mem.eql(u8, field.name, name) and field.ext.len != 0)
+            return try extensionsAlloc(allocator, field.ext);
+    }
+    return null;
 }
 
 /// The doc a `.fields` entry wrote for one member, if it named it at all.
@@ -2699,6 +2718,7 @@ fn appendValueStruct(
         fields[field_index] = .{
             .atomic = if (comptime atomicScalar(field.type) != null) true else null,
             .doc = comptime memberDoc(zigo.ValueField, field_meta, field.name),
+            .ext = try memberExtensions(allocator, zigo.ValueField, field_meta, field.name),
             .name = field.name,
             .semantic = comptime fieldSemantic(field_meta, field.name),
             .type = if (info.layout == .@"packed")
@@ -5650,4 +5670,58 @@ test "callback and materialized plugin attachments survive authoring and reflect
         attached += 1;
     }
     try std.testing.expectEqual(@as(usize, 2), attached);
+}
+
+test "node-level plugin attachments survive authoring and reflection" {
+    const public = @import("zigo");
+    const Fixture = struct {
+        pub const Mode = enum(u8) { idle, active };
+        pub const Point = extern struct { x: i32, y: i32 };
+        pub fn measure(_: []const u8) Point {
+            return .{ .x = 0, .y = 0 };
+        }
+    };
+    const Node = struct { tag: []const u8 };
+    const P: public.Plugin = .{
+        .name = "NODE",
+        .ParamOptions = Node,
+        .ResultOptions = Node,
+        .FieldOptions = Node,
+        .TagOptions = Node,
+        .subjects = &.{ .param, .result, .field, .enum_tag },
+    };
+    const api = public.scope(Fixture);
+    const binding = comptime public.define(api, .{ .declarations = &.{
+        api.value("Point", .{ .fields = &.{(public.ValueField{ .name = "x" }).use(P, .{ .tag = "across" })} }),
+        api.enumeration("Mode", .{ .fields = &.{(public.EnumField{ .name = "idle" }).use(P, .{ .tag = "zero" })} }),
+        api.func("measure", .{
+            .params = &.{public.param.input(0).use(P, .{ .tag = "input" })},
+            .returns = public.result.owned().use(P, .{ .tag = "output" }),
+        }),
+    } });
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), binding, "sample", "zg");
+
+    // Every node kind carries its own `ext`, keyed by the plugin that wrote it.
+    const function = document.functions[0];
+    try std.testing.expectEqualStrings("input", function.params[0].ext.?.get("NODE").?.object.get("tag").?.string);
+    try std.testing.expectEqualStrings("output", function.result_ext.?.get("NODE").?.object.get("tag").?.string);
+    for (document.types) |declaration| switch (declaration.kind) {
+        .value_struct => {
+            try std.testing.expectEqualStrings("across", declaration.fields[0].ext.?.get("NODE").?.object.get("tag").?.string);
+            // A member no plugin extended stays free of the key entirely.
+            try std.testing.expect(declaration.fields[1].ext == null);
+        },
+        .@"enum" => {
+            try std.testing.expectEqualStrings("zero", declaration.fields[0].ext.?.get("NODE").?.object.get("tag").?.string);
+            try std.testing.expect(declaration.fields[1].ext == null);
+        },
+        else => {},
+    };
+
+    // And the document they reach is the one a plugin reads back.
+    const bytes = try document.serialize(arena.allocator());
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"tag\": \"across\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"result_ext\"") != null);
 }

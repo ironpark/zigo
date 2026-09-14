@@ -353,6 +353,7 @@ pub fn addRepositorySteps(
         .{ .path = b.path("plugins/satisfies/src/plugin.zig") },
         .{ .path = b.path("plugins/json/src/plugin.zig") },
         .{ .path = b.path("tests/plugins/wrappers.zig") },
+        .{ .path = b.path("tests/plugins/nodeext.zig") },
     });
     const contract_modules = modules.createGeneratorModules(b, b.path("src"), target, optimize, &.{ .{ .path = b.path("tests/plugins/transform_observer.zig") }, .{ .path = b.path("tests/plugins/contract.zig"), .config = "{\"label\":\"from-build\"}" }, .{ .path = b.path("tests/plugins/outputs.zig") } });
     const contract_tests = b.addTest(.{ .root_module = b.createModule(.{
@@ -1150,6 +1151,10 @@ fn addBindingAuthoringErrors(b: *std.Build, test_step: *std.Build.Step) void {
         .{ "duplicate_plugin", "zigo duplicate plugin attachment" },
         .{ "plugin_subject", "zigo plugin TEST does not support handle" },
         .{ "unsupported_plugin_subject", "zigo plugin TEST does not support callback" },
+        .{ "plugin_param_subject", "zigo plugin TEST does not support param" },
+        .{ "plugin_result_subject", "zigo plugin TEST does not support result" },
+        .{ "plugin_field_subject", "zigo plugin TEST does not support field" },
+        .{ "plugin_tag_subject", "zigo plugin TEST does not support enum_tag" },
         .{ "plugin_options", "no field named 'limit'" },
     };
     inline for (cases) |case| {

@@ -112,6 +112,8 @@ pub const Param = struct {
     /// `usize` right after the callback.
     userdata: ?struct { param: []const u8 } = null,
     go: ?GoAdapter = null,
+    /// Plugin options, one entry per plugin. Written by `Param.use`.
+    ext: []const Extension = &.{},
 };
 
 /// Everything about a function's result.
@@ -121,6 +123,8 @@ pub const Returns = struct {
     /// Path of the function that frees a caller-owned result.
     release: ?[]const u8 = null,
     go: ?GoAdapter = null,
+    /// Plugin options, one entry per plugin. Written by `Returns.use`.
+    ext: []const Extension = &.{},
 };
 
 /// An empty name asks for the derived one: `All`, or `AllChecked` over a
@@ -222,13 +226,61 @@ pub const ValueField = struct {
     /// Go doc for this field. Absent takes the Zig source's `///`, and
     /// failing that the generated description.
     doc: ?[]const u8 = null,
+    /// Plugin options, one entry per plugin. Written by `use`.
+    ext: []const Extension = &.{},
+
+    /// Attach `value` as plugin `P`'s field options for this member. A
+    /// plugin whose `subjects` exclude `.field` is refused here, where the
+    /// declaration is written.
+    pub fn use(comptime self: ValueField, comptime P: anytype, comptime value: P.FieldOptions) ValueField {
+        comptime checkNodeSubject(P, "field");
+        comptime checkDuplicate(self.ext, P.name);
+        const Captured = struct {
+            pub const name = P.name;
+            pub const Options = P.FieldOptions;
+        };
+        var result = self;
+        result.ext = self.ext ++ [_]Extension{extension(Captured, value)};
+        return result;
+    }
 };
 
 /// Go doc for one member of a registered enum, by its Zig tag name.
 pub const EnumField = struct {
     name: []const u8,
     doc: ?[]const u8 = null,
+    /// Plugin options, one entry per plugin. Written by `use`.
+    ext: []const Extension = &.{},
+
+    /// Attach `value` as plugin `P`'s tag options for this member. A plugin
+    /// whose `subjects` exclude `.enum_tag` is refused here.
+    pub fn use(comptime self: EnumField, comptime P: anytype, comptime value: P.TagOptions) EnumField {
+        comptime checkNodeSubject(P, "enum_tag");
+        comptime checkDuplicate(self.ext, P.name);
+        const Captured = struct {
+            pub const name = P.name;
+            pub const Options = P.TagOptions;
+        };
+        var result = self;
+        result.ext = self.ext ++ [_]Extension{extension(Captured, value)};
+        return result;
+    }
 };
+
+/// The subject check every node-level `use` shares. `P` is a `plugin.Plugin`
+/// value from a binding, or a type spelling the same decls in a test; only a
+/// value carries `subjects`. Tags are compared by name so the DSL's own
+/// `Subject` spelling and the plugin contract's pass the same check.
+fn checkNodeSubject(comptime P: anytype, comptime subject: []const u8) void {
+    if (@TypeOf(P) == type or !@hasField(@TypeOf(P), "subjects")) return;
+    for (P.subjects) |candidate| if (std.mem.eql(u8, @tagName(candidate), subject)) return;
+    @compileError("zigo plugin " ++ P.name ++ " does not support " ++ subject);
+}
+
+fn checkDuplicate(comptime entries: []const Extension, comptime name: []const u8) void {
+    for (entries) |existing| if (std.mem.eql(u8, existing.plugin, name))
+        @compileError("zigo duplicate plugin attachment: " ++ name);
+}
 
 pub const Handle = struct {
     type: type,

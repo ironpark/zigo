@@ -320,6 +320,29 @@ test "a hook reads the typed options the declaration attached" {
     try std.testing.expect(std.mem.indexOf(u8, rendered.written(), "func (c *Counter) BumpTestHook() string { return \"b\" }") != null);
 }
 
+test "a hook reads the options a parameter, a result, a field and a tag attached" {
+    const fixture =
+        \\{"functions":[{"name":"bump","params":[{"ext":{"TEST":{"tag":"step"}},"name":"by","type":{"bits":32,"kind":"int","signed":true}}],"receiver":"Counter","result_ext":{"TEST":{"tag":"total"}},"return":{"kind":"value_struct","ref":"Point"},"symbol":"zg_counter_bump"}],"ir_version":1,"package":"meter","prefix":"zg","types":[{"kind":"opaque","name":"Counter"},{"fields":[{"ext":{"TEST":{"tag":"zero"}},"name":"idle","value":0}],"kind":"enum","name":"Mode","tag_type":{"bits":8,"kind":"int","signed":false}},{"fields":[{"ext":{"TEST":{"tag":"across"}},"name":"x","type":{"bits":32,"kind":"int","signed":true}}],"kind":"value_struct","layout":"extern","name":"Point"}],"zig_version":"0.16.0"}
+    ;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    var parsed = try semantic.Semantic.parse(allocator, fixture);
+    defer parsed.deinit();
+    const program = try @import("lower").semanticDocument(allocator, parsed.value, "meter", "zg", &.{});
+
+    const testing_plugin = @import("../plugins/testing.zig");
+    testing_plugin.enabled = true;
+    defer testing_plugin.enabled = false;
+
+    const rendered = try renderAllPublicFiles(allocator, program);
+    // Each of the four node kinds reached the hook through its own `ext`.
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "// zigoTestHook param by at 0: step.") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "// zigoTestHook result of bump: total.") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "// zigoTestHook tag Mode.idle: zero.") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "// zigoTestHook field Point.x: across.") != null);
+}
+
 test "plugin public paths follow root and split package options" {
     const program: abi.Program = .{ .package = "MyLibrary", .prefix = "zg", .functions = &.{} };
     const cases = [_]struct { options: emit.Options, expected: []const u8 }{

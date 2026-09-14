@@ -123,6 +123,23 @@ Go 코드는 session 자식의 `.name` 삭제로 입양 메서드가 타입 이�
 | `plugin.format`의 header·문자열 리터럴 도우미 | `plugin.gobuild`. `format`에는 `identifierAlloc`만 |
 | `plugin.contract_version` 4.0 | 5.0 |
 
+옵션이 붙는 자리도 선언에서 선언 안쪽 node까지 넓혔습니다. 매개변수, 반환값, 구조체 field와
+enum tag가 각각 자신의 `ext`를 가지며, 플러그인은 node 종류마다 옵션 타입을 따로 선언합니다.
+`ext`가 없는 node는 `semantic.json`에 키 자체를 쓰지 않으므로 기존 sidecar는 바이트 단위로
+같습니다.
+
+| 이전 | 이후 |
+|---|---|
+| `ext`는 function과 type 선언에만 존재 | `Parameter.ext`, `SemanticFn.result_ext`, `TypeField.ext`가 추가 |
+| 매개변수·반환값·field·tag에 플러그인을 붙일 방법 없음 | `zigo.param.input(n).use(P, ...)`, `zigo.result.owned().use(P, ...)`, `ValueField.use(P, ...)`, `EnumField.use(P, ...)` |
+| `Plugin`의 옵션 타입은 `FunctionOptions`, `TypeOptions` | `ParamOptions`, `ResultOptions`, `FieldOptions`, `TagOptions`가 추가 |
+| `Subject`는 선언 kind 8개 | `.param`, `.result`, `.field`, `.enum_tag`가 추가. 기본 `subjects`는 12개 모두 |
+| `Attachment`는 `.function`, `.type` | `.param`, `.result`, `.field`, `.enum_tag`가 추가. `optionsOf`가 모든 context에서 받음 |
+| `plugin.site`는 function과 type site만 | `paramSite`, `resultSite`, `fieldSite`, `tagSite`가 추가 |
+
+`subjects`에 없는 node에 `use`하면 선언 위치에서 컴파일 error이고, `semantic.json`에 직접
+써 넣은 경우에는 선언 kind와 똑같이 `<NAME>001` 진단입니다.
+
 `Context.identifierAlloc`과 나머지 writer(`writeTypeName`, `writeGoType`, `writeSignature`,
 `writeParameters`, `writeResultType`, `writeCallArguments`, `writeValueType`, `writeDoc`,
 `functionInfo`, `receiverNameAlloc`)는 그대로입니다. builder는 `Expr.typeName`, `Expr.goType`,

@@ -30,7 +30,11 @@ configuration and dependency checks
 | `Facts` | `struct {}` | analyze 결과의 typed storage |
 | `FunctionOptions` | `struct {}` | 함수 연결 옵션 |
 | `TypeOptions` | `struct {}` | 타입 연결 옵션 |
-| `subjects` | 함수와 모든 지원 타입 | 연결되는 선언 종류 제한. 출력 언어가 아니라 declaration kind입니다 |
+| `ParamOptions` | `struct {}` | 매개변수 연결 옵션 |
+| `ResultOptions` | `struct {}` | 결과 연결 옵션 |
+| `FieldOptions` | `struct {}` | value·materialized 구조체 field 연결 옵션 |
+| `TagOptions` | `struct {}` | 등록된 enum tag 연결 옵션 |
+| `subjects` | 모든 node 종류 | 연결되는 node 종류 제한. 출력 언어가 아니라 node kind입니다 |
 | `output_targets` | `&.{"go"}` | 렌더링할 수 있는 출력 언어. 해석된 target이 목록에 없으면 이 plugin은 아무것도 하지 않습니다 |
 | `requires` | empty | 필수 플러그인 의존성 |
 | `after` | empty | optional ordering constraint |
@@ -79,8 +83,33 @@ const options = try context.optionsOf(plugin, .type, declaration.ext) orelse ret
 const options = try context.optionsOf(plugin, .function, function.origin.ext) orelse return;
 ```
 
-`P`는 comptime `Plugin` 값이고 결과는 `P.TypeOptions` 또는 `P.FunctionOptions`입니다. 선언이 그
-플러그인을 붙이지 않았으면 `null`, 읽을 수 없는 값이면 `error.InvalidPluginOptions`입니다. 빌드
+선언 안쪽의 node도 같은 방법으로 읽습니다. `ext`를 어느 node에서 가져왔는지가 두 번째
+인자이고, 그것이 곧 어느 옵션 타입으로 읽을지를 정합니다.
+
+```zig
+const on_param = try context.optionsOf(plugin, .param, function.origin.params[index].ext);
+const on_result = try context.optionsOf(plugin, .result, function.origin.result_ext);
+const on_field = try context.optionsOf(plugin, .field, declaration.fields[index].ext);
+const on_tag = try context.optionsOf(plugin, .enum_tag, declaration.fields[index].ext);
+```
+
+`P`는 comptime `Plugin` 값입니다. attachment와 옵션 타입의 대응은 다음과 같습니다.
+
+| attachment | 옵션 타입 | `subjects`에 필요한 값 |
+|---|---|---|
+| `.function` | `FunctionOptions` | `.function` |
+| `.type` | `TypeOptions` | 선언의 kind (`.handle`, `.value`, …) |
+| `.param` | `ParamOptions` | `.param` |
+| `.result` | `ResultOptions` | `.result` |
+| `.field` | `FieldOptions` | `.field` |
+| `.enum_tag` | `TagOptions` | `.enum_tag` |
+
+field와 enum tag는 IR에서 같은 node입니다. 어느 옵션 타입으로 읽을지는 그것을 담은 선언의
+kind가 정합니다.
+
+선언이 그 플러그인을 붙이지 않았으면 `null`, 읽을 수 없는 값이면
+`error.InvalidPluginOptions`입니다. `subjects`에 없는 node 종류에 붙은 옵션은 선언 시점에
+컴파일 error이고, `semantic.json`에 직접 써 넣은 경우에는 `<NAME>001` 진단입니다. 빌드
 설정은 `context.config(plugin)`으로 읽습니다.
 
 `TransformContext`:
@@ -150,6 +179,15 @@ validation/analyze에서 계산한 결과를 렌더링 hook이 소스 text 재�
 `typeSite(declaration)`/`typeSiteFor(declaration, name)`은 reflection이 기록한 Zig 소스 위치를
 가리키고, 위치가 없으면 `semantic.json`의 해당 항목으로 떨어집니다. interface나 session처럼 소스
 위치가 없는 선언은 `documentSite(name)`입니다.
+
+선언 안쪽 node도 각각의 도우미가 있습니다.
+
+| 도우미 | 가리키는 곳 |
+|---|---|
+| `paramSite(function, index)` | 소스 스캔이 기록한 매개변수 이름 token. 없으면 함수의 위치이되 이름은 매개변수의 것 |
+| `resultSite(function)` | 결과에는 고유한 token이 없으므로 함수의 위치 |
+| `fieldSite(declaration, allocator, index)` | 컨테이너의 위치에 `<Type>.<field>` 이름 |
+| `tagSite(declaration, allocator, index)` | `fieldSite`와 같되 tag가 읽히는 이름 |
 
 ## Go builder
 

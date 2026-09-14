@@ -500,6 +500,10 @@ pub const Parameter = struct {
     /// compatible knob rather than part of the shape.
     buffer: ?u32 = null,
     direction: Direction = .in,
+    /// Plugin options, keyed by plugin name. Absent when no plugin extended
+    /// this parameter, so a document without parameter-level plugins is
+    /// unchanged.
+    ext: ?Extensions = null,
     /// Selected fields of a plain struct parameter, in metadata order.
     /// Absent means the parameter crosses in its ordinary shape.
     flatten: ?[]const FlattenedField = null,
@@ -981,6 +985,10 @@ pub const SemanticFn = struct {
     /// Generated Go copies the payload and then calls this symbol, so the
     /// public API never hands native memory to the caller.
     release: ?[]const u8 = null,
+    /// Plugin options attached to the result, keyed by plugin name. The
+    /// result is not a node of its own, so it rides on the function; absent
+    /// when no plugin extended it.
+    result_ext: ?Extensions = null,
     @"return": TypeNode,
     /// The Zig result is `std.atomic.Value(T)` while Go and C receive T.
     return_atomic: ?bool = null,
@@ -1153,6 +1161,9 @@ pub const TypeField = struct {
     /// failing that the `///` the Zig source carries. Absent leaves the
     /// generated description to the emitter.
     doc: ?[]const u8 = null,
+    /// Plugin options, keyed by plugin name. Absent when no plugin extended
+    /// this member, so a document without member-level plugins is unchanged.
+    ext: ?Extensions = null,
     name: []const u8,
     /// Only `codepoint`, and only on a `u32` member of an `extern struct`:
     /// the mirror spells it `rune` over the same four bytes.
@@ -2171,6 +2182,42 @@ test "plugin options round trip verbatim, in declaration order, and are omitted 
         .functions = &.{.{ .name = "feed", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_feed" }},
         .package = "sample",
         .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    const plain_bytes = try plain.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(plain_bytes);
+    try std.testing.expect(std.mem.indexOf(u8, plain_bytes, "\"ext\"") == null);
+}
+
+test "node-level plugin options round trip on parameters, results, fields and tags" {
+    const fixture =
+        \\{"functions":[{"name":"feed","params":[{"ext":{"TEST":{"tag":"p"}},"name":"chunk","type":{"kind":"bool"}}],"result_ext":{"TEST":{"tag":"r"}},"return":{"kind":"void"},"symbol":"zg_feed"}],"ir_version":1,"package":"sample","prefix":"zg","types":[{"fields":[{"ext":{"TEST":{"tag":"f"}},"name":"x","type":{"kind":"bool"}}],"kind":"value_struct","name":"Point"},{"fields":[{"ext":{"TEST":{"tag":"t"}},"name":"idle","value":0}],"kind":"enum","name":"Mode"}],"zig_version":"0.16.0"}
+    ;
+    var parsed = try Semantic.parse(std.testing.allocator, fixture);
+    defer parsed.deinit();
+    const function = parsed.value.functions[0];
+    try std.testing.expectEqualStrings("p", function.params[0].ext.?.get("TEST").?.object.get("tag").?.string);
+    try std.testing.expectEqualStrings("r", function.result_ext.?.get("TEST").?.object.get("tag").?.string);
+    try std.testing.expectEqualStrings("f", parsed.value.types[0].fields[0].ext.?.get("TEST").?.object.get("tag").?.string);
+    try std.testing.expectEqualStrings("t", parsed.value.types[1].fields[0].ext.?.get("TEST").?.object.get("tag").?.string);
+
+    // The same round-trip rule the declaration-level `ext` follows: what the
+    // document said comes back out verbatim.
+    const bytes = try parsed.value.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(bytes);
+    var again = try Semantic.parse(std.testing.allocator, bytes);
+    defer again.deinit();
+    const rewritten = try again.value.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(rewritten);
+    try std.testing.expectEqualStrings(bytes, rewritten);
+
+    // A node no plugin extended still writes no `ext` key, so every existing
+    // sidecar is byte-identical.
+    const plain: Semantic = .{
+        .functions = &.{.{ .name = "feed", .params = &.{.{ .name = "chunk", .type = .{ .bool = {} } }}, .@"return" = .{ .void = {} }, .symbol = "zg_feed" }},
+        .package = "sample",
+        .prefix = "zg",
+        .types = &.{.{ .fields = &.{.{ .name = "x", .type = .{ .bool = {} } }}, .kind = .value_struct, .name = "Point" }},
         .zig_version = "0.16.0",
     };
     const plain_bytes = try plain.serialize(std.testing.allocator);

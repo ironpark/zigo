@@ -56,6 +56,23 @@ pub const Returns = struct {
     ownership: Ownership = .inferred,
     semantic: ?SemanticHint = null,
     go: ?GoAdapter = null,
+    /// Plugin options, one entry per plugin. Written by `use`.
+    extensions: []const ir.Extension = &.{},
+
+    /// Attach plugin `P` with its `ResultOptions` to this function's result.
+    /// A plugin whose `subjects` exclude `.result` is refused here, at the
+    /// declaration, rather than as a diagnostic long afterwards.
+    pub fn use(comptime self: Returns, comptime P: plugin.Plugin, comptime options: P.ResultOptions) Returns {
+        comptime checkNodeSubject(P, .result);
+        comptime checkDuplicateAttachment(self.extensions, P.name);
+        const Captured = struct {
+            pub const name = P.name;
+            pub const Options = P.ResultOptions;
+        };
+        var result = self;
+        result.extensions = self.extensions ++ [_]ir.Extension{ir.extension(Captured, options)};
+        return result;
+    }
 };
 const Buffer = union(enum) {
     input,
@@ -99,10 +116,26 @@ pub const Param = struct {
     go: ?GoAdapter = null,
     /// Set by `zigo.param.*`; a plain `.{ .index = n }` carries a value.
     contract: ParamContract = .value,
+    /// Plugin options, one entry per plugin. Written by `use`.
+    extensions: []const ir.Extension = &.{},
 
     pub fn named(comptime self: Param, comptime name: ?[]const u8) Param {
         var copy = self;
         copy.go_name = name;
+        return copy;
+    }
+
+    /// Attach plugin `P` with its `ParamOptions` to this parameter. A plugin
+    /// whose `subjects` exclude `.param` is refused here, at the declaration.
+    pub fn use(comptime self: Param, comptime P: plugin.Plugin, comptime options: P.ParamOptions) Param {
+        comptime checkNodeSubject(P, .param);
+        comptime checkDuplicateAttachment(self.extensions, P.name);
+        const Captured = struct {
+            pub const name = P.name;
+            pub const Options = P.ParamOptions;
+        };
+        var copy = self;
+        copy.extensions = self.extensions ++ [_]ir.Extension{ir.extension(Captured, options)};
         return copy;
     }
 };
@@ -195,7 +228,7 @@ pub const Session = struct {
 /// The declaration kinds a plugin attaches to. The DSL's spelling of
 /// `plugin.Subject`; the two are compared by tag name, so a `plugin.Plugin`
 /// value and one of `zigo.features` pass the same check.
-pub const Subject = enum { function, handle, value, enumeration, tagged_union, callback, materialized, error_set };
+pub const Subject = enum { function, handle, value, enumeration, tagged_union, callback, materialized, error_set, param, result, field, enum_tag };
 
 /// The authoring tree contains actual declarations, not package membership paths.
 pub const Entry = union(enum) {
@@ -289,6 +322,20 @@ pub const Entry = union(enum) {
 fn pluginOptions(comptime P: plugin.Plugin, comptime entry: Entry) type {
     return if (entry == .function) P.FunctionOptions else P.TypeOptions;
 }
+/// The subject check the node-level `use` methods share: a parameter, a
+/// result, a field or an enum tag is a node kind the plugin has to declare,
+/// exactly as a declaration kind is. Tags are compared by name so this
+/// module's `Subject` and `plugin.Subject` pass the same check.
+fn checkNodeSubject(comptime P: plugin.Plugin, comptime subject: Subject) void {
+    inline for (P.subjects) |candidate| if (std.mem.eql(u8, @tagName(candidate), @tagName(subject))) return;
+    @compileError("zigo plugin " ++ P.name ++ " does not support " ++ @tagName(subject));
+}
+
+fn checkDuplicateAttachment(comptime entries: []const ir.Extension, comptime name: []const u8) void {
+    inline for (entries) |existing| if (std.mem.eql(u8, existing.plugin, name))
+        @compileError("zigo duplicate plugin attachment: " ++ name);
+}
+
 fn checkPluginSubject(comptime P: plugin.Plugin, comptime entry: Entry) void {
     const subject = switch (entry) {
         .function => "function",

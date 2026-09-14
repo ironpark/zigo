@@ -302,24 +302,62 @@ fn pluginOptionsIssue(comptime registered: plugin.Plugin, context: plugin.Valida
     const allocator = context.allocator;
     const document = context.document;
     for (document.functions) |function| {
-        if (function.ext == null) continue;
-        if (function.ext.?.get(registered.name) != null and !registered.supports(.function)) {
-            const declaration = try site.functionDeclarationAlloc(allocator, function);
-            return try pluginOptionsDiagnostic(registered, allocator, site.functionSiteFor(function, declaration), declaration);
+        if (function.ext) |attached| {
+            if (attached.get(registered.name) != null and !registered.supports(.function)) {
+                const declaration = try site.functionDeclarationAlloc(allocator, function);
+                return try pluginOptionsDiagnostic(registered, allocator, site.functionSiteFor(function, declaration), declaration);
+            }
+            _ = context.optionsOf(registered, .function, function.ext) catch {
+                const declaration = try site.functionDeclarationAlloc(allocator, function);
+                return try pluginOptionsDiagnostic(registered, allocator, site.functionSiteFor(function, declaration), declaration);
+            };
         }
-        _ = context.optionsOf(registered, .function, function.ext) catch {
-            const declaration = try site.functionDeclarationAlloc(allocator, function);
-            return try pluginOptionsDiagnostic(registered, allocator, site.functionSiteFor(function, declaration), declaration);
-        };
+        for (function.params, 0..) |parameter, index| {
+            if (try nodeOptionsIssue(registered, context, .param, parameter.ext, site.paramSite(function, index))) |issue| return issue;
+        }
+        if (try nodeOptionsIssue(registered, context, .result, function.result_ext, site.resultSite(function))) |issue| return issue;
     }
     for (document.types) |declaration| {
-        if (declaration.ext == null) continue;
-        if (declaration.ext.?.get(registered.name) != null and !registered.supports(plugin.typeSubject(declaration.kind)))
-            return try pluginOptionsDiagnostic(registered, allocator, site.typeSite(declaration), declaration.name);
-        _ = context.optionsOf(registered, .type, declaration.ext) catch {
-            return try pluginOptionsDiagnostic(registered, allocator, site.typeSite(declaration), declaration.name);
-        };
+        if (declaration.ext) |attached| {
+            if (attached.get(registered.name) != null and !registered.supports(plugin.typeSubject(declaration.kind)))
+                return try pluginOptionsDiagnostic(registered, allocator, site.typeSite(declaration), declaration.name);
+            _ = context.optionsOf(registered, .type, declaration.ext) catch {
+                return try pluginOptionsDiagnostic(registered, allocator, site.typeSite(declaration), declaration.name);
+            };
+        }
+        // Tags and fields are the same IR node, so which of the two option
+        // types reads it is decided by the container's kind alone.
+        for (declaration.fields, 0..) |field, index| {
+            if (field.ext == null) continue;
+            const where = try site.fieldSite(declaration, allocator, index);
+            if (declaration.kind == .@"enum") {
+                if (try nodeOptionsIssue(registered, context, .enum_tag, field.ext, where)) |issue| return issue;
+            } else {
+                if (try nodeOptionsIssue(registered, context, .field, field.ext, where)) |issue| return issue;
+            }
+        }
     }
+    return null;
+}
+
+/// The same two checks the declaration-level loops make -- a subject the
+/// plugin never declared, and options its type cannot read -- for one node
+/// inside a declaration. A hand-written `semantic.json` is the only way an
+/// `ext` reaches here that `use` did not already refuse.
+fn nodeOptionsIssue(
+    comptime registered: plugin.Plugin,
+    context: plugin.ValidateContext,
+    comptime attachment: plugin.Attachment,
+    ext: ?semantic.Extensions,
+    where: diagnostic.Site,
+) !?diagnostic.Diagnostic {
+    const attached = ext orelse return null;
+    if (attached.get(registered.name) == null) return null;
+    if (!registered.supports(plugin.attachmentSubject(attachment).?))
+        return try pluginOptionsDiagnostic(registered, context.allocator, where, where.declaration);
+    _ = context.optionsOf(registered, attachment, ext) catch {
+        return try pluginOptionsDiagnostic(registered, context.allocator, where, where.declaration);
+    };
     return null;
 }
 
@@ -467,6 +505,47 @@ test "options a plugin cannot read are its own diagnostic, not a panic" {
     try std.testing.expectEqualStrings("TEST001", issue.code);
     try std.testing.expect(std.mem.indexOf(u8, issue.message, "`TEST` plugin") != null);
     try std.testing.expectError(error.InvalidSemantic, semanticDocument(std.testing.allocator, parsed.value));
+}
+
+test "node options a plugin cannot read or does not subscribe to are diagnostics" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    // Each fixture injects one node-level `ext` a `use` would have refused:
+    // three carry a value outside the plugin's option type, and the last
+    // names a subject `NARROW` never declared.
+    const cases = [_]struct { json: []const u8, declaration: []const u8 }{
+        .{ .json =
+        \\{"functions":[{"name":"bump","params":[{"ext":{"TEST":{"tag":7}},"name":"by","type":{"bits":32,"kind":"int","signed":true}}],"receiver":"Counter","return":{"kind":"void"},"symbol":"zg_counter_bump"}],"ir_version":1,"package":"meter","prefix":"zg","types":[{"kind":"opaque","name":"Counter"}],"zig_version":"0.16.0"}
+        , .declaration = "by" },
+        .{ .json =
+        \\{"functions":[{"name":"bump","params":[],"receiver":"Counter","result_ext":{"TEST":{}},"return":{"kind":"void"},"symbol":"zg_counter_bump"}],"ir_version":1,"package":"meter","prefix":"zg","types":[{"kind":"opaque","name":"Counter"}],"zig_version":"0.16.0"}
+        , .declaration = "bump" },
+        .{ .json =
+        \\{"functions":[{"name":"bump","params":[],"receiver":"Counter","return":{"kind":"void"},"symbol":"zg_counter_bump"}],"ir_version":1,"package":"meter","prefix":"zg","types":[{"kind":"opaque","name":"Counter"},{"fields":[{"ext":{"TEST":{"tag":false}},"name":"idle","value":0}],"kind":"enum","name":"Mode","tag_type":{"bits":8,"kind":"int","signed":false}}],"zig_version":"0.16.0"}
+        , .declaration = "Mode.idle" },
+    };
+    for (cases) |case| {
+        var parsed = try semantic.Semantic.parse(allocator, case.json);
+        defer parsed.deinit();
+        const issue = (try findIssue(allocator, parsed.value)) orelse return error.MissingDiagnostic;
+        try std.testing.expectEqualStrings("TEST001", issue.code);
+        try std.testing.expect(std.mem.indexOf(u8, issue.message, case.declaration) != null);
+    }
+
+    // A plugin that never declared `.field` is refused the options outright,
+    // the way a declaration kind outside `subjects` already is.
+    const narrow: plugin.Plugin = .{ .name = "NARROW", .FieldOptions = struct { tag: []const u8 }, .subjects = &.{.function} };
+    const fixture =
+        \\{"functions":[],"ir_version":1,"package":"meter","prefix":"zg","types":[{"fields":[{"ext":{"NARROW":{"tag":"across"}},"name":"x","type":{"bits":32,"kind":"int","signed":true}}],"kind":"value_struct","layout":"extern","name":"Point"}],"zig_version":"0.16.0"}
+    ;
+    var parsed = try semantic.Semantic.parse(allocator, fixture);
+    defer parsed.deinit();
+    var issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
+    try appendPluginIssues(narrow, allocator, parsed.value, &.{}, &issues);
+    try std.testing.expectEqual(@as(usize, 1), issues.items.len);
+    try std.testing.expectEqualStrings("NARROW001", issues.items[0].code);
+    try std.testing.expect(std.mem.indexOf(u8, issues.items[0].message, "Point.x") != null);
 }
 
 test "options a plugin can read leave the document valid" {

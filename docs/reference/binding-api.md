@@ -97,6 +97,23 @@ api.enumeration("CursorStyle", .{ .fields = &.{
 | `.use(plugin, options)` | 플러그인을 중복 없이 추가 |
 | `.replacePlugin(plugin, options)` | 같은 플러그인 옵션을 명시적으로 교체 |
 
+선언뿐 아니라 선언 안쪽의 node에도 플러그인을 붙일 수 있습니다. `.use`는 모두 같은
+규칙입니다: 옵션은 그 node에 해당하는 플러그인 옵션 타입으로 comptime 검사되고, 같은
+플러그인을 두 번 붙이면 컴파일 error입니다.
+
+| 위치 | 연결 | 옵션 타입 |
+|---|---|---|
+| 매개변수 | `zigo.param.input(1).use(P, .{ ... })` | `P.ParamOptions` |
+| 반환값 | `zigo.result.owned().use(P, .{ ... })` | `P.ResultOptions` |
+| 구조체 field | `(zigo.ValueField{ .name = "x" }).use(P, .{ ... })` | `P.FieldOptions` |
+| enum tag | `(zigo.EnumField{ .name = "idle" }).use(P, .{ ... })` | `P.TagOptions` |
+| handle field | `(zigo.HandleField{ .path = "x" }).extend(P, .{ ... })` | `P.FunctionOptions` |
+
+handle field는 getter와 setter 함수로 펼쳐지므로 함수 옵션을 받으며, 두 함수가 모두
+같은 옵션을 가집니다. 붙인 옵션은 `semantic.json`의 해당 node `ext`에 실려 플러그인에
+전달됩니다. 플러그인이 `subjects`로 선언하지 않은 node에 붙이면 그 자리에서 컴파일
+error입니다.
+
 타입 context는 `Target`, `source`, `func`, `funcs`, `ref`, `typeRef()`, `members(entries)`와
 `select(selector)`를 제공합니다. 멤버는 `.context().members(...)` 또는 `.select(...)`로만
 선언합니다.
@@ -160,7 +177,8 @@ role:
 - `.prefix: ?[]const u8 = null`: `With*` 함수 이름 및 옵션 타입 접두사. 기본은 소유 타입 이름(`TerminalOption`, `WithTerminalRows`)이고 `""`를 지정하면 접두사를 생략합니다(opt-in)
 - `.type_name: ?[]const u8 = null`: 옵션 함수 타입 이름 명시적 지정
 
-`Param.named(name)`은 도우미가 만든 매개변수의 Go 이름을 바꿉니다.
+`Param.named(name)`은 도우미가 만든 매개변수의 Go 이름을 바꾸고,
+`Param.use(plugin, options)`는 그 매개변수에 플러그인 옵션을 붙입니다.
 
 ## 반환값
 
@@ -172,7 +190,8 @@ role:
 ```
 
 소유권은 도우미로만 적습니다. 도우미는 완성된 `Returns`를 돌려주며, `.returns`를 새로 지정하면
-이전 해제 참조는 남지 않습니다.
+이전 해제 참조는 남지 않습니다. `Returns.use(plugin, options)`는 그 결과에 플러그인 옵션을
+붙입니다.
 
 | 도우미 | 소유권 |
 |---|---|

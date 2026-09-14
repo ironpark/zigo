@@ -25,6 +25,45 @@ pub fn functionSite(function: semantic.SemanticFn) diagnostic.Site {
     return functionSiteFor(function, function.name);
 }
 
+/// The `Site` one parameter's diagnostic points at: the parameter's own name
+/// token when `names.zig` recorded one, else its function's location. A
+/// parameter carries no path of its own -- it is always its function's -- so
+/// the function is what supplies it, and the parameter still names itself
+/// either way, exactly as `functionSiteFor` lets a member name itself.
+pub fn paramSite(function: semantic.SemanticFn, index: usize) diagnostic.Site {
+    if (index >= function.params.len) return functionSite(function);
+    const parameter = function.params[index];
+    const source = function.source orelse return functionSiteFor(function, parameter.name);
+    const location = parameter.source orelse return functionSiteFor(function, parameter.name);
+    return .{
+        .path = source.path,
+        .declaration = parameter.name,
+        .line = location.line,
+        .column = location.column,
+    };
+}
+
+/// The `Site` a result-level diagnostic points at. A result has no token of
+/// its own in the source scan, so it is the function's site throughout.
+pub fn resultSite(function: semantic.SemanticFn) diagnostic.Site {
+    return functionSite(function);
+}
+
+/// The `Site` one member's diagnostic points at: the container's own source
+/// location, named by `<Type>.<field>`. The scan records no per-member token,
+/// so only the declaration name narrows from the type to the field.
+pub fn fieldSite(declaration: semantic.TypeDecl, allocator: std.mem.Allocator, index: usize) !diagnostic.Site {
+    if (index >= declaration.fields.len) return typeSite(declaration);
+    const name = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ declaration.name, declaration.fields[index].name });
+    return typeSiteFor(declaration, name);
+}
+
+/// The `Site` one enum tag's diagnostic points at. Tags and fields are the
+/// same IR node, so this is `fieldSite` under the name a tag reads as.
+pub fn tagSite(declaration: semantic.TypeDecl, allocator: std.mem.Allocator, index: usize) !diagnostic.Site {
+    return fieldSite(declaration, allocator, index);
+}
+
 /// The `Site` a type-level diagnostic points at: the container's own source
 /// location when `names.zig` recorded one, else the type's entry in
 /// `semantic.json`. `declaration` is what the diagnostic names -- usually the
@@ -69,4 +108,49 @@ test "type sites use the recorded source location and fall back to the document"
     try std.testing.expectEqualStrings("semantic.json", unplaced.path);
     try std.testing.expectEqualStrings("Mode.idle", unplaced.declaration);
     try std.testing.expect(unplaced.line == null);
+}
+
+test "parameter sites narrow to the parameter token and fall back to the function" {
+    const located: semantic.SemanticFn = .{
+        .name = "feed",
+        .params = &.{
+            .{ .name = "chunk", .type = .{ .bool = {} }, .source = .{ .line = 9, .column = 17 } },
+            .{ .name = "count", .type = .{ .bool = {} } },
+        },
+        .@"return" = .{ .void = {} },
+        .source = .{ .path = "src/root.zig", .line = 9, .column = 1 },
+        .symbol = "zg_feed",
+    };
+    const parameter = paramSite(located, 0);
+    try std.testing.expectEqualStrings("src/root.zig", parameter.path);
+    try std.testing.expectEqualStrings("chunk", parameter.declaration);
+    try std.testing.expectEqual(@as(?u32, 9), parameter.line);
+    try std.testing.expectEqual(@as(?u32, 17), parameter.column);
+    // A parameter the scan never placed still names itself, under the
+    // function's own location; an index past the end is the function.
+    const unplaced = paramSite(located, 1);
+    try std.testing.expectEqualStrings("count", unplaced.declaration);
+    try std.testing.expectEqual(@as(?u32, 9), unplaced.line);
+    try std.testing.expectEqualStrings("feed", paramSite(located, 7).declaration);
+    try std.testing.expectEqualStrings("feed", resultSite(located).declaration);
+}
+
+test "field and tag sites name the member under the container's location" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const declaration: semantic.TypeDecl = .{
+        .fields = &.{.{ .name = "x", .type = .{ .bool = {} } }},
+        .kind = .value_struct,
+        .name = "Point",
+        .source = .{ .path = "src/root.zig", .line = 3, .column = 5 },
+    };
+    const field = try fieldSite(declaration, allocator, 0);
+    try std.testing.expectEqualStrings("src/root.zig", field.path);
+    try std.testing.expectEqualStrings("Point.x", field.declaration);
+    try std.testing.expectEqual(@as(?u32, 3), field.line);
+    const tag = try tagSite(declaration, allocator, 0);
+    try std.testing.expectEqualStrings("Point.x", tag.declaration);
+    // An index past the end is the container itself rather than a bad read.
+    try std.testing.expectEqualStrings("Point", (try fieldSite(declaration, allocator, 4)).declaration);
 }
