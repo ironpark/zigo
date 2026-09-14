@@ -75,7 +75,7 @@ func (value Mode) IsKnown() bool
 ## 문서 구성
 
 - [Plugin 작성](authoring.md) — 최소 플러그인부터 빌드와 테스트까지
-- [Plugin API 참조](api-reference.md) — hook, context, 출력과 실행 순서
+- [Plugin API 참조](api-reference.md) — `visit` node, context, 출력과 실행 순서
 
 플러그인은 generator와 함께 컴파일되므로 계약 major가 맞지 않으면 빌드 그래프 생성 중
 거부됩니다. minor version은 기능 추가이며 플러그인의 `min_contract`보다 현재 generator가

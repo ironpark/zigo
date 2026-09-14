@@ -24,14 +24,16 @@ pub const plugin: plugin_api.Plugin = .{
     .subjects = &.{.function},
     .after = &.{ "MUST", "IMPLEMENTS" },
     .validate = validateDocument,
-    .method_hook = methodHook,
+    .visit = visit,
 };
 
 /// The wrapper is written after the method it drives, in the file that owns
-/// the method: a plugin's method hook is exactly where the direct call was.
-fn methodHook(context: plugin_api.Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
-    const options = try context.optionsOf(plugin, .function, function.origin.ext) orelse return;
-    try renderIteratorWrapper(context, writer, function, options);
+/// the method: a visit of the function node is exactly where the direct call
+/// was.
+fn visit(context: plugin_api.Context, node: plugin_api.Node, b: *plugin_api.Builder) !void {
+    if (node != .function) return;
+    const options = try context.optionsOf(plugin, .function, node) orelse return;
+    try renderIteratorWrapper(context, b, node.function, options);
 }
 
 /// The shape rule for `.iterator`, run over the whole document. The name
@@ -52,9 +54,8 @@ fn validateDocument(context: plugin_api.ValidateContext) !void {
 /// carries an `error` yields `iter.Seq2[T, error]`: the error is yielded
 /// once, with the zero value, and the sequence stops. Otherwise it yields
 /// `iter.Seq[T]`.
-pub fn renderIteratorWrapper(context: plugin_api.Context, writer: *std.Io.Writer, function: abi.AbiFn, iterator: Options) !void {
+pub fn renderIteratorWrapper(context: plugin_api.Context, b: *plugin_api.Builder, function: abi.AbiFn, iterator: Options) !void {
     const allocator = context.allocator;
-    const b = context.builder();
     const method = context.method.?;
     const receiver_name = method.receiver_name.?;
     const go_name = method.checked_name;
@@ -101,7 +102,7 @@ pub fn renderIteratorWrapper(context: plugin_api.Context, writer: *std.Io.Writer
         .body = &.{try b.ret(&.{})},
     }));
 
-    try b.render(writer, &.{try b.func(.{
+    try b.emit(&.{try b.func(.{
         .doc = .{ .text = doc.written() },
         .receiver = .{ .name = receiver_name, .type = receiver, .pointer = true },
         .name = iterator.name,

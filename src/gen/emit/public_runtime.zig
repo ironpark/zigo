@@ -16,7 +16,7 @@ fn renderErrorsBody(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
     for (program.types) |declaration| {
         if (declaration.kind != .error_set or !emit.packageMatches(declaration.package, options.active_package)) continue;
         const hooks = @import("plugin_hooks.zig");
-        try hooks.runTypeHooks(options, hooks.context(allocator, program, options), writer, declaration);
+        try hooks.visitType(options, hooks.context(allocator, program, options), writer, declaration);
     }
 }
 

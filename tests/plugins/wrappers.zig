@@ -7,12 +7,15 @@ const api = @import("plugin");
 pub const plugin: api.Plugin = .{
     .name = "WRAPTEST",
     .subjects = &.{.function},
-    .method_hook = methodHook,
+    .visit = visit,
     .source_files = &.{.{ .pathAlloc = path, .render = helpers }},
 };
 
-fn methodHook(context: api.Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
-    _ = try context.optionsOf(plugin, .function, function.origin.ext) orelse return;
+fn visit(context: api.Context, node: api.Node, b: *api.Builder) !void {
+    if (node != .function) return;
+    const function = node.function;
+    _ = try context.optionsOf(plugin, .function, node) orelse return;
+    const writer = try b.output();
     const method = context.method.?;
     try writer.print("// Wrap{0s} panics on failure.\nfunc ", .{method.public_name});
     if (method.receiver) |receiver| try writer.print("({s} {s}{s}) ", .{ method.receiver_name.?, if (function.origin.receiverIsValue()) "" else "*", receiver });

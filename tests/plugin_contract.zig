@@ -165,6 +165,26 @@ test "a plugin that claims a declaration replaces its method instead of adding o
     try std.testing.expect(std.mem.indexOf(u8, plain_public, "zigoChecked") == null);
 }
 
+test "a claim on a node with no public method of its own is refused" {
+    const diagnostic = @import("diagnostic");
+    const fixture = @embedFile("generator_cases/scalar/semantic.json");
+    var output = std.testing.tmpDir(.{ .iterate = true });
+    defer output.cleanup();
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
+    try std.testing.expectError(error.InvalidSemantic, generator.generate(arena.allocator(), std.testing.io, fixture, output.dir, .{
+        .package = "scalar",
+        .prefix = "zg",
+        .go_module = "example.com/contract",
+        .diagnostics = &issues,
+        .configurations = &.{.{ .name = "CONTRACT", .json = "{\"claim_node\":true}" }},
+    }));
+    try std.testing.expect(issues.items.len != 0);
+    try std.testing.expectEqualStrings("ZIGO065", issues.items[0].code);
+    try std.testing.expect(std.mem.indexOf(u8, issues.items[0].message, "claims the `param` node `p0`") != null);
+}
+
 test "invalid transformed output fails before validation callbacks and leaves output untouched" {
     const diagnostic = @import("diagnostic");
     const cases = .{

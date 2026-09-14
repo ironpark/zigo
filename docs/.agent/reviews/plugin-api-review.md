@@ -22,7 +22,7 @@ Introduce a collector or a new validateAll callback with a compatibility bridge 
 
 ## 9. Field hooks: handle accessors already supported
 
-HandleField.extend captures FunctionOptions; reflection copies ext onto both synthesized getter/setter functions (src/reflect/walk.zig:278-310). The ordinary method_hook runs after those methods (src/gen/emit/public.zig:765). docs/bindings-handles.md:266 documents this and walk.zig:5035 tests it. This shipped in 0.19.0 and is already in gostty's pinned dependency.
+HandleField.extend captures FunctionOptions; reflection copies ext onto both synthesized getter/setter functions (src/reflect/walk.zig:278-310). The ordinary function-node visit runs after those methods (src/gen/emit/public.zig:765). docs/bindings-handles.md:266 documents this and walk.zig:5035 tests it. This shipped in 0.19.0 and is already in gostty's pinned dependency.
 
 For getter/setter wrappers, no field_hook is needed: use HandleField.extend and context.functionOptions; function.origin.field_access identifies path and setter. This does not imply a hook exists next to each Go value-struct field, or for independently customizing getter and setter attachment options. The user's referenced item 1 was not supplied, so any additional field-declaration requirement remains outside this review.
 

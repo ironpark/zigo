@@ -44,11 +44,8 @@ configuration and dependency checks
 | `name_function` | null | exact 공개 Go 함수 이름 |
 | `validate` | null | core 이후 플러그인 진단 |
 | `analyze` | null | lowering 뒤 typed fact 계산 |
-| `method_hook` | null | 공개 function/메서드 직후 body |
-| `replaces_method` | null | 이 선언의 공개 Go 표면을 이 플러그인이 가져감 |
-| `type_hook` | null | 공개 타입 직후 body |
-| `file_hook` | null | 공개 file body begin/end |
-| `package_hook` | null | 패키지별 플러그인 file body |
+| `visit` | null | 프로그램의 모든 node에서 불리는 하나뿐인 렌더링 hook |
+| `claims` | null | 이 node의 공개 Go 표면을 이 플러그인이 가져감 |
 | `source_files` | empty | framed 출력 언어 소스 file |
 | `artifacts` | empty | exact 바이트 출력 |
 | `imports` | empty | hook이 사용할 non-standard Go import |
@@ -56,21 +53,68 @@ configuration and dependency checks
 semantic transform은 C ABI에 영향을 줄 수 있습니다. 렌더링 hook과 출력은 additive
 Go surface만 만들며 shim, 헤더와 raw API를 바꾸지 않습니다.
 
-## 메서드 대체
+## 렌더링 hook: `visit`
 
-`method_hook`은 더하기만 합니다. 생성된 checked 메서드 **대신** 자신의 것을 놓으려면
-`replaces_method`가 그 선언을 주장합니다.
+렌더링 hook은 하나입니다. generator는 render pass마다 프로그램을 document 순서로 한 번
+걸으면서 각 node를 `subjects`가 덮는 모든 플러그인에게 등록 순서대로 넘깁니다.
 
 ```zig
-.replaces_method = replacesMethod,   // fn (Context, abi.AbiFn) anyerror!bool
+.visit = visit,   // fn (Context, Node, *Builder) anyerror!void
+
+fn visit(context: api.Context, node: api.Node, b: *api.Builder) !void {
+    switch (node) {
+        .type => |declaration| try b.emit(&.{ ... }, .{ .blank_after = true }),
+        else => {},
+    }
+}
+```
+
+호출 중에 builder가 받은 출력은 그 node의 삽입 지점에 flush됩니다.
+
+| `Node` | payload | 출력이 놓이는 곳 | `subjects`에 필요한 값 |
+|---|---|---|---|
+| `.package_begin` | 없음 | 패키지별 플러그인 file(`zigo_plugins_gen.go`) 앞 | 제한 없음 |
+| `.package_end` | 없음 | 같은 file 뒤 | 제한 없음 |
+| `.file_begin` | `FileInfo` | 공개 file의 package/import frame 안, body 앞 | 제한 없음 |
+| `.file_end` | `FileInfo` | 같은 frame 안, body 뒤 | 제한 없음 |
+| `.type` | `semantic.TypeDecl` | 공개 타입 직후 | 선언의 kind (`.handle`, `.value`, …) |
+| `.function` | `abi.AbiFn` | 공개 function/메서드 직후 | `.function` |
+| `.param` | `{ function, index }` | 그 function의 출력 뒤 | `.param` |
+| `.result` | `abi.AbiFn` | 그 function의 출력 뒤 | `.result` |
+| `.field` | `{ declaration, index }` | 그 타입의 출력 뒤 | `.field` |
+| `.enum_tag` | `{ declaration, index }` | 그 타입의 출력 뒤 | `.enum_tag` |
+
+선언 안쪽 node(`.param`, `.result`, `.field`, `.enum_tag`)는 자신의 삽입 지점이 없습니다.
+소유한 function이나 타입의 출력 뒤에 이어서 쓰이며, 순서는 function → 매개변수 → 결과,
+타입 → 멤버입니다. file과 package 경계는 subject가 없으므로 이 target으로 렌더링하는
+모든 플러그인이 봅니다.
+
+`Node`의 도우미는 다음과 같습니다.
+
+- `subject()` — 이 node를 받으려면 `subjects`에 있어야 하는 값. 경계 node는 `null`
+- `attachment()` — 이 node의 `ext`를 읽는 옵션 타입
+- `ext()` — 이 node가 지닌 `ext` 객체
+- `site(context)` — 이 node를 가리키는 진단 `Site`
+
+`visit`은 render pass마다 불립니다. 결정적이어야 하고 analysis 상태를 바꾸면 안 됩니다.
+
+## 메서드 대체
+
+`visit`은 더하기만 합니다. 생성된 checked 메서드 **대신** 자신의 것을 놓으려면
+`claims`가 그 선언을 주장합니다.
+
+```zig
+.claims = claims,   // fn (Context, Node) anyerror!bool
 ```
 
 주장한 선언은 생성된 본문을 그대로 받되 exported 되지 않는 이름으로 받습니다.
-`method_hook`은 `Method.checked_name`으로 그 이름을, `Method.public_name`으로 비어 있는
-exported 이름을 읽어 자신의 래퍼를 씁니다. 결과는 Go 메서드 하나입니다.
+`function` node의 visit은 `Method.checked_name`으로 그 이름을, `Method.public_name`으로
+비어 있는 exported 이름을 읽어 자신의 래퍼를 씁니다. 결과는 Go 메서드 하나입니다.
 
 - C 심볼, shim, 헤더, raw 패키지는 움직이지 않습니다. 바뀌는 것은 공개 Go 표면뿐입니다.
 - 한 선언을 두 플러그인이 주장하면 `ZIGO024`로 거절됩니다.
+- 공개 Go 표면을 가진 node는 `function`뿐입니다. 다른 node에 `true`를 답하면 `ZIGO065`로
+  거절됩니다.
 - exported 이름의 시그니처는 이제 플러그인의 것입니다. 그 선언이 `zigo.interface`나
   `implements`의 계약에 걸려 있다면 그 계약을 맞추는 것도 플러그인의 몫입니다.
 
@@ -84,13 +128,15 @@ const options = try context.optionsOf(plugin, .function, function.origin.ext) or
 ```
 
 선언 안쪽의 node도 같은 방법으로 읽습니다. `ext`를 어느 node에서 가져왔는지가 두 번째
-인자이고, 그것이 곧 어느 옵션 타입으로 읽을지를 정합니다.
+인자이고, 그것이 곧 어느 옵션 타입으로 읽을지를 정합니다. 세 번째 인자로 `Node`를 그대로
+넘기면 그 node의 `ext`를 읽습니다.
 
 ```zig
 const on_param = try context.optionsOf(plugin, .param, function.origin.params[index].ext);
 const on_result = try context.optionsOf(plugin, .result, function.origin.result_ext);
 const on_field = try context.optionsOf(plugin, .field, declaration.fields[index].ext);
 const on_tag = try context.optionsOf(plugin, .enum_tag, declaration.fields[index].ext);
+const on_node = try context.optionsOf(plugin, .param, node);
 ```
 
 `P`는 comptime `Plugin` 값입니다. attachment와 옵션 타입의 대응은 다음과 같습니다.
@@ -132,7 +178,7 @@ kind가 정합니다.
 렌더링 `Context`:
 
 - lowered `program`, allocator, `options`(아래 `PluginOptions`), 읽기 전용 `facts`
-- 메서드 hook의 `method` 정보
+- 메서드 안쪽 node(`function`, `param`, `result`)의 `method` 정보
 - 공개 타입/시그니처/doc writer와 header·식별자·리터럴 도우미
 - `config`, `optionsOf`
 - `sourceFilePathAlloc`, `publicFilePathAlloc`
@@ -152,7 +198,7 @@ context의 `options`는 플러그인이 볼 수 있는 실행 정보만 담은 v
 | `active_package` | 지금 렌더링 중인 공개 패키지. `null`은 단일 패키지 |
 | `configurations` | 빌드가 컴파일해 넣은 플러그인 설정. `config(plugin)`이 읽음 |
 | `helpers` / `emitsHelper(name)` | gated helper가 이 패키지에서 참조되는지 |
-| `file` | hook이 실행 중인 파일 |
+| `file` | visit이 실행 중인 파일 |
 
 ## naming과 타입 mapping
 
@@ -191,13 +237,13 @@ validation/analyze에서 계산한 결과를 렌더링 hook이 소스 text 재�
 
 ## Go builder
 
-hook은 Go 소스를 문자열로 쓰지 않고 `context.builder()`가 돌려주는 `plugin.Builder`로 node를
-조립한 뒤 렌더링합니다. node는 context allocator(run arena)에 복사되므로 loop 안에서 만들어도
-렌더링까지 살아 있습니다.
+hook은 Go 소스를 문자열로 쓰지 않고 `plugin.Builder`로 node를 조립한 뒤 렌더링합니다. node는
+context allocator(run arena)에 복사되므로 loop 안에서 만들어도 렌더링까지 살아 있습니다.
+`visit`은 builder를 인자로 받고, `source_files`와 `artifacts`는 `context.builder()`로
+자신의 것을 만듭니다.
 
 ```zig
-const b = context.builder();
-try b.render(writer, &.{try b.func(.{
+try b.emit(&.{try b.func(.{
     .doc = .{ .text = "IsKnown reports whether value is an exported tag." },
     .receiver = .{ .name = "value", .type = declaration.name },
     .name = "IsKnown",
@@ -208,6 +254,9 @@ try b.render(writer, &.{try b.func(.{
 
 ### 렌더링
 
+- `emit(decls, layout)` — `visit`의 출력에 씁니다. generator가 그 node의 삽입 지점에
+  flush합니다
+- `output()` — node가 철자하지 않는 text를 직접 써야 할 때의 출력 writer
 - `render(writer, decls, layout)` — 선언 묶음을 `layout`(`blank_before`, `blank_after`,
   `blank_between`) 간격으로 씁니다
 - `renderDecl(writer, decl)` — 선언 하나를 doc comment와 함께 씁니다

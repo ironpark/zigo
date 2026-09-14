@@ -284,7 +284,7 @@ fn appendFieldAccessors(
 
     const name = metadata.name orelse fieldPathMember(path);
     // `extend` captured each plugin's options on the field; the getter and
-    // the setter are the functions a plugin's `method_hook` sees, so both
+    // the setter are the functions a plugin's `function` node visits, so both
     // carry them the way both carry `doc`.
     const ext: ?semantic.Extensions = if (metadata.ext.len != 0) try extensionsAlloc(allocator, metadata.ext) else null;
     const field_type = try typeNode(

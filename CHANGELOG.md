@@ -137,6 +137,25 @@ enum tag가 각각 자신의 `ext`를 가지며, 플러그인은 node 종류마�
 | `Attachment`는 `.function`, `.type` | `.param`, `.result`, `.field`, `.enum_tag`가 추가. `optionsOf`가 모든 context에서 받음 |
 | `plugin.site`는 function과 type site만 | `paramSite`, `resultSite`, `fieldSite`, `tagSite`가 추가 |
 
+위치마다 따로 있던 렌더링 hook은 node 하나를 받는 visitor `visit` 하나로 합쳤습니다.
+generator는 render pass마다 프로그램을 document 순서로 걸으면서 각 node를 `subjects`가
+덮는 플러그인에게 넘기고, 그 호출 중 builder가 받은 출력을 예전 hook이 쓰던 바로 그 삽입
+지점에 flush합니다. 선언 안쪽 node(`param`, `result`, `field`, `enum_tag`)는 소유한
+function이나 타입의 출력 뒤에 이어집니다. 호환 shim은 없으며, 생성된 Go 코드는 바이트
+단위로 같습니다.
+
+| 이전 | 이후 |
+|---|---|
+| `method_hook(Context, writer, AbiFn)` | `visit`의 `.function` node |
+| `type_hook(Context, writer, TypeDecl)` | `visit`의 `.type` node |
+| `file_hook(Context, writer, FileInfo, FilePhase)` | `visit`의 `.file_begin`/`.file_end` node. `FilePhase`는 삭제 |
+| `package_hook(Context, writer)` | `visit`의 `.package_begin`/`.package_end` node |
+| 매개변수·결과·field·tag를 소유 선언의 hook에서 훑어 읽음 | `.param`, `.result`, `.field`, `.enum_tag` node로 따로 방문 |
+| `replaces_method(Context, AbiFn) !bool` | `claims(Context, Node) !bool`. function이 아닌 node를 주장하면 `ZIGO065` |
+| hook이 `*std.Io.Writer`를 받아 `b.render(writer, ...)` | `visit`이 `*Builder`를 받아 `b.emit(decls, layout)` |
+| — | `plugin.Node`와 `subject()`/`attachment()`/`ext()`/`site(context)` 도우미 추가 |
+| — | `optionsOf(P, attachment, node)`가 `Node`를 직접 받음 |
+
 `subjects`에 없는 node에 `use`하면 선언 위치에서 컴파일 error이고, `semantic.json`에 직접
 써 넣은 경우에는 선언 kind와 똑같이 `<NAME>001` 진단입니다.
 

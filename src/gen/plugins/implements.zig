@@ -34,29 +34,39 @@ pub const Options = struct {
 pub const plugin: plugin_api.Plugin = .{
     .name = "IMPLEMENTS",
     .FunctionOptions = Options,
-    // The options attach to a method; the assertions the type hook writes
+    // The options attach to a method; the assertions the type node writes
     // sit after the handle that method belongs to.
     .subjects = &.{ .function, .handle },
     .validate = validateDocument,
-    .replaces_method = hidesOriginal,
-    .method_hook = methodHook,
-    .type_hook = typeHook,
-    .file_hook = runtimeHook,
+    .claims = hidesOriginal,
+    .visit = visit,
 };
 
 /// The wrappers are the public spelling: the zigo-shaped method is written
 /// under its unexported checked name unless the declaration asked to keep it.
-fn hidesOriginal(context: plugin_api.Context, function: abi.AbiFn) !bool {
-    const options = try context.optionsOf(plugin, .function, function.origin.ext) orelse return false;
+fn hidesOriginal(context: plugin_api.Context, node: plugin_api.Node) !bool {
+    if (node != .function) return false;
+    const options = try context.optionsOf(plugin, .function, node) orelse return false;
     return options.hidesOriginal();
+}
+
+/// The three places this plugin writes: the interface wrappers after the
+/// method they adapt, the assertions after the handle that carries them, and
+/// the counting streams at the end of the runtime file.
+fn visit(context: plugin_api.Context, node: plugin_api.Node, b: *plugin_api.Builder) !void {
+    switch (node) {
+        .function => |function| try renderWrappers(context, b, function),
+        .type => |declaration| try renderAssertions(context, b, declaration),
+        .file_end => |file| if (file.kind == .runtime) try renderCountingStreams(context, b),
+        else => {},
+    }
 }
 
 /// One assertion per interface a handle satisfies through `.implements`, so
 /// a wrapper that stops matching the interface fails this package's build
 /// rather than a consumer's.
-fn typeHook(context: plugin_api.Context, writer: *std.Io.Writer, declaration: semantic.TypeDecl) !void {
+fn renderAssertions(context: plugin_api.Context, b: *plugin_api.Builder, declaration: semantic.TypeDecl) !void {
     if (declaration.kind != .@"opaque") return;
-    const b = context.builder();
     var assertions: std.ArrayList(plugin_api.gobuild.Decl) = .empty;
     defer assertions.deinit(context.allocator);
     for (context.program.functions) |function| {
@@ -68,17 +78,17 @@ fn typeHook(context: plugin_api.Context, writer: *std.Io.Writer, declaration: se
             .type_name = declaration.name,
         }));
     }
-    try b.render(writer, assertions.items, .{ .blank_before = true, .blank_between = false });
+    try b.emit(assertions.items, .{ .blank_before = true, .blank_between = false });
 }
 
-fn methodHook(context: plugin_api.Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
+fn renderWrappers(context: plugin_api.Context, b: *plugin_api.Builder, function: abi.AbiFn) !void {
     const options = try context.optionsOf(plugin, .function, function.origin.ext) orelse return;
     const method = context.method.?;
     // One wrapper per named interface, in the order the declaration named
     // them; every one of them calls the same bound method, under the name
     // its body was written with: the exported one when the declaration kept
     // it, the unexported checked name otherwise.
-    for (options.kinds) |kind| try renderImplementsWrapper(context, writer, function, kind, options.hidesOriginal(), method.receiver_name.?, method.checked_name, method.needs_check);
+    for (options.kinds) |kind| try renderImplementsWrapper(context, b, function, kind, options.hidesOriginal(), method.receiver_name.?, method.checked_name, method.needs_check);
 }
 
 fn validateDocument(context: plugin_api.ValidateContext) !void {
@@ -96,7 +106,7 @@ fn validateDocument(context: plugin_api.ValidateContext) !void {
 /// an integer result is the count the interface reports.
 pub fn renderImplementsWrapper(
     context: plugin_api.Context,
-    writer: *std.Io.Writer,
+    b: *plugin_api.Builder,
     function: abi.AbiFn,
     implements: semantic.Implements,
     hides_original: bool,
@@ -105,7 +115,6 @@ pub fn renderImplementsWrapper(
     needs_check: bool,
 ) !void {
     const allocator = context.allocator;
-    const b = context.builder();
     const receiver = function.origin.receiver.?;
     const result = function.origin.@"return".errorPayload();
     const counts = result == .int;
@@ -237,7 +246,7 @@ pub fn renderImplementsWrapper(
         },
     }
 
-    try b.render(writer, &.{try b.func(.{
+    try b.emit(&.{try b.func(.{
         .doc = .{ .text = doc.written() },
         .receiver = .{ .name = receiver_name, .type = receiver, .pointer = true },
         .name = method,
@@ -252,7 +261,7 @@ pub fn renderImplementsWrapper(
 /// `n, err := m(arg)` with the error returned first, in the shapes the
 /// method can have: with or without a count, with or without an error.
 fn appendCall(
-    b: plugin_api.Builder,
+    b: *plugin_api.Builder,
     body: *std.ArrayList(Stmt),
     receiver_name: []const u8,
     go_name: []const u8,
@@ -304,8 +313,8 @@ fn stringWriterPassesString(function: semantic.SemanticFn) bool {
 
 /// The counting stream types the `void`-result `WriteTo`/`ReadFrom`
 /// wrappers route their stream through. Only emitted when one needs them.
-pub fn renderCountingStreams(context: plugin_api.Context, writer: *std.Io.Writer) !void {
-    if (try programNeedsCountingStream(context, .writer_to)) try renderCountingStream(context, writer, .{
+pub fn renderCountingStreams(context: plugin_api.Context, b: *plugin_api.Builder) !void {
+    if (try programNeedsCountingStream(context, .writer_to)) try renderCountingStream(b, .{
         .name = "zigoCountingWriter",
         .doc = "zigoCountingWriter counts the bytes a WriteTo wrapper sends on to w.",
         .field = "w",
@@ -313,7 +322,7 @@ pub fn renderCountingStreams(context: plugin_api.Context, writer: *std.Io.Writer
         .method = "Write",
         .method_doc = "Write passes p on to w and adds what w took to the count.",
     });
-    if (try programNeedsCountingStream(context, .reader_from)) try renderCountingStream(context, writer, .{
+    if (try programNeedsCountingStream(context, .reader_from)) try renderCountingStream(b, .{
         .name = "zigoCountingReader",
         .doc = "zigoCountingReader counts the bytes a ReadFrom wrapper takes from r.",
         .field = "r",
@@ -332,9 +341,8 @@ const CountingStream = struct {
     method_doc: []const u8,
 };
 
-fn renderCountingStream(context: plugin_api.Context, writer: *std.Io.Writer, spec: CountingStream) !void {
-    const b = context.builder();
-    try b.render(writer, &.{
+fn renderCountingStream(b: *plugin_api.Builder, spec: CountingStream) !void {
+    try b.emit(&.{
         try b.structDecl(.{
             .doc = .{ .text = spec.doc },
             .name = spec.name,
@@ -452,8 +460,4 @@ fn kindIssue(allocator: std.mem.Allocator, function: semantic.SemanticFn, implem
         };
     }
     return null;
-}
-
-fn runtimeHook(context: plugin_api.Context, writer: *std.Io.Writer, file: plugin_api.FileInfo, phase: plugin_api.FilePhase) !void {
-    if (file.kind == .runtime and phase == .end) try renderCountingStreams(context, writer);
 }

@@ -5,7 +5,7 @@
 //! the way the Go fields are spelled and it encodes an enum as its number.
 //! Neither is usually what a wire format wants, and the usual fix -- struct
 //! tags and a hand-written pair of methods -- has to be kept next to generated
-//! code. A `type_hook` writes it instead.
+//! code. A visit of the type node writes it instead.
 const std = @import("std");
 const diagnostic = @import("diagnostic");
 const plugin_api = @import("plugin");
@@ -35,7 +35,7 @@ pub const plugin: plugin_api.Plugin = .{
     .TypeOptions = Options,
     .subjects = &.{ .value, .enumeration },
     .validate = validateDocument,
-    .type_hook = typeHook,
+    .visit = visit,
     // Written by the methods below. They are added to a file only when its
     // body really spells the qualifier.
     .imports = &.{
@@ -44,11 +44,13 @@ pub const plugin: plugin_api.Plugin = .{
     },
 };
 
-fn typeHook(context: plugin_api.Context, writer: *std.Io.Writer, declaration: semantic.TypeDecl) !void {
-    const options = try context.optionsOf(plugin, .type, declaration.ext) orelse return;
+fn visit(context: plugin_api.Context, node: plugin_api.Node, b: *plugin_api.Builder) !void {
+    if (node != .type) return;
+    const declaration = node.type;
+    const options = try context.optionsOf(plugin, .type, node) orelse return;
     switch (declaration.kind) {
-        .@"enum" => try renderEnum(context, writer, declaration),
-        .value_struct => try renderValueStruct(context, writer, declaration, options),
+        .@"enum" => try renderEnum(context, b, declaration),
+        .value_struct => try renderValueStruct(context, b, declaration, options),
         else => {},
     }
 }
@@ -56,9 +58,8 @@ fn typeHook(context: plugin_api.Context, writer: *std.Io.Writer, declaration: se
 /// An enum crosses as its Zig tag name. `String` already spells it, so
 /// marshalling is one call; unmarshalling is the switch that `String` does not
 /// have an inverse for unless the binding asked for `.text`.
-fn renderEnum(context: plugin_api.Context, writer: *std.Io.Writer, declaration: semantic.TypeDecl) !void {
+fn renderEnum(context: plugin_api.Context, b: *plugin_api.Builder, declaration: semantic.TypeDecl) !void {
     const allocator = context.allocator;
-    const b = context.builder();
     const by_value: plugin_api.Receiver = .{ .name = "value", .type = declaration.name };
     const by_pointer: plugin_api.Receiver = .{ .name = "value", .type = declaration.name, .pointer = true };
 
@@ -75,7 +76,7 @@ fn renderEnum(context: plugin_api.Context, writer: *std.Io.Writer, declaration: 
     const unknown = try std.fmt.allocPrint(allocator, "{s}: unknown value %q", .{declaration.name});
 
     const marshal_doc = try std.fmt.allocPrint(allocator, "MarshalJSON encodes {s} as its Zig tag name.", .{declaration.name});
-    try b.render(writer, &.{
+    try b.emit(&.{
         try b.func(.{
             .doc = .{ .text = marshal_doc },
             .receiver = by_value,
@@ -108,7 +109,7 @@ fn renderEnum(context: plugin_api.Context, writer: *std.Io.Writer, declaration: 
 
 /// `if err := json.Unmarshal(data, &target); err != nil { return err }`, the
 /// first line of both generated `UnmarshalJSON` bodies.
-fn unmarshalInto(b: plugin_api.Builder, target: []const u8) !plugin_api.gobuild.Stmt {
+fn unmarshalInto(b: *plugin_api.Builder, target: []const u8) !plugin_api.gobuild.Stmt {
     return b.ifStmt(.{
         .init = try b.define(&.{"err"}, try b.call(try b.selName("json", "Unmarshal"), &.{ b.ident("data"), try b.addr(b.ident(target)) })),
         .cond = try b.bin("!=", b.ident("err"), .nil),
@@ -121,12 +122,11 @@ fn unmarshalInto(b: plugin_api.Builder, target: []const u8) !plugin_api.gobuild.
 /// one, which is what every other generated conversion reads.
 fn renderValueStruct(
     context: plugin_api.Context,
-    writer: *std.Io.Writer,
+    b: *plugin_api.Builder,
     declaration: semantic.TypeDecl,
     options: Options,
 ) !void {
     const allocator = context.allocator;
-    const b = context.builder();
     const wire = try std.fmt.allocPrint(allocator, "zigo{s}JSON", .{declaration.name});
     const by_value: plugin_api.Receiver = .{ .name = "value", .type = declaration.name };
     const by_pointer: plugin_api.Receiver = .{ .name = "value", .type = declaration.name, .pointer = true };
@@ -153,7 +153,7 @@ fn renderValueStruct(
 
     const wire_doc = try std.fmt.allocPrint(allocator, "{s} is the wire shape of {s}: the same fields under the JSON keys the binding chose.", .{ wire, declaration.name });
     const marshal_doc = try std.fmt.allocPrint(allocator, "MarshalJSON encodes {s} under the JSON keys the binding chose.", .{declaration.name});
-    try b.render(writer, &.{
+    try b.emit(&.{
         try b.structDecl(.{ .doc = .{ .text = wire_doc }, .name = wire, .fields = fields.items }),
         try b.func(.{
             .doc = .{ .text = marshal_doc },
@@ -213,7 +213,9 @@ test "an enum writes its tag names as string literals through the builder" {
     const context = plugin_api.testing.context(arena.allocator(), .{ .package = "palette", .prefix = "zg", .functions = &.{} });
     var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer output.deinit();
-    try renderEnum(context, &output.writer, .{
+    var b = context.builder();
+    b.out = &output.writer;
+    try renderEnum(context, &b, .{
         .kind = .@"enum",
         .name = "Mode",
         .fields = &.{ .{ .name = "idle", .value = 0 }, .{ .name = "get_all", .value = 1 } },

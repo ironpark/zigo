@@ -15,18 +15,19 @@ pub const plugin: plugin_api.Plugin = .{
     .name = name,
     .TypeOptions = Options,
     .subjects = &.{.enumeration},
-    .type_hook = typeHook,
+    .visit = visit,
     .validate = validateDocument,
 };
 
-fn typeHook(context: plugin_api.Context, writer: *std.Io.Writer, declaration: semantic.TypeDecl) !void {
-    const options = try context.optionsOf(plugin, .type, declaration.ext) orelse return;
-    try render(context, writer, declaration.name, context.program.liveFields(declaration.name), options);
+fn visit(context: plugin_api.Context, node: plugin_api.Node, b: *plugin_api.Builder) !void {
+    if (node != .type) return;
+    const declaration = node.type;
+    const options = try context.optionsOf(plugin, .type, node) orelse return;
+    try render(context, b, declaration.name, context.program.liveFields(declaration.name), options);
 }
 
-fn render(context: plugin_api.Context, writer: *std.Io.Writer, type_name: []const u8, fields: []const semantic.TypeField, options: Options) !void {
+fn render(context: plugin_api.Context, b: *plugin_api.Builder, type_name: []const u8, fields: []const semantic.TypeField, options: Options) !void {
     const allocator = context.allocator;
-    const b = context.builder();
     var decls: std.ArrayList(plugin_api.gobuild.Decl) = .empty;
     defer decls.deinit(allocator);
 
@@ -82,7 +83,7 @@ fn render(context: plugin_api.Context, writer: *std.Io.Writer, type_name: []cons
         }));
     }
 
-    try b.render(writer, decls.items, .{ .blank_after = true });
+    try b.emit(decls.items, .{ .blank_after = true });
 }
 
 fn validateDocument(context: plugin_api.ValidateContext) !void {
@@ -107,20 +108,29 @@ fn testContext(arena: *std.heap.ArenaAllocator) plugin_api.Context {
     return plugin_api.testing.context(arena.allocator(), .{ .package = "enumkit", .prefix = "zg", .functions = &.{} });
 }
 
+/// The builder a visit is handed: the same context, writing into `writer`.
+fn testBuilder(context: plugin_api.Context, writer: *std.Io.Writer) plugin_api.Builder {
+    var b = context.builder();
+    b.out = writer;
+    return b;
+}
+
 test "options independently disable helpers and empty enums stay valid" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer output.deinit();
-    try render(testContext(&arena), &output.writer, "Empty", &.{}, .{ .values = false, .is_known = false });
+    var empty = testBuilder(testContext(&arena), &output.writer);
+    try render(empty.context, &empty, "Empty", &.{}, .{ .values = false, .is_known = false });
     try std.testing.expectEqualStrings("", output.written());
-    try render(testContext(&arena), &output.writer, "Empty", &.{}, .{ .values = false });
+    try render(empty.context, &empty, "Empty", &.{}, .{ .values = false });
     try std.testing.expect(std.mem.indexOf(u8, output.written(), "func (value Empty) IsKnown() bool {\n") != null);
     try std.testing.expect(std.mem.indexOf(u8, output.written(), "switch") == null);
     try std.testing.expect(std.mem.indexOf(u8, output.written(), "EmptyValues") == null);
     var values: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer values.deinit();
-    try render(testContext(&arena), &values.writer, "Empty", &.{}, .{ .is_known = false });
+    var only_values = testBuilder(testContext(&arena), &values.writer);
+    try render(only_values.context, &only_values, "Empty", &.{}, .{ .is_known = false });
     try std.testing.expect(std.mem.indexOf(u8, values.written(), "func EmptyValues() []Empty {\n\treturn []Empty{") != null);
     try std.testing.expect(std.mem.indexOf(u8, values.written(), "IsKnown") == null);
 }
@@ -130,14 +140,16 @@ test "membership range requires every value including excluded holes" {
     defer arena.deinit();
     var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer output.deinit();
-    try render(testContext(&arena), &output.writer, "Dense", &.{
+    var dense = testBuilder(testContext(&arena), &output.writer);
+    try render(dense.context, &dense, "Dense", &.{
         .{ .name = "high", .value = 0 },
         .{ .name = "low", .value = -1 },
     }, .{ .values = false });
     try std.testing.expect(std.mem.indexOf(u8, output.written(), "return value >= -1 && value <= 0") != null);
     var sparse: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer sparse.deinit();
-    try render(testContext(&arena), &sparse.writer, "Holes", &.{
+    var holes = testBuilder(testContext(&arena), &sparse.writer);
+    try render(holes.context, &holes, "Holes", &.{
         .{ .name = "low_water", .value = -1 },
         .{ .name = "high", .value = 1 },
     }, .{ .values = false });

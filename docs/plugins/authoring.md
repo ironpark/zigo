@@ -20,18 +20,15 @@ pub const plugin: api.Plugin = .{
     .name = "KNOWN",
     .TypeOptions = Options,
     .subjects = &.{.enumeration},
-    .type_hook = typeHook,
+    .visit = visit,
 };
 
-fn typeHook(
-    context: api.Context,
-    writer: *std.Io.Writer,
-    declaration: semantic.TypeDecl,
-) !void {
-    const options = try context.optionsOf(plugin, .type, declaration.ext) orelse return;
+fn visit(context: api.Context, node: api.Node, b: *api.Builder) !void {
+    if (node != .type) return;
+    const declaration = node.type;
+    const options = try context.optionsOf(plugin, .type, node) orelse return;
     if (!options.enabled) return;
 
-    const b = context.builder();
     var body: std.ArrayList(api.gobuild.Stmt) = .empty;
     defer body.deinit(context.allocator);
     for (context.program.liveFields(declaration.name)) |field| {
@@ -42,7 +39,7 @@ fn typeHook(
         }));
     }
     try body.append(context.allocator, try b.ret(&.{b.boolean(false)}));
-    try b.render(writer, &.{try b.func(.{
+    try b.emit(&.{try b.func(.{
         .doc = .{ .text = "HasName reports whether value is a registered tag." },
         .receiver = .{ .name = "value", .type = declaration.name },
         .name = "HasName",
@@ -52,9 +49,11 @@ fn typeHook(
 }
 ```
 
-선언과 그 안쪽 node에 붙은 옵션은 모든 context에서 같은 한 가지 방법,
-`optionsOf(plugin, attachment, ext)`로 읽습니다. Go 출력은 `context.builder()`가 돌려주는 [builder](api-reference.md#go-builder)로
-조립합니다. 플러그인은 Go 문법을 문자열로 쓰지 않습니다. Zig 이름에서 파생하는 Go 식별자는
+렌더링 hook은 `visit` 하나입니다. generator가 프로그램의 모든 [`Node`](api-reference.md#렌더링-hook-visit)를
+document 순서로 넘기고, 플러그인은 관심 있는 node만 처리합니다. 선언과 그 안쪽 node에 붙은
+옵션은 모든 context에서 같은 한 가지 방법, `optionsOf(plugin, attachment, ext)`로 읽습니다
+(`ext` 자리에 `Node`를 그대로 넘겨도 됩니다). Go 출력은 `visit`이 받은
+[builder](api-reference.md#go-builder)로 조립합니다. 플러그인은 Go 문법을 문자열로 쓰지 않습니다. Zig 이름에서 파생하는 Go 식별자는
 `identifierAlloc(allocator, name, .pascal | .camel)`로 얻어야 generator가 core 타입에 쓰는 것과
 같은 표기(initialism 규칙)를 플러그인도 얻습니다. builder node는 context allocator(run arena)에
 복사되므로 loop 안에서 만든 node도 렌더링까지 살아 있습니다.
@@ -159,16 +158,19 @@ api.value("Row", .{
 }),
 ```
 
-hook은 그 node의 `ext`를 해당 attachment로 읽습니다.
+generator는 그 node를 `visit`에 따로 넘기고, hook은 node의 `ext`를 해당 attachment로 읽습니다.
 
 ```zig
-for (function.origin.params) |parameter| {
-    const options = try context.optionsOf(plugin, .param, parameter.ext) orelse continue;
-    if (options.trusted) ...;
-}
-for (declaration.fields) |field| {
-    const options = try context.optionsOf(plugin, .field, field.ext) orelse continue;
-    ...;
+switch (node) {
+    .param => {
+        const options = try context.optionsOf(plugin, .param, node) orelse return;
+        if (options.trusted) ...;
+    },
+    .field => {
+        const options = try context.optionsOf(plugin, .field, node) orelse return;
+        ...;
+    },
+    else => {},
 }
 ```
 
@@ -191,7 +193,7 @@ const entry: zigo.PluginModule = .{
 };
 ```
 
-hook에서는 `try context.config(plugin)`으로 읽습니다. 선언 옵션과 빌드 config는 서로
+`visit`에서는 `try context.config(plugin)`으로 읽습니다. 선언 옵션과 빌드 config는 서로
 다른 범위입니다.
 
 ## 검증
@@ -256,7 +258,7 @@ Go file은 패키지 clause, 빌드 constraint와 import framing을 generator가
 - 소스 순서가 필요한 경우 semantic/ABI 배열 순서를 유지합니다.
 - map iteration 결과는 정렬합니다.
 - timestamp, absolute 빌드 경로와 random value를 출력하지 않습니다.
-- hook 호출 중 공유 가변 상태를 사용하지 않습니다.
+- `visit` 호출 중 공유 가변 상태를 사용하지 않습니다.
 - 경로는 context 도우미로 만들고 출력 root 밖으로 나가지 않습니다.
 - 생성된 Go는 `gofmt`와 `go test`를 통과해야 합니다.
 

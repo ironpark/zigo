@@ -1,7 +1,9 @@
-//! Where the registered plugins get to write. The two hooks are additive and
-//! Go-only: `method_hook` writes after a public method, into the file that
-//! owns it, and `type_hook` writes after a handle, value struct or enum.
-//! Neither can reach the shim, the header or the raw package.
+//! Where the registered plugins get to write. One hook, `visit`, is offered
+//! every node of the program in document order, and what it builds is flushed
+//! at that node's insertion point: after a public method, after a handle,
+//! value struct or enum, at a file body's boundaries, or in the package's own
+//! plugin file. Every contribution is additive and Go-only; none of them can
+//! reach the shim, the header or the raw package.
 const std = @import("std");
 const abi = @import("abi");
 const docs = @import("docs.zig");
@@ -31,13 +33,14 @@ const writers: plugin.Writers = .{
     .identifierAlloc = plugin.format.identifierAlloc,
 };
 
-/// The context a `type_hook`, a `files` emitter or a validator sees.
+/// The context a `type` node, a `files` emitter or a validator sees.
 pub fn context(allocator: std.mem.Allocator, program: abi.Program, options: emit.Options) plugin.Context {
     return .{ .allocator = allocator, .program = program, .options = options.view(), .facts = options.facts, .writers = &writers };
 }
 
-/// The context a `method_hook` sees: the same, plus the names the method the
-/// hook is written after used, so a wrapper cannot spell the call differently.
+/// The context the nodes inside a method see: the same, plus the names the
+/// method they are written after used, so a wrapper cannot spell the call
+/// differently.
 pub fn methodContext(
     allocator: std.mem.Allocator,
     program: abi.Program,
@@ -49,14 +52,49 @@ pub fn methodContext(
     return value;
 }
 
-/// Runs every registered `method_hook`, in registration order. `options`
+/// Offers one node to every registered plugin that attaches to it, in
+/// registration order, and flushes what each built into `writer`. `options`
 /// is the emitter's own copy, which knows which added plugins are selected;
 /// the context only carries the view a hook may read.
-pub fn runMethodHooks(options: emit.Options, value: plugin.Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
+fn visitNode(options: emit.Options, value: plugin.Context, writer: *std.Io.Writer, node: plugin.Node) !void {
     inline for (registry.plugins, 0..) |registered, index| {
-        if (registered.method_hook) |hook| {
-            if (registered.supports(.function) and runs(index, options)) try hook(value, writer, function);
+        if (registered.visit) |hook| {
+            if (attaches(registered, node) and runs(index, options)) {
+                var builder = value.builder();
+                builder.out = writer;
+                try hook(value, node, &builder);
+            }
         }
+    }
+}
+
+/// Whether `registered` declared the subject this node belongs to. A file or
+/// package boundary has no subject, so every plugin sees it.
+fn attaches(comptime registered: plugin.Plugin, node: plugin.Node) bool {
+    return registered.supports(node.subject() orelse return true);
+}
+
+/// A public function or method: the function itself, then each of its
+/// parameters, then its result. The three share one insertion point -- the
+/// place the method's body ended -- so they are written in that order.
+pub fn visitFunction(options: emit.Options, value: plugin.Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
+    try visitNode(options, value, writer, .{ .function = function });
+    for (function.origin.params, 0..) |_, index|
+        try visitNode(options, value, writer, .{ .param = .{ .function = function, .index = index } });
+    try visitNode(options, value, writer, .{ .result = function });
+}
+
+/// A type declaration and the members inside it, after the generator wrote
+/// the type. A registered enum's members are tags; every other kind's are
+/// fields.
+pub fn visitType(options: emit.Options, value: plugin.Context, writer: *std.Io.Writer, declaration: semantic.TypeDecl) !void {
+    try visitNode(options, value, writer, .{ .type = declaration });
+    for (declaration.fields, 0..) |_, index| {
+        const member: plugin.Node.Member = .{ .declaration = declaration, .index = index };
+        try visitNode(options, value, writer, if (declaration.kind == .@"enum")
+            .{ .enum_tag = member }
+        else
+            .{ .field = member });
     }
 }
 
@@ -70,22 +108,14 @@ pub fn checkedNameAlloc(allocator: std.mem.Allocator, public_name: []const u8) !
 /// Whether a plugin claimed this declaration's public surface. Two claims on
 /// one declaration are refused in `analyze`, so the first answer is the only
 /// one.
-pub fn methodReplaced(options: emit.Options, value: plugin.Context, function: abi.AbiFn) !bool {
+pub fn claimed(options: emit.Options, value: plugin.Context, function: abi.AbiFn) !bool {
+    const node: plugin.Node = .{ .function = function };
     inline for (registry.plugins, 0..) |registered, index| {
-        if (registered.replaces_method) |claims| {
-            if (registered.supports(.function) and runs(index, options) and try claims(value, function)) return true;
+        if (registered.claims) |claims| {
+            if (registered.supports(.function) and runs(index, options) and try claims(value, node)) return true;
         }
     }
     return false;
-}
-
-/// Runs every registered `type_hook`, in registration order.
-pub fn runTypeHooks(options: emit.Options, value: plugin.Context, writer: *std.Io.Writer, declaration: semantic.TypeDecl) !void {
-    inline for (registry.plugins, 0..) |registered, index| {
-        if (registered.type_hook) |hook| {
-            if (registered.supports(plugin.typeSubject(declaration.kind)) and runs(index, options)) try hook(value, writer, declaration);
-        }
-    }
 }
 
 /// Whether the plugin at `index` writes for this generation. The built-ins
@@ -191,25 +221,27 @@ pub fn analyze(allocator: std.mem.Allocator, program: abi.Program, options: emit
         }
     }
     // After the analyses, which is where a plugin decides what it claims.
-    try checkReplacementClaims(allocator, program, options, facts, diagnostics);
+    try checkClaims(allocator, program, options, diagnostics);
 }
 
-/// One declaration has one public surface, so two plugins cannot both replace
-/// it: whichever wrote second would give the Go type two methods of one name.
-fn checkReplacementClaims(
+/// What `claims` is allowed to answer for. One declaration has one public
+/// surface, so two plugins cannot both replace it: whichever wrote second
+/// would give the Go type two methods of one name. And only a function node
+/// has a public method at all, so a claim on any other node is refused rather
+/// than quietly ignored.
+fn checkClaims(
     allocator: std.mem.Allocator,
     program: abi.Program,
     options: emit.Options,
-    facts: *plugin.Facts,
     diagnostics: *std.ArrayList(@import("diagnostic").Diagnostic),
 ) !void {
-    _ = facts;
     const value = context(allocator, program, options);
     for (program.functions) |function| {
         var claimant: ?[]const u8 = null;
+        const node: plugin.Node = .{ .function = function };
         inline for (registry.plugins, 0..) |registered, index| {
-            if (registered.replaces_method) |claims| {
-                if (registered.supports(.function) and runs(index, options) and try claims(value, function)) {
+            if (registered.claims) |claims| {
+                if (registered.supports(.function) and runs(index, options) and try claims(value, node)) {
                     if (claimant) |first| {
                         const path = try plugin.site.functionDeclarationAlloc(allocator, function.origin.*);
                         try diagnostics.append(allocator, .{
@@ -221,6 +253,43 @@ fn checkReplacementClaims(
                         });
                     } else claimant = registered.name;
                 }
+            }
+        }
+        for (function.origin.params, 0..) |_, index|
+            try refuseClaim(allocator, value, options, diagnostics, .{ .param = .{ .function = function, .index = index } });
+        try refuseClaim(allocator, value, options, diagnostics, .{ .result = function });
+    }
+    for (program.types) |declaration| {
+        try refuseClaim(allocator, value, options, diagnostics, .{ .type = declaration });
+        for (declaration.fields, 0..) |_, index| {
+            const member: plugin.Node.Member = .{ .declaration = declaration, .index = index };
+            try refuseClaim(allocator, value, options, diagnostics, if (declaration.kind == .@"enum")
+                .{ .enum_tag = member }
+            else
+                .{ .field = member });
+        }
+    }
+}
+
+/// A claim on a node that has no public Go surface of its own.
+fn refuseClaim(
+    allocator: std.mem.Allocator,
+    value: plugin.Context,
+    options: emit.Options,
+    diagnostics: *std.ArrayList(@import("diagnostic").Diagnostic),
+    node: plugin.Node,
+) !void {
+    inline for (registry.plugins, 0..) |registered, index| {
+        if (registered.claims) |claims| {
+            if (attaches(registered, node) and runs(index, options) and try claims(value, node)) {
+                const site = try node.site(value);
+                try diagnostics.append(allocator, .{
+                    .severity = .@"error",
+                    .code = "ZIGO065",
+                    .message = try std.fmt.allocPrint(allocator, "plugin `{s}` claims the `{s}` node `{s}`, which has no public Go surface of its own", .{ registered.name, @tagName(node), site.declaration }),
+                    .site = site,
+                    .hint = "`claims` answers for a function node; leave every other node to `visit`",
+                });
             }
         }
     }
@@ -262,10 +331,10 @@ test "a registered plugin adds a method next to a bound one, a line after a type
     // the generator backs a run with.
     const rendered = try renderAllPublicFiles(arena.allocator(), program);
 
-    // The method hook wrote next to the bound method, with the names the
-    // method itself used.
+    // The function node's visit wrote next to the bound method, with the
+    // names the method itself used.
     try std.testing.expect(std.mem.indexOf(u8, rendered, "func (c *Counter) BumpTestHook() string { return \"a\" }") != null);
-    // The type hook ran for the handle and for the enum.
+    // The type node was visited for the handle and for the enum.
     try std.testing.expect(std.mem.indexOf(u8, rendered, "// zigoTestHook saw Counter.") != null);
     try std.testing.expect(std.mem.indexOf(u8, rendered, "// zigoTestHook saw Mode.") != null);
     // The plugin's own file came out framed: the plugin wrote declarations,
@@ -299,7 +368,7 @@ fn renderAllPublicFiles(allocator: std.mem.Allocator, program: abi.Program) ![]u
     return joined.toOwnedSlice();
 }
 
-test "a hook reads the typed options the declaration attached" {
+test "a visit reads the typed options the declaration attached" {
     const fixture =
         \\{"functions":[{"ext":{"TEST":{"mode":"b"}},"name":"bump","params":[],"receiver":"Counter","return":{"kind":"void"},"symbol":"zg_counter_bump"}],"ir_version":1,"package":"meter","prefix":"zg","types":[{"kind":"opaque","name":"Counter"}],"zig_version":"0.16.0"}
     ;
@@ -320,7 +389,7 @@ test "a hook reads the typed options the declaration attached" {
     try std.testing.expect(std.mem.indexOf(u8, rendered.written(), "func (c *Counter) BumpTestHook() string { return \"b\" }") != null);
 }
 
-test "a hook reads the options a parameter, a result, a field and a tag attached" {
+test "a visit is offered the parameter, result, field and tag nodes with their options" {
     const fixture =
         \\{"functions":[{"name":"bump","params":[{"ext":{"TEST":{"tag":"step"}},"name":"by","type":{"bits":32,"kind":"int","signed":true}}],"receiver":"Counter","result_ext":{"TEST":{"tag":"total"}},"return":{"kind":"value_struct","ref":"Point"},"symbol":"zg_counter_bump"}],"ir_version":1,"package":"meter","prefix":"zg","types":[{"kind":"opaque","name":"Counter"},{"fields":[{"ext":{"TEST":{"tag":"zero"}},"name":"idle","value":0}],"kind":"enum","name":"Mode","tag_type":{"bits":8,"kind":"int","signed":false}},{"fields":[{"ext":{"TEST":{"tag":"across"}},"name":"x","type":{"bits":32,"kind":"int","signed":true}}],"kind":"value_struct","layout":"extern","name":"Point"}],"zig_version":"0.16.0"}
     ;
@@ -336,7 +405,7 @@ test "a hook reads the options a parameter, a result, a field and a tag attached
     defer testing_plugin.enabled = false;
 
     const rendered = try renderAllPublicFiles(allocator, program);
-    // Each of the four node kinds reached the hook through its own `ext`.
+    // Each of the four node kinds was visited and read its own `ext`.
     try std.testing.expect(std.mem.indexOf(u8, rendered, "// zigoTestHook param by at 0: step.") != null);
     try std.testing.expect(std.mem.indexOf(u8, rendered, "// zigoTestHook result of bump: total.") != null);
     try std.testing.expect(std.mem.indexOf(u8, rendered, "// zigoTestHook tag Mode.idle: zero.") != null);
@@ -398,19 +467,21 @@ test "plugin result and parameter writers avoid parsing checked signatures" {
     }
 }
 
-pub fn runFileHooks(options: emit.Options, value: plugin.Context, writer: *std.Io.Writer, phase: plugin.FilePhase) !void {
+/// A public file's body boundaries, inside the package/import frame. A file
+/// the emitter gave no `FileInfo` has no boundary to offer.
+pub fn visitFileBegin(options: emit.Options, value: plugin.Context, writer: *std.Io.Writer) !void {
     const file = value.options.file orelse return;
-    inline for (registry.plugins, 0..) |registered, index| {
-        if (registered.file_hook) |hook| {
-            if (runs(index, options)) try hook(value, writer, file, phase);
-        }
-    }
+    return visitNode(options, value, writer, .{ .file_begin = file });
 }
 
-pub fn runPackageHooks(options: emit.Options, value: plugin.Context, writer: *std.Io.Writer) !void {
-    inline for (registry.plugins, 0..) |registered, index| {
-        if (registered.package_hook) |hook| {
-            if (runs(index, options)) try hook(value, writer);
-        }
-    }
+pub fn visitFileEnd(options: emit.Options, value: plugin.Context, writer: *std.Io.Writer) !void {
+    const file = value.options.file orelse return;
+    return visitNode(options, value, writer, .{ .file_end = file });
+}
+
+/// The package's own plugin file, `zigo_plugins_gen.go`: both boundaries in
+/// one body, since nothing of the generator's sits between them.
+pub fn visitPackage(options: emit.Options, value: plugin.Context, writer: *std.Io.Writer) !void {
+    try visitNode(options, value, writer, .package_begin);
+    try visitNode(options, value, writer, .package_end);
 }

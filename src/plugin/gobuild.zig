@@ -177,8 +177,25 @@ pub fn writeStringLiteral(writer: *std.Io.Writer, text: []const u8) !void {
 pub const Builder = struct {
     allocator: std.mem.Allocator,
     context: plugin.Context,
+    /// Where `emit` writes: the buffer the generator flushes at the insertion
+    /// point of the node being visited. It is null on the builder a plugin
+    /// makes for one of its own files, which renders into the writer that file
+    /// was handed.
+    out: ?*std.Io.Writer = null,
 
     // -- rendering -----------------------------------------------------
+
+    /// Writes `decls` into this visit's output. The generator flushes it at
+    /// the insertion point of the node the visit was called for.
+    pub fn emit(self: Builder, decls: []const Decl, layout: Layout) !void {
+        return self.render(try self.output(), decls, layout);
+    }
+
+    /// This visit's output itself, for the rare hook that writes text no node
+    /// spells. `emit` is how a plugin writes Go.
+    pub fn output(self: Builder) !*std.Io.Writer {
+        return self.out orelse error.NoBuilderOutput;
+    }
 
     /// Writes `decls` in order, spaced by `layout`.
     pub fn render(self: Builder, writer: *std.Io.Writer, decls: []const Decl, layout: Layout) !void {

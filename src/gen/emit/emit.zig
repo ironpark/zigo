@@ -75,8 +75,11 @@ const builtin_public_emitters = [_]Emitter{
     .{ .pathAlloc = publicErrorsPath, .render = public_runtime.renderPublicErrors },
 } ++ if (hasPackageHooks()) [_]Emitter{.{ .pathAlloc = packageHooksPath, .render = renderPackageHooks }} else [_]Emitter{};
 
+/// Whether the package's own plugin file is worth rendering at all. Any
+/// plugin with a `visit` may write at a package boundary; a file none of them
+/// wrote into stays at its prelude, which the generator drops.
 fn hasPackageHooks() bool {
-    inline for (registry.plugins) |registered| if (registered.package_hook != null) return true;
+    inline for (registry.plugins) |registered| if (registered.visit != null) return true;
     return false;
 }
 
@@ -89,7 +92,7 @@ fn packageHooksPath(allocator: std.mem.Allocator, program: abi.Program, options:
 fn renderPackageHooks(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
     return public.renderPublicFile(allocator, writer, program, options, struct {
         fn body(a: std.mem.Allocator, w: *std.Io.Writer, p: abi.Program, o: Options) !void {
-            return plugin_hooks.runPackageHooks(o, plugin_hooks.context(a, p, o), w);
+            return plugin_hooks.visitPackage(o, plugin_hooks.context(a, p, o), w);
         }
     }.body);
 }

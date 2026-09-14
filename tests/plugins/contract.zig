@@ -9,7 +9,7 @@ pub var analysis_runs: usize = 0;
 pub var package_renders: usize = 0;
 pub const plugin: api.Plugin = .{
     .name = "CONTRACT",
-    .Config = struct { label: []const u8 = "default", customize: bool = false, invalid_order: bool = false, invalid_adapter: bool = false, invalid_name: bool = false, collision: bool = false, replace: []const u8 = "" },
+    .Config = struct { label: []const u8 = "default", customize: bool = false, invalid_order: bool = false, invalid_adapter: bool = false, invalid_name: bool = false, collision: bool = false, replace: []const u8 = "", claim_node: bool = false },
     .transform = transform,
     .map_type = mapType,
     .name_function = nameFunction,
@@ -17,11 +17,8 @@ pub const plugin: api.Plugin = .{
     .Facts = struct { validated: bool },
     .validate = validate,
     .analyze = analyze,
-    .method_hook = methodHook,
-    .replaces_method = replacesMethod,
-    .type_hook = typeHook,
-    .file_hook = fileHook,
-    .package_hook = packageHook,
+    .visit = visit,
+    .claims = claims,
     .imports = &.{ .{ .qualifier = "fmt", .path = "fmt" }, .{ .qualifier = "time", .path = "time" } },
 };
 
@@ -38,10 +35,32 @@ fn analyze(context: api.AnalyzeContext) !void {
         try context.facts.put(context.render.allocator, plugin, .function(function.origin.*), fact);
 }
 
-fn methodHook(context: api.Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
+/// Every node kind the contract offers, so the fixture proves the whole walk
+/// reaches an external plugin module.
+fn visit(context: api.Context, node: api.Node, b: *api.Builder) !void {
+    const writer = try b.output();
+    switch (node) {
+        .function => |function| try renderMethod(context, writer, function),
+        .type => |declaration| try writer.print("// ContractType {s} {s}\n", .{ @tagName(declaration.kind), declaration.name }),
+        .file_begin => |file| try writer.print("// ContractFile begin {s}\n", .{file.path}),
+        .file_end => |file| {
+            try writer.print("// ContractFile end {s}\n", .{file.path});
+            try writer.writeAll("var _ = fmt.Sprint\n");
+        },
+        .package_begin => {
+            package_renders += 1;
+            const config = try context.config(plugin);
+            if (config.customize) try writer.writeAll("func unixTimeFromRaw(v uint64) time.Time { return time.Unix(int64(v), 0) }\nfunc unixTimeToRaw(v time.Time) uint64 { return uint64(v.Unix()) }\n");
+            try writer.print("const ContractConfig = \"{s}\"\n", .{config.label});
+        },
+        else => {},
+    }
+}
+
+fn renderMethod(context: api.Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
     _ = (try context.facts.get(plugin, .function(function.origin.*))) orelse return error.MissingAnalysisFact;
     try writer.writeAll("\n// ContractAnalyzed\n");
-    if (!try replacesMethod(context, function)) return;
+    if (!try claims(context, .{ .function = function })) return;
     // The whole Go surface of a claimed declaration: the exported name, with
     // the generated body called under the name it was written with.
     const method = context.method.?;
@@ -62,25 +81,13 @@ fn methodHook(context: api.Context, writer: *std.Io.Writer, function: abi.AbiFn)
     try writer.writeAll(")) }\n");
 }
 
-fn replacesMethod(context: api.Context, function: abi.AbiFn) !bool {
-    const claimed = (try context.config(plugin)).replace;
-    return claimed.len != 0 and std.mem.eql(u8, claimed, function.origin.name);
-}
-
-fn typeHook(_: api.Context, writer: *std.Io.Writer, declaration: semantic.TypeDecl) !void {
-    try writer.print("// ContractType {s} {s}\n", .{ @tagName(declaration.kind), declaration.name });
-}
-
-fn fileHook(_: api.Context, writer: *std.Io.Writer, file: api.FileInfo, phase: api.FilePhase) !void {
-    try writer.print("// ContractFile {s} {s}\n", .{ @tagName(phase), file.path });
-    if (phase == .end) try writer.writeAll("var _ = fmt.Sprint\n");
-}
-
-fn packageHook(context: api.Context, writer: *std.Io.Writer) !void {
-    package_renders += 1;
+fn claims(context: api.Context, node: api.Node) !bool {
     const config = try context.config(plugin);
-    if (config.customize) try writer.writeAll("func unixTimeFromRaw(v uint64) time.Time { return time.Unix(int64(v), 0) }\nfunc unixTimeToRaw(v time.Time) uint64 { return uint64(v.Unix()) }\n");
-    try writer.print("const ContractConfig = \"{s}\"\n", .{config.label});
+    // Only a function node has a public method to take over; claiming any
+    // other node is what the generator has to refuse, so the fixture can ask
+    // for it.
+    if (node != .function) return config.claim_node;
+    return config.replace.len != 0 and std.mem.eql(u8, config.replace, node.function.origin.name);
 }
 
 pub var transform_runs: usize = 0;

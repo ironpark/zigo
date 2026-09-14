@@ -34,21 +34,48 @@ pub const plugin: plugin_api.Plugin = .{
     .ResultOptions = NodeOptions,
     .FieldOptions = NodeOptions,
     .TagOptions = NodeOptions,
-    .method_hook = methodHook,
-    .type_hook = typeHook,
+    .visit = visit,
     .source_files = &.{.{ .pathAlloc = filePath, .render = renderFile }},
 };
 
-/// A method next to the bound one, spelled from the names the method used.
-fn methodHook(context: plugin_api.Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
+/// Every node the frame offers, which is what makes this plugin a test of the
+/// walk itself: a method beside the bound one, a comment after a type, and one
+/// marker per node that attached `TEST`.
+fn visit(context: plugin_api.Context, node: plugin_api.Node, b: *plugin_api.Builder) !void {
     if (!enabled) return;
+    switch (node) {
+        .function => |function| try renderMethod(context, b, function),
+        .param => |parameter| {
+            const options = try context.optionsOf(plugin, .param, node) orelse return;
+            const name = parameter.function.origin.params[parameter.index].name;
+            const text = try std.fmt.allocPrint(context.allocator, "zigoTestHook param {s} at {d}: {s}.", .{ name, parameter.index, options.tag });
+            try b.emit(&.{.{ .comment = .{ .text = text } }}, .{});
+        },
+        .result => |function| {
+            const options = try context.optionsOf(plugin, .result, node) orelse return;
+            const text = try std.fmt.allocPrint(context.allocator, "zigoTestHook result of {s}: {s}.", .{ function.origin.name, options.tag });
+            try b.emit(&.{.{ .comment = .{ .text = text } }}, .{});
+        },
+        .type => |declaration| {
+            const text = try std.fmt.allocPrint(context.allocator, "zigoTestHook saw {s}.", .{declaration.name});
+            try b.emit(&.{.{ .comment = .{ .text = text } }}, .{ .blank_after = true });
+        },
+        // Tags and fields are the same IR node; which node kind the walk
+        // offers is what says which of the two option types reads it.
+        .field => |member| try renderMember(context, b, node, member, "field"),
+        .enum_tag => |member| try renderMember(context, b, node, member, "tag"),
+        else => {},
+    }
+}
+
+/// A method next to the bound one, spelled from the names the method used.
+fn renderMethod(context: plugin_api.Context, b: *plugin_api.Builder, function: abi.AbiFn) !void {
     const method = context.method.?;
     const receiver = method.receiver orelse return;
     const options = try context.optionsOf(plugin, .function, function.origin.ext) orelse Options{};
-    const b = context.builder();
     const name = try std.fmt.allocPrint(context.allocator, "{s}TestHook", .{method.public_name});
     const doc = try std.fmt.allocPrint(context.allocator, "{s} reports the name of {s}.", .{ name, method.public_name });
-    try b.render(writer, &.{try b.func(.{
+    try b.emit(&.{try b.func(.{
         .doc = .{ .text = doc },
         .receiver = .{ .name = method.receiver_name.?, .type = receiver, .pointer = true },
         .name = name,
@@ -56,43 +83,19 @@ fn methodHook(context: plugin_api.Context, writer: *std.Io.Writer, function: abi
         .body = &.{try b.ret(&.{b.string(@tagName(options.mode))})},
         .single_line = true,
     })}, .{ .blank_before = true });
-    try renderNodeMarkers(context, writer, function.origin);
 }
 
-/// One comment per node of this function that attached `TEST`, which is what
-/// proves a parameter's and a result's `ext` reach a hook at all. Nothing is
-/// written for a function whose nodes none of them extended.
-fn renderNodeMarkers(context: plugin_api.Context, writer: *std.Io.Writer, function: *const semantic.SemanticFn) !void {
-    const b = context.builder();
-    for (function.params, 0..) |parameter, index| {
-        const options = try context.optionsOf(plugin, .param, parameter.ext) orelse continue;
-        const text = try std.fmt.allocPrint(context.allocator, "zigoTestHook param {s} at {d}: {s}.", .{ parameter.name, index, options.tag });
-        try b.render(writer, &.{.{ .comment = .{ .text = text } }}, .{});
-    }
-    if (try context.optionsOf(plugin, .result, function.result_ext)) |options| {
-        const text = try std.fmt.allocPrint(context.allocator, "zigoTestHook result of {s}: {s}.", .{ function.name, options.tag });
-        try b.render(writer, &.{.{ .comment = .{ .text = text } }}, .{});
-    }
-}
-
-/// A line after a type, which is what a `type_hook` is for.
-fn typeHook(context: plugin_api.Context, writer: *std.Io.Writer, declaration: semantic.TypeDecl) !void {
-    if (!enabled) return;
-    const b = context.builder();
-    const text = try std.fmt.allocPrint(context.allocator, "zigoTestHook saw {s}.", .{declaration.name});
-    try b.render(writer, &.{.{ .comment = .{ .text = text } }}, .{ .blank_after = true });
-    // Tags and fields are the same IR node; the container's kind is what says
-    // which of the two option types reads it.
-    const member = if (declaration.kind == .@"enum") "tag" else "field";
-    for (declaration.fields) |field| {
-        const options = if (declaration.kind == .@"enum")
-            try context.optionsOf(plugin, .enum_tag, field.ext)
-        else
-            try context.optionsOf(plugin, .field, field.ext);
-        const attached = options orelse continue;
-        const marker = try std.fmt.allocPrint(context.allocator, "zigoTestHook {s} {s}.{s}: {s}.", .{ member, declaration.name, field.name, attached.tag });
-        try b.render(writer, &.{.{ .comment = .{ .text = marker } }}, .{ .blank_after = true });
-    }
+/// One comment per member that attached `TEST`, which is what proves a field's
+/// and a tag's `ext` reach a visit at all.
+fn renderMember(context: plugin_api.Context, b: *plugin_api.Builder, node: plugin_api.Node, member: plugin_api.Node.Member, kind: []const u8) !void {
+    const options = if (node == .enum_tag)
+        try context.optionsOf(plugin, .enum_tag, node)
+    else
+        try context.optionsOf(plugin, .field, node);
+    const attached = options orelse return;
+    const field = member.declaration.fields[member.index];
+    const marker = try std.fmt.allocPrint(context.allocator, "zigoTestHook {s} {s}.{s}: {s}.", .{ kind, member.declaration.name, field.name, attached.tag });
+    try b.emit(&.{.{ .comment = .{ .text = marker } }}, .{ .blank_after = true });
 }
 
 fn filePath(context: plugin_api.Context) ![]u8 {

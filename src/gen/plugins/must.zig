@@ -12,7 +12,7 @@ pub const plugin: plugin_api.Plugin = .{
     .Config = Config,
     .Facts = Variant,
     .analyze = analyze,
-    .method_hook = methodHook,
+    .visit = visit,
 };
 
 pub fn hasVariant(context: plugin_api.Context, function: abi.AbiFn) !bool {
@@ -106,10 +106,13 @@ fn analyze(context: plugin_api.AnalyzeContext) !void {
 /// The mirror of one method: the values through `zigoMust`, or the value
 /// and its presence flag through `zigoMustMatch`. `analyze` only enables a
 /// method that has a value, so there is no error-only shape here.
-fn methodHook(context: plugin_api.Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
+fn visit(context: plugin_api.Context, node: plugin_api.Node, b: *plugin_api.Builder) !void {
+    const function = switch (node) {
+        .function => |value| value,
+        else => return,
+    };
     if (!try hasVariant(context, function)) return;
     const method = context.method.?;
-    const b = context.builder();
     const name = try std.fmt.allocPrint(context.allocator, "Must{s}", .{method.public_name});
     const doc = try std.fmt.allocPrint(context.allocator, "{0s} calls {1s} and panics with its typed error on failure.", .{ name, method.public_name });
     // The name the generated body was written under, which differs from the
@@ -124,7 +127,7 @@ fn methodHook(context: plugin_api.Context, writer: *std.Io.Writer, function: abi
         1 => "zigoMust",
         else => "zigoMustMatch",
     };
-    try b.render(writer, &.{try b.func(.{
+    try b.emit(&.{try b.func(.{
         .doc = .{ .text = doc },
         .receiver = if (method.receiver) |receiver| .{ .name = method.receiver_name.?, .type = receiver, .pointer = true } else null,
         .name = name,

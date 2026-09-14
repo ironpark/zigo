@@ -141,7 +141,7 @@ pub fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Wr
             }
             try writer.writeAll("\t}\n}\n\n");
         }
-        try plugin_hooks.runTypeHooks(options, plugin_hooks.context(allocator, program, options), writer, declaration);
+        try plugin_hooks.visitType(options, plugin_hooks.context(allocator, program, options), writer, declaration);
     }
     for (program.structs) |record| {
         if (record.owner.kind == .tagged_union) continue;
@@ -169,7 +169,7 @@ pub fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Wr
         }
         try writer.writeAll("}\n\n");
         try renderPublicStructLayoutGuards(allocator, writer, options, record);
-        try plugin_hooks.runTypeHooks(options, plugin_hooks.context(allocator, program, options), writer, record.owner.*);
+        try plugin_hooks.visitType(options, plugin_hooks.context(allocator, program, options), writer, record.owner.*);
     }
     for (program.structs) |record| {
         if (record.owner.kind == .tagged_union) {
@@ -926,7 +926,7 @@ pub fn renderGoEnums(allocator: std.mem.Allocator, writer: *std.Io.Writer, progr
         try writer.writeAll(")\n\n");
         try renderGoEnumString(allocator, writer, declaration, program.liveFields(declaration.name));
         if (declaration.text == true) try renderGoEnumText(allocator, writer, program, declaration);
-        try plugin_hooks.runTypeHooks(options, plugin_hooks.context(allocator, program, options), writer, declaration);
+        try plugin_hooks.visitType(options, plugin_hooks.context(allocator, program, options), writer, declaration);
     }
 }
 
@@ -1094,7 +1094,7 @@ pub fn renderGoCallbackTypes(allocator: std.mem.Allocator, writer: *std.Io.Write
             try public_writers.writePublicCallbackType(scope, writer, program, parameter.type.callback);
             try writer.writeAll("\n\n");
             const declaration = semantic.typeDecl(program.types, callback_name) orelse semantic.TypeDecl{ .kind = .callback, .name = callback_name, .package = function.origin.package };
-            try plugin_hooks.runTypeHooks(options, plugin_hooks.context(allocator, program, options), writer, declaration);
+            try plugin_hooks.visitType(options, plugin_hooks.context(allocator, program, options), writer, declaration);
         }
     }
 }

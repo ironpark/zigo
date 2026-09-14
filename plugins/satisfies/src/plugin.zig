@@ -5,7 +5,7 @@
 //! is `var _ io.ReadWriteCloser = (*Document)(nil)`: a compiler error the day
 //! a method changes shape, rather than a caller's build breaking later. Writing
 //! that line by hand means keeping a file next to generated code, which is
-//! what a `type_hook` is for.
+//! what a visit of the type node is for.
 const std = @import("std");
 const diagnostic = @import("diagnostic");
 const plugin_api = @import("plugin");
@@ -31,18 +31,19 @@ pub const plugin: plugin_api.Plugin = .{
     .TypeOptions = Options,
     .subjects = &.{ .handle, .value, .enumeration, .tagged_union },
     .validate = validateDocument,
-    .type_hook = typeHook,
+    .visit = visit,
 };
 
 /// The assertion goes after the type, in the file that declares it, so the
 /// two are read together and `go build` reports them together.
-fn typeHook(context: plugin_api.Context, writer: *std.Io.Writer, declaration: semantic.TypeDecl) !void {
-    const options = try context.optionsOf(plugin, .type, declaration.ext) orelse return;
-    const b = context.builder();
+fn visit(context: plugin_api.Context, node: plugin_api.Node, b: *plugin_api.Builder) !void {
+    if (node != .type) return;
+    const declaration = node.type;
+    const options = try context.optionsOf(plugin, .type, node) orelse return;
     for (options.interfaces) |interface| {
         const doc = try std.fmt.allocPrint(context.allocator, "{0s} satisfies {1s}; this assertion stops compiling the day it does not.", .{ declaration.name, interface });
         defer context.allocator.free(doc);
-        try b.render(writer, &.{try b.assertImplements(.{
+        try b.emit(&.{try b.assertImplements(.{
             .doc = .{ .text = doc },
             .interface = b.raw(interface),
             .type_name = declaration.name,
@@ -89,14 +90,16 @@ test "each claimed interface gets one assertion in the requested form" {
     const context = plugin_api.testing.context(arena.allocator(), .{ .package = "streams", .prefix = "zg", .functions = &.{} });
     var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer output.deinit();
+    var b = context.builder();
+    b.out = &output.writer;
     const options = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), "{\"form\":\"value\",\"interfaces\":[\"fmt.Stringer\",\"io.Closer\"]}", .{});
-    try typeHook(context, &output.writer, .{ .kind = .@"opaque", .name = "Document", .ext = .{ .entries = &.{.{ .plugin = name, .options = options }} } });
+    try visit(context, .{ .type = .{ .kind = .@"opaque", .name = "Document", .ext = .{ .entries = &.{.{ .plugin = name, .options = options }} } } }, &b);
     try std.testing.expectEqualStrings(
         "// Document satisfies fmt.Stringer; this assertion stops compiling the day it does not.\nvar _ fmt.Stringer = *new(Document)\n\n" ++
             "// Document satisfies io.Closer; this assertion stops compiling the day it does not.\nvar _ io.Closer = *new(Document)\n\n",
         output.written(),
     );
     output.clearRetainingCapacity();
-    try typeHook(context, &output.writer, .{ .kind = .@"opaque", .name = "Document" });
+    try visit(context, .{ .type = .{ .kind = .@"opaque", .name = "Document" } }, &b);
     try std.testing.expectEqualStrings("", output.written());
 }

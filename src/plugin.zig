@@ -41,7 +41,8 @@ pub fn readConfig(comptime P: Plugin, allocator: std.mem.Allocator, configuratio
 
 pub const interfaces = @import("plugin/interfaces.zig");
 pub const session = @import("plugin/session.zig");
-pub const site = @import("plugin/site.zig");
+const site_module = @import("plugin/site.zig");
+pub const site = site_module;
 pub const rename = @import("plugin/rename.zig");
 /// The Go formatting helpers that need no generator state. The emitter's
 /// writers table points at them; a plugin calls them through its context.
@@ -373,13 +374,13 @@ pub const Receiver = struct {
 /// How `identifierAlloc` spells a name: `SomeName` or `someName`.
 pub const IdentifierStyle = enum { pascal, camel };
 
-/// What a `method_hook` is adjacent to: the method the generator just wrote.
-/// The names are the ones the method itself used, so a wrapper that calls it
-/// can never spell the call differently.
+/// What a `function` node is adjacent to: the method the generator just
+/// wrote. The names are the ones the method itself used, so a wrapper that
+/// calls it can never spell the call differently.
 pub const Method = struct {
     /// The method's exported name in the output language. A declaration a
-    /// plugin claimed with `replaces_method` has no method under this name
-    /// yet: the name is what the hook is expected to write.
+    /// plugin claimed with `claims` has no method under this name yet: the
+    /// name is what the visit is expected to write.
     public_name: []const u8,
     /// The name the generated body was actually written under. The same as
     /// `public_name`, except on a declaration this plugin claimed, where it is
@@ -397,10 +398,10 @@ pub const Method = struct {
     needs_check: bool = false,
 };
 
-/// What a hook is given besides its writer: the lowered program, the plugin's
-/// view of the options in force, the writers table, the facts `analyze`
-/// recorded, and -- for `method_hook` -- the method the hook is being written
-/// after.
+/// What a hook is given besides its builder: the lowered program, the
+/// plugin's view of the options in force, the writers table, the facts
+/// `analyze` recorded, and -- on the nodes inside a method -- the method the
+/// output is being written after.
 pub const Context = struct {
     allocator: std.mem.Allocator,
     program: abi.Program,
@@ -408,7 +409,9 @@ pub const Context = struct {
     writers: *const Writers,
     /// What `analyze` recorded, read-only: rendering may not add facts.
     facts: *const Facts = &.{},
-    /// Set for method_hook, null in other rendering contexts.
+    /// Set on the `function`, `param` and `result` nodes, which are all
+    /// written at the insertion point the method itself left; null in every
+    /// other rendering context.
     method: ?Method = null,
 
     /// The output language this run generates for.
@@ -483,11 +486,13 @@ pub const Context = struct {
         return publicFilePathAllocImpl(self.allocator, self.program, self.options, filename);
     }
 
-    /// `P`'s options on the declaration whose `ext` this is -- the function
-    /// being written or the type being hooked -- or null when the declaration
-    /// did not attach `P`.
-    pub fn optionsOf(self: Context, comptime P: Plugin, comptime attachment: Attachment, ext: ?semantic.Extensions) !?Options(P, attachment) {
-        return readOptions(P, attachment, self.allocator, ext);
+    /// `P`'s options on the node whose `ext` this is -- the function being
+    /// written, the type being visited, or one of the nodes inside either --
+    /// or null when nothing attached `P` there. `source` is the `ext` object
+    /// itself or the `Node` carrying it, so a visit reads its own node with
+    /// `optionsOf(P, .param, node)`.
+    pub fn optionsOf(self: Context, comptime P: Plugin, comptime attachment: Attachment, source: anytype) !?Options(P, attachment) {
+        return readOptions(P, attachment, self.allocator, extensionsOf(source));
     }
 
     /// The Go AST builder a hook composes its output with. Nodes it builds
@@ -502,6 +507,12 @@ pub const Context = struct {
         return self.writers.identifierAlloc(self, allocator, name, style);
     }
 };
+
+/// The `ext` object behind what a caller handed `optionsOf`: a `Node` answers
+/// for the node it is, and anything else is already the object.
+fn extensionsOf(source: anytype) ?semantic.Extensions {
+    return if (@TypeOf(source) == Node) source.ext() else source;
+}
 
 /// The diagnostic code a plugin reports unreadable options under: its name
 /// followed by `001`. Plugin codes never borrow the `ZIGO` prefix, so a
@@ -553,6 +564,96 @@ pub fn typeSubject(kind: semantic.TypeKind) Subject {
     };
 }
 
+/// Where a `visit` call is: one node of the program being rendered, or one of
+/// the boundaries around it. The emitter walks the program in document order
+/// once per render pass and offers every node to every plugin whose
+/// `subjects` cover it. The file and package boundaries have no subject of
+/// their own, so every plugin that renders for this target sees them.
+pub const Node = union(enum) {
+    /// Before anything is written into this package's plugin file.
+    package_begin,
+    /// After it, which is the last thing a package render does.
+    package_end,
+    /// Inside a public file's package/import frame, before its body.
+    file_begin: FileInfo,
+    /// The same frame, after the body.
+    file_end: FileInfo,
+    /// A handle, value struct, enum, tagged union, callback, materialized
+    /// struct or error set, after the generator wrote it.
+    type: semantic.TypeDecl,
+    /// A public function or method, after the generator wrote its body.
+    function: abi.AbiFn,
+    /// One parameter of that function.
+    param: Param,
+    /// That function's result.
+    result: abi.AbiFn,
+    /// One field of a value, materialized or handle declaration.
+    field: Member,
+    /// One tag of a registered enum.
+    enum_tag: Member,
+
+    pub const Param = struct { function: abi.AbiFn, index: usize };
+    /// A field and an enum tag are the same IR node; the container's kind is
+    /// what decides which of the two a visit is offered.
+    pub const Member = struct { declaration: semantic.TypeDecl, index: usize };
+
+    /// The `Subject` a plugin has to declare to be offered this node, or null
+    /// for a boundary, which every plugin sees.
+    pub fn subject(self: Node) ?Subject {
+        return switch (self) {
+            .package_begin, .package_end, .file_begin, .file_end => null,
+            .type => |declaration| typeSubject(declaration.kind),
+            .function => .function,
+            .param => .param,
+            .result => .result,
+            .field => .field,
+            .enum_tag => .enum_tag,
+        };
+    }
+
+    /// Which of the plugin's option types reads this node's `ext`, or null
+    /// for a boundary, which carries none.
+    pub fn attachment(self: Node) ?Attachment {
+        return switch (self) {
+            .package_begin, .package_end, .file_begin, .file_end => null,
+            .type => .type,
+            .function => .function,
+            .param => .param,
+            .result => .result,
+            .field => .field,
+            .enum_tag => .enum_tag,
+        };
+    }
+
+    /// The `ext` object this node carries. `context.optionsOf(P, node)` is
+    /// this read under the node's own `attachment`.
+    pub fn ext(self: Node) ?semantic.Extensions {
+        return switch (self) {
+            .package_begin, .package_end, .file_begin, .file_end => null,
+            .type => |declaration| declaration.ext,
+            .function => |function| function.origin.ext,
+            .param => |node| if (node.index < node.function.origin.params.len) node.function.origin.params[node.index].ext else null,
+            .result => |function| function.origin.result_ext,
+            .field, .enum_tag => |node| if (node.index < node.declaration.fields.len) node.declaration.fields[node.index].ext else null,
+        };
+    }
+
+    /// Where a diagnostic about this node points. A member names itself under
+    /// its container's location, which is why the allocator is needed.
+    pub fn site(self: Node, context: Context) !diagnostic.Site {
+        return switch (self) {
+            .package_begin, .package_end => site_module.documentSite(context.program.package),
+            .file_begin, .file_end => |file| site_module.documentSite(file.path),
+            .type => |declaration| site_module.typeSite(declaration),
+            .function => |function| site_module.functionSite(function.origin.*),
+            .param => |node| site_module.paramSite(node.function.origin.*, node.index),
+            .result => |function| site_module.resultSite(function.origin.*),
+            .field => |node| site_module.fieldSite(node.declaration, context.allocator, node.index),
+            .enum_tag => |node| site_module.tagSite(node.declaration, context.allocator, node.index),
+        };
+    }
+};
+
 /// A generator plugin. Every field but `name` is optional, so a plugin that
 /// only adds a method next to an existing one is four lines long.
 pub const Plugin = struct {
@@ -602,25 +703,28 @@ pub const Plugin = struct {
     output_targets: []const []const u8 = &.{"go"},
     /// Runs after core and option validation; report any number of diagnostics.
     validate: ?*const fn (ValidateContext) anyerror!void = null,
-    /// Written after each public method, into the file that owns it.
-    method_hook: ?*const fn (Context, *std.Io.Writer, abi.AbiFn) anyerror!void = null,
-    /// Whether this declaration's public surface belongs to this plugin alone.
+    /// The one rendering hook. It is called at every `Node` this plugin's
+    /// `subjects` cover, in document order, and writes through the builder it
+    /// is handed. What the builder took during the call is flushed at that
+    /// node's insertion point: after the method for `function`, after the type
+    /// for `type`, inside the package/import frame for the file boundaries,
+    /// and into `zigo_plugins_gen.go` for the package ones. A `param`,
+    /// `result`, `field` or `enum_tag` node is inside a declaration and has no
+    /// insertion point of its own, so its output follows the owning function's
+    /// or type's. Called on every render pass; must be deterministic and must
+    /// not mutate analysis state.
+    visit: ?*const fn (Context, Node, *Builder) anyerror!void = null,
+    /// Whether this node's public surface belongs to this plugin alone.
     /// A claimed declaration still gets its whole generated body, under an
-    /// unexported name the `method_hook` reads from `Method.checked_name`; what
-    /// changes is that nothing exported is written for it, so the hook's
+    /// unexported name the visit reads from `Method.checked_name`; what
+    /// changes is that nothing exported is written for it, so the plugin's
     /// wrapper replaces the method instead of sitting next to it. The C symbol,
     /// the shim and the raw package are untouched.
     ///
-    /// Two plugins cannot claim one declaration; the generator refuses it.
-    replaces_method: ?*const fn (Context, abi.AbiFn) anyerror!bool = null,
-    /// Written after each handle, value struct and enum, into the file that
-    /// owns it.
-    type_hook: ?*const fn (Context, *std.Io.Writer, semantic.TypeDecl) anyerror!void = null,
-    /// Body boundaries, inside the package/import frame. Called on every render
-    /// pass; must be deterministic and must not mutate analysis state.
-    file_hook: ?*const fn (Context, *std.Io.Writer, FileInfo, FilePhase) anyerror!void = null,
-    /// One contribution per package per render pass, in zigo_plugins_gen.go.
-    package_hook: ?*const fn (Context, *std.Io.Writer) anyerror!void = null,
+    /// Only a `function` node has a public method to hand over. `true` for any
+    /// other node is refused with `ZIGO065`, and two plugins cannot claim one
+    /// declaration; the generator refuses that with `ZIGO024`.
+    claims: ?*const fn (Context, Node) anyerror!bool = null,
     source_files: []const SourceFile = &.{},
     artifacts: []const Artifact = &.{},
 
@@ -821,7 +925,6 @@ test "plugin facts preserve typed validation results across copied declarations"
     try std.testing.expectError(error.DuplicatePluginFact, facts.put(arena.allocator(), p, id, .{ .count = 1 }));
 }
 
-pub const FilePhase = enum { begin, end };
 pub const FileInfo = struct {
     source_file: ?SourceFile = null,
     path: []const u8,
@@ -858,6 +961,59 @@ test "validation and transformation contexts read every attachment's option type
         try std.testing.expect((try analyze.optionsOf(p, attachment, value)).?.enabled);
         try std.testing.expect(try render.optionsOf(p, attachment, null) == null);
     }
+}
+
+test "every node answers for its subject, its attachment, its ext and its site" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const options = try std.json.parseFromSliceLeaky(std.json.Value, allocator, "{\"enabled\":true}", .{});
+    const extensions: semantic.Extensions = .{ .entries = &.{.{ .plugin = "LOOKUP", .options = options }} };
+    var origin: semantic.SemanticFn = .{
+        .ext = extensions,
+        .name = "bump",
+        .params = &.{.{ .name = "by", .type = .{ .bool = {} }, .ext = extensions }},
+        .receiver = "Counter",
+        .result_ext = extensions,
+        .@"return" = .{ .void = {} },
+        .source = .{ .path = "src/root.zig", .line = 7, .column = 1 },
+        .symbol = "zg_counter_bump",
+    };
+    const function: abi.AbiFn = .{ .origin = &origin, .symbol = "zg_counter_bump", .params = &.{}, .ret = .void };
+    const declaration: semantic.TypeDecl = .{
+        .fields = &.{.{ .name = "idle", .value = 0, .ext = extensions }},
+        .kind = .@"enum",
+        .name = "Mode",
+        .ext = extensions,
+        .tag_type = .{ .int = .{ .bits = 8, .signed = false } },
+    };
+    const context = testing.context(allocator, .{ .package = "meter", .prefix = "zg", .functions = &.{} });
+    const p: Plugin = .{ .name = "LOOKUP", .FunctionOptions = struct { enabled: bool }, .ParamOptions = struct { enabled: bool }, .TagOptions = struct { enabled: bool } };
+
+    const nodes = [_]Node{
+        .package_begin,
+        .{ .file_begin = .{ .path = "meter/meter_gen.go", .kind = .api } },
+        .{ .type = declaration },
+        .{ .function = function },
+        .{ .param = .{ .function = function, .index = 0 } },
+        .{ .result = function },
+        .{ .enum_tag = .{ .declaration = declaration, .index = 0 } },
+    };
+    const subjects = [_]?Subject{ null, null, .enumeration, .function, .param, .result, .enum_tag };
+    const attachments = [_]?Attachment{ null, null, .type, .function, .param, .result, .enum_tag };
+    const declarations = [_][]const u8{ "meter", "meter/meter_gen.go", "Mode", "bump", "by", "bump", "Mode.idle" };
+    for (nodes, subjects, attachments, declarations) |node, subject, attachment, named| {
+        try std.testing.expectEqual(subject, node.subject());
+        try std.testing.expectEqual(attachment, node.attachment());
+        try std.testing.expectEqual(attachment == null, node.ext() == null);
+        try std.testing.expectEqualStrings(named, (try node.site(context)).declaration);
+    }
+    // A node hands `optionsOf` its own `ext`, which is what lets a visit read
+    // the node it was called for without spelling the field.
+    try std.testing.expect((try context.optionsOf(p, .function, nodes[3])).?.enabled);
+    try std.testing.expect((try context.optionsOf(p, .param, nodes[4])).?.enabled);
+    try std.testing.expect((try context.optionsOf(p, .enum_tag, nodes[6])).?.enabled);
+    try std.testing.expect(try context.optionsOf(p, .function, nodes[0]) == null);
 }
 
 test "the test context builds declarations, identifiers and literals like the generator" {
