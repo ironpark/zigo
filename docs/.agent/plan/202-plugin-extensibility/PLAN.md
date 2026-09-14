@@ -9,7 +9,7 @@ registered_at: "2026-09-14T06:30:33Z"
 
 # Phases
 
-- [ ] [Phase 00: Go builder layer](phases/00-go-builder.md)
+- [x] [Phase 00: Go builder layer](phases/00-go-builder.md)
 - [ ] [Phase 01: Node-level extensions and DSL use](phases/01-node-ext.md)
 - [ ] [Phase 02: Visitor hooks](phases/02-visitor-hooks.md)
 - [ ] [Phase 03: Built-ins on the public contract](phases/03-builtins-on-contract.md)

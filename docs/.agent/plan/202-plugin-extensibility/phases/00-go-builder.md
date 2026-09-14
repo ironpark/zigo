@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-14T06:57:04Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `grep -rn "writeAll(\|\.print(" plugins src/gen/plugins` finds no calls that emit Go syntax (comments and diagnostics text excepted).
 > NEXT: none
