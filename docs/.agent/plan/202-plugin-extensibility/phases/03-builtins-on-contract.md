@@ -2,7 +2,7 @@
 depends_on:
 - "202-plugin-extensibility#2"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `grep -rn "goIterator\|goImplements" src` returns nothing.
 > NEXT: none
