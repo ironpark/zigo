@@ -34,16 +34,25 @@ fn methodHook(context: plugin_api.Context, writer: *std.Io.Writer, function: abi
     const method = context.method.?;
     const receiver = method.receiver orelse return;
     const options = try context.optionsOf(plugin, .function, function.origin.ext) orelse Options{};
-    try writer.print(
-        "\n// {0s}TestHook reports the name of {0s}.\nfunc ({1s} *{2s}) {0s}TestHook() string {{ return \"{3s}\" }}\n",
-        .{ method.public_name, method.receiver_name.?, receiver, @tagName(options.mode) },
-    );
+    const b = context.builder();
+    const name = try std.fmt.allocPrint(context.allocator, "{s}TestHook", .{method.public_name});
+    const doc = try std.fmt.allocPrint(context.allocator, "{s} reports the name of {s}.", .{ name, method.public_name });
+    try b.render(writer, &.{try b.func(.{
+        .doc = .{ .text = doc },
+        .receiver = .{ .name = method.receiver_name.?, .type = receiver, .pointer = true },
+        .name = name,
+        .signature = .{ .explicit = .{ .results = &.{b.ident("string")} } },
+        .body = &.{try b.ret(&.{b.string(@tagName(options.mode))})},
+        .single_line = true,
+    })}, .{ .blank_before = true });
 }
 
 /// A line after a type, which is what a `type_hook` is for.
-fn typeHook(_: plugin_api.Context, writer: *std.Io.Writer, declaration: semantic.TypeDecl) !void {
+fn typeHook(context: plugin_api.Context, writer: *std.Io.Writer, declaration: semantic.TypeDecl) !void {
     if (!enabled) return;
-    try writer.print("// zigoTestHook saw {s}.\n\n", .{declaration.name});
+    const b = context.builder();
+    const text = try std.fmt.allocPrint(context.allocator, "zigoTestHook saw {s}.", .{declaration.name});
+    try b.render(writer, &.{.{ .comment = .{ .text = text } }}, .{ .blank_after = true });
 }
 
 fn filePath(context: plugin_api.Context) ![]u8 {
@@ -58,12 +67,13 @@ fn filePath(context: plugin_api.Context) ![]u8 {
 /// Only the declarations: the marker, the package clause and the import block
 /// come from the public-file frame the generator wraps every plugin file in.
 fn renderFile(context: plugin_api.Context, writer: *std.Io.Writer) !void {
-    _ = context;
-
     if (!enabled) return;
-    try writer.writeAll(
-        "// ZigoTestPluginName is what the test plugin calls itself.\nconst ZigoTestPluginName = \"TEST\"\n",
-    );
+    const b = context.builder();
+    try b.render(writer, &.{try b.constant(.{
+        .doc = .{ .text = "ZigoTestPluginName is what the test plugin calls itself." },
+        .names = &.{"ZigoTestPluginName"},
+        .value = b.string("TEST"),
+    })}, .{});
 }
 
 fn validateAll(context: plugin_api.ValidateContext) !void {

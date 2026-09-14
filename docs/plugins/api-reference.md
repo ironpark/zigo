@@ -1,6 +1,6 @@
 # 플러그인 API 참조
 
-현재 플러그인 계약은 `4.0`입니다. 이 문서는 `src/plugin.zig`이 제공하는 공개 타입과 실행
+현재 플러그인 계약은 `5.0`입니다. 이 문서는 `src/plugin.zig`이 제공하는 공개 타입과 실행
 순서를 요약합니다. 정확한 함수 시그니처는 [소스](../../src/plugin.zig)가 정본입니다.
 
 ## 실행 순서
@@ -24,7 +24,7 @@ configuration and dependency checks
 
 | 필드 | 기본값 | 역할 |
 |---|---|---|
-| `min_contract` | 현재 4.0 | 필요한 계약 version |
+| `min_contract` | 현재 5.0 | 필요한 계약 version |
 | `name` | 필수 | 식별 정보와 진단 접두사 |
 | `Config` | `struct {}` | 빌드 전체 설정 타입 |
 | `Facts` | `struct {}` | analyze 결과의 typed storage |
@@ -151,26 +151,71 @@ validation/analyze에서 계산한 결과를 렌더링 hook이 소스 text 재�
 가리키고, 위치가 없으면 `semantic.json`의 해당 항목으로 떨어집니다. interface나 session처럼 소스
 위치가 없는 선언은 `documentSite(name)`입니다.
 
-## 렌더링 writer
+## Go builder
 
-다음 도우미로 core와 같은 Go spelling을 사용합니다.
+hook은 Go 소스를 문자열로 쓰지 않고 `context.builder()`가 돌려주는 `plugin.Builder`로 node를
+조립한 뒤 렌더링합니다. node는 context allocator(run arena)에 복사되므로 loop 안에서 만들어도
+렌더링까지 살아 있습니다.
 
-- `writeTypeName`
-- `writeGoType`
-- `receiverNameAlloc`
-- `writeSignature`, `writeSignatureWith`
-- `writeParameters`, `writeResultType`, `writeCallArguments`
-- `writeValueType`
-- `writeDoc`
-- `functionInfo`
-- `writeFuncHeader(writer, name, params, results)` — `func Name(params) results {` (줄바꿈 없음)
-- `writeMethodHeader(writer, receiver, name, params, results)` — `func (r *T) Name(params) results {`.
-  `receiver`는 `.{ .name, .type, .pointer }`
-- `identifierAlloc(allocator, name, .pascal | .camel)` — Zig 이름의 Go 식별자 표기 (initialism 규칙 포함)
-- `writeStringLiteral(writer, text)` — escape된 Go 문자열 리터럴
+```zig
+const b = context.builder();
+try b.render(writer, &.{try b.func(.{
+    .doc = .{ .text = "IsKnown reports whether value is an exported tag." },
+    .receiver = .{ .name = "value", .type = declaration.name },
+    .name = "IsKnown",
+    .signature = .{ .explicit = .{ .results = &.{b.ident("bool")} } },
+    .body = &.{try b.ret(&.{b.boolean(false)})},
+})}, .{ .blank_after = true });
+```
+
+### 렌더링
+
+- `render(writer, decls, layout)` — 선언 묶음을 `layout`(`blank_before`, `blank_after`,
+  `blank_between`) 간격으로 씁니다
+- `renderDecl(writer, decl)` — 선언 하나를 doc comment와 함께 씁니다
+- `resultCount(function, .{ .omit_error })` — 공개 signature가 쓰는 결과 개수
+
+### 선언
+
+- `func(.{ .doc, .receiver, .name, .signature, .body, .single_line })`
+- `variable(...)`, `constant(...)` — `var`/`const`
+- `typeDecl(.{ .name, .alias, .spec })`, `structDecl(.{ .fields, .align_fields })`,
+  `interfaceDecl(.{ .methods, .embeds })`
+- `assertImplements(.{ .interface, .type_name, .form })` — `var _ I = (*T)(nil)` 또는 `*new(T)`
+- `.{ .comment = .{ .text = ... } }`, `.{ .raw = ... }`
+
+`doc`은 `.none`, `.text`(마커 없는 본문), `.rendered`(이미 `//`가 붙은 줄)입니다.
+
+### statement
+
+`ret`, `assign`, `define`, `declare`, `incDec`, `exprStmt`, `deferStmt`, `ifStmt`,
+`switchStmt`, `forRange`, `forLoop`, `forever`, `block`, `.continue_stmt`, `.break_stmt`,
+`.blank`, `commentStmt`, `rawStmt`.
+
+### expression
+
+`ident`, `string`, `int`, `boolean`, `.nil`, `sel`/`selName`, `indexExpr`, `call`/`callName`/
+`callSel`/`callSpread`/`callForwarding`, `unary`/`addr`/`deref`/`not`, `bin`, `paren`, `ptr`,
+`sliceOf`, `variadic`, `convert`, `funcType`, `funcLiteral`, `composite`/`compositeLines`,
+그리고 escape hatch인 `raw`.
+
+### generator가 답하는 node
+
+core와 같은 Go spelling은 다음 node와 signature로 가져옵니다.
+
+- `typeName(name)` — 패키지 qualifier까지 포함한 타입 이름
+- `goType(node)` — semantic 타입 node의 Go 표기
+- `valueType(function)` — 함수가 돌려주는 값의 Go 타입
+- `Signature.function = .{ .function, .options }` — 공개 매개변수 목록과 결과
+- `callForwarding(callee, function)` — 공개 매개변수 순서대로의 호출 인자
+
+context에는 같은 정보를 직접 쓰는 writer도 남아 있습니다: `writeTypeName`, `writeGoType`,
+`receiverNameAlloc`, `writeSignature`/`writeSignatureWith`, `writeParameters`,
+`writeResultType`, `writeCallArguments`, `writeValueType`, `writeDoc`, `functionInfo`,
+`identifierAlloc(allocator, name, .pascal | .camel)`.
 
 직접 타입, 패키지 qualifier, 매개변수 이름이나 식별자를 재구성하면 하위 패키지와 이름 collision,
-initialism 표기에서 core 출력과 달라질 수 있습니다. 문장 본문은 format 문자열로 써도 됩니다.
+initialism 표기에서 core 출력과 달라질 수 있습니다.
 
 ## `SourceFile`
 

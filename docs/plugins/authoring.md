@@ -31,21 +31,33 @@ fn typeHook(
     const options = try context.optionsOf(plugin, .type, declaration.ext) orelse return;
     if (!options.enabled) return;
 
-    try context.writeMethodHeader(writer, .{ .name = "value", .type = declaration.name }, "HasName", "", "bool");
-    try writer.writeByte('\n');
+    const b = context.builder();
+    var body: std.ArrayList(api.gobuild.Stmt) = .empty;
+    defer body.deinit(context.allocator);
     for (context.program.liveFields(declaration.name)) |field| {
         const value = field.value orelse return error.MissingEnumValue;
-        try writer.print("    if value == {d} {{ return true }}\n", .{value});
+        try body.append(context.allocator, try b.ifStmt(.{
+            .cond = try b.bin("==", b.ident("value"), b.int(value)),
+            .body = try b.dupStmts(&.{try b.ret(&.{b.boolean(true)})}),
+        }));
     }
-    try writer.writeAll("    return false\n}\n");
+    try body.append(context.allocator, try b.ret(&.{b.boolean(false)}));
+    try b.render(writer, &.{try b.func(.{
+        .doc = .{ .text = "HasName reports whether value is a registered tag." },
+        .receiver = .{ .name = "value", .type = declaration.name },
+        .name = "HasName",
+        .signature = .{ .explicit = .{ .results = &.{b.ident("bool")} } },
+        .body = body.items,
+    })}, .{ .blank_after = true });
 }
 ```
 
 선언에 붙은 옵션은 모든 context에서 같은 한 가지 방법, `optionsOf(plugin, .function | .type, ext)`로
-읽습니다. 메서드·함수 header는 `writeFuncHeader`/`writeMethodHeader`로, Zig 이름에서 파생하는 Go
-식별자는 `identifierAlloc(allocator, name, .pascal | .camel)`로, 문자열 리터럴은
-`writeStringLiteral`로 씁니다. 그래야 generator가 core 타입에 쓰는 것과 같은 표기(initialism 규칙,
-escape)를 플러그인도 얻습니다. 문장 본문은 위처럼 `writer.print`로 써도 됩니다.
+읽습니다. Go 출력은 `context.builder()`가 돌려주는 [builder](api-reference.md#go-builder)로
+조립합니다. 플러그인은 Go 문법을 문자열로 쓰지 않습니다. Zig 이름에서 파생하는 Go 식별자는
+`identifierAlloc(allocator, name, .pascal | .camel)`로 얻어야 generator가 core 타입에 쓰는 것과
+같은 표기(initialism 규칙)를 플러그인도 얻습니다. builder node는 context allocator(run arena)에
+복사되므로 loop 안에서 만든 node도 렌더링까지 살아 있습니다.
 
 등록된 태그의 실제 정수 값으로 비교하므로 알려지지 않은 값은 `false`가 됩니다.
 `String()`은 알려지지 않은 값에도 설명 문자열을 반환할 수 있어 빈 문자열 여부로 판별하면

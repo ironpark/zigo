@@ -124,42 +124,58 @@ pub fn renderInterfacesBody(context: plugin_api.Context, writer: *std.Io.Writer)
 
 fn renderInterface(context: plugin_api.Context, writer: *std.Io.Writer, interface: abi.AbiInterface) !void {
     const allocator = context.allocator;
-    if (interface.doc) |doc| {
-        var lines = std.mem.splitScalar(u8, doc, '\n');
-        while (lines.next()) |line| try plugin_api.writeCommentLine(writer, line);
-    }
-    try writer.print("// {s} is implemented by ", .{interface.name});
+    const b = context.builder();
+
+    // The binding's own words first, then the sentence naming the types that
+    // implement it, which is what a reader of the interface needs.
+    var doc: std.Io.Writer.Allocating = .init(allocator);
+    defer doc.deinit();
+    if (interface.doc) |text| try doc.writer.print("{s}\n", .{text});
+    try doc.writer.print("{s} is implemented by ", .{interface.name});
     for (interface.types, 0..) |type_name, index| {
-        if (index != 0) try writer.writeAll(if (index + 1 == interface.types.len) " and " else ", ");
-        try writer.print("*{s}", .{type_name});
+        if (index != 0) try doc.writer.writeAll(if (index + 1 == interface.types.len) " and " else ", ");
+        try doc.writer.print("*{s}", .{type_name});
     }
-    try writer.print(".\ntype {s} interface {{\n", .{interface.name});
+    try doc.writer.writeByte('.');
+
+    var methods: std.ArrayList(plugin_api.gobuild.InterfaceMethod) = .empty;
+    defer methods.deinit(allocator);
     for (interface.methods) |method| {
         // The first type speaks for the interface: its method doc and its
         // parameter names are the ones the interface shows.
         const function = method.functions[0].*;
         const go_name = (try context.functionInfo(function)).public_name;
-        defer allocator.free(go_name);
-        if (function.origin.doc) |doc| {
+        var method_doc: plugin_api.gobuild.Doc = undefined;
+        if (function.origin.doc) |text| {
             // The same doc the method itself gets, moved in one tab.
             var rendered: std.Io.Writer.Allocating = .init(allocator);
-            defer rendered.deinit();
-            context.writeDoc(&rendered.writer, go_name, function.origin.name, doc) catch return error.OutOfMemory;
-            var lines = std.mem.splitScalar(u8, std.mem.trim(u8, rendered.written(), "\n"), '\n');
-            while (lines.next()) |line| try writer.print("\t{s}\n", .{line});
+            context.writeDoc(&rendered.writer, go_name, function.origin.name, text) catch return error.OutOfMemory;
+            method_doc = .{ .rendered = std.mem.trim(u8, rendered.written(), "\n") };
         } else {
-            try writer.print("\t// {s} calls the Zig method {s} of the implementing handle.\n", .{ go_name, function.origin.name });
+            method_doc = .{ .text = try std.fmt.allocPrint(allocator, "{s} calls the Zig method {s} of the implementing handle.", .{ go_name, function.origin.name }) };
         }
-        try writer.print("\t{s}", .{go_name});
-        try context.writeSignature(writer, function);
-        try writer.writeByte('\n');
-        if (try must.hasVariant(context, function)) {
-            try writer.print("\t// Must{s} calls {s} and panics with its typed error on failure.\n\tMust{s}", .{ go_name, go_name, go_name });
-            try context.writeSignatureWith(writer, function, .{ .omit_error = true });
-            try writer.writeByte('\n');
-        }
+        try methods.append(allocator, .{ .doc = method_doc, .name = go_name, .signature = .{ .function = .{ .function = function } } });
+        if (try must.hasVariant(context, function)) try methods.append(allocator, .{
+            .doc = .{ .text = try std.fmt.allocPrint(allocator, "Must{s} calls {s} and panics with its typed error on failure.", .{ go_name, go_name }) },
+            .name = try std.fmt.allocPrint(allocator, "Must{s}", .{go_name}),
+            .signature = .{ .function = .{ .function = function, .options = .{ .omit_error = true } } },
+        });
     }
-    if (interface.closer) try writer.writeAll("\tio.Closer\n");
-    try writer.writeAll("}\n\n");
-    for (interface.types) |type_name| try writer.print("var _ {s} = (*{s})(nil)\n", .{ interface.name, type_name });
+
+    try b.render(writer, &.{try b.interfaceDecl(.{
+        .doc = .{ .text = doc.written() },
+        .name = interface.name,
+        .methods = methods.items,
+        .embeds = if (interface.closer) &.{try b.selName("io", "Closer")} else &.{},
+    })}, .{ .blank_after = true });
+
+    // The assertions are the safety net under the signature comparison:
+    // anything it let through stops `go build` here rather than at a caller.
+    var assertions: std.ArrayList(plugin_api.gobuild.Decl) = .empty;
+    defer assertions.deinit(allocator);
+    for (interface.types) |type_name| try assertions.append(allocator, try b.assertImplements(.{
+        .interface = b.ident(interface.name),
+        .type_name = type_name,
+    }));
+    try b.render(writer, assertions.items, .{ .blank_between = false });
 }

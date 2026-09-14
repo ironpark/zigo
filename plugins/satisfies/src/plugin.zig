@@ -38,13 +38,20 @@ pub const plugin: plugin_api.Plugin = .{
 /// two are read together and `go build` reports them together.
 fn typeHook(context: plugin_api.Context, writer: *std.Io.Writer, declaration: semantic.TypeDecl) !void {
     const options = try context.optionsOf(plugin, .type, declaration.ext) orelse return;
+    const b = context.builder();
     for (options.interfaces) |interface| {
-        try writer.print("// {0s} satisfies {1s}; this assertion stops compiling the day it does not.\nvar _ {1s} = ", .{ declaration.name, interface });
-        switch (options.form) {
-            .pointer => try writer.print("(*{s})(nil)\n\n", .{declaration.name}),
+        const doc = try std.fmt.allocPrint(context.allocator, "{0s} satisfies {1s}; this assertion stops compiling the day it does not.", .{ declaration.name, interface });
+        defer context.allocator.free(doc);
+        try b.render(writer, &.{try b.assertImplements(.{
+            .doc = .{ .text = doc },
+            .interface = b.raw(interface),
+            .type_name = declaration.name,
             // A typed zero works for enums and other non-struct value types too.
-            .value => try writer.print("*new({s})\n\n", .{declaration.name}),
-        }
+            .form = switch (options.form) {
+                .pointer => .pointer,
+                .value => .value,
+            },
+        })}, .{ .blank_after = true });
     }
 }
 

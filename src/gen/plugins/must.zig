@@ -109,23 +109,27 @@ fn analyze(context: plugin_api.AnalyzeContext) !void {
 fn methodHook(context: plugin_api.Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
     if (!try hasVariant(context, function)) return;
     const method = context.method.?;
-    try writer.print("\n// Must{0s} calls {0s} and panics with its typed error on failure.\n", .{method.public_name});
-    if (method.receiver) |receiver|
-        try writer.print("func ({s} *{s}) Must{s}", .{ method.receiver_name.?, receiver, method.public_name })
-    else
-        try writer.print("func Must{s}", .{method.public_name});
-    try context.writeParameters(writer, function);
-    const count = try context.writeResultType(writer, function, .{ .omit_error = true });
-    try writer.writeAll(" { ");
-    try writer.writeAll(switch (count) {
-        0 => unreachable,
-        1 => "return zigoMust(",
-        else => "return zigoMustMatch(",
-    });
-    if (method.receiver_name) |receiver| try writer.print("{s}.", .{receiver});
+    const b = context.builder();
+    const name = try std.fmt.allocPrint(context.allocator, "Must{s}", .{method.public_name});
+    const doc = try std.fmt.allocPrint(context.allocator, "{0s} calls {1s} and panics with its typed error on failure.", .{ name, method.public_name });
     // The name the generated body was written under, which differs from the
     // exported one when another plugin claimed this declaration.
-    try writer.print("{s}(", .{method.checked_name});
-    try context.writeCallArguments(writer, function);
-    try writer.writeAll(")) }\n");
+    const callee = if (method.receiver_name) |receiver|
+        try b.selName(receiver, method.checked_name)
+    else
+        b.ident(method.checked_name);
+    const count = try b.resultCount(function, .{ .omit_error = true });
+    const helper: []const u8 = switch (count) {
+        0 => unreachable,
+        1 => "zigoMust",
+        else => "zigoMustMatch",
+    };
+    try b.render(writer, &.{try b.func(.{
+        .doc = .{ .text = doc },
+        .receiver = if (method.receiver) |receiver| .{ .name = method.receiver_name.?, .type = receiver, .pointer = true } else null,
+        .name = name,
+        .signature = .{ .function = .{ .function = function, .options = .{ .omit_error = true } } },
+        .body = &.{try b.ret(&.{try b.callName(helper, &.{try b.callForwarding(callee, function)})})},
+        .single_line = true,
+    })}, .{ .blank_before = true });
 }

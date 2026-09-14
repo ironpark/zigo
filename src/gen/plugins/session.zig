@@ -12,6 +12,9 @@ const naming = @import("naming");
 const plugin_api = @import("plugin");
 const session_rules = plugin_api.session;
 const targets = @import("targets");
+const Decl = plugin_api.gobuild.Decl;
+const Field = plugin_api.gobuild.Field;
+const Stmt = plugin_api.gobuild.Stmt;
 
 pub const plugin: plugin_api.Plugin = .{
     .name = "SESSION",
@@ -57,105 +60,213 @@ pub fn renderSessionsBody(context: plugin_api.Context, writer: *std.Io.Writer) !
 
 fn renderSession(context: plugin_api.Context, writer: *std.Io.Writer, session: abi.AbiSession) !void {
     const allocator = context.allocator;
+    const b = context.builder();
     const members = try sessionMembers(allocator, session);
     defer members.deinit(allocator);
-    const constructor_name = try std.fmt.allocPrint(allocator, "New{s}", .{session.name});
-    defer allocator.free(constructor_name);
     const primary = members.items[0];
     const children = members.items[1..];
+    const session_type = b.ident(session.name);
+    const session_ptr = try b.ptr(session_type);
+    const primary_ptr = try b.ptr(b.ident(primary.type_name));
+
+    var decls: std.ArrayList(Decl) = .empty;
+    defer decls.deinit(allocator);
 
     // The binding's own words first, then the one sentence the type cannot be
     // used correctly without. A blank comment line keeps the two apart instead
     // of running the contract on as if the author had written it.
-    if (session.doc) |doc| {
-        var lines = std.mem.splitScalar(u8, doc, '\n');
-        while (lines.next()) |line| try plugin_api.writeCommentLine(writer, line);
-        try writer.writeAll("//\n");
-    }
-    try writer.print(
-        "// {s} adopts one {s} and the child handles that primary handed out, and\n// closes them in that order: the children it adopted, most recent first,\n// then the primary.\ntype {s} struct {{\n",
-        .{ session.name, primary.type_name, session.name },
+    var doc: std.Io.Writer.Allocating = .init(allocator);
+    defer doc.deinit();
+    if (session.doc) |text| try doc.writer.print("{s}\n\n", .{text});
+    try doc.writer.print(
+        "{s} adopts one {s} and the child handles that primary handed out, and\ncloses them in that order: the children it adopted, most recent first,\nthen the primary.",
+        .{ session.name, primary.type_name },
     );
-    // One column for every field, so the block reads the way gofmt lays it out
-    // whether or not the consumer runs the formatter over generated files.
-    var width: usize = "closeOnce".len;
-    for (members.items) |member| width = @max(width, member.field.len);
-    try writeStructField(writer, primary.field, width);
-    try writer.print("*{s}\n", .{primary.type_name});
-    for (children) |child| {
-        try writeStructField(writer, child.field, width);
-        try writer.print("[]*{s}\n", .{child.type_name});
-    }
+
+    var fields: std.ArrayList(Field) = .empty;
+    defer fields.deinit(allocator);
+    try fields.append(allocator, .{ .name = primary.field, .type = primary_ptr });
+    for (children) |child| try fields.append(allocator, .{
+        .name = child.field,
+        .type = try b.sliceOf(try b.ptr(b.ident(child.type_name))),
+    });
     // `mu` guards the adopted slices against an `Add` racing the `Close` that
     // drains them; the once and the error it keeps are what make `Close`
     // idempotent, and what make a second call answer with the first result.
-    try writeStructField(writer, "mu", width);
-    try writer.writeAll("sync.Mutex\n");
-    try writeStructField(writer, "closed", width);
-    try writer.writeAll("bool\n");
-    try writeStructField(writer, "closeOnce", width);
-    try writer.writeAll("sync.Once\n");
-    try writeStructField(writer, "closeErr", width);
-    try writer.writeAll("error\n}\n");
+    try fields.append(allocator, .{ .name = "mu", .type = try b.selName("sync", "Mutex") });
+    try fields.append(allocator, .{ .name = "closed", .type = b.ident("bool") });
+    try fields.append(allocator, .{ .name = "closeOnce", .type = try b.selName("sync", "Once") });
+    try fields.append(allocator, .{ .name = "closeErr", .type = b.ident("error") });
+    // One column for every field, so the block reads the way gofmt lays it out
+    // whether or not the consumer runs the formatter over generated files.
+    try decls.append(allocator, try b.structDecl(.{
+        .doc = .{ .text = doc.written() },
+        .name = session.name,
+        .fields = fields.items,
+        .align_fields = true,
+    }));
 
-    try writer.print(
-        "\n// {s} adopts the primary handle. Adopt the children it hands out with the\n// Add methods below. A nil primary is skipped when the session closes.\n",
-        .{constructor_name},
-    );
-    try writer.print(
-        "func {0s}({1s} *{2s}) *{3s} {{\n\treturn &{3s}{{{1s}: {1s}}}\n}}\n",
-        .{ constructor_name, primary.field, primary.type_name, session.name },
-    );
+    const constructor_name = try std.fmt.allocPrint(allocator, "New{s}", .{session.name});
+    try decls.append(allocator, try b.func(.{
+        .doc = .{ .text = try std.fmt.allocPrint(
+            allocator,
+            "{s} adopts the primary handle. Adopt the children it hands out with the\nAdd methods below. A nil primary is skipped when the session closes.",
+            .{constructor_name},
+        ) },
+        .name = constructor_name,
+        .signature = .{ .explicit = .{
+            .params = &.{.{ .names = &.{primary.field}, .type = primary_ptr }},
+            .results = &.{session_ptr},
+        } },
+        .body = &.{try b.ret(&.{try b.addr(try b.composite(session_type, &.{.{ .key = primary.field, .value = b.ident(primary.field) }}))})},
+    }));
 
-    for (children) |child| try renderAdd(writer, session, child);
+    for (children) |child| try decls.append(allocator, try renderAdd(b, session, child));
 
-    // Children first, then the primary: that is the order the native side
-    // insists on, since a parent refuses to close while a child it handed out
-    // is still open.
-    try writer.writeAll("\n// Close closes every child handle the session adopted, most recent first,\n// and then the primary. It is idempotent and safe to call from several\n// goroutines: a later call returns the first result without closing anything\n// again. A member that fails to close does not stop the others, and the\n// failures are reported together.\n");
-    try writer.print("func (s *{s}) Close() error {{\n\ts.closeOnce.Do(func() {{\n\t\ts.mu.Lock()\n\t\ts.closed = true\n", .{session.name});
-    for (children) |child| try writer.print("\t\t{0s} := s.{0s}\n\t\ts.{0s} = nil\n", .{child.field});
-    try writer.writeAll("\t\ts.mu.Unlock()\n\n\t\tvar failures []error\n");
-    for (children) |child| try writer.print(
-        "\t\tfor index := len({0s}) - 1; index >= 0; index-- {{\n\t\t\tif err := {0s}[index].Close(); err != nil {{\n\t\t\t\tfailures = append(failures, err)\n\t\t\t}}\n\t\t}}\n",
-        .{child.field},
-    );
-    try writer.print(
-        "\t\tif s.{0s} != nil {{\n\t\t\tif err := s.{0s}.Close(); err != nil {{\n\t\t\t\tfailures = append(failures, err)\n\t\t\t}}\n\t\t}}\n",
-        .{primary.field},
-    );
-    try writer.writeAll("\t\ts.closeErr = errors.Join(failures...)\n\t})\n\treturn s.closeErr\n}\n");
+    try decls.append(allocator, try renderClose(b, session, primary, children));
 
-    try writer.print("\n// {s} returns the primary handle the session owns.\n", .{primary.type_name});
-    try writer.print("func (s *{0s}) {1s}() *{2s} {{ return s.{3s} }}\n", .{ session.name, primary.accessor, primary.type_name, primary.field });
+    try decls.append(allocator, try b.func(.{
+        .doc = .{ .text = try std.fmt.allocPrint(allocator, "{s} returns the primary handle the session owns.", .{primary.type_name}) },
+        .receiver = .{ .name = "s", .type = session.name, .pointer = true },
+        .name = primary.accessor,
+        .signature = .{ .explicit = .{ .results = &.{primary_ptr} } },
+        .body = &.{try b.ret(&.{try b.selName("s", primary.field)})},
+        .single_line = true,
+    }));
+
     for (children) |child| {
-        try writer.print("\n// {s} returns the {s} handles the session adopted, oldest first.\n", .{ child.accessor, child.type_name });
-        try writer.print(
-            "func (s *{0s}) {1s}() []*{2s} {{\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\treturn append([]*{2s}(nil), s.{3s}...)\n}}\n",
-            .{ session.name, child.accessor, child.type_name, child.field },
-        );
+        const child_slice = try b.sliceOf(try b.ptr(b.ident(child.type_name)));
+        try decls.append(allocator, try b.func(.{
+            .doc = .{ .text = try std.fmt.allocPrint(allocator, "{s} returns the {s} handles the session adopted, oldest first.", .{ child.accessor, child.type_name }) },
+            .receiver = .{ .name = "s", .type = session.name, .pointer = true },
+            .name = child.accessor,
+            .signature = .{ .explicit = .{ .results = &.{child_slice} } },
+            .body = &.{
+                b.exprStmt(try b.callSel(try b.selName("s", "mu"), "Lock", &.{})),
+                b.deferStmt(try b.callSel(try b.selName("s", "mu"), "Unlock", &.{})),
+                try b.ret(&.{try b.callSpread(b.ident("append"), &.{
+                    try b.call(child_slice, &.{.nil}),
+                    try b.selName("s", child.field),
+                })}),
+            },
+        }));
     }
-    try writer.print("\nvar _ io.Closer = (*{s})(nil)\n", .{session.name});
+
+    try decls.append(allocator, try b.assertImplements(.{
+        .interface = try b.selName("io", "Closer"),
+        .type_name = session.name,
+    }));
+
+    try b.render(writer, decls.items, .{});
+}
+
+/// Children first, then the primary: that is the order the native side insists
+/// on, since a parent refuses to close while a child it handed out is still
+/// open.
+fn renderClose(b: plugin_api.Builder, session: abi.AbiSession, primary: Member, children: []const Member) !Decl {
+    const allocator = b.allocator;
+    var once: std.ArrayList(Stmt) = .empty;
+    defer once.deinit(allocator);
+    try once.append(allocator, b.exprStmt(try b.callSel(try b.selName("s", "mu"), "Lock", &.{})));
+    try once.append(allocator, try b.assign(&.{try b.selName("s", "closed")}, "=", &.{b.boolean(true)}));
+    for (children) |child| {
+        try once.append(allocator, try b.define(&.{child.field}, try b.selName("s", child.field)));
+        try once.append(allocator, try b.assign(&.{try b.selName("s", child.field)}, "=", &.{.nil}));
+    }
+    try once.append(allocator, b.exprStmt(try b.callSel(try b.selName("s", "mu"), "Unlock", &.{})));
+    try once.append(allocator, .blank);
+    try once.append(allocator, b.declare("failures", try b.sliceOf(b.ident("error")), null));
+    const collect = try b.dupStmts(&.{try b.assign(
+        &.{b.ident("failures")},
+        "=",
+        &.{try b.callName("append", &.{ b.ident("failures"), b.ident("err") })},
+    )});
+    for (children) |child| try once.append(allocator, try b.forLoop(.{
+        .init = try b.define(&.{"index"}, try b.bin("-", try b.callName("len", &.{b.ident(child.field)}), b.int(1))),
+        .cond = try b.bin(">=", b.ident("index"), b.int(0)),
+        .post = try b.incDec(b.ident("index"), "--"),
+        .body = try b.dupStmts(&.{try b.ifStmt(.{
+            .init = try b.define(&.{"err"}, try b.callSel(try b.indexExpr(b.ident(child.field), &.{b.ident("index")}), "Close", &.{})),
+            .cond = try b.bin("!=", b.ident("err"), .nil),
+            .body = collect,
+        })}),
+    }));
+    try once.append(allocator, try b.ifStmt(.{
+        .cond = try b.bin("!=", try b.selName("s", primary.field), .nil),
+        .body = try b.dupStmts(&.{try b.ifStmt(.{
+            .init = try b.define(&.{"err"}, try b.callSel(try b.selName("s", primary.field), "Close", &.{})),
+            .cond = try b.bin("!=", b.ident("err"), .nil),
+            .body = collect,
+        })}),
+    }));
+    try once.append(allocator, try b.assign(
+        &.{try b.selName("s", "closeErr")},
+        "=",
+        &.{try b.callSpread(try b.selName("errors", "Join"), &.{b.ident("failures")})},
+    ));
+
+    return b.func(.{
+        .doc = .{ .text = "Close closes every child handle the session adopted, most recent first,\nand then the primary. It is idempotent and safe to call from several\ngoroutines: a later call returns the first result without closing anything\nagain. A member that fails to close does not stop the others, and the\nfailures are reported together." },
+        .receiver = .{ .name = "s", .type = session.name, .pointer = true },
+        .name = "Close",
+        .signature = .{ .explicit = .{ .results = &.{b.ident("error")} } },
+        .body = &.{
+            b.exprStmt(try b.call(
+                try b.sel(try b.selName("s", "closeOnce"), "Do"),
+                &.{try b.funcLiteral(&.{}, &.{}, once.items)},
+            )),
+            try b.ret(&.{try b.selName("s", "closeErr")}),
+        },
+    });
 }
 
 /// One adopt method per child type. It is variadic because a primary hands out
 /// as many children as the caller asks for, and it returns the session so a
 /// caller can chain the adoption onto the constructor.
-fn renderAdd(writer: *std.Io.Writer, session: abi.AbiSession, child: Member) !void {
-    try writer.print(
-        "\n// {0s} adopts {1s} handles the primary handed out and returns the session,\n// so calls chain. A nil handle is ignored. A handle adopted after Close has\n// run is closed immediately rather than leaked.\n",
-        .{ child.adder, child.type_name },
-    );
-    try writer.print(
-        "func (s *{0s}) {1s}({2s} ...*{3s}) *{0s} {{\n\tfor _, handle := range {2s} {{\n\t\tif handle == nil {{\n\t\t\tcontinue\n\t\t}}\n\t\ts.mu.Lock()\n\t\tif s.closed {{\n\t\t\ts.mu.Unlock()\n\t\t\t_ = handle.Close()\n\t\t\tcontinue\n\t\t}}\n\t\ts.{2s} = append(s.{2s}, handle)\n\t\ts.mu.Unlock()\n\t}}\n\treturn s\n}}\n",
-        .{ session.name, child.adder, child.field, child.type_name },
-    );
-}
-
-fn writeStructField(writer: *std.Io.Writer, name: []const u8, width: usize) !void {
-    try writer.writeByte('\t');
-    try writer.writeAll(name);
-    try writer.splatByteAll(' ', width - name.len + 1);
+fn renderAdd(b: plugin_api.Builder, session: abi.AbiSession, child: Member) !Decl {
+    const allocator = b.allocator;
+    return b.func(.{
+        .doc = .{ .text = try std.fmt.allocPrint(
+            allocator,
+            "{s} adopts {s} handles the primary handed out and returns the session,\nso calls chain. A nil handle is ignored. A handle adopted after Close has\nrun is closed immediately rather than leaked.",
+            .{ child.adder, child.type_name },
+        ) },
+        .receiver = .{ .name = "s", .type = session.name, .pointer = true },
+        .name = child.adder,
+        .signature = .{ .explicit = .{
+            .params = &.{.{ .names = &.{child.field}, .type = try b.variadic(try b.ptr(b.ident(child.type_name))) }},
+            .results = &.{try b.ptr(b.ident(session.name))},
+        } },
+        .body = &.{
+            try b.forRange(.{
+                .key = "_",
+                .value = "handle",
+                .over = b.ident(child.field),
+                .body = &.{
+                    try b.ifStmt(.{
+                        .cond = try b.bin("==", b.ident("handle"), .nil),
+                        .body = &.{.continue_stmt},
+                    }),
+                    b.exprStmt(try b.callSel(try b.selName("s", "mu"), "Lock", &.{})),
+                    try b.ifStmt(.{
+                        .cond = try b.selName("s", "closed"),
+                        .body = &.{
+                            b.exprStmt(try b.callSel(try b.selName("s", "mu"), "Unlock", &.{})),
+                            try b.assign(&.{b.ident("_")}, "=", &.{try b.callSel(b.ident("handle"), "Close", &.{})}),
+                            .continue_stmt,
+                        },
+                    }),
+                    try b.assign(
+                        &.{try b.selName("s", child.field)},
+                        "=",
+                        &.{try b.callName("append", &.{ try b.selName("s", child.field), b.ident("handle") })},
+                    ),
+                    b.exprStmt(try b.callSel(try b.selName("s", "mu"), "Unlock", &.{})),
+                },
+            }),
+            try b.ret(&.{b.ident("s")}),
+        },
+    });
 }
 
 /// One Go field per member: the primary first, then the children in

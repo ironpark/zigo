@@ -13,6 +13,8 @@ const plugin_api = @import("plugin");
 const semantic = @import("semantic");
 const iterator = @import("iterator.zig");
 const site = plugin_api.site;
+const Expr = plugin_api.gobuild.Expr;
+const Stmt = plugin_api.gobuild.Stmt;
 
 /// What `use(zigo.features.implements, .{ ... })` attaches.
 pub const Options = struct {
@@ -54,17 +56,19 @@ fn hidesOriginal(context: plugin_api.Context, function: abi.AbiFn) !bool {
 /// rather than a consumer's.
 fn typeHook(context: plugin_api.Context, writer: *std.Io.Writer, declaration: semantic.TypeDecl) !void {
     if (declaration.kind != .@"opaque") return;
-    var wrote_any = false;
+    const b = context.builder();
+    var assertions: std.ArrayList(plugin_api.gobuild.Decl) = .empty;
+    defer assertions.deinit(context.allocator);
     for (context.program.functions) |function| {
         const receiver = function.origin.receiver orelse continue;
         if (!std.mem.eql(u8, receiver, declaration.name)) continue;
         const options = try context.optionsOf(plugin, .function, function.origin.ext) orelse continue;
-        for (options.kinds) |kind| {
-            if (!wrote_any) try writer.writeByte('\n');
-            wrote_any = true;
-            try writer.print("var _ {s} = (*{s})(nil)\n", .{ kind.interfaceName(), declaration.name });
-        }
+        for (options.kinds) |kind| try assertions.append(context.allocator, try b.assertImplements(.{
+            .interface = b.raw(kind.interfaceName()),
+            .type_name = declaration.name,
+        }));
     }
+    try b.render(writer, assertions.items, .{ .blank_before = true, .blank_between = false });
 }
 
 fn methodHook(context: plugin_api.Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
@@ -74,7 +78,7 @@ fn methodHook(context: plugin_api.Context, writer: *std.Io.Writer, function: abi
     // them; every one of them calls the same bound method, under the name
     // its body was written with: the exported one when the declaration kept
     // it, the unexported checked name otherwise.
-    for (options.kinds) |kind| try renderImplementsWrapper(writer, function, kind, options.hidesOriginal(), method.receiver_name.?, method.checked_name, method.needs_check);
+    for (options.kinds) |kind| try renderImplementsWrapper(context, writer, function, kind, options.hidesOriginal(), method.receiver_name.?, method.checked_name, method.needs_check);
 }
 
 fn validateDocument(context: plugin_api.ValidateContext) !void {
@@ -91,6 +95,7 @@ fn validateDocument(context: plugin_api.ValidateContext) !void {
 /// only adapts the shape. A `void` result means the whole input was handled;
 /// an integer result is the count the interface reports.
 pub fn renderImplementsWrapper(
+    context: plugin_api.Context,
     writer: *std.Io.Writer,
     function: abi.AbiFn,
     implements: semantic.Implements,
@@ -99,6 +104,8 @@ pub fn renderImplementsWrapper(
     go_name: []const u8,
     needs_check: bool,
 ) !void {
+    const allocator = context.allocator;
+    const b = context.builder();
     const receiver = function.origin.receiver.?;
     const result = function.origin.@"return".errorPayload();
     const counts = result == .int;
@@ -119,86 +126,158 @@ pub fn renderImplementsWrapper(
         .reader_from => wrapperParamName(receiver_name, "r", "src"),
     };
 
+    var doc: std.Io.Writer.Allocating = .init(allocator);
+    defer doc.deinit();
     if (hides_original)
-        try writer.print("\n// {s} calls the Zig method {s}.{s}, satisfying {s}.\n", .{ method, receiver, function.origin.name, interface })
+        try doc.writer.print("{s} calls the Zig method {s}.{s}, satisfying {s}.", .{ method, receiver, function.origin.name, interface })
     else
-        try writer.print("\n// {s} calls {s}, satisfying {s}.\n", .{ method, go_name, interface });
+        try doc.writer.print("{s} calls {s}, satisfying {s}.", .{ method, go_name, interface });
     switch (implements) {
-        .writer => {
-            if (counts)
-                try writer.print("// The count is what the method reports; a count short of len({s}) without an error is io.ErrShortWrite.\n", .{name})
-            else
-                try writer.print("// The method takes the whole of {0s}, so the count is len({0s}) whenever it succeeds.\n", .{name});
-            try writer.print("func ({s} *{s}) Write({s} []byte) (int, error) {{\n", .{ receiver_name, receiver, name });
+        .writer, .string_writer => if (counts)
+            try doc.writer.print("\nThe count is what the method reports; a count short of len({s}) without an error is io.ErrShortWrite.", .{name})
+        else
+            try doc.writer.print("\nThe method takes the whole of {0s}, so the count is len({0s}) whenever it succeeds.", .{name}),
+        .reader => try doc.writer.print("\nA call that fills nothing while {s} has room reports io.EOF.", .{name}),
+        .writer_to => if (counts)
+            try doc.writer.writeAll("\nThe count is what the method reports.")
+        else
+            try doc.writer.print("\nThe count is what {s} received during the call.", .{name}),
+        .reader_from => if (counts)
+            try doc.writer.writeAll("\nThe count is what the method reports.")
+        else
+            try doc.writer.print("\nThe count is what {s} handed over during the call.", .{name}),
+    }
+
+    // Neither `.string_writer` shape copies, which is the whole reason that
+    // kind exists rather than a Write wrapper. A method whose own Go parameter
+    // is a `string` is handed the argument as it stands; a method that takes
+    // bytes is lent the string's own bytes for the length of the call, the
+    // same loan `.writer` makes with `p`.
+    const passes_string = implements != .string_writer or stringWriterPassesString(function.origin.*);
+    if (implements == .string_writer and !passes_string)
+        try doc.writer.print("\nThe method takes bytes, so {s} lends its own, without a copy; native reads them during the call only.", .{name});
+
+    const parameter_type: Expr = switch (implements) {
+        .writer, .reader => try b.sliceOf(b.ident("byte")),
+        .string_writer => b.ident("string"),
+        .writer_to => try b.selName("io", "Writer"),
+        .reader_from => try b.selName("io", "Reader"),
+    };
+    const results: []const Expr = switch (implements) {
+        .writer, .string_writer, .reader => &.{ b.ident("int"), b.ident("error") },
+        .writer_to, .reader_from => &.{ b.ident("int64"), b.ident("error") },
+    };
+
+    var body: std.ArrayList(Stmt) = .empty;
+    defer body.deinit(allocator);
+    const argument: []const u8 = if (implements == .string_writer and !passes_string) "zigoBytes" else name;
+    if (implements == .string_writer and !passes_string) try body.append(allocator, try b.define(
+        &.{"zigoBytes"},
+        try b.call(try b.selName("unsafe", "Slice"), &.{
+            try b.call(try b.selName("unsafe", "StringData"), &.{b.ident(name)}),
+            try b.callName("len", &.{b.ident(name)}),
+        }),
+    ));
+
+    switch (implements) {
+        .writer, .string_writer => {
+            try appendCall(b, &body, receiver_name, go_name, b.ident(argument), with_error, counts);
             if (counts) {
-                try writeCall(writer, receiver_name, go_name, name, with_error, true);
-                try writer.print("\tif int(n) < len({s}) {{\n\t\treturn int(n), io.ErrShortWrite\n\t}}\n\treturn int(n), nil\n}}\n", .{name});
+                try body.append(allocator, try b.ifStmt(.{
+                    .cond = try b.bin("<", try b.callName("int", &.{b.ident("n")}), try b.callName("len", &.{b.ident(name)})),
+                    .body = &.{try b.ret(&.{ try b.callName("int", &.{b.ident("n")}), try b.selName("io", "ErrShortWrite") })},
+                }));
+                try body.append(allocator, try b.ret(&.{ try b.callName("int", &.{b.ident("n")}), .nil }));
             } else {
-                try writeCall(writer, receiver_name, go_name, name, with_error, false);
-                try writer.print("\treturn len({s}), nil\n}}\n", .{name});
-            }
-        },
-        .string_writer => {
-            // Neither shape copies, which is the whole reason this kind
-            // exists rather than a Write wrapper. A method whose own Go
-            // parameter is a `string` is handed the argument as it stands; a
-            // method that takes bytes is lent the string's own bytes for the
-            // length of the call, the same loan `.writer` makes with `p`.
-            const passes_string = stringWriterPassesString(function.origin.*);
-            const argument: []const u8 = if (passes_string) name else "zigoBytes";
-            if (counts)
-                try writer.print("// The count is what the method reports; a count short of len({s}) without an error is io.ErrShortWrite.\n", .{name})
-            else
-                try writer.print("// The method takes the whole of {0s}, so the count is len({0s}) whenever it succeeds.\n", .{name});
-            if (!passes_string)
-                try writer.print("// The method takes bytes, so {s} lends its own, without a copy; native reads them during the call only.\n", .{name});
-            try writer.print("func ({s} *{s}) WriteString({s} string) (int, error) {{\n", .{ receiver_name, receiver, name });
-            if (!passes_string)
-                try writer.print("\tzigoBytes := unsafe.Slice(unsafe.StringData({0s}), len({0s}))\n", .{name});
-            if (counts) {
-                try writeCall(writer, receiver_name, go_name, argument, with_error, true);
-                try writer.print("\tif int(n) < len({s}) {{\n\t\treturn int(n), io.ErrShortWrite\n\t}}\n\treturn int(n), nil\n}}\n", .{name});
-            } else {
-                try writeCall(writer, receiver_name, go_name, argument, with_error, false);
-                try writer.print("\treturn len({s}), nil\n}}\n", .{name});
+                try body.append(allocator, try b.ret(&.{ try b.callName("len", &.{b.ident(name)}), .nil }));
             }
         },
         .reader => {
-            try writer.print("// A call that fills nothing while {s} has room reports io.EOF.\n", .{name});
-            try writer.print("func ({s} *{s}) Read({s} []byte) (int, error) {{\n", .{ receiver_name, receiver, name });
-            try writeCall(writer, receiver_name, go_name, name, with_error, true);
-            try writer.print("\tif n == 0 && len({s}) > 0 {{\n\t\treturn 0, io.EOF\n\t}}\n\treturn int(n), nil\n}}\n", .{name});
+            try appendCall(b, &body, receiver_name, go_name, b.ident(name), with_error, true);
+            try body.append(allocator, try b.ifStmt(.{
+                .cond = try b.bin(
+                    "&&",
+                    try b.bin("==", b.ident("n"), b.int(0)),
+                    try b.bin(">", try b.callName("len", &.{b.ident(name)}), b.int(0)),
+                ),
+                .body = &.{try b.ret(&.{ b.int(0), try b.selName("io", "EOF") })},
+            }));
+            try body.append(allocator, try b.ret(&.{ try b.callName("int", &.{b.ident("n")}), .nil }));
         },
-        .writer_to => {
-            if (counts)
-                try writer.writeAll("// The count is what the method reports.\n")
-            else
-                try writer.print("// The count is what {s} received during the call.\n", .{name});
-            try writer.print("func ({s} *{s}) WriteTo({s} io.Writer) (int64, error) {{\n", .{ receiver_name, receiver, name });
+        .writer_to, .reader_from => {
             if (counts) {
-                try writeCall(writer, receiver_name, go_name, name, with_error, true);
-                try writer.writeAll("\treturn int64(n), nil\n}\n");
+                try appendCall(b, &body, receiver_name, go_name, b.ident(name), with_error, true);
+                try body.append(allocator, try b.ret(&.{ try b.callName("int64", &.{b.ident("n")}), .nil }));
             } else {
-                try writeNilStreamPassThrough(writer, receiver_name, go_name, name, with_error);
-                try writer.print("\tcounting := &zigoCountingWriter{{w: {s}}}\n", .{name});
-                try writeCallCounting(writer, receiver_name, go_name, "counting", with_error);
+                // A nil stream goes to the method as it is, so the method's own
+                // nil check reports it; wrapped in a counting adapter it would
+                // look present.
+                const nil_call = try b.call(try b.selName(receiver_name, go_name), &.{.nil});
+                try body.append(allocator, try b.ifStmt(.{
+                    .cond = try b.bin("==", b.ident(name), .nil),
+                    .body = if (with_error)
+                        try b.dupStmts(&.{try b.ret(&.{ b.int(0), nil_call })})
+                    else
+                        try b.dupStmts(&.{ b.exprStmt(nil_call), try b.ret(&.{ b.int(0), .nil }) }),
+                }));
+                const adapter = if (implements == .writer_to) "zigoCountingWriter" else "zigoCountingReader";
+                const field = if (implements == .writer_to) "w" else "r";
+                try body.append(allocator, try b.define(&.{"counting"}, try b.addr(try b.composite(b.ident(adapter), &.{.{ .key = field, .value = b.ident(name) }}))));
+                // The count is reported even when the call failed, since the
+                // bytes had already moved.
+                const counting_call = try b.call(try b.selName(receiver_name, go_name), &.{b.ident("counting")});
+                if (with_error) {
+                    try body.append(allocator, try b.define(&.{"err"}, counting_call));
+                    try body.append(allocator, try b.ret(&.{ try b.selName("counting", "n"), b.ident("err") }));
+                } else {
+                    try body.append(allocator, b.exprStmt(counting_call));
+                    try body.append(allocator, try b.ret(&.{ try b.selName("counting", "n"), .nil }));
+                }
             }
         },
-        .reader_from => {
-            if (counts)
-                try writer.writeAll("// The count is what the method reports.\n")
-            else
-                try writer.print("// The count is what {s} handed over during the call.\n", .{name});
-            try writer.print("func ({s} *{s}) ReadFrom({s} io.Reader) (int64, error) {{\n", .{ receiver_name, receiver, name });
-            if (counts) {
-                try writeCall(writer, receiver_name, go_name, name, with_error, true);
-                try writer.writeAll("\treturn int64(n), nil\n}\n");
-            } else {
-                try writeNilStreamPassThrough(writer, receiver_name, go_name, name, with_error);
-                try writer.print("\tcounting := &zigoCountingReader{{r: {s}}}\n", .{name});
-                try writeCallCounting(writer, receiver_name, go_name, "counting", with_error);
-            }
-        },
+    }
+
+    try b.render(writer, &.{try b.func(.{
+        .doc = .{ .text = doc.written() },
+        .receiver = .{ .name = receiver_name, .type = receiver, .pointer = true },
+        .name = method,
+        .signature = .{ .explicit = .{
+            .params = &.{.{ .names = &.{name}, .type = parameter_type }},
+            .results = results,
+        } },
+        .body = body.items,
+    })}, .{ .blank_before = true });
+}
+
+/// `n, err := m(arg)` with the error returned first, in the shapes the
+/// method can have: with or without a count, with or without an error.
+fn appendCall(
+    b: plugin_api.Builder,
+    body: *std.ArrayList(Stmt),
+    receiver_name: []const u8,
+    go_name: []const u8,
+    argument: Expr,
+    with_error: bool,
+    counts: bool,
+) !void {
+    const allocator = b.allocator;
+    const call = try b.call(try b.selName(receiver_name, go_name), &.{argument});
+    if (counts and with_error) {
+        try body.append(allocator, try b.define(&.{ "n", "err" }, call));
+        try body.append(allocator, try b.ifStmt(.{
+            .cond = try b.bin("!=", b.ident("err"), .nil),
+            .body = &.{try b.ret(&.{ b.int(0), b.ident("err") })},
+        }));
+    } else if (counts) {
+        try body.append(allocator, try b.define(&.{"n"}, call));
+    } else if (with_error) {
+        try body.append(allocator, try b.ifStmt(.{
+            .init = try b.define(&.{"err"}, call),
+            .cond = try b.bin("!=", b.ident("err"), .nil),
+            .body = &.{try b.ret(&.{ b.int(0), b.ident("err") })},
+        }));
+    } else {
+        try body.append(allocator, b.exprStmt(call));
     }
 }
 
@@ -223,56 +302,62 @@ fn stringWriterPassesString(function: semantic.SemanticFn) bool {
     return false;
 }
 
-/// `n, err := m(arg)` with the error returned first, in the shapes the
-/// method can have: with or without a count, with or without an error.
-fn writeCall(writer: *std.Io.Writer, receiver_name: []const u8, go_name: []const u8, argument: []const u8, with_error: bool, counts: bool) !void {
-    if (counts and with_error) {
-        try writer.print("\tn, err := {s}.{s}({s})\n\tif err != nil {{\n\t\treturn 0, err\n\t}}\n", .{ receiver_name, go_name, argument });
-    } else if (counts) {
-        try writer.print("\tn := {s}.{s}({s})\n", .{ receiver_name, go_name, argument });
-    } else if (with_error) {
-        try writer.print("\tif err := {s}.{s}({s}); err != nil {{\n\t\treturn 0, err\n\t}}\n", .{ receiver_name, go_name, argument });
-    } else {
-        try writer.print("\t{s}.{s}({s})\n", .{ receiver_name, go_name, argument });
-    }
-}
-
-/// A nil stream goes to the method as it is, so the method's own nil check
-/// reports it; wrapped in a counting adapter it would look present.
-fn writeNilStreamPassThrough(writer: *std.Io.Writer, receiver_name: []const u8, go_name: []const u8, argument: []const u8, with_error: bool) !void {
-    if (with_error)
-        try writer.print("\tif {s} == nil {{\n\t\treturn 0, {s}.{s}(nil)\n\t}}\n", .{ argument, receiver_name, go_name })
-    else
-        try writer.print("\tif {s} == nil {{\n\t\t{s}.{s}(nil)\n\t\treturn 0, nil\n\t}}\n", .{ argument, receiver_name, go_name });
-}
-
-/// The call through a counting stream: the count is reported even when the
-/// call failed, since the bytes had already moved.
-fn writeCallCounting(writer: *std.Io.Writer, receiver_name: []const u8, go_name: []const u8, argument: []const u8, with_error: bool) !void {
-    if (with_error) {
-        try writer.print("\terr := {s}.{s}({s})\n\treturn {s}.n, err\n}}\n", .{ receiver_name, go_name, argument, argument });
-    } else {
-        try writer.print("\t{s}.{s}({s})\n\treturn {s}.n, nil\n}}\n", .{ receiver_name, go_name, argument, argument });
-    }
-}
-
 /// The counting stream types the `void`-result `WriteTo`/`ReadFrom`
 /// wrappers route their stream through. Only emitted when one needs them.
 pub fn renderCountingStreams(context: plugin_api.Context, writer: *std.Io.Writer) !void {
-    if (try programNeedsCountingStream(context, .writer_to)) try writer.writeAll(
-        "// zigoCountingWriter counts the bytes a WriteTo wrapper sends on to w.\n" ++
-            "type zigoCountingWriter struct {\n\tw io.Writer\n\tn int64\n}\n\n" ++
-            "// Write passes p on to w and adds what w took to the count.\n" ++
-            "func (c *zigoCountingWriter) Write(p []byte) (int, error) {\n" ++
-            "\tn, err := c.w.Write(p)\n\tc.n += int64(n)\n\treturn n, err\n}\n\n",
-    );
-    if (try programNeedsCountingStream(context, .reader_from)) try writer.writeAll(
-        "// zigoCountingReader counts the bytes a ReadFrom wrapper takes from r.\n" ++
-            "type zigoCountingReader struct {\n\tr io.Reader\n\tn int64\n}\n\n" ++
-            "// Read fills p from r and adds what r handed over to the count.\n" ++
-            "func (c *zigoCountingReader) Read(p []byte) (int, error) {\n" ++
-            "\tn, err := c.r.Read(p)\n\tc.n += int64(n)\n\treturn n, err\n}\n\n",
-    );
+    if (try programNeedsCountingStream(context, .writer_to)) try renderCountingStream(context, writer, .{
+        .name = "zigoCountingWriter",
+        .doc = "zigoCountingWriter counts the bytes a WriteTo wrapper sends on to w.",
+        .field = "w",
+        .stream = "Writer",
+        .method = "Write",
+        .method_doc = "Write passes p on to w and adds what w took to the count.",
+    });
+    if (try programNeedsCountingStream(context, .reader_from)) try renderCountingStream(context, writer, .{
+        .name = "zigoCountingReader",
+        .doc = "zigoCountingReader counts the bytes a ReadFrom wrapper takes from r.",
+        .field = "r",
+        .stream = "Reader",
+        .method = "Read",
+        .method_doc = "Read fills p from r and adds what r handed over to the count.",
+    });
+}
+
+const CountingStream = struct {
+    name: []const u8,
+    doc: []const u8,
+    field: []const u8,
+    stream: []const u8,
+    method: []const u8,
+    method_doc: []const u8,
+};
+
+fn renderCountingStream(context: plugin_api.Context, writer: *std.Io.Writer, spec: CountingStream) !void {
+    const b = context.builder();
+    try b.render(writer, &.{
+        try b.structDecl(.{
+            .doc = .{ .text = spec.doc },
+            .name = spec.name,
+            .fields = &.{
+                .{ .name = spec.field, .type = try b.selName("io", spec.stream) },
+                .{ .name = "n", .type = b.ident("int64") },
+            },
+        }),
+        try b.func(.{
+            .doc = .{ .text = spec.method_doc },
+            .receiver = .{ .name = "c", .type = spec.name, .pointer = true },
+            .name = spec.method,
+            .signature = .{ .explicit = .{
+                .params = &.{.{ .names = &.{"p"}, .type = try b.sliceOf(b.ident("byte")) }},
+                .results = &.{ b.ident("int"), b.ident("error") },
+            } },
+            .body = &.{
+                try b.define(&.{ "n", "err" }, try b.callSel(try b.selName("c", spec.field), spec.method, &.{b.ident("p")})),
+                try b.assign(&.{try b.selName("c", "n")}, "+=", &.{try b.callName("int64", &.{b.ident("n")})}),
+                try b.ret(&.{ b.ident("n"), b.ident("err") }),
+            },
+        }),
+    }, .{ .blank_after = true });
 }
 
 fn programNeedsCountingStream(context: plugin_api.Context, kind: semantic.Implements) !bool {

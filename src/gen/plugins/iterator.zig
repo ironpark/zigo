@@ -54,43 +54,69 @@ fn validateDocument(context: plugin_api.ValidateContext) !void {
 /// `iter.Seq[T]`.
 pub fn renderIteratorWrapper(context: plugin_api.Context, writer: *std.Io.Writer, function: abi.AbiFn, iterator: Options) !void {
     const allocator = context.allocator;
+    const b = context.builder();
     const method = context.method.?;
     const receiver_name = method.receiver_name.?;
     const go_name = method.checked_name;
-    const needs_check = method.needs_check;
     const receiver = function.origin.receiver.?;
-    const with_error = needs_check or function.origin.@"return" == .error_union;
+    const with_error = method.needs_check or function.origin.@"return" == .error_union;
     var payload: std.Io.Writer.Allocating = .init(allocator);
-    defer payload.deinit();
     try context.writeValueType(&payload.writer, function);
     const payload_type = payload.written();
     const cancellable = function.origin.cancel != null;
 
-    try writer.print("\n// {0s} returns a sequence that calls {1s} until it reports no value.\n", .{ iterator.name, go_name });
-    if (with_error) try writer.print("// A failed call yields its error once, with the zero {s}, and the sequence ends.\n", .{payload_type});
-    if (cancellable) try writer.writeAll("// ctx is passed to every call, so cancelling it ends the sequence with ctx.Err().\n");
-    try writer.print("func ({s} *{s}) {s}(", .{ receiver_name, receiver, iterator.name });
-    if (cancellable) try writer.writeAll("ctx context.Context");
-    try writer.writeAll(") ");
-    if (with_error)
-        try writer.print("iter.Seq2[{s}, error] {{\n\treturn func(yield func({s}, error) bool) {{\n", .{ payload_type, payload_type })
+    var doc: std.Io.Writer.Allocating = .init(allocator);
+    defer doc.deinit();
+    try doc.writer.print("{0s} returns a sequence that calls {1s} until it reports no value.", .{ iterator.name, go_name });
+    if (with_error) try doc.writer.print("\nA failed call yields its error once, with the zero {s}, and the sequence ends.", .{payload_type});
+    if (cancellable) try doc.writer.writeAll("\nctx is passed to every call, so cancelling it ends the sequence with ctx.Err().");
+
+    const value_type = b.valueType(function);
+    const yield_params: []const plugin_api.gobuild.Param = if (with_error)
+        &.{ .{ .type = value_type }, .{ .type = b.ident("error") } }
     else
-        try writer.print("iter.Seq[{s}] {{\n\treturn func(yield func({s}) bool) {{\n", .{ payload_type, payload_type });
-    try writer.writeAll("\t\tfor {\n\t\t\tvalue, ok");
-    if (with_error) try writer.writeAll(", err");
-    try writer.print(" := {s}.{s}(", .{ receiver_name, go_name });
-    try context.writeCallArguments(writer, function);
-    try writer.writeAll(")\n");
-    if (with_error) try writer.print(
-        "\t\t\tif err != nil {{\n\t\t\t\tvar zero {s}\n\t\t\t\tyield(zero, err)\n\t\t\t\treturn\n\t\t\t}}\n",
-        .{payload_type},
+        &.{.{ .type = value_type }};
+    const sequence = try b.indexExpr(
+        try b.selName("iter", if (with_error) "Seq2" else "Seq"),
+        if (with_error) &.{ value_type, b.ident("error") } else &.{value_type},
     );
-    if (with_error)
-        try writer.writeAll("\t\t\tif !ok || !yield(value, nil) {\n\t\t\t\treturn\n\t\t\t}\n")
-    else
-        try writer.writeAll("\t\t\tif !ok || !yield(value) {\n\t\t\t\treturn\n\t\t\t}\n");
-    try writer.writeAll("\t\t}\n\t}\n}\n");
+
+    // The call is the public method's own, so every handle check, range check
+    // and error mapping it does is shared; the loop only decides when to stop.
+    const call = try b.callForwarding(try b.selName(receiver_name, go_name), function);
+    var loop: std.ArrayList(plugin_api.gobuild.Stmt) = .empty;
+    defer loop.deinit(allocator);
+    try loop.append(allocator, try b.define(if (with_error) &.{ "value", "ok", "err" } else &.{ "value", "ok" }, call));
+    if (with_error) try loop.append(allocator, try b.ifStmt(.{
+        .cond = try b.bin("!=", b.ident("err"), .nil),
+        .body = &.{
+            b.declare("zero", value_type, null),
+            b.exprStmt(try b.callName("yield", &.{ b.ident("zero"), b.ident("err") })),
+            try b.ret(&.{}),
+        },
+    }));
+    const yielded = try b.callName("yield", if (with_error) &.{ b.ident("value"), .nil } else &.{b.ident("value")});
+    try loop.append(allocator, try b.ifStmt(.{
+        .cond = try b.bin("||", try b.not(b.ident("ok")), try b.not(yielded)),
+        .body = &.{try b.ret(&.{})},
+    }));
+
+    try b.render(writer, &.{try b.func(.{
+        .doc = .{ .text = doc.written() },
+        .receiver = .{ .name = receiver_name, .type = receiver, .pointer = true },
+        .name = iterator.name,
+        .signature = .{ .explicit = .{
+            .params = if (cancellable) &.{.{ .names = &.{"ctx"}, .type = try b.selName("context", "Context") }} else &.{},
+            .results = &.{sequence},
+        } },
+        .body = &.{try b.ret(&.{try b.funcLiteral(
+            &.{.{ .names = &.{"yield"}, .type = try b.funcType(yield_params, &.{b.ident("bool")}) }},
+            &.{},
+            &.{try b.forever(loop.items)},
+        )})},
+    })}, .{ .blank_before = true });
 }
+
 /// An iterator wrapper drives `next()` for the caller, so the method has to
 /// be one Go can call with nothing but the receiver (and its `ctx`), and it
 /// has to say when it is finished: `?T` or `!?T`.

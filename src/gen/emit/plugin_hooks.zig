@@ -28,10 +28,7 @@ const writers: plugin.Writers = .{
     .writeParameters = writeParameters,
     .writeResultType = writeResultType,
     .writeCallArguments = writeCallArguments,
-    .writeFuncHeader = plugin.format.writeFuncHeader,
-    .writeMethodHeader = plugin.format.writeMethodHeader,
     .identifierAlloc = plugin.format.identifierAlloc,
-    .writeStringLiteral = plugin.format.writeStringLiteral,
 };
 
 /// The context a `type_hook`, a `files` emitter or a validator sees.
@@ -261,8 +258,9 @@ test "a registered plugin adds a method next to a bound one, a line after a type
     testing_plugin.enabled = true;
     defer testing_plugin.enabled = false;
 
-    const rendered = try renderAllPublicFiles(std.testing.allocator, program);
-    defer std.testing.allocator.free(rendered);
+    // The builder keeps what a hook hands it, so rendering runs on the arena
+    // the generator backs a run with.
+    const rendered = try renderAllPublicFiles(arena.allocator(), program);
 
     // The method hook wrote next to the bound method, with the names the
     // method itself used.

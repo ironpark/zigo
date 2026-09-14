@@ -26,41 +26,63 @@ fn typeHook(context: plugin_api.Context, writer: *std.Io.Writer, declaration: se
 
 fn render(context: plugin_api.Context, writer: *std.Io.Writer, type_name: []const u8, fields: []const semantic.TypeField, options: Options) !void {
     const allocator = context.allocator;
+    const b = context.builder();
+    var decls: std.ArrayList(plugin_api.gobuild.Decl) = .empty;
+    defer decls.deinit(allocator);
+
     if (options.values) {
         const func_name = try std.fmt.allocPrint(allocator, "{s}Values", .{type_name});
-        defer allocator.free(func_name);
-        const results = try std.fmt.allocPrint(allocator, "[]{s}", .{type_name});
-        defer allocator.free(results);
-        try writer.print("// {s} returns a fresh slice of known values in declaration order.\n", .{func_name});
-        try context.writeFuncHeader(writer, func_name, "", results);
-        try writer.print("\n\treturn []{s}{{\n", .{type_name});
+        const doc = try std.fmt.allocPrint(allocator, "{s} returns a fresh slice of known values in declaration order.", .{func_name});
+        var members: std.ArrayList(plugin_api.gobuild.Expr.Element) = .empty;
+        defer members.deinit(allocator);
         for (fields) |field| {
             const member = try context.identifierAlloc(allocator, field.name, .pascal);
-            defer allocator.free(member);
-            try writer.print("\t\t{s}{s},\n", .{ type_name, member });
+            try members.append(allocator, .{ .value = b.ident(try std.fmt.allocPrint(allocator, "{s}{s}", .{ type_name, member })) });
         }
-        try writer.writeAll("\t}\n}\n\n");
+        const slice = try b.sliceOf(b.ident(type_name));
+        try decls.append(allocator, try b.func(.{
+            .doc = .{ .text = doc },
+            .name = func_name,
+            .signature = .{ .explicit = .{ .results = &.{slice} } },
+            .body = &.{try b.ret(&.{try b.compositeLines(slice, members.items)})},
+        }));
     }
+
     if (options.is_known) {
-        try writer.writeAll("// IsKnown reports whether value is an exported tag; unknown open-enum values return false.\n");
-        try context.writeMethodHeader(writer, .{ .name = "value", .type = type_name }, "IsKnown", "", "bool");
-        try writer.writeByte('\n');
         const range = semantic.enumValueRange(fields);
+        var body: std.ArrayList(plugin_api.gobuild.Stmt) = .empty;
+        defer body.deinit(allocator);
         if (range != null and range.?.span == fields.len) {
-            try writer.print("\treturn value >= {d} && value <= {d}\n}}\n\n", .{ range.?.min, range.?.max });
-            return;
-        }
-        if (fields.len != 0) {
-            try writer.writeAll("\tswitch value {\n");
-            for (fields) |field| {
-                const member = try context.identifierAlloc(allocator, field.name, .pascal);
-                defer allocator.free(member);
-                try writer.print("\tcase {s}{s}:\n\t\treturn true\n", .{ type_name, member });
+            try body.append(allocator, try b.ret(&.{try b.bin(
+                "&&",
+                try b.bin(">=", b.ident("value"), b.int(range.?.min)),
+                try b.bin("<=", b.ident("value"), b.int(range.?.max)),
+            )}));
+        } else {
+            if (fields.len != 0) {
+                var cases: std.ArrayList(plugin_api.gobuild.Stmt.Case) = .empty;
+                defer cases.deinit(allocator);
+                for (fields) |field| {
+                    const member = try context.identifierAlloc(allocator, field.name, .pascal);
+                    try cases.append(allocator, .{
+                        .values = try b.dupExprs(&.{b.ident(try std.fmt.allocPrint(allocator, "{s}{s}", .{ type_name, member }))}),
+                        .body = try b.dupStmts(&.{try b.ret(&.{b.boolean(true)})}),
+                    });
+                }
+                try body.append(allocator, try b.switchStmt(.{ .tag = b.ident("value"), .cases = cases.items }));
             }
-            try writer.writeAll("\t}\n");
+            try body.append(allocator, try b.ret(&.{b.boolean(false)}));
         }
-        try writer.writeAll("\treturn false\n}\n\n");
+        try decls.append(allocator, try b.func(.{
+            .doc = .{ .text = "IsKnown reports whether value is an exported tag; unknown open-enum values return false." },
+            .receiver = .{ .name = "value", .type = type_name },
+            .name = "IsKnown",
+            .signature = .{ .explicit = .{ .results = &.{b.ident("bool")} } },
+            .body = body.items,
+        }));
     }
+
+    try b.render(writer, decls.items, .{ .blank_after = true });
 }
 
 fn validateDocument(context: plugin_api.ValidateContext) !void {
@@ -79,37 +101,43 @@ fn validateDocument(context: plugin_api.ValidateContext) !void {
     }
 }
 
-fn testContext() plugin_api.Context {
-    return plugin_api.testing.context(std.testing.allocator, .{ .package = "enumkit", .prefix = "zg", .functions = &.{} });
+/// The builder keeps the strings it is handed, and the generator backs the
+/// context allocator with the run arena; the tests do the same.
+fn testContext(arena: *std.heap.ArenaAllocator) plugin_api.Context {
+    return plugin_api.testing.context(arena.allocator(), .{ .package = "enumkit", .prefix = "zg", .functions = &.{} });
 }
 
 test "options independently disable helpers and empty enums stay valid" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
     var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer output.deinit();
-    try render(testContext(), &output.writer, "Empty", &.{}, .{ .values = false, .is_known = false });
+    try render(testContext(&arena), &output.writer, "Empty", &.{}, .{ .values = false, .is_known = false });
     try std.testing.expectEqualStrings("", output.written());
-    try render(testContext(), &output.writer, "Empty", &.{}, .{ .values = false });
+    try render(testContext(&arena), &output.writer, "Empty", &.{}, .{ .values = false });
     try std.testing.expect(std.mem.indexOf(u8, output.written(), "func (value Empty) IsKnown() bool {\n") != null);
     try std.testing.expect(std.mem.indexOf(u8, output.written(), "switch") == null);
     try std.testing.expect(std.mem.indexOf(u8, output.written(), "EmptyValues") == null);
     var values: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer values.deinit();
-    try render(testContext(), &values.writer, "Empty", &.{}, .{ .is_known = false });
+    try render(testContext(&arena), &values.writer, "Empty", &.{}, .{ .is_known = false });
     try std.testing.expect(std.mem.indexOf(u8, values.written(), "func EmptyValues() []Empty {\n\treturn []Empty{") != null);
     try std.testing.expect(std.mem.indexOf(u8, values.written(), "IsKnown") == null);
 }
 
 test "membership range requires every value including excluded holes" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
     var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer output.deinit();
-    try render(testContext(), &output.writer, "Dense", &.{
+    try render(testContext(&arena), &output.writer, "Dense", &.{
         .{ .name = "high", .value = 0 },
         .{ .name = "low", .value = -1 },
     }, .{ .values = false });
     try std.testing.expect(std.mem.indexOf(u8, output.written(), "return value >= -1 && value <= 0") != null);
     var sparse: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer sparse.deinit();
-    try render(testContext(), &sparse.writer, "Holes", &.{
+    try render(testContext(&arena), &sparse.writer, "Holes", &.{
         .{ .name = "low_water", .value = -1 },
         .{ .name = "high", .value = 1 },
     }, .{ .values = false });

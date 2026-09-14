@@ -57,29 +57,63 @@ fn typeHook(context: plugin_api.Context, writer: *std.Io.Writer, declaration: se
 /// marshalling is one call; unmarshalling is the switch that `String` does not
 /// have an inverse for unless the binding asked for `.text`.
 fn renderEnum(context: plugin_api.Context, writer: *std.Io.Writer, declaration: semantic.TypeDecl) !void {
+    const allocator = context.allocator;
+    const b = context.builder();
     const by_value: plugin_api.Receiver = .{ .name = "value", .type = declaration.name };
     const by_pointer: plugin_api.Receiver = .{ .name = "value", .type = declaration.name, .pointer = true };
-    try writer.print("// MarshalJSON encodes {s} as its Zig tag name.\n", .{declaration.name});
-    try context.writeMethodHeader(writer, by_value, "MarshalJSON", "", "([]byte, error)");
-    try writer.writeAll(" return json.Marshal(value.String()) }\n\n");
-    try writer.writeAll("// UnmarshalJSON decodes a Zig tag name written by MarshalJSON.\n");
-    try context.writeMethodHeader(writer, by_pointer, "UnmarshalJSON", "data []byte", "error");
-    try writer.writeAll(
-        "\n\tvar text string\n" ++
-            "\tif err := json.Unmarshal(data, &text); err != nil {\n\t\treturn err\n\t}\n" ++
-            "\tswitch text {\n",
-    );
+
+    var cases: std.ArrayList(plugin_api.gobuild.Stmt.Case) = .empty;
+    defer cases.deinit(allocator);
     for (declaration.fields) |field| {
-        const member = try context.identifierAlloc(context.allocator, field.name, .pascal);
-        defer context.allocator.free(member);
-        try writer.writeAll("\tcase ");
-        try context.writeStringLiteral(writer, field.name);
-        try writer.print(":\n\t\t*value = {s}{s}\n", .{ declaration.name, member });
+        const member = try context.identifierAlloc(allocator, field.name, .pascal);
+        const tag = try std.fmt.allocPrint(allocator, "{s}{s}", .{ declaration.name, member });
+        try cases.append(allocator, .{
+            .values = try b.dupExprs(&.{b.string(field.name)}),
+            .body = try b.dupStmts(&.{try b.assign(&.{try b.deref(b.ident("value"))}, "=", &.{b.ident(tag)})}),
+        });
     }
-    try writer.print(
-        "\tdefault:\n\t\treturn fmt.Errorf(\"{0s}: unknown value %q\", text)\n\t}}\n\treturn nil\n}}\n\n",
-        .{declaration.name},
-    );
+    const unknown = try std.fmt.allocPrint(allocator, "{s}: unknown value %q", .{declaration.name});
+
+    const marshal_doc = try std.fmt.allocPrint(allocator, "MarshalJSON encodes {s} as its Zig tag name.", .{declaration.name});
+    try b.render(writer, &.{
+        try b.func(.{
+            .doc = .{ .text = marshal_doc },
+            .receiver = by_value,
+            .name = "MarshalJSON",
+            .signature = .{ .explicit = .{ .results = &.{ try b.sliceOf(b.ident("byte")), b.ident("error") } } },
+            .body = &.{try b.ret(&.{try b.call(try b.selName("json", "Marshal"), &.{try b.callSel(b.ident("value"), "String", &.{})})})},
+            .single_line = true,
+        }),
+        try b.func(.{
+            .doc = .{ .text = "UnmarshalJSON decodes a Zig tag name written by MarshalJSON." },
+            .receiver = by_pointer,
+            .name = "UnmarshalJSON",
+            .signature = .{ .explicit = .{
+                .params = &.{.{ .names = &.{"data"}, .type = try b.sliceOf(b.ident("byte")) }},
+                .results = &.{b.ident("error")},
+            } },
+            .body = &.{
+                b.declare("text", b.ident("string"), null),
+                try unmarshalInto(b, "text"),
+                try b.switchStmt(.{
+                    .tag = b.ident("text"),
+                    .cases = cases.items,
+                    .default = &.{try b.ret(&.{try b.call(try b.selName("fmt", "Errorf"), &.{ b.string(unknown), b.ident("text") })})},
+                }),
+                try b.ret(&.{.nil}),
+            },
+        }),
+    }, .{ .blank_after = true });
+}
+
+/// `if err := json.Unmarshal(data, &target); err != nil { return err }`, the
+/// first line of both generated `UnmarshalJSON` bodies.
+fn unmarshalInto(b: plugin_api.Builder, target: []const u8) !plugin_api.gobuild.Stmt {
+    return b.ifStmt(.{
+        .init = try b.define(&.{"err"}, try b.call(try b.selName("json", "Unmarshal"), &.{ b.ident("data"), try b.addr(b.ident(target)) })),
+        .cond = try b.bin("!=", b.ident("err"), .nil),
+        .body = &.{try b.ret(&.{b.ident("err")})},
+    });
 }
 
 /// A value struct crosses as an object whose keys the binding chose. The wire
@@ -91,43 +125,62 @@ fn renderValueStruct(
     declaration: semantic.TypeDecl,
     options: Options,
 ) !void {
-    const wire = try std.fmt.allocPrint(context.allocator, "zigo{s}JSON", .{declaration.name});
-    defer context.allocator.free(wire);
+    const allocator = context.allocator;
+    const b = context.builder();
+    const wire = try std.fmt.allocPrint(allocator, "zigo{s}JSON", .{declaration.name});
     const by_value: plugin_api.Receiver = .{ .name = "value", .type = declaration.name };
     const by_pointer: plugin_api.Receiver = .{ .name = "value", .type = declaration.name, .pointer = true };
-    try writer.print("// {s} is the wire shape of {s}: the same fields under the JSON keys the binding chose.\ntype {s} struct {{\n", .{ wire, declaration.name, wire });
+
+    var fields: std.ArrayList(plugin_api.gobuild.Field) = .empty;
+    defer fields.deinit(allocator);
+    var to_wire: std.ArrayList(plugin_api.gobuild.Expr.Element) = .empty;
+    defer to_wire.deinit(allocator);
+    var from_wire: std.ArrayList(plugin_api.gobuild.Expr.Element) = .empty;
+    defer from_wire.deinit(allocator);
     for (declaration.fields) |field| {
-        const member = try context.identifierAlloc(context.allocator, field.name, .pascal);
-        defer context.allocator.free(member);
-        try writer.print("\t{s} ", .{member});
-        if (semantic.isCodepoint(field.type.?, field.semantic))
-            try writer.writeAll("rune")
-        else
-            try context.writeGoType(writer, field.type.?);
-        try writer.print(" `json:\"{s}\"`\n", .{switch (options.field_names) {
-            .zig => field.name,
-            .go => member,
-        }});
+        const member = try context.identifierAlloc(allocator, field.name, .pascal);
+        try fields.append(allocator, .{
+            .name = member,
+            .type = if (semantic.isCodepoint(field.type.?, field.semantic)) b.ident("rune") else b.goType(field.type.?),
+            .tag = try std.fmt.allocPrint(allocator, "json:\"{s}\"", .{switch (options.field_names) {
+                .zig => field.name,
+                .go => member,
+            }}),
+        });
+        try to_wire.append(allocator, .{ .key = member, .value = try b.selName("value", member) });
+        try from_wire.append(allocator, .{ .key = member, .value = try b.selName("wire", member) });
     }
-    try writer.print("}}\n\n// MarshalJSON encodes {s} under the JSON keys the binding chose.\n", .{declaration.name});
-    try context.writeMethodHeader(writer, by_value, "MarshalJSON", "", "([]byte, error)");
-    try writer.print("\n\treturn json.Marshal({s}{{", .{wire});
-    for (declaration.fields, 0..) |field, index| {
-        const member = try context.identifierAlloc(context.allocator, field.name, .pascal);
-        defer context.allocator.free(member);
-        if (index != 0) try writer.writeAll(", ");
-        try writer.print("{0s}: value.{0s}", .{member});
-    }
-    try writer.writeAll("})\n}\n\n// UnmarshalJSON decodes what MarshalJSON wrote.\n");
-    try context.writeMethodHeader(writer, by_pointer, "UnmarshalJSON", "data []byte", "error");
-    try writer.print("\n\tvar wire {1s}\n\tif err := json.Unmarshal(data, &wire); err != nil {{\n\t\treturn err\n\t}}\n\t*value = {0s}{{", .{ declaration.name, wire });
-    for (declaration.fields, 0..) |field, index| {
-        const member = try context.identifierAlloc(context.allocator, field.name, .pascal);
-        defer context.allocator.free(member);
-        if (index != 0) try writer.writeAll(", ");
-        try writer.print("{0s}: wire.{0s}", .{member});
-    }
-    try writer.writeAll("}\n\treturn nil\n}\n\n");
+
+    const wire_doc = try std.fmt.allocPrint(allocator, "{s} is the wire shape of {s}: the same fields under the JSON keys the binding chose.", .{ wire, declaration.name });
+    const marshal_doc = try std.fmt.allocPrint(allocator, "MarshalJSON encodes {s} under the JSON keys the binding chose.", .{declaration.name});
+    try b.render(writer, &.{
+        try b.structDecl(.{ .doc = .{ .text = wire_doc }, .name = wire, .fields = fields.items }),
+        try b.func(.{
+            .doc = .{ .text = marshal_doc },
+            .receiver = by_value,
+            .name = "MarshalJSON",
+            .signature = .{ .explicit = .{ .results = &.{ try b.sliceOf(b.ident("byte")), b.ident("error") } } },
+            .body = &.{try b.ret(&.{try b.call(
+                try b.selName("json", "Marshal"),
+                &.{try b.composite(b.ident(wire), to_wire.items)},
+            )})},
+        }),
+        try b.func(.{
+            .doc = .{ .text = "UnmarshalJSON decodes what MarshalJSON wrote." },
+            .receiver = by_pointer,
+            .name = "UnmarshalJSON",
+            .signature = .{ .explicit = .{
+                .params = &.{.{ .names = &.{"data"}, .type = try b.sliceOf(b.ident("byte")) }},
+                .results = &.{b.ident("error")},
+            } },
+            .body = &.{
+                b.declare("wire", b.ident(wire), null),
+                try unmarshalInto(b, "wire"),
+                try b.assign(&.{try b.deref(b.ident("value"))}, "=", &.{try b.composite(b.ident(declaration.name), from_wire.items)}),
+                try b.ret(&.{.nil}),
+            },
+        }),
+    }, .{ .blank_after = true });
 }
 
 /// The hook writes nothing for a type it cannot encode, which would leave the
@@ -152,8 +205,12 @@ fn validateDocument(context: plugin_api.ValidateContext) !void {
     }
 }
 
-test "an enum writes its tag names as string literals through the context writers" {
-    const context = plugin_api.testing.context(std.testing.allocator, .{ .package = "palette", .prefix = "zg", .functions = &.{} });
+test "an enum writes its tag names as string literals through the builder" {
+    // The builder keeps the strings it is handed, and the generator backs the
+    // context allocator with the run arena; the test does the same.
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const context = plugin_api.testing.context(arena.allocator(), .{ .package = "palette", .prefix = "zg", .functions = &.{} });
     var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer output.deinit();
     try renderEnum(context, &output.writer, .{

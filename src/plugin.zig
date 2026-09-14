@@ -20,7 +20,7 @@ const targets = @import("targets");
 
 /// Major versions are incompatible; minor versions add capabilities.
 pub const ContractVersion = struct { major: u16, minor: u16 };
-pub const contract_version: ContractVersion = .{ .major = 4, .minor = 0 };
+pub const contract_version: ContractVersion = .{ .major = 5, .minor = 0 };
 
 /// Serialized build configuration; decoded as the registered plugin's Config.
 pub const Configuration = struct { name: []const u8, json: []const u8 };
@@ -43,11 +43,14 @@ pub const interfaces = @import("plugin/interfaces.zig");
 pub const session = @import("plugin/session.zig");
 pub const site = @import("plugin/site.zig");
 pub const rename = @import("plugin/rename.zig");
-/// The Go formatting helpers behind `Context.writeFuncHeader`,
-/// `writeMethodHeader`, `identifierAlloc` and `writeStringLiteral`. The
-/// emitter's writers table points at them; a plugin calls them through its
-/// context.
+/// The Go formatting helpers that need no generator state. The emitter's
+/// writers table points at them; a plugin calls them through its context.
 pub const format = @import("plugin/format.zig");
+
+/// The Go AST a hook builds instead of printing Go source. `Context.builder`
+/// is how a plugin reaches it.
+pub const gobuild = @import("plugin/gobuild.zig");
+pub const Builder = gobuild.Builder;
 
 /// Runs before lowering. All allocations and diagnostics belong to the run arena.
 pub const DeclarationId = struct {
@@ -305,7 +308,9 @@ pub const Import = struct {
 /// The public-package writers a hook needs but cannot reimplement: they answer
 /// for package qualification and for the exact spelling a generated signature
 /// has. Passed as a table so a plugin compiled as its own module reaches them
-/// without importing generator internals.
+/// without importing generator internals. They are also the Go builder's
+/// backend: `Expr.type_name`, `Expr.go_type`, `Expr.value_type` and
+/// `Signature.function` render through them.
 pub const Writers = struct {
     /// The type name as this package spells it, qualified when the type lives
     /// in another generated package.
@@ -323,17 +328,10 @@ pub const Writers = struct {
     writeParameters: *const fn (Context, *std.Io.Writer, abi.AbiFn) anyerror!void,
     writeResultType: *const fn (Context, *std.Io.Writer, abi.AbiFn, ResultOptions) anyerror!usize,
     writeCallArguments: *const fn (Context, *std.Io.Writer, abi.AbiFn) anyerror!void,
-    /// `func Name(params) results {`, without a trailing newline, so a
-    /// one-line body can follow on the same line.
-    writeFuncHeader: *const fn (Context, *std.Io.Writer, []const u8, []const u8, []const u8) anyerror!void,
-    /// `func (r *T) Name(params) results {`, the method form of the above.
-    writeMethodHeader: *const fn (Context, *std.Io.Writer, Receiver, []const u8, []const u8, []const u8) anyerror!void,
     /// A Zig name as the generated package spells it: an enum tag or a struct
     /// field becomes its exported member name with `.pascal`, a local or a
     /// parameter its unexported spelling with `.camel`.
     identifierAlloc: *const fn (Context, std.mem.Allocator, []const u8, IdentifierStyle) anyerror![]u8,
-    /// A Go string literal, quotes and escapes included.
-    writeStringLiteral: *const fn (*std.Io.Writer, []const u8) anyerror!void,
 };
 
 /// The receiver clause of a method header: `(name *Type)` or `(name Type)`.
@@ -463,26 +461,16 @@ pub const Context = struct {
         return readOptions(P, attachment, self.allocator, ext);
     }
 
-    /// `func Name(params) results {` without a trailing newline; `params`
-    /// is written between the parentheses and `results` after them as given,
-    /// so a tuple result carries its own parentheses.
-    pub fn writeFuncHeader(self: Context, writer: *std.Io.Writer, name: []const u8, params: []const u8, results: []const u8) !void {
-        return self.writers.writeFuncHeader(self, writer, name, params, results);
-    }
-
-    /// The method form of `writeFuncHeader`.
-    pub fn writeMethodHeader(self: Context, writer: *std.Io.Writer, receiver: Receiver, name: []const u8, params: []const u8, results: []const u8) !void {
-        return self.writers.writeMethodHeader(self, writer, receiver, name, params, results);
+    /// The Go AST builder a hook composes its output with. Nodes it builds
+    /// live on this context's allocator, which the generator backs with the
+    /// run arena.
+    pub fn builder(self: Context) Builder {
+        return .{ .allocator = self.allocator, .context = self };
     }
 
     /// A Zig name as the generated package spells it. The caller owns the result.
     pub fn identifierAlloc(self: Context, allocator: std.mem.Allocator, name: []const u8, style: IdentifierStyle) ![]u8 {
         return self.writers.identifierAlloc(self, allocator, name, style);
-    }
-
-    /// `text` as a Go string literal, quotes and escapes included.
-    pub fn writeStringLiteral(self: Context, writer: *std.Io.Writer, text: []const u8) !void {
-        return self.writers.writeStringLiteral(writer, text);
     }
 };
 
@@ -709,10 +697,7 @@ pub const testing = struct {
         .writeParameters = unsupported.function,
         .writeResultType = unsupported.results,
         .writeCallArguments = unsupported.function,
-        .writeFuncHeader = format.writeFuncHeader,
-        .writeMethodHeader = format.writeMethodHeader,
         .identifierAlloc = format.identifierAlloc,
-        .writeStringLiteral = format.writeStringLiteral,
     };
 
     const unsupported = struct {
@@ -813,15 +798,35 @@ test "validation and transformation contexts read both declaration option types"
     }
 }
 
-test "the test context formats headers, identifiers and literals like the generator" {
-    const context = testing.context(std.testing.allocator, .{ .package = "test", .prefix = "test", .functions = &.{} });
+test "the test context builds declarations, identifiers and literals like the generator" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const context = testing.context(arena.allocator(), .{ .package = "test", .prefix = "test", .functions = &.{} });
+    const b = context.builder();
     var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer output.deinit();
-    try context.writeFuncHeader(&output.writer, "ModeValues", "", "[]Mode");
-    try context.writeMethodHeader(&output.writer, .{ .name = "value", .type = "Mode", .pointer = true }, "UnmarshalJSON", "data []byte", "error");
-    try context.writeMethodHeader(&output.writer, .{ .name = "value", .type = "Mode" }, "IsKnown", "", "");
-    try context.writeStringLiteral(&output.writer, "tab\t\"quoted\"");
-    try std.testing.expectEqualStrings("func ModeValues() []Mode {func (value *Mode) UnmarshalJSON(data []byte) error {func (value Mode) IsKnown() {\"tab\\t\\\"quoted\\\"\"", output.written());
+    try b.render(&output.writer, &.{
+        try b.func(.{
+            .name = "ModeValues",
+            .signature = .{ .explicit = .{ .results = &.{try b.sliceOf(b.ident("Mode"))} } },
+            .body = &.{try b.ret(&.{.nil})},
+            .single_line = true,
+        }),
+        try b.func(.{
+            .receiver = .{ .name = "value", .type = "Mode", .pointer = true },
+            .name = "UnmarshalJSON",
+            .signature = .{ .explicit = .{
+                .params = &.{.{ .names = &.{"data"}, .type = try b.sliceOf(b.ident("byte")) }},
+                .results = &.{b.ident("error")},
+            } },
+            .body = &.{try b.ret(&.{b.string("tab\t\"quoted\"")})},
+        }),
+    }, .{});
+    try std.testing.expectEqualStrings(
+        "func ModeValues() []Mode { return nil }\n" ++
+            "\nfunc (value *Mode) UnmarshalJSON(data []byte) error {\n\treturn \"tab\\t\\\"quoted\\\"\"\n}\n",
+        output.written(),
+    );
     const pascal = try context.identifierAlloc(std.testing.allocator, "low_water", .pascal);
     defer std.testing.allocator.free(pascal);
     try std.testing.expectEqualStrings("LowWater", pascal);
