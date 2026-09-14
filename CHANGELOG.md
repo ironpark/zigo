@@ -4,7 +4,7 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
-## [Unreleased]
+## [0.27.0] - 2026-09-14
 
 빌드 API, 바인딩 DSL, 생성된 Go 패키지, 플러그인 계약을 한 개념 한 표기로 정리한 릴리스입니다.
 호환 alias와 shim은 없으며, 각 표면의 이전 → 이후 표가 아래에 있습니다.
