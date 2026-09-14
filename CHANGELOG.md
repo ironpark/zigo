@@ -6,7 +6,19 @@
 
 ## [Unreleased]
 
+빌드 API, 바인딩 DSL, 생성된 Go 패키지, 플러그인 계약을 한 개념 한 표기로 정리한 릴리스입니다.
+호환 alias와 shim은 없으며, 각 표면의 이전 → 이후 표가 아래에 있습니다.
+
 ### Changed (breaking)
+
+- 빌드 API와 `zigo-gen` CLI: `Link` tagged union, `layout` struct, `go-abi-check`/`rust-abi-check`,
+  `variant` 접미사, `bindings`/`go_dir`/`abi_base` 기본값, `--link` 단일 축, sidecar가 `zigo/go/`로 이동.
+- 바인딩 DSL: `value`/`enumeration` 생성자, `.context().members()` 단일 경로, `.root` 제거,
+  `zigo.param.*`/`zigo.result.*` helper만 공개, `implements.kinds`, `SessionChild.accessor`.
+- 생성된 Go: 핸들의 `Zigo*` 메서드 비공개화, raw 패키지 `internal/` 강제, `Must*`와 `Checked` 규칙,
+  `implements` 원본 숨김, 콜백 타입 이름 규칙, 옵션 접두사, stdlib 패키지명 충돌 진단, 인터페이스 단언.
+- 플러그인 계약 4.0 → 5.0: `optionsOf` 단일 경로, `PluginOptions` view, Go AST builder, 매개변수·반환값·
+  field·enum tag 단위 `ext`와 `use`, `visit`/`claims` visitor, 내장 플러그인이 `ext`만 읽음.
 
 빌드 API와 `zigo-gen` CLI의 옵션 표면을 한 개념 한 표기로 정리했습니다. 호환 alias는 없습니다.
 생성된 Go 코드는 바뀌지 않으며, sidecar JSON의 위치만 옮겨집니다.
