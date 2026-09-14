@@ -72,6 +72,23 @@ func (value Mode) IsKnown() bool
 전체 연결은 [10-tagged-union](../../examples/10-tagged-union/README.md), 플러그인 패키지 사용법은
 [enumkit README](../../plugins/enumkit/README.md)를 참고하세요.
 
+## 내장 플러그인도 같은 계약을 씁니다
+
+`MUST`, `ITERATOR`, `IMPLEMENTS`, `INTERFACES`, `SESSION`은 generator 안에 있을 뿐, 외부
+플러그인이 쓸 수 없는 통로는 하나도 쓰지 않습니다. 옵션은 선언의 `ext`에 실려 오고
+(`use(zigo.features.iterator, ...)`), hook은 `Context`가 주는 것만 읽으며, 출력은 builder로
+씁니다. core 규칙이 내장 플러그인의 옵션을 볼 때도 계약의 reader
+(`plugin.builtins.iterator.read`, `plugin.builtins.implements.read`)를 그대로 씁니다.
+
+그래서 `src/gen/plugins/`의 소스가 곧 참조 구현입니다.
+
+| 파일 | 보여 주는 것 |
+|---|---|
+| `src/gen/plugins/iterator.zig` | function node 방문, 옵션 검증, builder로 메서드 추가 |
+| `src/gen/plugins/implements.zig` | 한 플러그인이 function·type·file 경계를 모두 쓰는 법, `claims`로 공개 메서드 대체 |
+| `src/gen/plugins/must.zig` | `analyze`에서 `Facts`를 만들고 렌더링에서 읽는 법 |
+| `src/gen/plugins/session.zig` | 여러 선언을 묶어 새 Go 타입을 만드는 법 |
+
 ## 문서 구성
 
 - [Plugin 작성](authoring.md) — 최소 플러그인부터 빌드와 테스트까지

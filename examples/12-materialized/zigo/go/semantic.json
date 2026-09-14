@@ -202,11 +202,6 @@
           "name": "All"
         }
       },
-      "go": {
-        "iterator": {
-          "name": "All"
-        }
-      },
       "name": "next",
       "ownership": "caller",
       "params": [],
@@ -229,11 +224,6 @@
     {
       "ext": {
         "ITERATOR": {
-          "name": "AllChecked"
-        }
-      },
-      "go": {
-        "iterator": {
           "name": "AllChecked"
         }
       },

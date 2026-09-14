@@ -9,6 +9,10 @@ pub const features = @import("features.zig");
 /// are values of this type too. Its hooks and contexts are documented with
 /// the generator's plugin contract (`docs/plugins/`).
 pub const Plugin = @import("plugin").Plugin;
+/// The contract itself, for the reflector and for a binding that needs more
+/// of it than the `Plugin` value: `zigo.plugin.builtins` holds the built-in
+/// features' option types and the readers that decode them.
+pub const plugin = @import("plugin");
 pub const Binding = author.Binding;
 pub const Entry = author.Entry;
 pub const FunctionRef = author.FunctionRef;

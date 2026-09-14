@@ -2,10 +2,6 @@
   "functions": [
     {
       "ext": {"IMPLEMENTS": {"keep_original": false, "kinds": ["writer", "string_writer"]}},
-      "implements": [
-        "writer",
-        "string_writer"
-      ],
       "name": "feed",
       "params": [
         {
@@ -36,7 +32,6 @@
     },
     {
       "ext": {"IMPLEMENTS": {"keep_original": false, "kinds": ["writer"]}},
-      "implements": "writer",
       "name": "push",
       "params": [
         {
@@ -94,7 +89,6 @@
     },
     {
       "ext": {"IMPLEMENTS": {"keep_original": false, "kinds": ["string_writer"]}},
-      "implements": "string_writer",
       "name": "pushString",
       "params": [
         {
@@ -123,7 +117,6 @@
     },
     {
       "ext": {"IMPLEMENTS": {"keep_original": false, "kinds": ["reader"]}},
-      "implements": "reader",
       "name": "drain",
       "params": [
         {
@@ -153,7 +146,6 @@
     },
     {
       "ext": {"IMPLEMENTS": {"keep_original": false, "kinds": ["writer_to"]}},
-      "implements": "writer_to",
       "name": "dump",
       "params": [
         {
@@ -177,7 +169,6 @@
     },
     {
       "ext": {"IMPLEMENTS": {"keep_original": false, "kinds": ["reader_from"]}},
-      "implements": "reader_from",
       "name": "load",
       "params": [
         {
@@ -204,7 +195,6 @@
     },
     {
       "ext": {"IMPLEMENTS": {"keep_original": false, "kinds": ["writer_to"]}},
-      "implements": "writer_to",
       "name": "render",
       "params": [
         {
@@ -225,7 +215,6 @@
     },
     {
       "ext": {"IMPLEMENTS": {"keep_original": false, "kinds": ["reader_from"]}},
-      "implements": "reader_from",
       "name": "fill",
       "params": [
         {

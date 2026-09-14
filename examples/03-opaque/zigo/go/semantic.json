@@ -141,11 +141,6 @@
           "name": "All"
         }
       },
-      "go": {
-        "iterator": {
-          "name": "All"
-        }
-      },
       "name": "next",
       "ownership": "borrowed",
       "params": [],
@@ -170,11 +165,6 @@
       "doc": "nextChecked is `next` with a failure path: a negative total is an\nerror the sequence surfaces, rather than an empty sequence.",
       "ext": {
         "ITERATOR": {
-          "name": "AllChecked"
-        }
-      },
-      "go": {
-        "iterator": {
           "name": "AllChecked"
         }
       },

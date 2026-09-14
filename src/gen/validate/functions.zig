@@ -8,8 +8,10 @@ const targets = @import("targets");
 const callbacks = @import("callbacks.zig");
 const materialized = @import("materialized.zig");
 const names = @import("names.zig");
+const plugin = @import("plugin");
 const ownership = @import("ownership.zig");
 const implements_plugin = @import("builtin_plugins").implements;
+const iterator_plugin = @import("builtin_plugins").iterator;
 const site = @import("site.zig");
 const types = @import("types.zig");
 const validate = @import("validate.zig");
@@ -577,8 +579,8 @@ fn valueReceiverIssue(
     const offender: ?[]const u8 = blk: {
         if (function.childOfReceiver()) break :blk "`.child_of_receiver`";
         if (function.returnsBorrowedHandle()) break :blk "`.returns.ownership = .borrowed`";
-        if (function.goIterator() != null) break :blk "`.iterator`";
-        if (function.goImplements().len != 0) break :blk "`.implements`";
+        if (try plugin.builtins.iterator.read(allocator, function.ext) != null) break :blk "`.iterator`";
+        if (try plugin.builtins.implements.read(allocator, function.ext) != null) break :blk "`.implements`";
         if (function.boxed != null) break :blk "a boxed constructor";
         // `.destroys` already needs the destroyed type as its receiver, so
         // only the constructor side can reach a value receiver.
@@ -1152,24 +1154,30 @@ test "implements accepts one-step shapes and rejects the rest" {
     const count_node: semantic.TypeNode = .{ .int = .{ .bits = 64, .signed = false, .is_usize = true } };
     const base: semantic.SemanticFn = .{ .name = "feed", .params = &.{bytes_in}, .receiver = "Stream", .@"return" = void_node, .symbol = "zg_stream_feed" };
 
+    // The interfaces are the built-in plugin's attachment, so every fixture
+    // carries them where a declaration puts them: in `ext`.
+    var fixtures = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer fixtures.deinit();
+    const attach = fixtures.allocator();
+
     var writer = base;
-    writer.setGoImplements(&.{.writer});
+    writer.ext = try plugin.attached(implements_plugin.plugin, .function, attach, null, .{ .kinds = &.{.writer} });
     var reader = base;
-    reader.setGoImplements(&.{.reader});
+    reader.ext = try plugin.attached(implements_plugin.plugin, .function, attach, null, .{ .kinds = &.{.reader} });
     reader.params = &.{buffer_out};
     reader.@"return" = count_node;
     var writer_to = base;
-    writer_to.setGoImplements(&.{.writer_to});
+    writer_to.ext = try plugin.attached(implements_plugin.plugin, .function, attach, null, .{ .kinds = &.{.writer_to} });
     writer_to.params = &.{writer_in};
     var reader_from = base;
-    reader_from.setGoImplements(&.{.reader_from});
+    reader_from.ext = try plugin.attached(implements_plugin.plugin, .function, attach, null, .{ .kinds = &.{.reader_from} });
     reader_from.params = &.{reader_in};
     reader_from.@"return" = count_node;
     // `.string_writer` takes the same parameter as `.writer`, with or without
     // a string semantic: the hint decides whether the wrapper passes the Go
     // `string` through or lends its bytes, not whether the shape is allowed.
     var string_writer_bytes = base;
-    string_writer_bytes.setGoImplements(&.{.string_writer});
+    string_writer_bytes.ext = try plugin.attached(implements_plugin.plugin, .function, attach, null, .{ .kinds = &.{.string_writer} });
     var string_writer_text = string_writer_bytes;
     var text_param = bytes_in;
     text_param.semantic = .utf8_string;
@@ -1177,7 +1185,7 @@ test "implements accepts one-step shapes and rejects the rest" {
     // One method, two interfaces: each kind is judged on its own, and the
     // same shape satisfies both.
     var writer_and_string_writer = base;
-    writer_and_string_writer.setGoImplements(&.{ .writer, .string_writer });
+    writer_and_string_writer.ext = try plugin.attached(implements_plugin.plugin, .function, attach, null, .{ .kinds = &.{ .writer, .string_writer } });
     for ([_]semantic.SemanticFn{ writer, reader, writer_to, reader_from, string_writer_bytes, string_writer_text, writer_and_string_writer }) |function| {
         var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
         defer scratch.deinit();
@@ -1188,8 +1196,7 @@ test "implements accepts one-step shapes and rejects the rest" {
     var free_function = writer;
     free_function.receiver = null;
     var iterating = writer;
-    iterating.setGoIterator(.{ .name = "All" });
-    iterating.ext = .{ .entries = &.{.{ .plugin = "ITERATOR", .options = .null }} };
+    iterating.ext = try plugin.attached(iterator_plugin.plugin, .function, attach, writer.ext, .{ .name = "All" });
     var cancelling = writer;
     cancelling.cancel = "flag";
     var bool_result = writer;
@@ -1210,7 +1217,7 @@ test "implements accepts one-step shapes and rejects the rest" {
     wrong_stream.params = &.{reader_in};
     // Two wrappers of one kind would declare one Go method twice.
     var repeated_kind = base;
-    repeated_kind.setGoImplements(&.{ .writer, .writer });
+    repeated_kind.ext = try plugin.attached(implements_plugin.plugin, .function, attach, null, .{ .kinds = &.{ .writer, .writer } });
     // The rejections are asserted against the rule itself. Some of these
     // shapes are faulty for a second reason as well -- a `.cancel` that names
     // nothing is also ZIGO026 -- and plugin rules run after the core ones, so
@@ -1219,7 +1226,8 @@ test "implements accepts one-step shapes and rejects the rest" {
     for ([_]semantic.SemanticFn{ free_function, iterating, cancelling, bool_result, two_params, text_hinted, reader_all, reader_void, wrong_stream, repeated_kind }) |function| {
         var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
         defer scratch.deinit();
-        const issue = (try implements_plugin.implementsIssue(scratch.allocator(), function, .{ .kinds = function.goImplements() })) orelse return error.MissingDiagnostic;
+        const options = (try plugin.builtins.implements.read(scratch.allocator(), function.ext)).?;
+        const issue = (try implements_plugin.implementsIssue(scratch.allocator(), function, options)) orelse return error.MissingDiagnostic;
         try std.testing.expectEqualStrings("ZIGO058", issue.code);
     }
 }
@@ -1252,10 +1260,12 @@ test "a value receiver rejects the metadata that needs a handle" {
         try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try validate.findIssue(scratch.allocator(), document));
     }
 
+    var fixtures = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer fixtures.deinit();
     var borrowed = accepted;
     borrowed.borrowed_return = true;
     var iterating = accepted;
-    iterating.setGoIterator(.{ .name = "All" });
+    iterating.ext = try plugin.attached(iterator_plugin.plugin, .function, fixtures.allocator(), null, .{ .name = "All" });
     iterating.@"return" = .{ .optional = .{ .child = &optional_bool } };
     var child = accepted;
     child.child_of_receiver = true;

@@ -2,7 +2,6 @@
   "functions": [
     {
       "ext": {"ITERATOR": {"name": "All"}},
-      "iterator": {"name": "All"},
       "name": "next",
       "params": [],
       "receiver": "Cursor",
@@ -14,7 +13,6 @@
     },
     {
       "ext": {"ITERATOR": {"name": "Checked"}},
-      "iterator": {"name": "Checked"},
       "name": "nextChecked",
       "params": [],
       "receiver": "Cursor",

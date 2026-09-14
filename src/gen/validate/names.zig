@@ -5,6 +5,8 @@ const lower = @import("lower");
 const semantic = @import("semantic");
 const targets = @import("targets");
 const naming = @import("naming");
+const plugin = @import("plugin");
+const implements_plugin = @import("builtin_plugins").implements;
 const site = @import("site.zig");
 const validate = @import("validate.zig");
 
@@ -92,9 +94,23 @@ pub fn publicNameCollisionIssue(allocator: std.mem.Allocator, document: semantic
         }
     }
     // An iterator wrapper is one more method on its receiver, so it must not
-    // share a name with a bound method or another wrapper of that type.
+    // share a name with a bound method or another wrapper of that type. The
+    // wrapper is a built-in plugin's attachment; this rule reads it through
+    // the contract's reader, like any other plugin's options. Both
+    // attachments are decoded once per function -- the loops below are
+    // quadratic and a decode allocates -- into a scratch arena; every string
+    // a diagnostic keeps is printed into `allocator` first.
+    var scratch = std.heap.ArenaAllocator.init(allocator);
+    defer scratch.deinit();
+    const decode = scratch.allocator();
+    const iterators = try decode.alloc(?plugin.builtins.iterator.Options, document.functions.len);
+    const implemented = try decode.alloc(?plugin.builtins.implements.Options, document.functions.len);
+    for (document.functions, iterators, implemented) |function, *wrapper, *interfaces| {
+        wrapper.* = try plugin.builtins.iterator.read(decode, function.ext);
+        interfaces.* = try plugin.builtins.implements.read(decode, function.ext);
+    }
     for (document.functions, 0..) |function, index| {
-        const iterator = function.goIterator() orelse continue;
+        const iterator = iterators[index] orelse continue;
         const receiver = function.receiver orelse continue;
         for (document.functions, 0..) |other, other_index| {
             if (!std.mem.eql(u8, other.receiver orelse "", receiver)) continue;
@@ -102,7 +118,8 @@ pub fn publicNameCollisionIssue(allocator: std.mem.Allocator, document: semantic
             const other_name = try target.publicFunctionNameAlloc(allocator, document, other);
             defer allocator.free(other_name);
             const clashes_method = std.mem.eql(u8, iterator.name, other_name);
-            const clashes_wrapper = other_index < index and other.goIterator() != null and std.mem.eql(u8, iterator.name, other.goIterator().?.name);
+            const other_iterator = iterators[other_index];
+            const clashes_wrapper = other_index < index and other_iterator != null and std.mem.eql(u8, iterator.name, other_iterator.?.name);
             if (!clashes_method and !clashes_wrapper) continue;
             const function_path = try site.functionDeclarationAlloc(allocator, function);
             const other_path = try site.functionDeclarationAlloc(allocator, other);
@@ -127,7 +144,8 @@ pub fn publicNameCollisionIssue(allocator: std.mem.Allocator, document: semantic
         const receiver = function.receiver orelse continue;
         // A method may name several interfaces, so each wrapper it adds is
         // checked on its own.
-        for (function.goImplements()) |implements| {
+        const options = implemented[index] orelse continue;
+        for (options.kinds) |implements| {
             const wrapper = implements.methodName();
             for (document.functions, 0..) |other, other_index| {
                 if (!std.mem.eql(u8, other.receiver orelse "", receiver)) continue;
@@ -135,10 +153,13 @@ pub fn publicNameCollisionIssue(allocator: std.mem.Allocator, document: semantic
                 const other_name = try target.publicFunctionNameAlloc(allocator, document, other);
                 defer allocator.free(other_name);
                 const clashes_method = std.mem.eql(u8, wrapper, other_name);
-                const clashes_iterator = other.goIterator() != null and std.mem.eql(u8, wrapper, other.goIterator().?.name);
+                const other_iterator = iterators[other_index];
+                const clashes_iterator = other_iterator != null and std.mem.eql(u8, wrapper, other_iterator.?.name);
                 var clashes_wrapper = false;
-                if (other_index < index) for (other.goImplements()) |earlier| {
-                    if (std.mem.eql(u8, wrapper, earlier.methodName())) clashes_wrapper = true;
+                if (other_index < index) if (implemented[other_index]) |earlier_options| {
+                    for (earlier_options.kinds) |earlier| {
+                        if (std.mem.eql(u8, wrapper, earlier.methodName())) clashes_wrapper = true;
+                    }
                 };
                 if (!clashes_method and !clashes_iterator and !clashes_wrapper) continue;
                 const function_path = try site.functionDeclarationAlloc(allocator, function);
@@ -660,9 +681,12 @@ test "an implements wrapper collides with a same-named method or a second implem
     const handle: semantic.TypeDecl = .{ .kind = .@"opaque", .name = "Stream" };
     var byte: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
     const bytes_in: semantic.Parameter = .{ .name = "bytes", .type = .{ .slice = .{ .@"const" = true, .element = &byte } } };
-    const feed: semantic.SemanticFn = .{ .go = .{ .implements = &.{.writer} }, .name = "feed", .params = &.{bytes_in}, .receiver = "Stream", .@"return" = .{ .void = {} }, .symbol = "zg_stream_feed" };
+    var fixtures = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer fixtures.deinit();
+    var feed: semantic.SemanticFn = .{ .name = "feed", .params = &.{bytes_in}, .receiver = "Stream", .@"return" = .{ .void = {} }, .symbol = "zg_stream_feed" };
+    feed.ext = try plugin.attached(implements_plugin.plugin, .function, fixtures.allocator(), null, .{ .kinds = &.{.writer} });
     var write = feed;
-    write.setGoImplements(null);
+    write.ext = null;
     write.name = "write";
     write.symbol = "zg_stream_write";
     var push = feed;

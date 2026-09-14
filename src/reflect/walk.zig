@@ -3,6 +3,7 @@ const naming = @import("naming");
 const semantic = @import("semantic");
 const targets = @import("targets");
 const zigo = @import("zigo").normalized;
+const plugin = @import("zigo").plugin;
 const packages = @import("packages.zig");
 
 /// The declaration vocabulary and the IR vocabulary are separate enums with
@@ -40,17 +41,6 @@ fn extensionsAlloc(allocator: std.mem.Allocator, attached: []const zigo.Extensio
             .options = try std.json.parseFromSliceLeaky(std.json.Value, allocator, text, .{}),
         };
     }
-    return .{ .entries = entries };
-}
-
-/// `ext` with one more entry: a built-in plugin's options, serialized the
-/// way `use` serializes an added plugin's, so the generator reads both alike.
-fn withBuiltinExtension(allocator: std.mem.Allocator, existing: ?semantic.Extensions, name: []const u8, value: anytype) !semantic.Extensions {
-    const previous = (existing orelse semantic.Extensions{}).entries;
-    const entries = try allocator.alloc(semantic.Extensions.Entry, previous.len + 1);
-    @memcpy(entries[0..previous.len], previous);
-    const text = try std.json.Stringify.valueAlloc(allocator, value, .{});
-    entries[previous.len] = .{ .plugin = name, .options = try std.json.parseFromSliceLeaky(std.json.Value, allocator, text, .{}) };
     return .{ .entries = entries };
 }
 
@@ -1185,25 +1175,19 @@ fn appendFunction(
     // `use` captured each plugin's options at the declaration; here they
     // become the `ext` object the generator hands back to that plugin.
     if (metadata.ext.len != 0) reflected_function.ext = try extensionsAlloc(allocator, metadata.ext);
-    // The built-in attachments go the same way, under their plugin's key,
-    // with the resolved values: that is what the built-in plugins read. The
-    // typed `go` fields beside them are the core's -- name rules and
-    // `abi-diff` -- so both are written from the one resolution here.
+    // The built-in attachments go the same way, under their own plugin's key:
+    // a built-in is read out of `ext` by its plugin and by the core rules
+    // alike, so this is the only place the resolved values are written.
     if (metadata.iterator) |iterator| {
-        const resolved: semantic.Iterator = .{
+        const resolved: plugin.builtins.iterator.Options = .{
             .name = if (iterator.name.len == 0) try naming.iteratorWrapperNameAlloc(allocator, function_name) else iterator.name,
         };
-        reflected_function.setGoIterator(resolved);
-        reflected_function.ext = try withBuiltinExtension(allocator, reflected_function.ext, "ITERATOR", resolved);
+        reflected_function.ext = try plugin.attached(plugin.builtins.iterator.plugin, .function, allocator, reflected_function.ext, resolved);
     }
     // `.implements` names a Go standard interface; the shape the interface
     // needs is checked by validation, where the whole signature is in hand.
     if (metadata.implements) |implements| {
-        const kinds = try allocator.alloc(semantic.Implements, implements.len);
-        for (implements, kinds) |declared, *kind| kind.* = ir(semantic.Implements, declared);
-        reflected_function.setGoImplements(kinds);
-        if (metadata.implements_keep_original) reflected_function.setGoImplementsKeepOriginal(true);
-        reflected_function.ext = try withBuiltinExtension(allocator, reflected_function.ext, "IMPLEMENTS", .{ .kinds = kinds, .keep_original = metadata.implements_keep_original });
+        reflected_function.ext = try plugin.attached(plugin.builtins.implements.plugin, .function, allocator, reflected_function.ext, implements);
     }
     if (info.return_type) |return_type| {
         if (isSentinelBytePointer(return_type)) reflected_function.return_semantic = .c_string;
@@ -3713,11 +3697,14 @@ test "an iterator opt-in records the wrapper name" {
         },
     }, "terminal", "zg");
 
-    try std.testing.expectEqualStrings("All", document.functions[0].goIterator().?.name);
-    try std.testing.expectEqualStrings("Named", document.functions[1].goIterator().?.name);
+    // The resolved name is read back the way every consumer reads it: out of
+    // the built-in plugin's attachment.
+    try std.testing.expectEqualStrings("All", (try plugin.builtins.iterator.read(arena.allocator(), document.functions[0].ext)).?.name);
+    try std.testing.expectEqualStrings("Named", (try plugin.builtins.iterator.read(arena.allocator(), document.functions[1].ext)).?.name);
     const bytes = try document.serialize(std.testing.allocator);
     defer std.testing.allocator.free(bytes);
-    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"iterator\": {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"ITERATOR\": {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"go\"") == null);
 }
 
 test "an implements opt-in records the interface" {
@@ -3733,10 +3720,11 @@ test "an implements opt-in records the interface" {
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
         .types = &.{.{ .handle = .{ .type = Stream } }},
-        .functions = &.{.{ .path = "Stream.feed", .params = &.{.{ .name = "bytes" }}, .implements = &.{.writer} }},
+        .functions = &.{.{ .path = "Stream.feed", .params = &.{.{ .name = "bytes" }}, .implements = .{ .kinds = &.{.writer} } }},
     }, "terminal", "zg");
 
-    try std.testing.expectEqualSlices(semantic.Implements, &.{.writer}, document.functions[0].goImplements());
+    const options = (try plugin.builtins.implements.read(arena.allocator(), document.functions[0].ext)).?;
+    try std.testing.expectEqualSlices(semantic.Implements, &.{.writer}, options.kinds);
     const bytes = try document.serialize(std.testing.allocator);
     defer std.testing.allocator.free(bytes);
     try std.testing.expect(std.mem.indexOf(u8, bytes, "\"writer\"") != null);

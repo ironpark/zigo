@@ -33,7 +33,8 @@ fn analyze(context: plugin_api.AnalyzeContext) !void {
         // mirror -- `if err := m(); err != nil { panic(err) }` is the caller's
         // own line. A method `.implements` hid has no exported form to mirror.
         const returns_value = function.origin.@"return".errorPayload() != .void;
-        const enabled = entry.is_public and entry.has_error and returns_value and !std.mem.eql(u8, entry.public_name, "Close") and !function.origin.goImplementsHidesOriginal();
+        const hidden = try plugin_api.builtins.implements.hidesOriginal(allocator, function.origin.ext);
+        const enabled = entry.is_public and entry.has_error and returns_value and !std.mem.eql(u8, entry.public_name, "Close") and !hidden;
         try context.facts.put(allocator, plugin, .function(function.origin.*), .{ .enabled = enabled });
         if (!enabled) continue;
         const must_name = try std.fmt.allocPrint(allocator, "Must{s}", .{entry.public_name});

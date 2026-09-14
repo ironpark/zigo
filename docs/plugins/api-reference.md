@@ -153,6 +153,19 @@ const on_node = try context.optionsOf(plugin, .param, node);
 field와 enum tag는 IR에서 같은 node입니다. 어느 옵션 타입으로 읽을지는 그것을 담은 선언의
 kind가 정합니다.
 
+context가 없는 자리에서는 같은 읽기를 `plugin.optionsOn(P, attachment, allocator, ext)`으로
+합니다. 반대로 옵션을 `ext`에 얹을 때는 `plugin.attached(P, attachment, allocator, ext,
+options)`이며, `use`가 선언에 쓰는 것과 같은 encoding이라 `optionsOf`가 그대로 읽습니다.
+
+내장 플러그인의 옵션 타입과 reader는 `plugin.builtins`에 있습니다. generator의 core 규칙이
+쓰는 것과 같은 함수이므로 플러그인도 같은 답을 봅니다.
+
+```zig
+const wrapper = try plugin.builtins.iterator.read(allocator, function.origin.ext);
+const interfaces = try plugin.builtins.implements.read(allocator, function.origin.ext);
+const hidden = try plugin.builtins.implements.hidesOriginal(allocator, function.origin.ext);
+```
+
 선언이 그 플러그인을 붙이지 않았으면 `null`, 읽을 수 없는 값이면
 `error.InvalidPluginOptions`입니다. `subjects`에 없는 node 종류에 붙은 옵션은 선언 시점에
 컴파일 error이고, `semantic.json`에 직접 써 넣은 경우에는 `<NAME>001` 진단입니다. 빌드

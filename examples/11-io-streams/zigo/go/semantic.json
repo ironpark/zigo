@@ -68,12 +68,6 @@
           "keep_original": false
         }
       },
-      "go": {
-        "implements": [
-          "writer",
-          "string_writer"
-        ]
-      },
       "name": "append",
       "ownership": "borrowed",
       "params": [
@@ -187,11 +181,6 @@
           "keep_original": false
         }
       },
-      "go": {
-        "implements": [
-          "writer_to"
-        ]
-      },
       "name": "dump",
       "ownership": "borrowed",
       "params": [
@@ -235,11 +224,6 @@
           ],
           "keep_original": false
         }
-      },
-      "go": {
-        "implements": [
-          "reader_from"
-        ]
       },
       "name": "load",
       "ownership": "borrowed",
@@ -289,11 +273,6 @@
           ],
           "keep_original": false
         }
-      },
-      "go": {
-        "implements": [
-          "reader"
-        ]
       },
       "name": "readInto",
       "ownership": "borrowed",
@@ -416,11 +395,6 @@
           ],
           "keep_original": false
         }
-      },
-      "go": {
-        "implements": [
-          "string_writer"
-        ]
       },
       "name": "push",
       "ownership": "borrowed",

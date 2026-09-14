@@ -1,5 +1,6 @@
 const std = @import("std");
 const naming = @import("naming");
+const plugin = @import("plugin");
 const abi = @import("abi");
 const semantic = @import("semantic");
 const targets = @import("targets");
@@ -181,10 +182,14 @@ pub fn diffForTarget(allocator: std.mem.Allocator, base: semantic.Semantic, base
         if (!semantic.optionalStringEqual(old.package, new.package))
             try add(allocator, &report, .breaking, identity, "Go package assignment changed");
         // The wrapper is a Go method callers range over; losing or renaming
-        // it breaks them, gaining it does not.
-        if (old.goIterator() != null and (new.goIterator() == null or !std.mem.eql(u8, old.goIterator().?.name, new.goIterator().?.name)))
+        // it breaks them, gaining it does not. The wrapper is a built-in
+        // plugin's attachment, read here through the contract's own reader --
+        // a document written before it was one is migrated on the way in.
+        const old_iterator = try plugin.builtins.iterator.read(scratch.allocator(), old.ext);
+        const new_iterator = try plugin.builtins.iterator.read(scratch.allocator(), new.ext);
+        if (old_iterator != null and (new_iterator == null or !std.mem.eql(u8, old_iterator.?.name, new_iterator.?.name)))
             try add(allocator, &report, .breaking, identity, "iterator wrapper removed or renamed")
-        else if (old.goIterator() == null and new.goIterator() != null)
+        else if (old_iterator == null and new_iterator != null)
             try add(allocator, &report, .compatible, identity, "iterator wrapper added");
         // The native signature is unchanged, but generated Go gains or loses
         // the parent/child Close ordering contract.
@@ -1274,6 +1279,12 @@ test "changing an enum between exhaustive and open is breaking" {
 test "iterator wrapper is compatible to add and breaking to remove" {
     var payload: semantic.TypeNode = .{ .int = .{ .bits = 64, .signed = true } };
     const optional: semantic.TypeNode = .{ .optional = .{ .child = &payload } };
+    // The wrapper is the built-in plugin's attachment, so the document under
+    // test carries it the way every other plugin's options are carried.
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const options = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), "{\"name\": \"All\"}", .{});
+    const iterator_ext: semantic.Extensions = .{ .entries = &.{.{ .plugin = "ITERATOR", .options = options }} };
     const plain: semantic.Semantic = .{
         .package = "cursor",
         .prefix = "zg",
@@ -1284,7 +1295,7 @@ test "iterator wrapper is compatible to add and breaking to remove" {
     const wrapped: semantic.Semantic = .{
         .package = "cursor",
         .prefix = "zg",
-        .functions = &.{.{ .go = .{ .iterator = .{ .name = "All" } }, .name = "next", .params = &.{}, .receiver = "Cursor", .@"return" = optional, .symbol = "zg_cursor_next" }},
+        .functions = &.{.{ .ext = iterator_ext, .name = "next", .params = &.{}, .receiver = "Cursor", .@"return" = optional, .symbol = "zg_cursor_next" }},
         .types = &.{.{ .kind = .@"opaque", .name = "Cursor" }},
         .zig_version = "0.16.0",
     };

@@ -284,11 +284,23 @@ pub const Entry = union(enum) {
             pub const Options = pluginOptions(P, self);
         };
         var captured = ir.extension(Captured, options);
-        if (std.mem.eql(u8, P.name, features.iterator.name)) {
-            captured.builtin = .{ .iterator = options };
-        } else if (std.mem.eql(u8, P.name, features.implements.name)) {
-            if (options.kinds.len == 0) @compileError("zigo implements needs a non-empty `.kinds`");
-            captured.builtin = .{ .implements = .{ .kinds = options.kinds, .keep_original = options.keep_original } };
+        // The two built-ins whose options the reflector resolves before it
+        // writes them -- an iterator name derived from the method it advances,
+        // the interface list checked for emptiness here rather than a
+        // declaration later. Both attach to a function; `.implements` also
+        // names `.handle` as a subject, for the assertions its plugin writes
+        // after the type, and a type carries no options of its own.
+        const on_function = switch (self) {
+            .function => true,
+            else => false,
+        };
+        if (on_function) {
+            if (std.mem.eql(u8, P.name, features.iterator.name)) {
+                captured.builtin = .{ .iterator = options };
+            } else if (std.mem.eql(u8, P.name, features.implements.name)) {
+                if (options.kinds.len == 0) @compileError("zigo implements needs a non-empty `.kinds`");
+                captured.builtin = .{ .implements = options };
+            }
         }
         const extended = extensions ++ [_]ir.Extension{captured};
         switch (result) {

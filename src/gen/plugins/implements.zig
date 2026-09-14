@@ -3,43 +3,30 @@
 //!
 //! A built-in plugin on the same terms as an added one: the kinds travel
 //! under its `ext` key, written by `use(zigo.features.implements, .{ ... })`,
-//! and every hook reads them through `optionsOf`. The typed `go.implements`
-//! field beside them is the core's -- name collision rules, the Must mirror
-//! and `abi-diff` read it -- not this plugin's.
+//! and every hook reads them through `optionsOf`. The core reads them too --
+//! name collision rules and the Must mirror -- through
+//! `plugin.builtins.implements.read`, which is the same public reader a
+//! third-party plugin would call.
 const std = @import("std");
 const abi = @import("abi");
 const diagnostic = @import("diagnostic");
 const plugin_api = @import("plugin");
 const semantic = @import("semantic");
-const iterator = @import("iterator.zig");
 const site = plugin_api.site;
 const Expr = plugin_api.gobuild.Expr;
 const Stmt = plugin_api.gobuild.Stmt;
 
 /// What `use(zigo.features.implements, .{ ... })` attaches.
-pub const Options = struct {
-    /// The interfaces the method satisfies, in the order the wrappers are written.
-    kinds: []const semantic.Implements,
-    /// Keep the bound method exported beside the wrappers. By default only the
-    /// standard-library shaped method is public and the zigo-shaped original
-    /// is written under an unexported name.
-    keep_original: bool = false,
+pub const Options = plugin_api.builtins.implements.Options;
 
-    /// Whether the zigo-shaped method is hidden behind the wrappers.
-    pub fn hidesOriginal(self: Options) bool {
-        return self.kinds.len != 0 and !self.keep_original;
-    }
-};
-
-pub const plugin: plugin_api.Plugin = .{
-    .name = "IMPLEMENTS",
-    .FunctionOptions = Options,
-    // The options attach to a method; the assertions the type node writes
-    // sit after the handle that method belongs to.
-    .subjects = &.{ .function, .handle },
-    .validate = validateDocument,
-    .claims = hidesOriginal,
-    .visit = visit,
+/// The contract's descriptor -- name, options and subjects, the half the
+/// authoring module attaches with -- plus this file's hooks.
+pub const plugin: plugin_api.Plugin = blk: {
+    var declared = plugin_api.builtins.implements.plugin;
+    declared.validate = validateDocument;
+    declared.claims = hidesOriginal;
+    declared.visit = visit;
+    break :blk declared;
 };
 
 /// The wrappers are the public spelling: the zigo-shaped method is written
@@ -406,7 +393,7 @@ fn kindIssue(allocator: std.mem.Allocator, function: semantic.SemanticFn, implem
         .hint = try std.fmt.allocPrint(allocator, "`{s}` is satisfied by a method; move `.implements` to a method of a registered opaque type", .{interface}),
     };
     const receiver = function.receiver.?;
-    const iterates = function.ext != null and function.ext.?.get(iterator.plugin.name) != null;
+    const iterates = try plugin_api.builtins.iterator.read(allocator, function.ext) != null;
     if (iterates or function.cancel != null) return .{
         .severity = .@"error",
         .code = "ZIGO058",

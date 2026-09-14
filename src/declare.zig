@@ -1,14 +1,17 @@
 //! Private flat declarations used between authoring normalization and reflection.
 //! Public binding files use scope(), declaration entries and typed contracts in author.zig.
 const std = @import("std");
+const plugin = @import("plugin");
 
 /// One plugin's options on a declaration. `use` captures the value at
 /// comptime, so a field the plugin does not have, or a value of the wrong
 /// shape, is an ordinary Zig compile error at the declaration rather than a
 /// diagnostic long afterwards.
 pub const Extension = struct {
-    /// Set by `Entry.use` for `zigo.features`, which the reflector reads as
-    /// typed fields rather than through `ext`.
+    /// Set by `Entry.use` for `zigo.features`. The reflector resolves these
+    /// two before it writes them -- an iterator name derived from the method,
+    /// the kinds in declaration order -- and then writes them into `ext` like
+    /// any other plugin's options.
     builtin: union(enum) { none, iterator: Iterator, implements: ImplementsOptions } = .none,
     /// The plugin's name. It is the key the options travel under in
     /// `semantic.json`, so two plugins cannot collide silently.
@@ -127,9 +130,12 @@ pub const Returns = struct {
     ext: []const Extension = &.{},
 };
 
-/// An empty name asks for the derived one: `All`, or `AllChecked` over a
-/// method whose own name carries the `Checked` suffix.
-pub const Iterator = struct { name: []const u8 = "" };
+/// The built-in features' options are the plugin contract's, so a declaration
+/// writes the same type the generator's rules read back out of `ext`.
+///
+/// An empty iterator name asks for the derived one: `All`, or `AllChecked`
+/// over a method whose own name carries the `Checked` suffix.
+pub const Iterator = plugin.builtins.iterator.Options;
 
 /// A Go standard interface a handle method also satisfies. The generator adds
 /// the interface's method next to the bound one, calling it and adapting the
@@ -137,11 +143,11 @@ pub const Iterator = struct { name: []const u8 = "" };
 /// `Read(p []byte) (int, error)`, `.writer_to` adds
 /// `WriteTo(w io.Writer) (int64, error)`, and `.reader_from` adds
 /// `ReadFrom(r io.Reader) (int64, error)`.
-pub const Implements = enum { writer, reader, writer_to, reader_from, string_writer };
+pub const Implements = plugin.builtins.Implements;
 
 /// What `.use(zigo.features.implements, ...)` captured: the interfaces and
 /// whether the zigo-shaped original stays exported beside the wrappers.
-pub const ImplementsOptions = struct { kinds: []const Implements, keep_original: bool = false };
+pub const ImplementsOptions = plugin.builtins.implements.Options;
 
 pub const Cancel = struct {
     /// The `*const std.atomic.Value(u32)` parameter, by its `Param.name`.
@@ -170,10 +176,9 @@ pub const Function = struct {
     child_of_receiver: bool = false,
     iterator: ?Iterator = null,
     /// The Go standard interfaces this method also satisfies, each through a
-    /// wrapper of its own.
-    implements: ?[]const Implements = null,
-    /// With `implements`: the bound method stays exported beside the wrappers.
-    implements_keep_original: bool = false,
+    /// wrapper of its own, and whether the bound method stays exported beside
+    /// them.
+    implements: ?ImplementsOptions = null,
     cancel: ?Cancel = null,
     /// Declarations this function stands in for in `go-coverage`.
     covers: []const []const u8 = &.{},

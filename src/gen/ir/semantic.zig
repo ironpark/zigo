@@ -666,12 +666,6 @@ pub const FieldAccess = struct {
     setter: bool = false,
 };
 
-/// The `.iterator` opt-in: a method returning `?T` or `!?T` also gets a Go
-/// range-over-func wrapper of this name on its receiver.
-pub const Iterator = struct {
-    name: []const u8,
-};
-
 /// The `.implements` opt-in: a handle method also gets the method of one Go
 /// standard interface, which calls it and adapts the result.
 pub const Implements = enum {
@@ -782,21 +776,9 @@ pub const FnGo = struct {
     /// Function-level `.go`: the scalar result is converted with `from_raw`
     /// and the public signature spells the user's Go type.
     return_adapter: ?GoAdapter = null,
-    /// Set by `.iterator`: the method is a `next()` and Go also gets an
-    /// `iter.Seq` wrapper. Go surface only; the C symbol is unchanged.
-    iterator: ?Iterator = null,
-    /// Set by `.implements`: Go also gets each named `io` interface's method,
-    /// every one of them calling this one, in the order they were named. Go
-    /// surface only; the C symbol is unchanged.
-    implements: ?[]const Implements = null,
-    /// With `implements`: the zigo-shaped method stays exported beside the
-    /// wrappers. Absent, the wrappers are the only public spelling and the
-    /// original is written under an unexported name.
-    implements_keep_original: ?bool = null,
 
     fn compact(self: FnGo) ?FnGo {
-        return if (self.name == null and self.owner == null and self.return_adapter == null and
-            self.iterator == null and self.implements == null and self.implements_keep_original == null) null else self;
+        return if (self.name == null and self.owner == null and self.return_adapter == null) null else self;
     }
 };
 
@@ -1071,43 +1053,6 @@ pub const SemanticFn = struct {
         self.go = go.compact();
     }
 
-    /// The range-over-func wrapper this method also gets, if any.
-    pub fn goIterator(self: SemanticFn) ?Iterator {
-        return (self.go orelse FnGo{}).iterator;
-    }
-
-    /// Record the range-over-func wrapper this method also gets.
-    pub fn setGoIterator(self: *SemanticFn, value: ?Iterator) void {
-        var go = self.go orelse FnGo{};
-        go.iterator = value;
-        self.go = go.compact();
-    }
-
-    /// The Go standard interfaces this method also satisfies, in declaration
-    /// order. Empty when it satisfies none, so callers can walk it either way.
-    pub fn goImplements(self: SemanticFn) []const Implements {
-        return (self.go orelse FnGo{}).implements orelse &.{};
-    }
-
-    /// Record the Go standard interfaces this method also satisfies.
-    pub fn setGoImplements(self: *SemanticFn, value: ?[]const Implements) void {
-        var go = self.go orelse FnGo{};
-        go.implements = if (value) |kinds| (if (kinds.len == 0) null else kinds) else null;
-        self.go = go.compact();
-    }
-
-    /// Whether `.implements` hides the zigo-shaped method: the default, so a
-    /// handle reads like one written against `io` from the start.
-    pub fn goImplementsHidesOriginal(self: SemanticFn) bool {
-        return self.goImplements().len != 0 and !((self.go orelse FnGo{}).implements_keep_original orelse false);
-    }
-
-    pub fn setGoImplementsKeepOriginal(self: *SemanticFn, value: bool) void {
-        var go = self.go orelse FnGo{};
-        go.implements_keep_original = if (value) true else null;
-        self.go = go.compact();
-    }
-
     pub fn childOfReceiver(self: SemanticFn) bool {
         return self.child_of_receiver orelse false;
     }
@@ -1365,6 +1310,7 @@ fn migrate(allocator: std.mem.Allocator, root: *std.json.Value) !void {
                     implements.* = .{ .array = kinds };
                 };
             };
+            try liftBuiltinAttachments(allocator, &function.object);
             if (function.object.getPtr("params")) |params| if (params.* == .array) {
                 for (params.array.items) |*param| {
                     if (param.* != .object) continue;
@@ -1385,6 +1331,50 @@ fn migrate(allocator: std.mem.Allocator, root: *std.json.Value) !void {
     const declared = root.object.get("ir_version") orelse std.json.Value{ .integer = 1 };
     if (declared != .integer or declared.integer < current_ir_version)
         try root.object.put(allocator, "ir_version", .{ .integer = current_ir_version });
+}
+
+/// `.iterator` and `.implements` were typed `go` fields before the built-ins
+/// became ordinary plugins. A document that still spells them there -- every
+/// sidecar written before this change, which is what `abi-diff --base` reads
+/// -- has them moved into the `ext` entries the built-in plugins are attached
+/// under, so one set of rules classifies old and new documents alike.
+///
+/// Keyed on the old keys being present, like every other rule here, so it is
+/// idempotent. A document carrying both spellings at once -- the sidecars
+/// written while the reflector wrote each attachment twice -- keeps the `ext`
+/// entry it already has and only loses the `go` fields.
+fn liftBuiltinAttachments(allocator: std.mem.Allocator, function: *std.json.ObjectMap) !void {
+    var iterator: ?std.json.Value = null;
+    var implements: ?std.json.Value = null;
+    if (function.getPtr("go")) |go| {
+        if (go.* != .object) return;
+        if (go.object.fetchOrderedRemove("iterator")) |entry| iterator = entry.value;
+        const kinds = go.object.fetchOrderedRemove("implements");
+        const keep_original = go.object.fetchOrderedRemove("implements_keep_original");
+        if (kinds) |entry| {
+            var options: std.json.ObjectMap = .{};
+            try options.put(allocator, "kinds", entry.value);
+            try options.put(allocator, "keep_original", .{ .bool = if (keep_original) |kept| kept.value == .bool and kept.value.bool else false });
+            implements = .{ .object = options };
+        }
+        // A `go` object that held nothing else is not written at all, so a
+        // migrated document stays identical to one this generator writes.
+        if (go.object.count() == 0) _ = function.fetchOrderedRemove("go");
+    }
+    if (iterator) |options| try attachBuiltin(allocator, function, "ITERATOR", options);
+    if (implements) |options| try attachBuiltin(allocator, function, "IMPLEMENTS", options);
+}
+
+/// Add one built-in plugin's options to the function's `ext` object, leaving
+/// an entry the document already carries as it is.
+fn attachBuiltin(allocator: std.mem.Allocator, function: *std.json.ObjectMap, name: []const u8, options: std.json.Value) !void {
+    var ext: std.json.ObjectMap = if (function.get("ext")) |existing|
+        (if (existing == .object) existing.object else return)
+    else
+        .{};
+    if (ext.contains(name)) return;
+    try ext.put(allocator, name, options);
+    try function.put(allocator, "ext", .{ .object = ext });
 }
 
 /// Move each present `from` key of `object` into its `go` object under `to`.
@@ -1896,7 +1886,7 @@ test "cancel error defaults to Canceled and only an override is serialized" {
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, bytes, "\"cancel_error\": \"Cancelled\""));
 }
 
-test "implements is omitted by default and round trips when present" {
+test "implements is omitted by default and an older document migrates into the attachment" {
     const plain: Semantic = .{
         .functions = &.{.{ .name = "feed", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_feed" }},
         .package = "sample",
@@ -1907,22 +1897,39 @@ test "implements is omitted by default and round trips when present" {
     defer std.testing.allocator.free(plain_bytes);
     try std.testing.expect(std.mem.indexOf(u8, plain_bytes, "\"implements\"") == null);
 
-    const declared: Semantic = .{
-        .functions = &.{.{ .go = .{ .implements = &.{ .writer, .string_writer } }, .name = "dump", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_dump" }},
-        .package = "sample",
-        .prefix = "zg",
-        .zig_version = "0.16.0",
-    };
-    const bytes = try declared.serialize(std.testing.allocator);
-    defer std.testing.allocator.free(bytes);
-    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"writer\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"string_writer\"") != null);
-    var parsed = try Semantic.parse(std.testing.allocator, bytes);
+    // `.implements` was a typed `go` field before the built-in became an
+    // ordinary plugin. Reading a document that spells it there has to yield
+    // the attachment the plugin and the core rules now read.
+    const legacy =
+        \\{
+        \\  "functions": [
+        \\    {
+        \\      "go": { "implements": ["writer", "string_writer"], "implements_keep_original": true, "owner": "Buffer" },
+        \\      "name": "dump",
+        \\      "params": [],
+        \\      "return": { "kind": "void" },
+        \\      "symbol": "zg_dump"
+        \\    }
+        \\  ],
+        \\  "package": "sample",
+        \\  "prefix": "zg",
+        \\  "zig_version": "0.16.0"
+        \\}
+    ;
+    var parsed = try Semantic.parse(std.testing.allocator, legacy);
     defer parsed.deinit();
-    try std.testing.expectEqualSlices(Implements, &.{ .writer, .string_writer }, parsed.value.functions[0].goImplements());
+    const attached = parsed.value.functions[0].ext.?.get("IMPLEMENTS").?;
+    try std.testing.expectEqualStrings("writer", attached.object.get("kinds").?.array.items[0].string);
+    try std.testing.expectEqualStrings("string_writer", attached.object.get("kinds").?.array.items[1].string);
+    try std.testing.expect(attached.object.get("keep_original").?.bool);
+    // The `go` object keeps what is still its own and loses only the moved fields.
+    try std.testing.expectEqualStrings("Buffer", parsed.value.functions[0].goOwnerOverride().?);
+    const bytes = try parsed.value.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(bytes);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"implements\"") == null);
 }
 
-test "a single implements written as a string is read as a one-kind list" {
+test "a single implements written as a string is read as a one-kind attachment" {
     // The field was one kind before it was a list, and a document written then
     // says `"implements": "writer_to"`. Migration is keyed on the shape, so a
     // document already holding a list passes through untouched.
@@ -1944,7 +1951,46 @@ test "a single implements written as a string is read as a one-kind list" {
     ;
     var parsed = try Semantic.parse(std.testing.allocator, legacy);
     defer parsed.deinit();
-    try std.testing.expectEqualSlices(Implements, &.{.writer_to}, parsed.value.functions[0].goImplements());
+    const attached = parsed.value.functions[0].ext.?.get("IMPLEMENTS").?;
+    try std.testing.expectEqual(@as(usize, 1), attached.object.get("kinds").?.array.items.len);
+    try std.testing.expectEqualStrings("writer_to", attached.object.get("kinds").?.array.items[0].string);
+    try std.testing.expect(!attached.object.get("keep_original").?.bool);
+    // Nothing is left for the `go` object to carry, so it is not written.
+    const bytes = try parsed.value.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(bytes);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"go\"") == null);
+}
+
+test "a document carrying both spellings keeps the attachment it already has" {
+    // The sidecars written while the reflector wrote the typed field and the
+    // attachment at once. The `ext` entry is the one the generator wrote, so
+    // migration leaves it alone and only drops the `go` fields.
+    const both =
+        \\{
+        \\  "functions": [
+        \\    {
+        \\      "ext": { "ITERATOR": { "name": "Rows" } },
+        \\      "go": { "iterator": { "name": "Rows" } },
+        \\      "name": "next",
+        \\      "params": [],
+        \\      "receiver": "Cursor",
+        \\      "return": { "kind": "void" },
+        \\      "symbol": "zg_next"
+        \\    }
+        \\  ],
+        \\  "package": "sample",
+        \\  "prefix": "zg",
+        \\  "zig_version": "0.16.0"
+        \\}
+    ;
+    var parsed = try Semantic.parse(std.testing.allocator, both);
+    defer parsed.deinit();
+    const attachments = parsed.value.functions[0].ext.?;
+    try std.testing.expectEqual(@as(usize, 1), attachments.entries.len);
+    try std.testing.expectEqualStrings("Rows", attachments.get("ITERATOR").?.object.get("name").?.string);
+    const bytes = try parsed.value.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(bytes);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"go\"") == null);
 }
 
 test "package metadata is omitted by default and round trips when present" {

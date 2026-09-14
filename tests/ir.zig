@@ -112,8 +112,11 @@ test "migration is idempotent and does not depend on the declared version" {
     var parsed = try semantic.Semantic.parse(std.testing.allocator, intermediate);
     defer parsed.deinit();
     const function = parsed.value.functions[0];
-    try std.testing.expectEqualStrings("All", function.goIterator().?.name);
-    try std.testing.expectEqualSlices(semantic.Implements, &.{.writer}, function.goImplements());
+    // Both are built-in plugin attachments now, so migration lands them in
+    // `ext` under the key their plugin reads.
+    const attachments = function.ext.?;
+    try std.testing.expectEqualStrings("All", attachments.get("ITERATOR").?.object.get("name").?.string);
+    try std.testing.expectEqualStrings("writer", attachments.get("IMPLEMENTS").?.object.get("kinds").?.array.items[0].string);
     try std.testing.expectEqualStrings("Cursor", function.goOwnerOverride().?);
 
     // Parsing what it serializes has to give the same document back.

@@ -39,6 +39,9 @@ pub fn readConfig(comptime P: Plugin, allocator: std.mem.Allocator, configuratio
     };
 }
 
+/// The built-in plugins' descriptors and option readers. Built-ins are
+/// attached and read through the same contract an added plugin uses.
+pub const builtins = @import("plugin/builtins.zig");
 pub const interfaces = @import("plugin/interfaces.zig");
 pub const session = @import("plugin/session.zig");
 const site_module = @import("plugin/site.zig");
@@ -525,9 +528,35 @@ pub fn optionsCode(comptime P: anytype) []const u8 {
 /// attach `P`. The result is allocated from `allocator` and never freed
 /// individually: the generator backs it with the arena that owns the run.
 /// Every context exposes it as `optionsOf`; that is the one way to read it.
+/// `ext` with `P`'s options for `attachment` added, serialized exactly the way
+/// `use` serializes them on a declaration, so what the reflector or a
+/// transform writes is read back by `optionsOf` unchanged. The result is
+/// allocated from `allocator`, which is normally the run arena.
+pub fn attached(
+    comptime P: Plugin,
+    comptime attachment: Attachment,
+    allocator: std.mem.Allocator,
+    ext: ?semantic.Extensions,
+    options: Options(P, attachment),
+) !semantic.Extensions {
+    const previous = (ext orelse semantic.Extensions{}).entries;
+    const entries = try allocator.alloc(semantic.Extensions.Entry, previous.len + 1);
+    @memcpy(entries[0..previous.len], previous);
+    const text = try std.json.Stringify.valueAlloc(allocator, options, .{});
+    entries[previous.len] = .{ .plugin = P.name, .options = try std.json.parseFromSliceLeaky(std.json.Value, allocator, text, .{}) };
+    return .{ .entries = entries };
+}
+
+/// `P`'s options on an `ext` object, for a caller holding no context: the
+/// generator's own rules read a built-in's attachment through exactly what a
+/// hook reads it through. A hook has `Context.optionsOf` and wants that.
+pub fn optionsOn(comptime P: Plugin, comptime attachment: Attachment, allocator: std.mem.Allocator, ext: ?semantic.Extensions) !?Options(P, attachment) {
+    return readOptions(P, attachment, allocator, ext);
+}
+
 fn readOptions(comptime P: Plugin, comptime attachment: Attachment, allocator: std.mem.Allocator, ext: ?semantic.Extensions) !?Options(P, attachment) {
-    const attached = (ext orelse return null).get(P.name) orelse return null;
-    return std.json.parseFromValueLeaky(Options(P, attachment), allocator, attached, .{}) catch return error.InvalidPluginOptions;
+    const options = (ext orelse return null).get(P.name) orelse return null;
+    return std.json.parseFromValueLeaky(Options(P, attachment), allocator, options, .{}) catch return error.InvalidPluginOptions;
 }
 
 /// What a plugin attaches to: the kind of declaration, not the output

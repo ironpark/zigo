@@ -4,8 +4,9 @@
 //! A built-in plugin on the same terms as an added one: its options travel
 //! under its `ext` key, written by `use(zigo.features.iterator, .{ ... })`
 //! with the wrapper name already resolved, and every hook reads them through
-//! `optionsOf`. The typed `go.iterator` field beside them is the core's --
-//! name collision rules and `abi-diff` read it -- not this plugin's.
+//! `optionsOf`. The core reads them too -- name collision rules and
+//! `abi-diff` -- through `plugin.builtins.iterator.read`, which is the same
+//! public reader a third-party plugin would call.
 const std = @import("std");
 const abi = @import("abi");
 const diagnostic = @import("diagnostic");
@@ -16,15 +17,16 @@ const site = plugin_api.site;
 /// What `use(zigo.features.iterator, .{ .name = ... })` attaches: the
 /// wrapper's name. The reflector has already resolved an empty name to
 /// `All` (or `AllChecked` over a `*Checked` method) by the time it is here.
-pub const Options = semantic.Iterator;
+pub const Options = plugin_api.builtins.iterator.Options;
 
-pub const plugin: plugin_api.Plugin = .{
-    .name = "ITERATOR",
-    .FunctionOptions = Options,
-    .subjects = &.{.function},
-    .after = &.{ "MUST", "IMPLEMENTS" },
-    .validate = validateDocument,
-    .visit = visit,
+/// The contract's descriptor -- name, options and subjects, the half the
+/// authoring module attaches with -- plus this file's hooks.
+pub const plugin: plugin_api.Plugin = blk: {
+    var declared = plugin_api.builtins.iterator.plugin;
+    declared.after = &.{ "MUST", "IMPLEMENTS" };
+    declared.validate = validateDocument;
+    declared.visit = visit;
+    break :blk declared;
 };
 
 /// The wrapper is written after the method it drives, in the file that owns

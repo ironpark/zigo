@@ -136,6 +136,11 @@ pub fn createGeneratorModules(
                 .{ .name = "semantic", .module = semantic_module },
                 .{ .name = "diagnostic", .module = diagnostic_module },
                 .{ .name = "naming", .module = naming_module },
+                // `Context.target()` hands back a `targets.Target`, and the
+                // contract modules a plugin package builds against
+                // (`exposeContractModules`) include this one; a plugin the
+                // generator compiles gets the same set.
+                .{ .name = "targets", .module = targets_module },
             },
         })) catch @panic("OOM");
     }
@@ -167,6 +172,9 @@ pub fn createGeneratorModules(
         .optimize = optimize,
         .imports = &.{
             .{ .name = "naming", .module = naming_module },
+            // The verdict on a built-in plugin's surface is read through the
+            // contract's own reader, like any other plugin's attachment.
+            .{ .name = "plugin", .module = plugin_module },
             .{ .name = "targets", .module = targets_module },
             .{ .name = "abi", .module = abi_module },
             .{ .name = "lower", .module = gen_lower_module },

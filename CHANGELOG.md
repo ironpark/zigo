@@ -159,6 +159,26 @@ function이나 타입의 출력 뒤에 이어집니다. 호환 shim은 없으며
 `subjects`에 없는 node에 `use`하면 선언 위치에서 컴파일 error이고, `semantic.json`에 직접
 써 넣은 경우에는 선언 kind와 똑같이 `<NAME>001` 진단입니다.
 
+내장 플러그인이 쓰던 특권 통로를 없앴습니다. `ITERATOR`와 `IMPLEMENTS`의 옵션은 이제
+`ext` 하나에만 실리고, 이름 충돌 규칙·Must 미러·`abi-diff`도 계약의 reader
+(`plugin.builtins`)로 그것을 읽습니다. 외부 플러그인이 할 수 없는 일을 내장 플러그인도
+하지 않으므로 `src/gen/plugins/`가 그대로 참조 구현입니다. `zigo.features.iterator`와
+`zigo.features.implements`는 registry가 실행하는 바로 그 descriptor의 re-export입니다.
+생성된 Go 코드는 바이트 단위로 같고, `semantic.json`에서 `go.iterator`·`go.implements`
+키가 사라집니다. 옛 문서는 parse 시점에 `ext` 항목으로 옮겨지므로
+`abi-diff --base`는 예전 sidecar에도 그대로 동작합니다.
+
+| 이전 | 이후 |
+|---|---|
+| `SemanticFn.go.iterator`, `go.implements`, `go.implements_keep_original` | 삭제. 선언의 `ext.ITERATOR`/`ext.IMPLEMENTS`만 |
+| `goIterator()`, `goImplements()`, `goImplementsHidesOriginal()` | `plugin.builtins.iterator.read`, `plugin.builtins.implements.read`/`hidesOriginal` |
+| `semantic.Iterator` | `plugin.builtins.iterator.Options` |
+| 옵션을 `ext`에 얹는 코드는 reflector 안에만 | `plugin.attached(P, attachment, allocator, ext, options)` |
+| context 없이 옵션을 읽을 방법 없음 | `plugin.optionsOn(P, attachment, allocator, ext)` |
+| `zigo.features.*`는 별도로 선언된 `Plugin` 값 | `plugin.builtins.*`의 re-export. 내장 하나당 정의 하나 |
+| `zigo.features.implements`의 `subjects`는 function뿐 | generator와 같은 `{function, handle}` |
+| `common.programHasIterators` | 삭제. 부르는 곳이 없었습니다 |
+
 `Context.identifierAlloc`과 나머지 writer(`writeTypeName`, `writeGoType`, `writeSignature`,
 `writeParameters`, `writeResultType`, `writeCallArguments`, `writeValueType`, `writeDoc`,
 `functionInfo`, `receiverNameAlloc`)는 그대로입니다. builder는 `Expr.typeName`, `Expr.goType`,

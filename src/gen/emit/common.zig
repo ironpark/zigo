@@ -274,13 +274,6 @@ pub fn functionHasStream(function: semantic.SemanticFn) bool {
     return lower.functionHasStream(function);
 }
 
-/// True when some generated function takes a `context.Context` to be stopped
-/// through.
-pub fn programHasIterators(program: abi.Program) bool {
-    for (program.functions) |function| if (function.origin.goIterator() != null) return true;
-    return false;
-}
-
 pub fn programHasCancellation(program: abi.Program) bool {
     for (program.functions) |function| if (function.origin.cancel != null) return true;
     return false;
