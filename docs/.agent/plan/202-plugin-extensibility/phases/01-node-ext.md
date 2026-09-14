@@ -2,7 +2,7 @@
 depends_on:
 - "202-plugin-extensibility#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `zigo.param.input(1).use(P, .{ ... })` and a field-level `use` compile, appear in `semantic.json`, and are readable by the test plugin.
 > NEXT: none
