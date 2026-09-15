@@ -1347,6 +1347,8 @@ fn addBindingAuthoringErrors(b: *std.Build, test_step: *std.Build.Step) void {
         .{ "plugin_options", "no field named 'limit'" },
         .{ "plugin_ref_root", "zigo plugin option references a type outside this binding" },
         .{ "plugin_ref_kind", "zigo an interface reference requires a zigo.interface declaration" },
+        .{ "plugin_ref_field_kind", "zigo an interface reference requires a zigo.interface declaration" },
+        .{ "plugin_ref_field_root", "zigo plugin option references a type outside this binding" },
     };
     inline for (cases) |case| {
         const run = b.addSystemCommand(&.{ b.graph.zig_exe, "build-obj", "-fno-emit-bin", "--dep", "zigo" });

@@ -110,7 +110,8 @@ api.enumeration("CursorStyle", .{ .fields = &.{
 | handle field | `(zigo.HandleField{ .path = "x" }).extend(P, .{ ... })` | `P.FunctionOptions` |
 
 플러그인 옵션 field의 타입이 `plugin.ref.*`이면 그 자리에는 이름 문자열이 아니라 선언을
-씁니다. 선언·매개변수·반환값의 `use`가 이 형태를 받습니다.
+씁니다. 위 표의 모든 자리가 같습니다: 선언의 `use`도, 매개변수·반환값·field·enum tag·handle
+field의 `use`와 `extend`도 이 형태를 받습니다.
 
 | 옵션 field 타입 | 바인딩이 쓰는 값 |
 |---|---|

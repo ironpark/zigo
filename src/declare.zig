@@ -197,31 +197,10 @@ pub const HandleField = struct {
     name: ?[]const u8 = null,
     set: bool = false,
     doc: ?[]const u8 = null,
-    /// Plugin options, one entry per plugin. Written by `use`. The
-    /// getter and the setter both carry them, the way they share `doc`.
+    /// Plugin options, one entry per plugin. Written by `HandleField.extend`
+    /// in the authoring tree. The getter and the setter both carry them, the
+    /// way they share `doc`.
     ext: []const Extension = &.{},
-
-    /// Attach `value` as plugin `P`'s function options for the accessors
-    /// this field synthesizes. A plugin whose `subjects` exclude `.function`
-    /// is refused here, where the declaration is written.
-    pub fn extend(comptime self: HandleField, comptime P: anytype, comptime value: P.FunctionOptions) HandleField {
-        // `P` is a `plugin.Plugin` value from a binding, or a type spelling
-        // the same decls in a test; only a value carries `subjects`.
-        comptime if (@TypeOf(P) != type and @hasField(@TypeOf(P), "subjects")) {
-            var supported = false;
-            for (P.subjects) |candidate| if (candidate == .function) {
-                supported = true;
-            };
-            if (!supported) @compileError("zigo plugin " ++ P.name ++ " does not support function");
-        };
-        const Captured = struct {
-            pub const name = P.name;
-            pub const Options = P.FunctionOptions;
-        };
-        var result = self;
-        result.ext = self.ext ++ [_]Extension{extension(Captured, value)};
-        return result;
-    }
 };
 
 /// A hint for one field of a value or materialized struct.
@@ -231,61 +210,19 @@ pub const ValueField = struct {
     /// Go doc for this field. Absent takes the Zig source's `///`, and
     /// failing that the generated description.
     doc: ?[]const u8 = null,
-    /// Plugin options, one entry per plugin. Written by `use`.
+    /// Plugin options, one entry per plugin. Written by `ValueField.use` in
+    /// the authoring tree.
     ext: []const Extension = &.{},
-
-    /// Attach `value` as plugin `P`'s field options for this member. A
-    /// plugin whose `subjects` exclude `.field` is refused here, where the
-    /// declaration is written.
-    pub fn use(comptime self: ValueField, comptime P: anytype, comptime value: P.FieldOptions) ValueField {
-        comptime checkNodeSubject(P, "field");
-        comptime checkDuplicate(self.ext, P.name);
-        const Captured = struct {
-            pub const name = P.name;
-            pub const Options = P.FieldOptions;
-        };
-        var result = self;
-        result.ext = self.ext ++ [_]Extension{extension(Captured, value)};
-        return result;
-    }
 };
 
 /// Go doc for one member of a registered enum, by its Zig tag name.
 pub const EnumField = struct {
     name: []const u8,
     doc: ?[]const u8 = null,
-    /// Plugin options, one entry per plugin. Written by `use`.
+    /// Plugin options, one entry per plugin. Written by `EnumField.use` in
+    /// the authoring tree.
     ext: []const Extension = &.{},
-
-    /// Attach `value` as plugin `P`'s tag options for this member. A plugin
-    /// whose `subjects` exclude `.enum_tag` is refused here.
-    pub fn use(comptime self: EnumField, comptime P: anytype, comptime value: P.TagOptions) EnumField {
-        comptime checkNodeSubject(P, "enum_tag");
-        comptime checkDuplicate(self.ext, P.name);
-        const Captured = struct {
-            pub const name = P.name;
-            pub const Options = P.TagOptions;
-        };
-        var result = self;
-        result.ext = self.ext ++ [_]Extension{extension(Captured, value)};
-        return result;
-    }
 };
-
-/// The subject check every node-level `use` shares. `P` is a `plugin.Plugin`
-/// value from a binding, or a type spelling the same decls in a test; only a
-/// value carries `subjects`. Tags are compared by name so the DSL's own
-/// `Subject` spelling and the plugin contract's pass the same check.
-fn checkNodeSubject(comptime P: anytype, comptime subject: []const u8) void {
-    if (@TypeOf(P) == type or !@hasField(@TypeOf(P), "subjects")) return;
-    for (P.subjects) |candidate| if (std.mem.eql(u8, @tagName(candidate), subject)) return;
-    @compileError("zigo plugin " ++ P.name ++ " does not support " ++ subject);
-}
-
-fn checkDuplicate(comptime entries: []const Extension, comptime name: []const u8) void {
-    for (entries) |existing| if (std.mem.eql(u8, existing.plugin, name))
-        @compileError("zigo duplicate plugin attachment: " ++ name);
-}
 
 pub const Handle = struct {
     type: type,

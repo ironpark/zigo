@@ -96,17 +96,33 @@ fn authoredDefault(comptime Mapped: type) ?*const anyopaque {
     };
 }
 
-/// One authoring option value as the document carries it. `root` is the
-/// binding the attachment belongs to, when the attachment site knows it: a
-/// reference into another `zigo.define` is refused here rather than resolving
-/// to nothing at generation time.
-fn authoredOptions(comptime Options: type, comptime value: Authored(Options), comptime root: ?type) Options {
+/// One reference an option value named, kept for the root check the
+/// attachment site could not make itself. A field or a tag literal is written
+/// before the `api.value(...)` call that knows the binding, so `normalize`
+/// makes the check there.
+pub const RootRef = struct { root: type, path: []const u8 };
+
+/// One authoring option value as the document carries it, for an attachment
+/// that knows the binding it belongs to: a reference into another
+/// `zigo.define` is refused here rather than resolving to nothing at
+/// generation time.
+fn checkedOptions(comptime Options: type, comptime value: Authored(Options), comptime root: ?type) Options {
+    comptime var named: []const RootRef = &.{};
+    return authoredOptions(Options, value, root, &named);
+}
+
+/// The same mapping, collecting every reference into `named`. `root` is the
+/// binding the attachment belongs to when the attachment site knows it, and
+/// null when the check is left to whoever reads `named`.
+fn authoredOptions(comptime Options: type, comptime value: Authored(Options), comptime root: ?type, comptime named: *[]const RootRef) Options {
     if (Options == plugin.ref.Type) {
         comptime checkReferenceRoot(value.root, root, value.path);
+        named.* = named.* ++ [_]RootRef{.{ .root = value.root, .path = value.path }};
         return .{ .path = @typeName(value.type) };
     }
     if (Options == plugin.ref.Function) {
         comptime checkReferenceRoot(value.root, root, value.path);
+        named.* = named.* ++ [_]RootRef{.{ .root = value.root, .path = value.path }};
         return .{ .path = if (value.container == value.root) value.name else @typeName(value.container) ++ "." ++ value.name };
     }
     if (Options == plugin.ref.Interface) return .{ .name = switch (value) {
@@ -115,17 +131,17 @@ fn authoredOptions(comptime Options: type, comptime value: Authored(Options), co
     } };
     if (Authored(Options) == Options) return value;
     return switch (@typeInfo(Options)) {
-        .optional => |optional| if (value) |inner| authoredOptions(optional.child, inner, root) else null,
+        .optional => |optional| if (value) |inner| authoredOptions(optional.child, inner, root, named) else null,
         .pointer => |pointer| blk: {
             comptime var mapped: [value.len]pointer.child = undefined;
-            inline for (value, 0..) |item, index| mapped[index] = authoredOptions(pointer.child, item, root);
+            inline for (value, 0..) |item, index| mapped[index] = authoredOptions(pointer.child, item, root, named);
             const frozen = mapped;
             break :blk &frozen;
         },
         .@"struct" => |info| blk: {
             var result: Options = undefined;
             inline for (info.fields) |field| {
-                @field(result, field.name) = authoredOptions(field.type, @field(value, field.name), root);
+                @field(result, field.name) = authoredOptions(field.type, @field(value, field.name), root, named);
             }
             break :blk result;
         },
@@ -178,7 +194,7 @@ pub const Returns = struct {
             pub const name = P.name;
             pub const Options = P.ResultOptions;
         };
-        const written = comptime authoredOptions(P.ResultOptions, options, null);
+        const written = comptime checkedOptions(P.ResultOptions, options, null);
         var result = self;
         result.extensions = self.extensions ++ [_]ir.Extension{ir.extension(Captured, written)};
         return result;
@@ -246,7 +262,7 @@ pub const Param = struct {
         };
         // A parameter names no binding of its own, so a reference here is
         // checked only where every reference is: against the document.
-        const written = comptime authoredOptions(P.ParamOptions, options, null);
+        const written = comptime checkedOptions(P.ParamOptions, options, null);
         var copy = self;
         copy.extensions = self.extensions ++ [_]ir.Extension{ir.extension(Captured, written)};
         return copy;
@@ -265,16 +281,109 @@ pub const FunctionOptions = struct {
 };
 pub const Function = struct { ref: FunctionRef, options: FunctionOptions = .{}, extensions: []const ir.Extension = &.{} };
 
-pub const HandleOptions = struct { fields: []const ir.HandleField = &.{} };
-pub const ValueOptions = struct { fields: []const ir.ValueField = &.{}, go: ?GoAdapter = null };
-pub const MaterializedOptions = struct { fields: []const ir.ValueField = &.{} };
+/// A getter (and optionally setter) on a handle, reached by a dotted field
+/// path.
+pub const HandleField = struct {
+    path: []const u8,
+    name: ?[]const u8 = null,
+    set: bool = false,
+    doc: ?[]const u8 = null,
+    /// Plugin options, one entry per plugin. Written by `extend`. The getter
+    /// and the setter both carry them, the way they share `doc`.
+    ext: []const ir.Extension = &.{},
+    /// The references those options named, checked in `normalize` against the
+    /// binding the owning handle belongs to.
+    refs: []const RootRef = &.{},
+
+    /// Attach `options` as plugin `P`'s function options for the accessors
+    /// this field synthesizes. A plugin whose `subjects` exclude `.function`
+    /// is refused here, where the declaration is written.
+    pub fn extend(comptime self: HandleField, comptime P: plugin.Plugin, comptime options: Authored(P.FunctionOptions)) HandleField {
+        comptime checkNodeSubject(P, .function);
+        comptime checkDuplicateAttachment(self.ext, P.name);
+        const Captured = struct {
+            pub const name = P.name;
+            pub const Options = P.FunctionOptions;
+        };
+        comptime var named: []const RootRef = &.{};
+        const written = comptime authoredOptions(P.FunctionOptions, options, null, &named);
+        var result = self;
+        result.ext = self.ext ++ [_]ir.Extension{ir.extension(Captured, written)};
+        result.refs = self.refs ++ named;
+        return result;
+    }
+};
+
+/// A hint for one field of a value or materialized struct.
+pub const ValueField = struct {
+    name: []const u8,
+    semantic: ?SemanticHint = null,
+    /// Go doc for this field. Absent takes the Zig source's `///`, and
+    /// failing that the generated description.
+    doc: ?[]const u8 = null,
+    /// Plugin options, one entry per plugin. Written by `use`.
+    ext: []const ir.Extension = &.{},
+    /// The references those options named, checked in `normalize` against the
+    /// binding the owning type belongs to.
+    refs: []const RootRef = &.{},
+
+    /// Attach `options` as plugin `P`'s field options for this member. A
+    /// plugin whose `subjects` exclude `.field` is refused here, where the
+    /// declaration is written.
+    pub fn use(comptime self: ValueField, comptime P: plugin.Plugin, comptime options: Authored(P.FieldOptions)) ValueField {
+        comptime checkNodeSubject(P, .field);
+        comptime checkDuplicateAttachment(self.ext, P.name);
+        const Captured = struct {
+            pub const name = P.name;
+            pub const Options = P.FieldOptions;
+        };
+        comptime var named: []const RootRef = &.{};
+        const written = comptime authoredOptions(P.FieldOptions, options, null, &named);
+        var result = self;
+        result.ext = self.ext ++ [_]ir.Extension{ir.extension(Captured, written)};
+        result.refs = self.refs ++ named;
+        return result;
+    }
+};
+
+/// Go doc for one member of a registered enum, by its Zig tag name.
+pub const EnumField = struct {
+    name: []const u8,
+    doc: ?[]const u8 = null,
+    /// Plugin options, one entry per plugin. Written by `use`.
+    ext: []const ir.Extension = &.{},
+    /// The references those options named, checked in `normalize` against the
+    /// binding the owning enum belongs to.
+    refs: []const RootRef = &.{},
+
+    /// Attach `options` as plugin `P`'s tag options for this member. A plugin
+    /// whose `subjects` exclude `.enum_tag` is refused here.
+    pub fn use(comptime self: EnumField, comptime P: plugin.Plugin, comptime options: Authored(P.TagOptions)) EnumField {
+        comptime checkNodeSubject(P, .enum_tag);
+        comptime checkDuplicateAttachment(self.ext, P.name);
+        const Captured = struct {
+            pub const name = P.name;
+            pub const Options = P.TagOptions;
+        };
+        comptime var named: []const RootRef = &.{};
+        const written = comptime authoredOptions(P.TagOptions, options, null, &named);
+        var result = self;
+        result.ext = self.ext ++ [_]ir.Extension{ir.extension(Captured, written)};
+        result.refs = self.refs ++ named;
+        return result;
+    }
+};
+
+pub const HandleOptions = struct { fields: []const HandleField = &.{} };
+pub const ValueOptions = struct { fields: []const ValueField = &.{}, go: ?GoAdapter = null };
+pub const MaterializedOptions = struct { fields: []const ValueField = &.{} };
 pub const EnumOptions = struct {
     exhaustive: bool = true,
     /// Generate `Parse<Enum>`, `MarshalText` and `UnmarshalText`.
     text: bool = false,
     go: ?GoAdapter = null,
     covers: []const FunctionRef = &.{},
-    fields: []const ir.EnumField = &.{},
+    fields: []const EnumField = &.{},
 };
 pub const UnionOptions = struct { access: ir.Access = .projection, omit: []const []const u8 = &.{} };
 /// Sparse hints indexed by the original native callback signature.
@@ -396,7 +505,7 @@ pub const Entry = union(enum) {
             pub const name = P.name;
             pub const Options = pluginWireOptions(P, self);
         };
-        const written = comptime authoredOptions(Captured.Options, options, entryRoot(self));
+        const written = comptime checkedOptions(Captured.Options, options, entryRoot(self));
         var captured = ir.extension(Captured, written);
         // The two built-ins whose options the reflector resolves before it
         // writes them -- an iterator name derived from the method it advances,
@@ -755,4 +864,41 @@ test "reference options travel as the native path a reflector writes" {
     const method_json = try method.function.extensions[0].jsonAlloc(std.testing.allocator);
     defer std.testing.allocator.free(method_json);
     try std.testing.expect(std.mem.indexOf(u8, method_json, ".Context.close\"}") != null);
+}
+
+test "field and tag options name declarations the way a declaration's do" {
+    const Lib = struct {
+        pub const Context = opaque {};
+        pub const Point = extern struct { x: i32 };
+        pub const Mode = enum(u8) { idle };
+    };
+    const P: plugin.Plugin = .{
+        .name = "REF",
+        .FieldOptions = struct { target: ?plugin.ref.Type = null },
+        .TagOptions = struct { target: ?plugin.ref.Type = null },
+        .FunctionOptions = struct { helper: ?plugin.ref.Function = null },
+        .subjects = &.{ .value, .enumeration, .handle, .function, .field, .enum_tag },
+    };
+    const api = scope(Lib);
+    const field = comptime (ValueField{ .name = "x" }).use(P, .{ .target = api.typeRef("Context") });
+    const field_json = try field.ext[0].jsonAlloc(std.testing.allocator);
+    defer std.testing.allocator.free(field_json);
+    try std.testing.expectEqualStrings("{\"target\":\"" ++ @typeName(Lib.Context) ++ "\"}", field_json);
+    // The reference is kept for the root check `normalize` makes: a field
+    // literal is written before the declaration that names the binding.
+    try std.testing.expectEqual(@as(usize, 1), field.refs.len);
+    try std.testing.expect(field.refs[0].root == Lib);
+
+    const tag = comptime (EnumField{ .name = "idle" }).use(P, .{ .target = api.typeRef("Point") });
+    const tag_json = try tag.ext[0].jsonAlloc(std.testing.allocator);
+    defer std.testing.allocator.free(tag_json);
+    try std.testing.expectEqualStrings("{\"target\":\"" ++ @typeName(Lib.Point) ++ "\"}", tag_json);
+    try std.testing.expectEqual(@as(usize, 1), tag.refs.len);
+
+    // A handle field carries the accessors' function options, references and all.
+    const accessor = comptime (HandleField{ .path = "x" }).extend(P, .{});
+    try std.testing.expectEqual(@as(usize, 0), accessor.refs.len);
+    const accessor_json = try accessor.ext[0].jsonAlloc(std.testing.allocator);
+    defer std.testing.allocator.free(accessor_json);
+    try std.testing.expectEqualStrings("{\"helper\":null}", accessor_json);
 }

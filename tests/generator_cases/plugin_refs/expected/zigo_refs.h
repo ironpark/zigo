@@ -7,6 +7,10 @@
 
 typedef struct zg_context zg_context;
 typedef struct zg_counter zg_counter;
+typedef uint8_t zg_mode;
+#define ZG_MODE_IDLE 0
+#define ZG_MODE_ACTIVE 1
+
 // ELF and Mach-O export every non-static symbol of a shared library;
 // COFF exports nothing without an explicit annotation, so a DLL built
 // without this would load and then resolve none of its entry points.
@@ -18,7 +22,13 @@ typedef struct zg_counter zg_counter;
 #endif
 #endif
 
+typedef struct zg_point {
+    int32_t x;
+    int32_t y;
+} zg_point;
+
 ZIGO_EXPORT int32_t zg_counter_read(zg_counter * self, size_t * out_result);
+ZIGO_EXPORT void zg_measure(zg_point * out_result);
 ZIGO_EXPORT void zg_reset(void);
 ZIGO_EXPORT const char *zg_last_error_message(void);
 ZIGO_EXPORT const char *zg_caught_panic_message(int32_t code);

@@ -62,6 +62,21 @@ pub fn binding(comptime Root: type, comptime source: a.Binding) ir.Binding {
 fn checkRoot(comptime actual: type, comptime expected: type, comptime path: []const u8) void {
     if (actual != expected) @compileError("zigo reference belongs to a different root: " ++ path);
 }
+/// The flat form of one declaration's fields or tags. A field literal is
+/// written before the `api.value(...)` call that names the binding, so the
+/// references its plugin options carry are checked here instead of at the
+/// attachment.
+fn members(comptime Out: type, comptime fields: anytype, comptime root: type) []const Out {
+    comptime var out: []const Out = &.{};
+    inline for (fields) |field| {
+        inline for (field.refs) |ref| if (ref.root != root)
+            @compileError("zigo plugin option references a type outside this binding: " ++ ref.path);
+        var member: Out = undefined;
+        inline for (std.meta.fields(Out)) |f| @field(member, f.name) = @field(field, f.name);
+        out = out ++ [_]Out{member};
+    }
+    return out;
+}
 fn checkExtensions(comptime extensions: []const ir.Extension) void {
     for (extensions, 0..) |entry, i| {
         for (extensions[0..i]) |previous| if (std.mem.eql(u8, previous.plugin, entry.plugin)) @compileError("zigo duplicate plugin attachment: " ++ entry.plugin);
@@ -105,10 +120,10 @@ fn collectTypes(comptime entries: []const a.Entry, state: *State) void {
             const name = t.options.name orelse lastSegment(t.ref.path);
             for (state.types) |previous| if (std.mem.eql(u8, previous.goName(), name)) @compileError("zigo duplicate Go type name: " ++ name);
             const result: ir.Type = switch (t.representation) {
-                .handle => |o| .{ .handle = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .fields = o.fields, .ext = externalExtensions(t.extensions) } },
-                .value => |o| .{ .value = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .fields = o.fields, .go = o.go, .ext = externalExtensions(t.extensions) } },
-                .materialized => |o| .{ .materialized = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .fields = o.fields, .ext = externalExtensions(t.extensions) } },
-                .enumeration => |o| .{ .enumeration = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .go = o.go, .exhaustive = o.exhaustive, .fields = o.fields, .text = o.text, .ext = externalExtensions(t.extensions) } },
+                .handle => |o| .{ .handle = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .fields = members(ir.HandleField, o.fields, state.root), .ext = externalExtensions(t.extensions) } },
+                .value => |o| .{ .value = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .fields = members(ir.ValueField, o.fields, state.root), .go = o.go, .ext = externalExtensions(t.extensions) } },
+                .materialized => |o| .{ .materialized = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .fields = members(ir.ValueField, o.fields, state.root), .ext = externalExtensions(t.extensions) } },
+                .enumeration => |o| .{ .enumeration = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .go = o.go, .exhaustive = o.exhaustive, .fields = members(ir.EnumField, o.fields, state.root), .text = o.text, .ext = externalExtensions(t.extensions) } },
                 .tagged_union => |o| .{ .tagged_union = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .access = o.access, .omit = o.omit, .ext = externalExtensions(t.extensions) } },
                 .callback => |o| .{ .callback = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .params = callbackParams(t.ref.type, o, t.ref.path), .returns = .{ .semantic = o.returns.semantic }, .userdata = o.userdata, .retention = o.contract.retention, .thread = o.contract.thread, .reentrancy = o.contract.reentrancy, .on_failure = o.contract.on_failure, .ext = externalExtensions(t.extensions) } },
             };

@@ -24,7 +24,27 @@ func CounterRead(self unsafe.Pointer) (uint, int32) {
 	code := int32(C.zg_counter_read((*C.zg_counter)(self), &outResult))
 	return uint(outResult), code
 }
+// Measure calls the generated C ABI wrapper for zg_measure.
+func Measure() PointData {
+	var outResult C.zg_point
+	C.zg_measure(&outResult)
+	return PointData{
+		X: int32(outResult.x),
+		Y: int32(outResult.y),
+	}
+}
 // Reset calls the generated C ABI wrapper for zg_reset.
 func Reset() {
 	C.zg_reset()
 }
+
+// PointData mirrors the zg_point layout, padding included.
+type PointData struct {
+	X int32
+	Y int32
+}
+
+// PointData slices are copied from C memory as one run, so it must match zg_point byte for byte.
+var _ = [1]struct{}{}[unsafe.Sizeof(PointData{})-unsafe.Sizeof(C.zg_point{})]
+var _ = [1]struct{}{}[unsafe.Offsetof(PointData{}.X)-unsafe.Offsetof(C.zg_point{}.x)]
+var _ = [1]struct{}{}[unsafe.Offsetof(PointData{}.Y)-unsafe.Offsetof(C.zg_point{}.y)]

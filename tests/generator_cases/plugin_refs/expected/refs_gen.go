@@ -24,6 +24,11 @@ func (c *Counter) Read() (uint, error) {
 // ZigoRefHelper read: reset.
 
 
+// Measure calls the Zig function measure.
+func Measure() Point {
+	return zigoPointFromRaw(raw.Measure())
+}
+
 // Reset calls the Zig function reset.
 func Reset() {
 	raw.Reset()

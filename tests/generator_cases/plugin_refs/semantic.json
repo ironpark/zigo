@@ -9,6 +9,12 @@
       "symbol": "zg_counter_read"
     },
     {
+      "name": "measure",
+      "params": [],
+      "return": { "kind": "value_struct", "ref": "Point" },
+      "symbol": "zg_measure"
+    },
+    {
       "name": "reset",
       "params": [],
       "return": { "kind": "void" },
@@ -32,6 +38,30 @@
       "kind": "opaque",
       "name": "Counter",
       "zig_path": "refs.Counter"
+    },
+    {
+      "fields": [
+        {
+          "ext": { "REFS": { "target": "refs.Context" } },
+          "name": "x",
+          "type": { "bits": 32, "kind": "int", "signed": true }
+        },
+        { "name": "y", "type": { "bits": 32, "kind": "int", "signed": true } }
+      ],
+      "kind": "value_struct",
+      "layout": "extern",
+      "name": "Point",
+      "zig_path": "refs.Point"
+    },
+    {
+      "fields": [
+        { "ext": { "REFS": { "target": "refs.Counter" } }, "name": "idle", "value": 0 },
+        { "name": "active", "value": 1 }
+      ],
+      "kind": "enum",
+      "name": "Mode",
+      "tag_type": { "bits": 8, "kind": "int", "signed": false },
+      "zig_path": "refs.Mode"
     }
   ],
   "zig_version": "0.16.0"

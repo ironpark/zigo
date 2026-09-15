@@ -5437,9 +5437,12 @@ test "a byte pair and a sentinel string in a callback signature reflect as strin
 }
 
 test "extend attaches plugin options to a field getter and its setter" {
+    // Reflection reads the flat declarations `zigo.define` lowers to, so the
+    // options are captured here the way authoring's `HandleField.extend`
+    // captures them.
     const Sample = struct {
         pub const name = "TEST";
-        pub const FunctionOptions = struct { mode: enum { a, b } = .a };
+        pub const Options = struct { mode: enum { a, b } = .a };
     };
     const Terminal = struct { cols: u16, rows: u16 };
     const Fixture = struct {};
@@ -5448,7 +5451,7 @@ test "extend attaches plugin options to a field getter and its setter" {
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
         .types = &.{.{ .handle = .{ .type = Terminal, .fields = &.{
-            (zigo.HandleField{ .path = "cols", .set = true }).extend(Sample, .{ .mode = .b }),
+            .{ .path = "cols", .set = true, .ext = &.{zigo.extension(Sample, .{ .mode = .b })} },
             .{ .path = "rows" },
         } } }},
     }, "terminal", "zg");
@@ -5669,7 +5672,10 @@ test "node-level plugin attachments survive authoring and reflection" {
             return .{ .x = 0, .y = 0 };
         }
     };
-    const Node = struct { tag: []const u8 };
+    // A field and a tag name declarations the way a declaration's options do:
+    // the reference is written as the authoring value, and the document
+    // carries the native path.
+    const Node = struct { tag: []const u8, target: ?public.plugin.ref.Type = null };
     const P: public.Plugin = .{
         .name = "NODE",
         .ParamOptions = Node,
@@ -5680,8 +5686,8 @@ test "node-level plugin attachments survive authoring and reflection" {
     };
     const api = public.scope(Fixture);
     const binding = comptime public.define(api, .{ .declarations = &.{
-        api.value("Point", .{ .fields = &.{(public.ValueField{ .name = "x" }).use(P, .{ .tag = "across" })} }),
-        api.enumeration("Mode", .{ .fields = &.{(public.EnumField{ .name = "idle" }).use(P, .{ .tag = "zero" })} }),
+        api.value("Point", .{ .fields = &.{(public.ValueField{ .name = "x" }).use(P, .{ .tag = "across", .target = api.typeRef("Mode") })} }),
+        api.enumeration("Mode", .{ .fields = &.{(public.EnumField{ .name = "idle" }).use(P, .{ .tag = "zero", .target = api.typeRef("Point") })} }),
         api.func("measure", .{
             .params = &.{public.param.input(0).use(P, .{ .tag = "input" })},
             .returns = public.result.owned().use(P, .{ .tag = "output" }),
@@ -5698,11 +5704,13 @@ test "node-level plugin attachments survive authoring and reflection" {
     for (document.types) |declaration| switch (declaration.kind) {
         .value_struct => {
             try std.testing.expectEqualStrings("across", declaration.fields[0].ext.?.get("NODE").?.object.get("tag").?.string);
+            try std.testing.expectEqualStrings(@typeName(Fixture.Mode), declaration.fields[0].ext.?.get("NODE").?.object.get("target").?.string);
             // A member no plugin extended stays free of the key entirely.
             try std.testing.expect(declaration.fields[1].ext == null);
         },
         .@"enum" => {
             try std.testing.expectEqualStrings("zero", declaration.fields[0].ext.?.get("NODE").?.object.get("tag").?.string);
+            try std.testing.expectEqualStrings(@typeName(Fixture.Point), declaration.fields[0].ext.?.get("NODE").?.object.get("target").?.string);
             try std.testing.expect(declaration.fields[1].ext == null);
         },
         else => {},

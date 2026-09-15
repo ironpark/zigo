@@ -14,12 +14,22 @@ pub const TypeOptions = struct {
 pub const FunctionOptions = struct {
     helper: ?api.ref.Function = null,
 };
+/// Field and tag options name a declaration the same way: the reference is
+/// written on the member, not on the type that owns it.
+pub const FieldOptions = struct {
+    target: ?api.ref.Type = null,
+};
+pub const TagOptions = struct {
+    target: ?api.ref.Type = null,
+};
 
 pub const plugin: api.Plugin = .{
     .name = "REFS",
-    .subjects = &.{ .function, .handle, .value, .enumeration },
+    .subjects = &.{ .function, .handle, .value, .enumeration, .field, .enum_tag },
     .FunctionOptions = FunctionOptions,
     .TypeOptions = TypeOptions,
+    .FieldOptions = FieldOptions,
+    .TagOptions = TagOptions,
     .go = .{ .visit = visit },
 };
 
@@ -35,6 +45,20 @@ fn visit(context: api.GoContext, node: api.Node, b: *api.Builder) !void {
                 const resolved = try context.resolveInterface(reference);
                 try comment(context, b, "ZigoRefInterface", declaration.name, if (resolved) |interface| interface.name else "unresolved");
             }
+        },
+        .field => |member| {
+            const options = try context.optionsOf(plugin, .field, node) orelse return;
+            const reference = options.target orelse return;
+            const resolved = try context.resolveType(reference);
+            const field = member.declaration.fields[member.index];
+            try comment(context, b, "ZigoRefField", field.name, if (resolved) |target| target.name else "unresolved");
+        },
+        .enum_tag => |member| {
+            const options = try context.optionsOf(plugin, .enum_tag, node) orelse return;
+            const reference = options.target orelse return;
+            const resolved = try context.resolveType(reference);
+            const field = member.declaration.fields[member.index];
+            try comment(context, b, "ZigoRefTag", field.name, if (resolved) |target| target.name else "unresolved");
         },
         .function => |function| {
             const options = try context.optionsOf(plugin, .function, function.origin.ext) orelse return;

@@ -83,6 +83,17 @@ ZIGO_EXPORT int32_t zg_counter_read(zg_counter * self, size_t * out_result) {
     return result;
 }
 
+void zg_measure_impl(zg_point * out_result);
+ZIGO_EXPORT void zg_measure(zg_point * out_result) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        zg_panic_fatal();
+    }
+zg_measure_impl(out_result);
+    zg_panic_active = 0;
+}
+
 void zg_reset_impl(void);
 ZIGO_EXPORT void zg_reset(void) {
     zg_panic_active = 1;

@@ -259,9 +259,8 @@ const hidden = try plugin.builtins.implements.hidesOriginal(allocator, function.
 
 세 타입 모두 JSON에서는 문자열 하나입니다. field 하나로, optional로, slice로 쓸 수 있고
 옵션 struct 안에 중첩된 struct에 두어도 됩니다. 바인딩이 선언으로 적는 형태는
-`FunctionOptions`·`TypeOptions`·`ParamOptions`·`ResultOptions`에서 쓸 수 있습니다.
-`FieldOptions`와 `TagOptions`도 참조를 담을 수 있지만, 그 자리에서는 path를 직접 적어야
-합니다. 해석과 `<NAME>002` 검사는 어느 attachment든 같습니다.
+`FunctionOptions`·`TypeOptions`·`ParamOptions`·`ResultOptions`·`FieldOptions`·`TagOptions`
+어디에서나 같습니다. 해석과 `<NAME>002` 검사도 어느 attachment든 같습니다.
 
 ```zig
 pub const TypeOptions = struct {

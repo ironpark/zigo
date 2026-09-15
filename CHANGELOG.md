@@ -4,6 +4,17 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Changed
+
+- field과 enum tag의 `use`도 참조를 선언으로 받습니다. `ValueField.use`, `EnumField.use`,
+  `HandleField.extend`가 이제 authoring 옵션 타입을 받으므로, `plugin.ref.*` 자리에
+  path 문자열 대신 `api.typeRef(...)`, `api.ref(...)`, `zigo.interface(...)`가 돌려준
+  entry를 선언·매개변수·반환값과 똑같이 씁니다. 종류가 맞지 않으면 그 자리에서,
+  다른 `zigo.define`의 선언을 가리키면 `zigo.define`에서 컴파일 error입니다.
+  플러그인 계약은 7.0 그대로이고, wire 형태도 바뀌지 않습니다.
+
 ## [0.29.0] - 2026-09-15
 
 ### Changed (breaking)
