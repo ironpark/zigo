@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-15T02:53:07Z"
 depends_on:
 - "203-plugin-targets-and-native#2"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Example 00 `zig build go-verify` and `go-purego-verify` plus `go test ./...` pass with `BuildInfo()` in use; example 13 `cargo test` passes with `build_info()`.
 > NEXT: none

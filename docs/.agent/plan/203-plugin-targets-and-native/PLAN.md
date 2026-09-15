@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-15T02:53:07Z"
 depends_on:
 - plugin-extensibility
 description: "Plugin contract 6.0: per-target render slots with a Rust builder and Rust visitor, and native-side contributions (Zig source plus C symbols flowing through shim, header, raw and abi-diff)"
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-15T00:43:15Z"
 ---
 > NEXT: Per-target render slots and Rust builder: the contract shape the other three phases build on. ([Phase 0](phases/00-target-slots.md))
@@ -12,7 +13,7 @@ registered_at: "2026-09-15T00:43:15Z"
 - [x] [Phase 00: Per-target render slots and Rust builder](phases/00-target-slots.md)
 - [x] [Phase 01: Rust-capable shipped plugin](phases/01-rust-plugin.md)
 - [x] [Phase 02: Native contributions](phases/02-native-contributions.md)
-- [ ] [Phase 03: Native-capable shipped plugin](phases/03-native-plugin.md)
+- [x] [Phase 03: Native-capable shipped plugin](phases/03-native-plugin.md)
 
 # Shared Verification
 
