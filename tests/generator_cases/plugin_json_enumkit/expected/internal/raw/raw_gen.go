@@ -21,3 +21,7 @@ func PanicMessage(code int32) string { return C.GoString(C.zg_caught_panic_messa
 func EchoMode(mode uint8, channel uint8) uint8 {
 	return uint8(C.zg_echo_mode(C.uint8_t(mode), C.uint8_t(channel)))
 }
+// EchoTone calls the generated C ABI wrapper for zg_echo_tone.
+func EchoTone(tone uint8, shade uint8) uint8 {
+	return uint8(C.zg_echo_tone(C.uint8_t(tone), C.uint8_t(shade)))
+}

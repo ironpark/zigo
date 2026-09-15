@@ -25,6 +25,32 @@
         "ref": "Mode"
       },
       "symbol": "zg_echo_mode"
+    },
+    {
+      "name": "echoTone",
+      "params": [
+        {
+          "direction": "in",
+          "name": "tone",
+          "type": {
+            "kind": "enum",
+            "ref": "Tone"
+          }
+        },
+        {
+          "direction": "in",
+          "name": "shade",
+          "type": {
+            "kind": "enum",
+            "ref": "Shade"
+          }
+        }
+      ],
+      "return": {
+        "kind": "enum",
+        "ref": "Tone"
+      },
+      "symbol": "zg_echo_tone"
     }
   ],
   "ir_version": 1,
@@ -79,6 +105,58 @@
         "kind": "int",
         "signed": false
       }
+    },
+    {
+      "exhaustive": false,
+      "ext": {
+        "ENUMKIT": {},
+        "JSON": {}
+      },
+      "fields": [
+        {
+          "name": "warm",
+          "value": 0
+        },
+        {
+          "name": "cool",
+          "value": 1
+        }
+      ],
+      "kind": "enum",
+      "name": "Tone",
+      "open": true,
+      "tag_type": {
+        "bits": 8,
+        "is_usize": false,
+        "kind": "int",
+        "signed": false
+      },
+      "text": true
+    },
+    {
+      "exhaustive": true,
+      "ext": {
+        "JSON": {}
+      },
+      "fields": [
+        {
+          "name": "light",
+          "value": 0
+        },
+        {
+          "name": "dark",
+          "value": 1
+        }
+      ],
+      "kind": "enum",
+      "name": "Shade",
+      "tag_type": {
+        "bits": 8,
+        "is_usize": false,
+        "kind": "int",
+        "signed": false
+      },
+      "text": true
     }
   ],
   "zig_version": "0.16.0"

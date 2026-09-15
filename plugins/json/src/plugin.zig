@@ -61,28 +61,54 @@ fn visit(context: plugin_api.GoContext, node: plugin_api.Node, b: *plugin_api.Bu
     }
 }
 
-/// Whether another plugin generates this enum's membership helpers, which is
-/// what lets `UnmarshalJSON` decide "known" without a tag set of its own.
-///
-/// Both helpers are needed and both are one option away from being absent, so
-/// a fact that only promises one of them is no use here and the switch stays.
-fn hasMembershipHelpers(context: plugin_api.GoContext, declaration: semantic.TypeDecl) !bool {
+/// What another plugin promises about this enum's membership helpers, which
+/// is what lets `UnmarshalJSON` decide "known" without a tag set of its own.
+fn membershipFact(context: plugin_api.GoContext, declaration: semantic.TypeDecl) !?plugin_api.capabilities.enum_known.Facts {
     const known = plugin_api.capabilities.enum_known;
-    if (!context.provided(known)) return false;
-    const fact = try context.facts.get(known, .declaration(declaration)) orelse return false;
-    return fact.is_known and fact.values;
+    if (!context.provided(known)) return null;
+    return try context.facts.get(known, .declaration(declaration));
+}
+
+/// Whether `IsKnown` exists, which is the only membership decision this
+/// plugin makes and the gate the `Parse<Type>` body puts after parsing.
+fn hasIsKnown(fact: ?plugin_api.capabilities.enum_known.Facts) bool {
+    return (fact orelse return false).is_known;
+}
+
+/// Whether the walk over `<Type>Values()` can be written: it needs the value
+/// list as well as `IsKnown`, and both are one option away from being absent,
+/// so a fact that only promises one of them is no use and the switch stays.
+fn hasMembershipHelpers(fact: ?plugin_api.capabilities.enum_known.Facts) bool {
+    const present = fact orelse return false;
+    return present.is_known and present.values;
+}
+
+/// Whether the generator emits `Parse<Type>` for this enum: the same
+/// `.text = true` registration `public_types.zig` reads before writing the
+/// parser, `MarshalText` and `UnmarshalText`.
+fn hasParser(declaration: semantic.TypeDecl) bool {
+    return declaration.text == true;
 }
 
 /// An enum crosses as its Zig tag name. `String` already spells it, so
 /// marshalling is one call; unmarshalling is the inverse `String` does not
 /// have unless the binding asked for `.text`.
 ///
-/// Two ways to write that inverse. On its own this plugin lists the tag names
-/// in a switch, which means it decides what "known" is a second time. When
-/// `enum_known` says another plugin generated the membership helpers, the
-/// body walks that plugin's value list instead and asks `IsKnown` -- one tag
-/// set, owned by whoever wrote it, and a body that does not grow with the
-/// enum.
+/// Three ways to write that inverse, tried in this order.
+///
+/// `.text = true` makes the generator emit `Parse<Type>`, the one parser for
+/// the enum; the body calls it, so nothing here grows with the tag set and
+/// the two spellings cannot drift. When `enum_known` also reports `IsKnown`,
+/// it gates the parsed value, because an open enum's parser accepts the
+/// `<Type>(N)` spelling `String` gives values outside the named constants.
+///
+/// Without a parser but with the membership helpers, the body walks
+/// `<Type>Values()` and asks `IsKnown` -- still one tag set, owned by
+/// whoever wrote it. With neither, this plugin lists the tag names in a
+/// switch, which means it decides what "known" is a second time.
+///
+/// Every shape rejects with the same `fmt.Errorf` message, so which one a
+/// binding gets is not visible to the code handling the error.
 fn renderEnum(context: plugin_api.GoContext, b: *plugin_api.Builder, declaration: semantic.TypeDecl) !void {
     const allocator = context.allocator;
     const by_value: plugin_api.Receiver = .{ .name = "value", .type = declaration.name };
@@ -96,8 +122,34 @@ fn renderEnum(context: plugin_api.GoContext, b: *plugin_api.Builder, declaration
     try body.append(allocator, b.declare("text", b.ident("string"), null));
     try body.append(allocator, try unmarshalInto(b, "text"));
 
+    const fact = try membershipFact(context, declaration);
     var unmarshal_doc: []const u8 = "UnmarshalJSON decodes a Zig tag name written by MarshalJSON.";
-    if (try hasMembershipHelpers(context, declaration)) {
+    if (hasParser(declaration)) {
+        const gated = hasIsKnown(fact);
+        unmarshal_doc = if (gated) try std.fmt.allocPrint(
+            allocator,
+            "UnmarshalJSON decodes a Zig tag name written by MarshalJSON.\n\nParse{0s} reads the name and IsKnown decides whether it names a known\nvalue, so this and the membership helpers cannot disagree.",
+            .{declaration.name},
+        ) else try std.fmt.allocPrint(
+            allocator,
+            "UnmarshalJSON decodes a Zig tag name written by MarshalJSON.\n\nParse{0s} is the one parser for this enum, so the tag set is not\nrestated here.",
+            .{declaration.name},
+        );
+        try body.append(allocator, try b.define(
+            &.{ "parsed", "err" },
+            try b.callName(try std.fmt.allocPrint(allocator, "Parse{s}", .{declaration.name}), &.{b.ident("text")}),
+        ));
+        try body.append(allocator, try b.ifStmt(.{
+            .cond = try b.bin("!=", b.ident("err"), .nil),
+            .body = &.{reject},
+        }));
+        if (gated) try body.append(allocator, try b.ifStmt(.{
+            .cond = try b.not(try b.callSel(b.ident("parsed"), "IsKnown", &.{})),
+            .body = &.{reject},
+        }));
+        try body.append(allocator, try b.assign(&.{try b.deref(b.ident("value"))}, "=", &.{b.ident("parsed")}));
+        try body.append(allocator, try b.ret(&.{.nil}));
+    } else if (hasMembershipHelpers(fact)) {
         unmarshal_doc = try std.fmt.allocPrint(
             allocator,
             "UnmarshalJSON decodes a Zig tag name written by MarshalJSON.\n\n{s}Values supplies the candidates and IsKnown decides which of them a name may\nselect, so this and the membership helpers cannot disagree.",
@@ -332,4 +384,65 @@ test "a fact missing either helper leaves the switch in place" {
         try std.testing.expect(std.mem.indexOf(u8, output.written(), "\tcase \"get_all\":\n\t\t*value = ModeGetAll\n") != null);
         try std.testing.expect(std.mem.indexOf(u8, output.written(), "ModeValues") == null);
     }
+}
+
+/// The same enum registered with `.text = true`, which is what makes the
+/// generator emit `ParseMode` next to it.
+const test_text_mode: semantic.TypeDecl = .{
+    .kind = .@"enum",
+    .name = "Mode",
+    .fields = &.{ .{ .name = "idle", .value = 0 }, .{ .name = "get_all", .value = 1 } },
+    .text = true,
+};
+
+test "a text enum decodes through the generated parser" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const context = plugin_api.testing.goContext(arena.allocator(), .{ .package = "palette", .prefix = "zg", .functions = &.{} });
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    var b = context.builder();
+    b.out = &output.writer;
+    try renderEnum(context, &b, test_text_mode);
+    const rendered = output.written();
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "\tparsed, err := ParseMode(text)\n\tif err != nil {\n\t\treturn fmt.Errorf(\"Mode: unknown value %q\", text)\n\t}\n\t*value = parsed\n\treturn nil\n") != null);
+    // Neither the tag switch nor the value walk is written next to a parser.
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "case \"get_all\":") == null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "ModeValues") == null);
+    // Without the capability there is no membership helper to gate with.
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "IsKnown") == null);
+}
+
+test "a text enum with the membership capability gates the parse with IsKnown" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var facts: plugin_api.Facts = .{};
+    const context = try testContextWithKnown(arena.allocator(), &facts, test_text_mode, .{ .is_known = true, .values = true });
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    var b = context.builder();
+    b.out = &output.writer;
+    try renderEnum(context, &b, test_text_mode);
+    const rendered = output.written();
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "\tparsed, err := ParseMode(text)\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "\tif !parsed.IsKnown() {\n\t\treturn fmt.Errorf(\"Mode: unknown value %q\", text)\n\t}\n") != null);
+    // The parser supersedes the value walk: an open enum's parser accepts
+    // values the walk never offers, and IsKnown is what rejects them.
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "ModeValues") == null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "switch") == null);
+}
+
+test "the parser is preferred but its gate still needs IsKnown" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var facts: plugin_api.Facts = .{};
+    const context = try testContextWithKnown(arena.allocator(), &facts, test_text_mode, .{ .is_known = false, .values = true });
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    var b = context.builder();
+    b.out = &output.writer;
+    try renderEnum(context, &b, test_text_mode);
+    const rendered = output.written();
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "\tparsed, err := ParseMode(text)\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "IsKnown") == null);
 }

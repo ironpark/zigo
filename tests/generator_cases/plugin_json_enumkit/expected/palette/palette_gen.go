@@ -10,3 +10,8 @@ import "example.com/zigo/palette/internal/raw"
 func EchoMode(mode Mode, channel Channel) Mode {
 	return Mode(raw.EchoMode(uint8(mode), uint8(channel)))
 }
+
+// EchoTone calls the Zig function echoTone.
+func EchoTone(tone Tone, shade Shade) Tone {
+	return Tone(raw.EchoTone(uint8(tone), uint8(shade)))
+}

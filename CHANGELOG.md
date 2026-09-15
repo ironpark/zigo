@@ -8,6 +8,12 @@
 
 ### Changed
 
+- json 플러그인이 `.text = true` enum을 generator가 쓴 `Parse<Type>`으로 해독합니다.
+  `UnmarshalJSON`이 `<Type>Values()`를 훑는 대신 `parsed, err := Parse<Type>(text)`를
+  부르고, enumkit이 `IsKnown()`을 함께 썼으면 그것으로 거릅니다. 해독 순서는
+  `Parse<Type>` → `Values()`/`IsKnown()` → tag `switch`이고, 거절 error 문구는 셋 다
+  같습니다. `.text`가 아닌 enum의 생성 출력은 그대로입니다.
+
 - field과 enum tag의 `use`도 참조를 선언으로 받습니다. `ValueField.use`, `EnumField.use`,
   `HandleField.extend`가 이제 authoring 옵션 타입을 받으므로, `plugin.ref.*` 자리에
   path 문자열 대신 `api.typeRef(...)`, `api.ref(...)`, `zigo.interface(...)`가 돌려준

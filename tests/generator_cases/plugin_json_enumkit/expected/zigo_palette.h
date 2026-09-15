@@ -13,6 +13,14 @@ typedef uint8_t zg_channel;
 #define ZG_CHANNEL_LEFT 0
 #define ZG_CHANNEL_RIGHT 1
 
+typedef uint8_t zg_tone;
+#define ZG_TONE_WARM 0
+#define ZG_TONE_COOL 1
+
+typedef uint8_t zg_shade;
+#define ZG_SHADE_LIGHT 0
+#define ZG_SHADE_DARK 1
+
 // ELF and Mach-O export every non-static symbol of a shared library;
 // COFF exports nothing without an explicit annotation, so a DLL built
 // without this would load and then resolve none of its entry points.
@@ -25,6 +33,7 @@ typedef uint8_t zg_channel;
 #endif
 
 ZIGO_EXPORT uint8_t zg_echo_mode(uint8_t mode, uint8_t channel);
+ZIGO_EXPORT uint8_t zg_echo_tone(uint8_t tone, uint8_t shade);
 ZIGO_EXPORT const char *zg_last_error_message(void);
 ZIGO_EXPORT const char *zg_caught_panic_message(int32_t code);
 

@@ -6,7 +6,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 )
+
+// EnumParseError reports text that names no value of a generated enum.
+type EnumParseError struct {
+	// Type is the Go enum type name.
+	Type string
+	// Text is the rejected input.
+	Text string
+}
+
+// Error implements error.
+func (err *EnumParseError) Error() string {
+	return "zigo: " + err.Type + ": unknown value " + strconv.Quote(err.Text)
+}
 
 // Mode represents the corresponding Zig enum.
 type Mode uint8
@@ -105,5 +119,165 @@ func (value *Channel) UnmarshalJSON(data []byte) error {
 	default:
 		return fmt.Errorf("Channel: unknown value %q", text)
 	}
+	return nil
+}
+
+// Tone represents the corresponding Zig open enum; values outside the named constants are valid.
+type Tone uint8
+
+const (
+	// ToneWarm corresponds to the Zig tag warm.
+	ToneWarm Tone = 0
+	// ToneCool corresponds to the Zig tag cool.
+	ToneCool Tone = 1
+)
+
+var zigoToneNames = [2]string{
+	0: "warm",
+	1: "cool",
+}
+
+// String returns the Zig tag name.
+func (value Tone) String() string {
+	if value >= 0 && value <= 1 {
+		return zigoToneNames[uint64(value)]
+	}
+	return "Tone(" + strconv.Itoa(int(value)) + ")"
+}
+
+// ParseTone returns the Tone named by text, which is a Zig tag name.
+// Values outside the named constants are accepted in the Tone(N) spelling String returns.
+func ParseTone(text string) (Tone, error) {
+	switch text {
+	case "warm":
+		return ToneWarm, nil
+	case "cool":
+		return ToneCool, nil
+	}
+	if strings.HasPrefix(text, "Tone(") && strings.HasSuffix(text, ")") {
+		if number, err := strconv.ParseUint(text[len("Tone("):len(text)-1], 10, 8); err == nil {
+			return Tone(number), nil
+		}
+	}
+	return 0, &EnumParseError{Type: "Tone", Text: text}
+}
+
+// MarshalText implements encoding.TextMarshaler with the String spelling.
+func (value Tone) MarshalText() ([]byte, error) {
+	return []byte(value.String()), nil
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler with ParseTone.
+func (value *Tone) UnmarshalText(text []byte) error {
+	parsed, err := ParseTone(string(text))
+	if err != nil {
+		return err
+	}
+	*value = parsed
+	return nil
+}
+
+// ToneValues returns a fresh slice of known values in declaration order.
+func ToneValues() []Tone {
+	return []Tone{
+		ToneWarm,
+		ToneCool,
+	}
+}
+
+// IsKnown reports whether value is an exported tag; unknown open-enum values return false.
+func (value Tone) IsKnown() bool {
+	return value >= 0 && value <= 1
+}
+
+// MarshalJSON encodes Tone as its Zig tag name.
+func (value Tone) MarshalJSON() ([]byte, error) { return json.Marshal(value.String()) }
+
+// UnmarshalJSON decodes a Zig tag name written by MarshalJSON.
+//
+// ParseTone reads the name and IsKnown decides whether it names a known
+// value, so this and the membership helpers cannot disagree.
+func (value *Tone) UnmarshalJSON(data []byte) error {
+	var text string
+	if err := json.Unmarshal(data, &text); err != nil {
+		return err
+	}
+	parsed, err := ParseTone(text)
+	if err != nil {
+		return fmt.Errorf("Tone: unknown value %q", text)
+	}
+	if !parsed.IsKnown() {
+		return fmt.Errorf("Tone: unknown value %q", text)
+	}
+	*value = parsed
+	return nil
+}
+
+// Shade represents the corresponding Zig enum.
+type Shade uint8
+
+const (
+	// ShadeLight corresponds to the Zig tag light.
+	ShadeLight Shade = 0
+	// ShadeDark corresponds to the Zig tag dark.
+	ShadeDark Shade = 1
+)
+
+var zigoShadeNames = [2]string{
+	0: "light",
+	1: "dark",
+}
+
+// String returns the Zig tag name.
+func (value Shade) String() string {
+	if value >= 0 && value <= 1 {
+		return zigoShadeNames[uint64(value)]
+	}
+	return "Shade(" + strconv.Itoa(int(value)) + ")"
+}
+
+// ParseShade returns the Shade named by text, which is a Zig tag name.
+func ParseShade(text string) (Shade, error) {
+	switch text {
+	case "light":
+		return ShadeLight, nil
+	case "dark":
+		return ShadeDark, nil
+	}
+	return 0, &EnumParseError{Type: "Shade", Text: text}
+}
+
+// MarshalText implements encoding.TextMarshaler with the String spelling.
+func (value Shade) MarshalText() ([]byte, error) {
+	return []byte(value.String()), nil
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler with ParseShade.
+func (value *Shade) UnmarshalText(text []byte) error {
+	parsed, err := ParseShade(string(text))
+	if err != nil {
+		return err
+	}
+	*value = parsed
+	return nil
+}
+
+// MarshalJSON encodes Shade as its Zig tag name.
+func (value Shade) MarshalJSON() ([]byte, error) { return json.Marshal(value.String()) }
+
+// UnmarshalJSON decodes a Zig tag name written by MarshalJSON.
+//
+// ParseShade is the one parser for this enum, so the tag set is not
+// restated here.
+func (value *Shade) UnmarshalJSON(data []byte) error {
+	var text string
+	if err := json.Unmarshal(data, &text); err != nil {
+		return err
+	}
+	parsed, err := ParseShade(text)
+	if err != nil {
+		return fmt.Errorf("Shade: unknown value %q", text)
+	}
+	*value = parsed
 	return nil
 }

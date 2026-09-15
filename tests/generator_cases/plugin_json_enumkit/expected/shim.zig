@@ -12,3 +12,6 @@ pub const std_options: std.Options = if (@hasDecl(target, "std_options")) target
 export fn zg_echo_mode_impl(mode: u8, channel: u8) u8 {
     return @intFromEnum(target.echoMode(@enumFromInt(mode), @enumFromInt(channel)));
 }
+export fn zg_echo_tone_impl(tone: u8, shade: u8) u8 {
+    return @intFromEnum(target.echoTone(@enumFromInt(tone), @enumFromInt(shade)));
+}

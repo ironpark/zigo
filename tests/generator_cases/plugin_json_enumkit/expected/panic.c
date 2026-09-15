@@ -82,3 +82,15 @@ ZIGO_EXPORT uint8_t zg_echo_mode(uint8_t mode, uint8_t channel) {
     zg_panic_active = 0;
     return result;
 }
+
+uint8_t zg_echo_tone_impl(uint8_t tone, uint8_t shade);
+ZIGO_EXPORT uint8_t zg_echo_tone(uint8_t tone, uint8_t shade) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        zg_panic_fatal();
+    }
+    uint8_t result = zg_echo_tone_impl(tone, shade);
+    zg_panic_active = 0;
+    return result;
+}
