@@ -1077,15 +1077,27 @@ pub const testing = struct {
         return .{ .allocator = allocator, .program = program, .options = .{}, .writers = &writers };
     }
 
-    /// The same for Rust.
+    /// The same for Rust, except that `writeTypeName` really answers: the
+    /// crate's spelling of a registered type is derivable without the
+    /// generator, and an `impl` block is the shape a Rust hook most often
+    /// writes.
     pub fn rustContext(allocator: std.mem.Allocator, program: abi.Program) RustContext {
         return .{ .allocator = allocator, .program = program, .options = .{}, .writers = &rust_writers };
     }
 
     const rust_writers: RustWriters = .{
+        // The one generator-backed Rust writer a unit test can answer for on
+        // its own. The crate spells a registered type `crate::` plus its
+        // PascalCase name and nothing else -- no package qualification, no
+        // adapter -- so `identifierAlloc` reproduces it exactly, and a plugin
+        // that renders an `impl` for a bound type stays testable without the
+        // generator. The other three read the lowered ABI shape, which only
+        // the generator has.
         .writeTypeName = struct {
-            fn f(_: RustContext, _: *std.Io.Writer, _: []const u8) anyerror!void {
-                return error.Unsupported;
+            fn f(context: RustContext, writer: *std.Io.Writer, name: []const u8) anyerror!void {
+                const converted = try rustbuild.identifierAlloc(context, context.allocator, name, .pascal);
+                defer context.allocator.free(converted);
+                return writer.print("crate::{s}", .{converted});
             }
         }.f,
         .writeSignature = struct {

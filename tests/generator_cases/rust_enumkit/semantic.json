@@ -1,0 +1,69 @@
+{
+  "functions": [
+    {
+      "name": "echo",
+      "params": [{"name": "mode", "type": {"kind": "enum", "ref": "Mode"}}],
+      "return": {"kind": "enum", "ref": "Mode"},
+      "symbol": "zg_echo"
+    },
+    {
+      "name": "pickLevel",
+      "params": [{"name": "value", "type": {"kind": "enum", "ref": "Level"}}],
+      "return": {"kind": "enum", "ref": "Level"},
+      "symbol": "zg_pick_level"
+    },
+    {
+      "name": "pickSignal",
+      "params": [{"name": "value", "type": {"kind": "enum", "ref": "Signal"}}],
+      "return": {"kind": "enum", "ref": "Signal"},
+      "symbol": "zg_pick_signal"
+    },
+    {
+      "name": "pickPlain",
+      "params": [{"name": "value", "type": {"kind": "enum", "ref": "Plain"}}],
+      "return": {"kind": "enum", "ref": "Plain"},
+      "symbol": "zg_pick_plain"
+    }
+  ],
+  "package": "opaque",
+  "prefix": "zg",
+  "types": [
+    {
+      "doc": "A closed enum: every value of the Rust type is a named member.",
+      "ext": {"ENUMKIT": {"values": true, "is_known": true}},
+      "fields": [{"name": "fast", "value": 1}, {"name": "low_water", "value": 2}],
+      "kind": "enum",
+      "name": "Mode",
+      "tag_type": {"bits": 8, "kind": "int", "signed": true}
+    },
+    {
+      "doc": "An open enum whose members run without a gap, so membership is a range test.",
+      "exhaustive": false,
+      "ext": {"ENUMKIT": {"values": true, "is_known": true}},
+      "fields": [{"name": "low", "value": -1}, {"name": "high", "value": 0}],
+      "kind": "enum",
+      "name": "Level",
+      "open": true,
+      "tag_type": {"bits": 8, "kind": "int", "signed": true}
+    },
+    {
+      "doc": "An open enum with a hole, and `text`, so the emitter's own Display and FromStr are already there.",
+      "exhaustive": false,
+      "ext": {"ENUMKIT": {"values": true, "is_known": true}},
+      "fields": [{"name": "quiet", "value": 0}, {"name": "loud", "value": 7}],
+      "kind": "enum",
+      "name": "Signal",
+      "open": true,
+      "tag_type": {"bits": 8, "kind": "int", "signed": false},
+      "text": true
+    },
+    {
+      "doc": "No attachment, so the plugin writes nothing beside it.",
+      "fields": [{"name": "one", "value": 1}],
+      "kind": "enum",
+      "name": "Plain",
+      "tag_type": {"bits": 8, "kind": "int", "signed": false}
+    }
+  ],
+  "zig_version": "0.16.0"
+}

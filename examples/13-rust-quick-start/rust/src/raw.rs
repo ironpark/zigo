@@ -28,6 +28,12 @@ extern "C" {
     pub fn zg_add(a: i32, b: i32) -> i32;
     pub fn zg_sum(values_ptr: *const i32, values_len: usize) -> i64;
     pub fn zg_divide(numerator: i32, denominator: i32, out_result: *mut i32) -> i32;
+    pub fn zg_divide_rounded(
+        numerator: i32,
+        denominator: i32,
+        mode: u8,
+        out_result: *mut i32,
+    ) -> i32;
     pub fn zg_tally_create(out_result: *mut *mut zg_tally) -> i32;
     pub fn zg_tally_add(self_: *mut zg_tally, value: i64, out_result: *mut i64) -> i32;
     pub fn zg_tally_peek(self_: *const zg_tally, out_result: *mut i64) -> i32;
@@ -108,6 +114,18 @@ pub fn sum(values: &[i32]) -> i64 {
 pub fn divide(numerator: i32, denominator: i32) -> (i32, i32) {
     let mut out_result: i32 = 0;
     let code = unsafe { zg_divide(numerator, denominator, &mut out_result) };
+    (out_result, code)
+}
+
+/// Calls the generated C ABI wrapper for `zg_divide_rounded`.
+///
+/// # Safety
+///
+/// Enum integer arguments must be valid values of the declared Zig enum,
+/// including its original tag width.
+pub unsafe fn divide_rounded(numerator: i32, denominator: i32, mode: u8) -> (i32, i32) {
+    let mut out_result: i32 = 0;
+    let code = unsafe { zg_divide_rounded(numerator, denominator, mode, &mut out_result) };
     (out_result, code)
 }
 

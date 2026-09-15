@@ -21,6 +21,29 @@ pub fn divide(numerator: i32, denominator: i32) MathError!i32 {
     return @divTrunc(numerator, denominator);
 }
 
+/// How a division rounds when the quotient is not exact. A closed enum, so
+/// Rust binds it as a real `enum` rather than an integer newtype.
+pub const Rounding = enum(u8) {
+    toward_zero = 0,
+    away_from_zero = 1,
+    nearest = 2,
+};
+
+/// Divides, rounding as `mode` asks. Rust receives `Rounding` by name.
+pub fn divideRounded(numerator: i32, denominator: i32, mode: Rounding) MathError!i32 {
+    if (denominator == 0) return error.DivideByZero;
+    const truncated = @divTrunc(numerator, denominator);
+    const remainder = @rem(numerator, denominator);
+    if (remainder == 0) return truncated;
+    const negative = (numerator < 0) != (denominator < 0);
+    const step: i32 = if (negative) -1 else 1;
+    return switch (mode) {
+        .toward_zero => truncated,
+        .away_from_zero => truncated + step,
+        .nearest => if (@abs(remainder) * 2 >= @abs(denominator)) truncated + step else truncated,
+    };
+}
+
 /// Bytes the tally allocations currently hold. The Rust tests read this to
 /// prove that `Drop` reached the destructor rather than merely compiling.
 var live_bytes: std.atomic.Value(usize) = .init(0);
@@ -105,6 +128,13 @@ test "the shapes the Rust backend covers" {
     try std.testing.expectEqual(@as(i64, 0), sum(&.{}));
     try std.testing.expectEqual(@as(i32, 3), try divide(7, 2));
     try std.testing.expectError(error.DivideByZero, divide(1, 0));
+
+    // An enum parameter, and the helpers enumkit adds beside it.
+    try std.testing.expectEqual(@as(i32, 3), try divideRounded(7, 2, .toward_zero));
+    try std.testing.expectEqual(@as(i32, 4), try divideRounded(7, 2, .away_from_zero));
+    try std.testing.expectEqual(@as(i32, 4), try divideRounded(7, 2, .nearest));
+    try std.testing.expectEqual(@as(i32, -4), try divideRounded(-7, 2, .away_from_zero));
+    try std.testing.expectError(error.DivideByZero, divideRounded(1, 0, .nearest));
 
     // A handle, its borrowed view, and a caller-owned buffer.
     const tally = try Tally.create();

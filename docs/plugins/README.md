@@ -51,9 +51,18 @@ error입니다. 같은 플러그인을 한 entry에 두 번 붙이면 컴파일 
 `zigo` 의존성이 `plugin`, `semantic`, `abi`, `diagnostic` 모듈을 이름으로 공개하므로 플러그인의
 `build.zig`는 generator가 쓰는 것과 같은 계약 모듈에 대해 컴파일됩니다.
 
+## 동봉 플러그인
+
+| 플러그인 | 렌더링 slot | 하는 일 |
+|---|---|---|
+| `plugins/enumkit` | `go`, `rust` | enum 값 목록과 알려진 tag 판별 |
+| `plugins/json` | `go` | value 타입의 `MarshalJSON`/`UnmarshalJSON` |
+| `plugins/satisfies` | `go` | 생성 타입이 지정한 interface를 만족하는지 컴파일 타임 단언 |
+
 ## bundled enumkit
 
-저장소의 `plugins/enumkit`은 독립 플러그인의 기준 예제입니다.
+저장소의 `plugins/enumkit`은 독립 플러그인의 기준 예제이자, 한 플러그인이 두 출력 언어를
+렌더링하는 기준 예제입니다.
 
 ```zig
 api.enumeration("Mode", .{})
@@ -70,7 +79,17 @@ func ModeValues() []Mode
 func (value Mode) IsKnown() bool
 ```
 
-전체 연결은 [10-tagged-union](../../examples/10-tagged-union/README.md), 플러그인 패키지 사용법은
+같은 attachment가 Rust target에서는 crate의 enum 옆 `impl` block으로 나옵니다.
+
+```rust
+impl crate::Mode {
+    pub fn values() -> &'static [Self] { /* 선언 순서 */ }
+    pub fn is_known(self) -> bool { /* 닫힌 enum은 언제나 true */ }
+}
+```
+
+전체 연결은 Go 쪽 [10-tagged-union](../../examples/10-tagged-union/README.md)과 Rust 쪽
+[13-rust-quick-start](../../examples/13-rust-quick-start/README.md), 플러그인 패키지 사용법은
 [enumkit README](../../plugins/enumkit/README.md)를 참고하세요.
 
 ## 내장 플러그인도 같은 계약을 씁니다

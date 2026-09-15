@@ -1015,6 +1015,11 @@ pub const RustOptions = struct {
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     prefix: []const u8 = "zg",
+    /// Generator plugins, in the order they run. The same record `Options`
+    /// takes: a plugin names the render slots it fills, so listing one here
+    /// contributes whatever its `rust` slot writes and nothing else. A
+    /// Go-only plugin in this list is inert rather than an error.
+    plugins: []const PluginModule = &.{},
     /// `rustfmt` used to format generated Rust. Defaults to the one on `PATH`.
     rustfmt: ?[]const u8 = null,
     /// Git ref whose committed `zigo/rust/semantic.json` the ABI check
@@ -1107,6 +1112,7 @@ pub fn addRustBindings(b: *std.Build, options: RustOptions) RustBindings {
         .module = options.module,
         .optimize = options.optimize,
         .source_root = options.source_root,
+        .plugins = options.plugins,
     });
 
     const generate = b.addRunArtifact(reflection.generator);

@@ -3,6 +3,9 @@
     .version = "0.0.0",
     .fingerprint = 0x47501a11ffd27f04,
     .minimum_zig_version = "0.16.0",
-    .dependencies = .{ .zigo = .{ .path = "../.." } },
+    .dependencies = .{
+        .zigo = .{ .path = "../.." },
+        .zigo_enumkit = .{ .path = "../../plugins/enumkit" },
+    },
     .paths = .{ "build.zig", "build.zig.zon", "src", "rust", "zigo" },
 }

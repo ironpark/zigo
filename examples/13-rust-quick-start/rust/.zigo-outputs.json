@@ -30,6 +30,10 @@
       "kind": "go"
     },
     {
+      "path": "src/enum.rs",
+      "kind": "go"
+    },
+    {
       "path": "src/lib.rs",
       "kind": "go"
     },

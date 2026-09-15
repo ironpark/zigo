@@ -35,7 +35,7 @@ zig build go
 | tagged union과 JSON 플러그인 | [10-tagged-union](../examples/10-tagged-union/README.md) |
 | `io.Reader`, `io.Writer`와 취소 | [11-io-streams](../examples/11-io-streams/README.md) |
 | 중첩 결과를 한 Go 값으로 materialize | [12-materialized](../examples/12-materialized/README.md) |
-| Rust 출력 타겟 (스칼라·슬라이스·error union) | [13-rust-quick-start](../examples/13-rust-quick-start/README.md) |
+| Rust 출력 타겟 (스칼라·슬라이스·error union·handle·enum) | [13-rust-quick-start](../examples/13-rust-quick-start/README.md) |
 
 ## 추천 순서
 
@@ -49,7 +49,9 @@ zig build go
 
 `13-rust-quick-start`는 유일한 Rust 예제입니다. `00-quick-start`와 같은 Zig 함수를
 Rust로 미러링하며, C ABI shim과 C 헤더가 두 타겟에서 바이트 단위로 같은 파일임을
-보여줍니다. Rust 백엔드는 스칼라·슬라이스·error union만 다루는 최소 구현이라
+보여줍니다. `Rounding` enum에는 `enumkit` 플러그인을 붙여 두었습니다. 같은 attachment가
+Go에서는 `RoundingValues()`와 `IsKnown()`을, 여기서는 `Rounding::values()`와
+`Rounding::is_known()`을 만들며, crate의 통합 테스트가 그 둘을 호출합니다. Rust 백엔드는 스칼라·슬라이스·error union만 다루는 최소 구현이라
 다른 열두 예제의 기능은 아직 Go 전용입니다.
 
 ## purego 예제

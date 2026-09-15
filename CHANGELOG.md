@@ -37,6 +37,17 @@
 - Rust visitor dispatch: 생성된 `impl` 메서드 뒤, 타입 item 뒤, 각 `.rs` file의 경계,
   그리고 package 경계용 `src/zigo_plugins.rs`. 플러그인 module은 `src/<name>.rs`로 쓰이고
   `lib.rs`가 `mod`와 재export를 씁니다. 둘 다 내용이 있을 때만 선언됩니다.
+- enumkit이 Rust를 렌더링합니다. `use(enumkit.plugin, .{ .values = true, .is_known = true })`
+  하나가 Go에서는 `<Type>Values()`와 `IsKnown()`을, Rust에서는 crate의 enum 옆
+  `impl` block(`values() -> &'static [Self]`, `is_known(self) -> bool`)을 만듭니다.
+  `Display`와 `FromStr`은 `.text = true`인 enum에 Rust emitter가 이미 쓰므로 중복하지
+  않습니다. Go 출력은 바뀌지 않습니다. 동봉 플러그인이 두 target을 렌더링하는 기준
+  예제이며, [작성 문서](docs/plugins/authoring.md)에 절이 있습니다.
+- `RustOptions.plugins`: `addRustBindings`가 `addGoBindings`와 같은 `PluginModule`
+  목록을 받습니다. `rust` slot을 채운 플러그인만 crate에 쓰며, `go` slot만 채운
+  플러그인을 나열해도 error가 아니라 아무것도 쓰지 않습니다.
+- `plugin.testing.rustContext`의 `writeTypeName`이 실제로 답합니다(`crate::<PascalName>`).
+  `impl` block을 쓰는 Rust slot을 generator 없이 단위 테스트할 수 있습니다.
 
 ## [0.27.0] - 2026-09-14
 

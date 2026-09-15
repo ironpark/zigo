@@ -352,6 +352,7 @@ pub fn addRepositorySteps(
     const showcase_modules = modules.createGeneratorModules(b, b.path("src"), target, optimize, &.{
         .{ .path = b.path("plugins/satisfies/src/plugin.zig") },
         .{ .path = b.path("plugins/json/src/plugin.zig") },
+        .{ .path = b.path("plugins/enumkit/src/plugin.zig") },
         .{ .path = b.path("tests/plugins/wrappers.zig") },
         .{ .path = b.path("tests/plugins/nodeext.zig") },
         .{ .path = b.path("tests/plugins/rustmarker.zig") },

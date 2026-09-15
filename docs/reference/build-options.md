@@ -215,6 +215,7 @@ _ = zigo.addRustBindings(b, .{
 | `bindings` | `module.root_source_file` 옆의 `bindings.zig` | `zigo.define`을 내보내는 소스 경로 |
 | `source_root` | `null` | 매개변수 이름과 doc을 읽을 Zig 소스 root |
 | `prefix` | `"zg"` | C 심볼 접두사 |
+| `plugins` | `&.{}` | 실행 순서대로 나열한 generator 플러그인. `Options.plugins`와 같은 `PluginModule` 레코드입니다 |
 | `rustfmt` | `null` | 기본 `PATH` 대신 사용할 `rustfmt` 경로 |
 | `abi_base` | `"HEAD"` | ABI 비교 Git ref. `null`이면 ABI 검사를 등록하지 않음 |
 | `install` | `.lib`, `.header` | 네이티브 산출물 위치와 이름. [`Install`](#install)과 같습니다 |
@@ -231,6 +232,11 @@ _ = zigo.addRustBindings(b, .{
 - `library_path`: 라이브러리의 전체 install 경로
 - `semantic_json`: 생성 semantic document 경로
 - `standard_steps`: `standard_steps` 옵션이 등록한 단계, `null`로 두었으면 `null`
+
+플러그인 등록 방법은 Go와 같고([플러그인 등록](#플러그인-등록)), 무엇이 생성되는지는
+플러그인이 채운 렌더링 slot이 정합니다. `rust` slot을 채운 플러그인만 crate에 쓰며, `go`
+slot만 채운 플러그인을 나열해도 error가 아니라 아무것도 쓰지 않습니다. 실제 연결은
+[13-rust-quick-start](../../examples/13-rust-quick-start/build.zig)를 참고하세요.
 
 Rust 바인딩 set의 sidecar는 `zigo/rust/semantic.json`과 `zigo/rust/errors.lock.json`입니다. Go는
 `zigo/go/`를 쓰므로 한 프로젝트에서 `addGoBindings`와 `addRustBindings`를 함께 호출해도 파일과

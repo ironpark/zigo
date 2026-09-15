@@ -156,6 +156,77 @@
       "symbol": "zg_divide"
     },
     {
+      "doc": "Divides, rounding as `mode` asks. Rust receives `Rounding` by name.",
+      "name": "divideRounded",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "numerator",
+          "name_source": "ast",
+          "retention": "borrowed",
+          "source": {
+            "line": 33,
+            "column": 22
+          },
+          "type": {
+            "bits": 32,
+            "is_usize": false,
+            "kind": "int",
+            "signed": true
+          }
+        },
+        {
+          "direction": "in",
+          "name": "denominator",
+          "name_source": "ast",
+          "retention": "borrowed",
+          "source": {
+            "line": 33,
+            "column": 38
+          },
+          "type": {
+            "bits": 32,
+            "is_usize": false,
+            "kind": "int",
+            "signed": true
+          }
+        },
+        {
+          "direction": "in",
+          "name": "mode",
+          "name_source": "ast",
+          "retention": "borrowed",
+          "source": {
+            "line": 33,
+            "column": 56
+          },
+          "type": {
+            "kind": "enum",
+            "ref": "Rounding"
+          }
+        }
+      ],
+      "return": {
+        "error_set": [
+          "DivideByZero"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "bits": 32,
+          "is_usize": false,
+          "kind": "int",
+          "signed": true
+        }
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 33,
+        "column": 8
+      },
+      "symbol": "zg_divide_rounded"
+    },
+    {
       "name": "create",
       "namespace": "Tally",
       "ownership": "caller",
@@ -174,7 +245,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 41,
+        "line": 64,
         "column": 12
       },
       "symbol": "zg_tally_create"
@@ -190,7 +261,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 50,
+            "line": 73,
             "column": 30
           },
           "type": {
@@ -210,7 +281,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 50,
+        "line": 73,
         "column": 12
       },
       "symbol": "zg_tally_add"
@@ -230,7 +301,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 57,
+        "line": 80,
         "column": 12
       },
       "symbol": "zg_tally_peek"
@@ -255,7 +326,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 62,
+        "line": 85,
         "column": 12
       },
       "symbol": "zg_tally_checked_half"
@@ -275,7 +346,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 69,
+        "line": 92,
         "column": 12
       },
       "symbol": "zg_tally_borrow_reading"
@@ -305,7 +376,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 75,
+        "line": 98,
         "column": 12
       },
       "symbol": "zg_tally_render"
@@ -320,7 +391,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 80,
+        "line": 103,
         "column": 12
       },
       "symbol": "zg_tally_deinit"
@@ -338,7 +409,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 96,
+        "line": 119,
         "column": 12
       },
       "symbol": "zg_reading_total"
@@ -355,7 +426,7 @@
           "retention": "borrowed",
           "semantic": "utf8_string",
           "source": {
-            "line": 88,
+            "line": 111,
             "column": 21
           },
           "type": {
@@ -375,7 +446,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 88,
+        "line": 111,
         "column": 8
       },
       "symbol": "zg_free_rendered"
@@ -392,7 +463,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 28,
+        "line": 51,
         "column": 8
       },
       "symbol": "zg_live_bytes"
@@ -404,12 +475,49 @@
   "types": [
     {
       "exhaustive": true,
+      "ext": {
+        "ENUMKIT": {
+          "values": true,
+          "is_known": true
+        }
+      },
+      "fields": [
+        {
+          "name": "toward_zero",
+          "value": 0
+        },
+        {
+          "name": "away_from_zero",
+          "value": 1
+        },
+        {
+          "name": "nearest",
+          "value": 2
+        }
+      ],
+      "kind": "enum",
+      "name": "Rounding",
+      "tag_type": {
+        "bits": 8,
+        "is_usize": false,
+        "kind": "int",
+        "signed": false
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 26,
+        "column": 11
+      },
+      "zig_path": "root.Rounding"
+    },
+    {
+      "exhaustive": true,
       "fields": [],
       "kind": "opaque",
       "name": "Tally",
       "source": {
         "path": "root.zig",
-        "line": 35,
+        "line": 58,
         "column": 11
       },
       "zig_path": "root.Tally"
@@ -421,7 +529,7 @@
       "name": "Reading",
       "source": {
         "path": "root.zig",
-        "line": 93,
+        "line": 116,
         "column": 11
       },
       "zig_path": "root.Reading"

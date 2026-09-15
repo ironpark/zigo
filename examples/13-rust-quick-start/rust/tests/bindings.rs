@@ -6,7 +6,7 @@
 //! `example_test.go`, which lives beside the generated package for the same
 //! reason.
 
-use calculator::{divide, sum, Error, ErrorKind, Tally};
+use calculator::{divide, divide_rounded, sum, Error, ErrorKind, Rounding, Tally};
 use std::sync::{Mutex, MutexGuard};
 
 /// Serializes the tests that hold a `Tally`.
@@ -151,4 +151,38 @@ fn a_caller_owned_buffer_is_owned_rather_than_copied() {
     assert_eq!(rendered.len(), 8);
     // Released by going out of scope. There is no `free_rendered` to call --
     // the binding does not publish one, because `Drop` owns the release.
+}
+
+#[test]
+fn an_enum_crosses_by_name_and_carries_its_plugin_helpers() {
+    // The enum itself: a real Rust `enum`, so an unrepresentable mode cannot
+    // be passed at all.
+    assert_eq!(divide_rounded(7, 2, Rounding::TowardZero), Ok(3));
+    assert_eq!(divide_rounded(7, 2, Rounding::AwayFromZero), Ok(4));
+    assert_eq!(divide_rounded(7, 2, Rounding::Nearest), Ok(4));
+    assert_eq!(divide_rounded(-7, 2, Rounding::AwayFromZero), Ok(-4));
+
+    // And the items the `enumkit` plugin rendered beside it. The same
+    // attachment in `bindings.zig` gives a Go binding set `RoundingValues()`
+    // and `IsKnown()`; this is what its `rust` slot writes instead.
+    assert_eq!(
+        Rounding::values(),
+        &[
+            Rounding::TowardZero,
+            Rounding::AwayFromZero,
+            Rounding::Nearest
+        ]
+    );
+    // Declaration order, not tag order, which is what makes the list worth
+    // generating rather than deriving.
+    assert_eq!(Rounding::values().len(), 3);
+    for mode in Rounding::values() {
+        assert!(mode.is_known());
+        // Every listed value really crosses the ABI.
+        assert!(divide_rounded(7, 2, *mode).is_ok());
+    }
+    // A closed enum has no unknown value to construct: `TryFrom` is the only
+    // way in from a tag, and it rejects one.
+    assert!(Rounding::try_from(3u8).is_err());
+    assert_eq!(Rounding::try_from(2u8), Ok(Rounding::Nearest));
 }

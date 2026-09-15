@@ -4,6 +4,9 @@
 
 pub mod raw;
 
+mod r#enum;
+pub use r#enum::*;
+
 mod error;
 pub use error::{Error, ErrorKind};
 
@@ -33,6 +36,23 @@ pub fn divide(numerator: i32, denominator: i32) -> Result<i32, Error> {
     let (result, code) = raw::divide(numerator, denominator);
     if code != 0 {
         return Err(Error::from_code("divide", code));
+    }
+    Ok(result)
+}
+
+/// Divides, rounding as `mode` asks. Rust receives `Rounding` by name.
+///
+/// # Errors
+///
+/// - [`ErrorKind::DivideByZero`]
+pub fn divide_rounded(
+    numerator: i32,
+    denominator: i32,
+    mode: crate::Rounding,
+) -> Result<i32, Error> {
+    let (result, code) = unsafe { raw::divide_rounded(numerator, denominator, mode.into()) };
+    if code != 0 {
+        return Err(Error::from_code("divideRounded", code));
     }
     Ok(result)
 }

@@ -259,6 +259,63 @@ Go file은 패키지 clause, 빌드 constraint와 import framing을 generator가
 플러그인은 경로도 `mod` 줄도 고르지 않습니다. Go도 Rust도 아닌 정확한 바이트 산출물은
 언어 중립인 `artifacts`를 사용합니다.
 
+## 한 플러그인에서 두 target 렌더링하기
+
+`go`와 `rust` slot을 모두 채우면 한 플러그인이 두 출력 언어를 렌더링합니다. 바인딩 쪽 표기는
+그대로입니다. `use(enumkit.plugin, .{ .values = true, .is_known = true })` 하나가 Go 바인딩
+세트에서는 Go를, Rust 바인딩 세트에서는 crate를 만듭니다. 동봉 플러그인
+[enumkit](../../plugins/enumkit/src/plugin.zig)이 그 기준 예제입니다.
+
+```zig
+pub const plugin: api.Plugin = .{
+    .name = "ENUMKIT",
+    .TypeOptions = Options,
+    .subjects = &.{.enumeration},
+    .go = .{ .visit = visitGo },
+    .rust = .{ .visit = visitRust },
+    .validate = validateDocument,
+};
+```
+
+옵션, `subjects`, `validate`, `analyze`, `transform`, `artifacts`는 언어 중립이므로 slot 밖에
+한 번만 씁니다. 공유할 것은 여기까지입니다. **어느 선언에 무엇이 붙었는지**는 두 slot이
+같이 보고, **그것을 어떻게 쓰는지**는 각 slot이 따로 씁니다.
+
+```zig
+/// 두 slot이 공유하는 전부: 이 node가 무엇이고 어떤 옵션이 붙었는가.
+/// `GoContext`와 `RustContext`는 서로 다른 타입이지만 `optionsOf`와 `program`을
+/// 같은 모양으로 답하므로 context는 `anytype`으로 받습니다.
+fn attachment(context: anytype, node: api.Node) !?Attachment {
+    if (node != .type) return null;
+    const declaration = node.type;
+    const options = try context.optionsOf(plugin, .type, node) orelse return null;
+    return .{ .declaration = declaration, .fields = context.program.liveFields(declaration.name), .options = options };
+}
+```
+
+렌더링 본문을 하나로 합치려 하지 마세요. 두 언어가 다른 것은 이름 규칙이 아닙니다.
+
+- Go의 enum은 정수 newtype이라 `IsKnown()`이 언제나 값을 검사해야 합니다. Rust의 닫힌
+  enum은 알 수 없는 값을 표현할 수 없으므로 `is_known(self)`는 상수 `true`입니다.
+- Go는 매번 새 slice를 반환하는 `<Type>Values()`를, Rust는 빌려 주는
+  `values() -> &'static [Self]`를 씁니다. Rust 쪽은 불변이라 복사할 이유가 없습니다.
+- 생성기가 이미 쓰는 것을 다시 쓰지 않습니다. Rust emitter는 `.text = true`인 enum에
+  `Display`와 `FromStr`을 이미 쓰므로 플러그인이 또 쓰면 trait 중복 구현입니다. 이것은
+  Go 쪽 `String`/`Parse<Enum>`과 같은 조건입니다.
+- 생성된 code가 lint를 통과해야 합니다. Rust 예제와 golden crate는 `-D warnings`로
+  컴파일되므로, `match`로 bool을 만들면 `clippy::match_like_matches_macro`에,
+  `x >= a && x <= b`는 `clippy::manual_range_contains`에 걸립니다.
+
+타입 이름처럼 생성기만 아는 것은 `RustWriters`가 답합니다. `b.typeName(declaration.name)`이
+crate가 쓰는 철자(`crate::Mode`)를 주므로 플러그인은 PascalCase 규칙을 따로 갖지 않습니다.
+
+```zig
+try b.emit(&.{try b.implBlock(.{ .type = b.typeName(declaration.name), .items = items.items })}, .{ .blank_before = true });
+```
+
+slot을 채운 것 자체가 "이 언어를 렌더링한다"는 선언입니다. `go` slot만 채운 플러그인을 Rust
+바인딩 세트의 `.plugins`에 나열해도 error가 아니라 아무것도 쓰지 않습니다.
+
 ## 결정적인 출력
 
 - 소스 순서가 필요한 경우 semantic/ABI 배열 순서를 유지합니다.
@@ -272,8 +329,11 @@ Go file은 패키지 clause, 빌드 constraint와 import framing을 generator가
 
 플러그인 패키지에서는 최소한 다음을 검사하세요.
 
-- 옵션별 렌더링 결과 golden. `api.testing.context(allocator, program)`가 header·식별자·리터럴
-  도우미는 동작하고 generator가 답해야 하는 writer는 `error.Unsupported`를 내는 context를 줍니다
+- 옵션별 렌더링 결과 golden. `api.testing.goContext(allocator, program)`와
+  `api.testing.rustContext(allocator, program)`가 header·식별자·리터럴 도우미는 동작하고
+  generator가 답해야 하는 writer는 `error.Unsupported`를 내는 context를 줍니다. Rust
+  쪽에서는 `writeTypeName`만 실제로 답하므로 `impl` block을 쓰는 slot도 generator 없이
+  테스트할 수 있습니다
 - 잘못된 선언의 진단 code와 hint
 - empty 선언과 disabled 옵션
 - 여러 공개 패키지에서 경로와 import

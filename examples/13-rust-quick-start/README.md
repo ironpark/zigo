@@ -17,13 +17,14 @@ Rust 백엔드가 다루는 모양입니다.
 | `*T` 수신자 / 값 수신자 | `&mut self` / `&self` |
 | 빌려온 view | 라이프타임이 붙은 래퍼, `Drop` 없음 |
 | 호출자 소유 버퍼 | `OwnedSlice<T>`, 복사 없음 |
+| 등록된 enum | 닫힌 enum은 `#[repr(tag)] enum`, 열린 enum은 newtype |
 
-범위 밖: 콜백, `std.Io` 스트림, tagged union, 등록된 enum, Zig 네임스페이스,
+범위 밖: 콜백, `std.Io` 스트림, tagged union, Zig 네임스페이스,
 sub-package, materialized 결과 트리, 취소, 동적 로딩. 해당 선언을 바인딩하려
 하면 `ZIGO060`으로 **어떤 선언의 어떤 기능이 문제인지 이름을 대며** 생성이
 거부됩니다. 조용히 빠뜨리거나 다른 것으로 바꿔치지 않습니다 — 예를 들어
-등록된 enum을 tag 정수로 넘기는 것은 컴파일은 되지만 호출자가 `0`이 무엇인지
-알 방법이 없어서, 거부하는 쪽이 낫다고 판단했습니다.
+tagged union을 payload 없는 tag 정수로 넘기는 것은 컴파일은 되지만 호출자가 `0`이
+무엇인지 알 방법이 없어서, 거부하는 쪽이 낫다고 판단했습니다.
 
 ## 전제 조건
 
@@ -69,10 +70,12 @@ live bytes after drop = 0
    링크합니다
 5. [rust/src/lib.rs](rust/src/lib.rs) — 생성된 공개 API (자유 함수)
 6. [rust/src/handle.rs](rust/src/handle.rs) — 생성된 핸들과 view 타입
-7. [rust/src/buffer.rs](rust/src/buffer.rs) — 생성된 `OwnedSlice<T>`
-8. [rust/src/raw.rs](rust/src/raw.rs) — 생성된 `extern "C"` 선언과 마셜링
-9. [rust/src/error.rs](rust/src/error.rs) — `errors.lock.json`에서 생성된 오류 타입
-10. [rust/examples/demo.rs](rust/examples/demo.rs)와
+7. [rust/src/enum.rs](rust/src/enum.rs) — 생성된 enum과 `enumkit` 플러그인이
+   그 옆에 쓴 `impl` block
+8. [rust/src/buffer.rs](rust/src/buffer.rs) — 생성된 `OwnedSlice<T>`
+9. [rust/src/raw.rs](rust/src/raw.rs) — 생성된 `extern "C"` 선언과 마셜링
+10. [rust/src/error.rs](rust/src/error.rs) — `errors.lock.json`에서 생성된 오류 타입
+11. [rust/examples/demo.rs](rust/examples/demo.rs)와
     [rust/tests/bindings.rs](rust/tests/bindings.rs) — 호출하는 쪽
 
 ## 빌드 단계
@@ -117,6 +120,13 @@ live bytes after drop = 0
   1회). Rust는 `OwnedSlice<T>`가 할당을 직접 소유하고 `Drop`에서 해제합니다.
   release 함수는 **공개하지 않습니다** — 이미 스스로 해제하는 값 옆에 두면
   이중 해제를 부르기 때문입니다. Go는 둘 다 공개하고 주석으로 경고합니다.
+- **플러그인도 Rust를 렌더링합니다**: `bindings.zig`의 `Rounding`에는 동봉
+  플러그인 [enumkit](../../plugins/enumkit/README.md)이 붙어 있습니다. Go
+  바인딩 세트에서 `RoundingValues()`와 `IsKnown()`을 만드는 그 attachment가
+  여기서는 `Rounding::values()`와 `Rounding::is_known()`을 만듭니다. 바인딩
+  쪽 표기는 한 줄로 같고, 무엇이 생성되는지는 플러그인이 채운 렌더링 slot이
+  정합니다. `rust/tests/bindings.rs`의
+  `an_enum_crosses_by_name_and_carries_its_plugin_helpers`가 둘 다 호출합니다.
 - **빈 슬라이스**: Rust의 빈 슬라이스도 null이 아닌 정렬된 포인터를 돌려주는데,
   이는 Zig `[]const T`가 요구하는 것과 정확히 같습니다. Go 쪽 `zigoZeroSlot`에
   해당하는 장치가 필요하지 않습니다.

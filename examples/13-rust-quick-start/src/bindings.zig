@@ -1,5 +1,6 @@
 //! What the Rust backend covers, one declaration per shape.
 const zigo = @import("zigo");
+const enumkit = @import("zigo_enumkit");
 const library = @import("calculator");
 
 const api = zigo.scope(library);
@@ -12,6 +13,12 @@ pub const bindings = zigo.define(api, .{
         api.func("add", .{}),
         api.func("sum", .{}),
         api.func("divide", .{}),
+        // An enum, and a plugin that renders for Rust as well as for Go. The
+        // same attachment the Go examples write produces `Rounding::values`
+        // and `Rounding::is_known` here instead of `RoundingValues()` and
+        // `IsKnown()`.
+        api.enumeration("Rounding", .{}).use(enumkit.plugin, .{ .values = true, .is_known = true }),
+        api.func("divideRounded", .{}),
         // A handle Rust owns through `Drop`. `create` and `deinit` are its
         // constructor and destructor; Rust publishes the first as
         // `Tally::new` and reaches the second only from `Drop`.
