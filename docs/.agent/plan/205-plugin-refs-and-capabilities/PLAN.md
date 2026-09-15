@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-15T09:54:35Z"
 depends_on:
 - plugin-targets-and-native
 description: "Plugin contract 7.0: reference-typed options (type, function, interface refs checked at declaration and resolved at generation) and capability-based inter-plugin dependencies with shared typed facts"
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-15T08:32:17Z"
 ---
 > NEXT: Reference-typed options: the wire and comptime machinery satisfies and later capabilities build on. ([Phase 0](phases/00-ref-options.md))
@@ -12,7 +13,7 @@ registered_at: "2026-09-15T08:32:17Z"
 - [x] [Phase 00: Reference-typed options](phases/00-ref-options.md)
 - [x] [Phase 01: satisfies with checked interfaces](phases/01-satisfies-refs.md)
 - [x] [Phase 02: Capabilities and shared facts](phases/02-capabilities.md)
-- [ ] [Phase 03: json consumes enumkit](phases/03-json-uses-enumkit.md)
+- [x] [Phase 03: json consumes enumkit](phases/03-json-uses-enumkit.md)
 
 # Shared Verification
 
