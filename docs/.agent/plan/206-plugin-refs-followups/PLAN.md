@@ -9,7 +9,7 @@ registered_at: "2026-09-15T10:07:00Z"
 
 # Phases
 
-- [ ] [Phase 00: Field and tag use with authoring refs](phases/00-field-tag-refs.md)
+- [x] [Phase 00: Field and tag use with authoring refs](phases/00-field-tag-refs.md)
 - [ ] [Phase 01: json decodes through Parse<Type>](phases/01-json-parse.md)
 
 # Shared Verification

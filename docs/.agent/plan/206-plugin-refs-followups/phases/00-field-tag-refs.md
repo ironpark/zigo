@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-15T10:38:23Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `.use(P, .{ .target = api.typeRef("X") })` on a value field and on an enum tag round-trips and resolves in the golden; the wrong-kind case fails to compile.
 > NEXT: none
