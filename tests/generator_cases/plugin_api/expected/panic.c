@@ -178,3 +178,15 @@ ZIGO_EXPORT int32_t zg_job_close(zg_job * self) {
     zg_panic_active = 0;
     return result;
 }
+
+uint32_t zg_wraptest_answer_impl(void);
+ZIGO_EXPORT uint32_t zg_wraptest_answer(void) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        zg_panic_fatal();
+    }
+    uint32_t result = zg_wraptest_answer_impl();
+    zg_panic_active = 0;
+    return result;
+}

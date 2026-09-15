@@ -45,6 +45,12 @@ pub const Expr = union(enum) {
     /// `x[i]`, and the type argument list of a generic type.
     index: struct { target: *const Expr, indices: []const Expr },
     call: struct { callee: *const Expr, args: Args, ellipsis: bool = false },
+    /// A call of one raw function, named by its exported C symbol. The
+    /// builder resolves the symbol in the lowered program and writes the
+    /// callee the way the public package reaches the raw layer -- `raw.Answer`
+    /// or the colocated `zigoRawAnswer` -- so a hook wrapping a plugin's own
+    /// native symbol never spells the raw name itself.
+    raw_call: struct { symbol: []const u8, args: []const Expr },
     unary: struct { op: []const u8, operand: *const Expr },
     binary: struct { op: []const u8, left: *const Expr, right: *const Expr },
     paren: *const Expr,
@@ -558,6 +564,18 @@ pub const Builder = struct {
                 }
                 try writer.writeByte(']');
             },
+            .raw_call => |spec| {
+                const function = rawFunction(self.context.program, spec.symbol) orelse return error.UnknownRawSymbol;
+                const callee = try self.context.writers.rawCallNameAlloc(self.context, self.allocator, function);
+                defer self.allocator.free(callee);
+                try writer.writeAll(callee);
+                try writer.writeByte('(');
+                for (spec.args, 0..) |argument, index| {
+                    if (index != 0) try writer.writeAll(", ");
+                    try self.renderExpr(writer, argument, depth);
+                }
+                try writer.writeByte(')');
+            },
             .call => |spec| {
                 try self.renderExpr(writer, spec.callee.*, depth);
                 try writer.writeByte('(');
@@ -680,6 +698,10 @@ pub const Builder = struct {
         return self.call(try self.sel(target, method), args);
     }
     /// A call spread over its last argument: `errors.Join(failures...)`.
+    /// A call of the raw function exported under `symbol`.
+    pub fn rawCall(self: Builder, symbol: []const u8, args: []const Expr) !Expr {
+        return .{ .raw_call = .{ .symbol = symbol, .args = try self.dupExprs(args) } };
+    }
     pub fn callSpread(self: Builder, callee: Expr, args: []const Expr) !Expr {
         return .{ .call = .{ .callee = try self.box(callee), .args = .{ .list = try self.dupExprs(args) }, .ellipsis = true } };
     }
@@ -962,16 +984,36 @@ const test_writers: plugin.Writers = .{
         }
     }.f,
     .identifierAlloc = plugin.format.identifierAlloc,
+    .rawCallNameAlloc = struct {
+        fn f(_: plugin.GoContext, allocator: std.mem.Allocator, function: abi.AbiFn) anyerror![]u8 {
+            return std.fmt.allocPrint(allocator, "raw.{s}", .{function.origin.name});
+        }
+    }.f,
 };
+
+/// One lowered function, so the raw-call node has a symbol to resolve.
+const test_origin: semantic.SemanticFn = .{ .name = "Answer", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_test_answer" };
+const test_functions = [_]abi.AbiFn{.{ .symbol = "zg_test_answer", .params = &.{}, .ret = .void, .origin = &test_origin }};
 
 fn testBuilder(allocator: std.mem.Allocator) Builder {
     const context: plugin.GoContext = .{
         .allocator = allocator,
-        .program = .{ .package = "test", .prefix = "zg", .functions = &.{} },
+        .program = .{ .package = "test", .prefix = "zg", .functions = &test_functions },
         .options = .{},
         .writers = &test_writers,
     };
     return context.builder();
+}
+
+test "a raw call spells the raw layer's name for a symbol" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const b = testBuilder(arena.allocator());
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    try b.renderExpr(&output.writer, try b.rawCall("zg_test_answer", &.{b.int(1)}), 0);
+    try std.testing.expectEqualStrings("raw.Answer(1)", output.written());
+    try std.testing.expectError(error.UnknownRawSymbol, b.renderExpr(&output.writer, try b.rawCall("zg_absent", &.{}), 0));
 }
 
 /// The stub writers above never read the function they are handed, so the
@@ -1281,4 +1323,13 @@ test "gofmt leaves a rendered file alone" {
     };
     try std.testing.expectEqualStrings("", result.stderr);
     try std.testing.expectEqualStrings("", result.stdout);
+}
+
+/// The lowered function one exported C symbol names, which is how `raw_call`
+/// turns a symbol into the raw layer's spelling of it.
+fn rawFunction(program: abi.Program, symbol: []const u8) ?abi.AbiFn {
+    for (program.functions) |function| {
+        if (std.mem.eql(u8, function.symbol, symbol)) return function;
+    }
+    return null;
 }

@@ -2,7 +2,43 @@ const std = @import("std");
 const bindings = @import("bindings");
 const coverage = @import("coverage.zig");
 const names = @import("names.zig");
+const plugin = @import("plugin");
+const plugin_registry = @import("plugin_registry");
+const semantic = @import("semantic");
 const walk = @import("walk.zig");
+
+/// The C symbols the registered plugins contribute, recorded in the document.
+///
+/// The reflector writes them rather than the generator because `semantic.json`
+/// is what `abi-diff` compares: a document from before a plugin was registered
+/// carries no section at all, so its symbols show up as added exactly once.
+/// A symbol whose signature the C ABI cannot carry is left out here and
+/// reported by the generator, which is where every diagnostic belongs.
+fn pluginSymbols(allocator: std.mem.Allocator, document: semantic.Semantic, prefix: []const u8) !?[]const semantic.PluginSymbol {
+    var found: std.ArrayList(semantic.PluginSymbol) = .empty;
+    inline for (plugin_registry.plugins) |registered| {
+        if (comptime registered.native) |native| {
+            if (native.symbols) |symbols| for (try symbols(.{
+                .allocator = allocator,
+                .document = document,
+                .configurations = plugin_registry.configurations,
+            })) |symbol| {
+                const signature = plugin.nativeSignatureAlloc(allocator, symbol) catch |err| switch (err) {
+                    error.OutOfMemory => return err,
+                    else => continue,
+                };
+                try found.append(allocator, .{
+                    .plugin = registered.name,
+                    .name = symbol.name,
+                    .symbol = try plugin.nativeSymbolNameAlloc(allocator, prefix, registered.name, symbol.name),
+                    .signature = signature,
+                });
+            };
+        }
+    }
+    if (found.items.len == 0) return null;
+    return try found.toOwnedSlice(allocator);
+}
 
 pub fn main(init: std.process.Init) !void {
     const allocator = init.arena.allocator();
@@ -52,6 +88,7 @@ pub fn main(init: std.process.Init) !void {
     );
     try names.writeWarnings(&stderr.interface, document);
     try stderr.interface.flush();
+    document.plugin_symbols = try pluginSymbols(allocator, document, args[2]);
     const semantic_json = try document.serialize(allocator);
     var stdout_buffer: [4096]u8 = undefined;
     var stdout = std.Io.File.Writer.init(.stdout(), init.io, &stdout_buffer);

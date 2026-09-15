@@ -10,6 +10,8 @@ const diagnostic = @import("diagnostic");
 /// Set by the test that wants the hooks to write, cleared by the same test.
 pub var enabled = false;
 pub var validation_enabled = false;
+/// Set by the test that wants the plugin to contribute its C symbol.
+pub var native_enabled = false;
 pub var path_override: ?[]const u8 = null;
 
 /// What the test plugin can be told to do. It exists so a test can prove that
@@ -35,7 +37,24 @@ pub const plugin: plugin_api.Plugin = .{
     .FieldOptions = NodeOptions,
     .TagOptions = NodeOptions,
     .go = .{ .visit = visit, .source_files = &.{.{ .pathAlloc = filePath, .render = renderFile }} },
+    // The native half of the frame: one Zig source and one symbol out of it.
+    // Like everything else here it stays silent until a test asks for it, so
+    // no golden and no example can see the symbol.
+    .native = .{
+        .sources = &.{.{ .path = "testing_native.zig", .module = "zigo_test_native" }},
+        .symbols = nativeSymbols,
+    },
 };
+
+fn nativeSymbols(_: plugin_api.NativeContext) ![]const plugin_api.NativeSymbol {
+    if (!native_enabled) return &.{};
+    return &.{.{
+        .name = "answer",
+        .ret = .{ .unsigned_int = 32 },
+        .implementation = "answer",
+        .doc = "The number the test plugin contributes to the native library.",
+    }};
+}
 
 /// Every node the frame offers, which is what makes this plugin a test of the
 /// walk itself: a method beside the bound one, a comment after a type, and one

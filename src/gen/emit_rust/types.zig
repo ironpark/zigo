@@ -126,10 +126,15 @@ pub const Placement = union(enum) {
     /// beside a buffer that already frees itself would be a double free
     /// waiting to be written.
     release,
+    /// A symbol a plugin contributed. The crate's raw module declares and
+    /// wraps it like any other export; what the public layer does with it is
+    /// the plugin's own business, so nothing is written for it here.
+    plugin,
 };
 
 pub fn placementOf(program: abi.Program, function: abi.AbiFn) Placement {
     const origin = function.origin.*;
+    if (origin.plugin != null) return .plugin;
     if (origin.receiver) |receiver| {
         const handle = handleFor(program, receiver) orelse return .free_function;
         if (handle.lifecycle.constructor) |constructor| {
@@ -223,6 +228,9 @@ pub fn unsupported(program: abi.Program, function: abi.AbiFn) ?Unsupported {
         .what = "sub-packages in the binding",
         .hint = "the Rust backend emits one crate root; a crate per package is not designed yet",
     };
+    // A plugin's symbol is a scalar call this backend renders in `raw.rs` and
+    // nowhere else, so none of the placement rules below apply to it.
+    if (origin.plugin != null) return null;
     const placement = placementOf(program, function);
     // A free function declared inside a Zig container: `unicode.codepointWidth`
     // has nowhere to go in a flat crate root, so its namespace would be

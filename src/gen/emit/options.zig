@@ -112,6 +112,7 @@ pub const Options = struct {
             .go_package = self.go_package,
             .go_package_path = self.go_package_path,
             .raw_package_path = self.raw_package_path,
+            .raw_colocated = self.raw_colocated,
             .active_package = self.active_package,
             .configurations = self.configurations,
             .helpers = if (self.helpers) |set| set.helperSet() else null,

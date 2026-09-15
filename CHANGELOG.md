@@ -26,9 +26,30 @@
   | `plugin.Context` | `plugin.GoContext` (Rust는 `plugin.RustContext`) |
   | `plugin.testing.context` | `plugin.testing.goContext` / `plugin.testing.rustContext` |
   | `AnalyzeContext.render` (Go context) | `AnalyzeContext.render` (`ContextBase`) + `.go` / `.rust` slot |
+  | (없음) | `.native = .{ .sources, .symbols }` — Zig 소스와 C 심볼 기여 |
+  | `Writers` | `rawCallNameAlloc` 추가 (`Expr.rawCall`의 backend) |
+  | `RustWriters` | `rawCallNameAlloc` 추가 |
 
 ### Added
 
+- 플러그인 네이티브 기여: `Plugin.native = .{ .sources, .symbols }`. 플러그인이 Zig 소스를
+  실어 보내면 생성된 shim이 그것을 컴파일하고 `NativeSymbol`마다 `export` wrapper를 씁니다.
+  심볼은 `<prefix>_<플러그인 소문자>_<name>`으로 내보내지며, `abi.Program.functions`에
+  합류하므로 C 헤더, Go raw(cgo와 purego), Rust raw 모듈이 바인딩 함수와 같은 loop로
+  실어 나릅니다. 출력 언어와 무관하므로 같은 문서에서 만든 shim은 Go 세트와 Rust 세트가
+  byte 단위로 같습니다. 공개 패키지에는 아무것도 자동으로 쓰이지 않습니다.
+- `semantic.json`의 `plugin_symbols` 절: 각 항목은 플러그인 이름, 심볼의 짧은 이름,
+  내보낸 C 심볼과 시그니처입니다. `abi-diff`가 이 절을 비교해 플러그인 심볼의
+  added/removed/changed를 `plugin.<PLUGIN>.<name>` 주체로 보고합니다. 절이 없는 문서는
+  기여가 없는 것으로 읽히므로 기존 sidecar는 그대로 유효합니다.
+- `PluginModule.native_sources`: 소비하는 빌드가 플러그인 네이티브 소스를 module로
+  연결하는 자리(`{ .module, .path }`, `path`는 플러그인 `root_source_file` 기준).
+- `Expr.rawCall(symbol, args)`가 Go와 Rust builder 양쪽에 추가되었습니다. 내보낸 C 심볼로
+  raw 계층 호출을 씁니다: cgo/purego의 `raw.Answer`(colocated면 `zigoRawAnswer`),
+  Rust의 `crate::raw::answer`. 필요한 raw import는 body가 qualifier를 쓸 때 자동으로
+  추가됩니다. 플러그인 자신의 심볼은 `context.nativeSymbols(plugin)`으로 읽습니다.
+- 진단 `ZIGO066`(플러그인 심볼 이름 충돌), `ZIGO067`(C ABI가 나를 수 없는 시그니처),
+  `ZIGO068`(심볼이 가리키는 네이티브 소스 없음).
 - Rust 렌더링 slot: `RustContext`, `plugin.RustBuilder`(`src/plugin/rustbuild.zig`),
   `RustSourceFile`과 `RustImport`. builder는 item(fn, `impl`, trait `impl`, struct, enum,
   const, static, use, mod, doc comment, attribute), statement(`let`, match, if/else, for,

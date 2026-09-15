@@ -1,6 +1,7 @@
 const plugin = @import("plugin");
 const output_manifest = @import("output_manifest");
 const plugin_hooks = @import("emit/plugin_hooks.zig");
+const native = @import("plugins/native.zig");
 const std = @import("std");
 const emit = @import("emit/emit.zig");
 const emit_rust = @import("emit_rust/emit.zig");
@@ -125,10 +126,26 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
             return lhs.code < rhs.code;
         }
     }.lessThan);
-    const program = try lower.semanticDocumentForBackend(scratch_allocator, document, options.package, options.prefix, abi_codes, switch (options.backend) {
+    var program = try lower.semanticDocumentForBackend(scratch_allocator, document, options.package, options.prefix, abi_codes, switch (options.backend) {
         .cgo => .cgo,
         .purego => .purego,
     });
+    // The plugins' own C symbols join the program here, before any emitter
+    // sees it, so every loop that walks `functions` carries them without
+    // knowing they came from a plugin.
+    {
+        var native_issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
+        const contributions = try native.collect(scratch_allocator, document, .{
+            .plugins = options.plugins,
+            .configurations = options.configurations,
+            .target = options.output_target,
+        }, &native_issues);
+        try native.append(scratch_allocator, &program, contributions, &native_issues);
+        if (native_issues.items.len != 0) {
+            if (options.diagnostics) |issues| for (native_issues.items) |issue| try issues.append(allocator, try issue.clone(allocator));
+            return error.InvalidSemantic;
+        }
+    }
     var emitter_options: emit.Options = .{
         .target = options.output_target,
         .go_module = options.go_module,
@@ -1867,6 +1884,38 @@ test "normalized output collisions report both owners before mutation" {
     for ([_][]const u8{ "../escape.go", "/absolute.go", "C:\\absolute.go", "a/../../escape.go", "." }) |path|
         try std.testing.expectError(error.InvalidOutputPath, normalizeOutputPath(allocator, path));
     try std.testing.expectEqualStrings("input/file.go", try normalizeOutputPath(allocator, "input\\.\\file.go"));
+}
+
+test "a plugin's native symbol reaches the shim, the header and the raw package" {
+    const testing_plugin = @import("plugins/testing.zig");
+    testing_plugin.native_enabled = true;
+    defer testing_plugin.native_enabled = false;
+    const fixture =
+        \\{"functions":[],"package":"native","prefix":"zg","zig_version":"0.16.0"}
+    ;
+    var temporary = std.testing.tmpDir(.{ .iterate = true });
+    defer temporary.cleanup();
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    try generate(allocator, std.testing.io, fixture, temporary.dir, .{
+        .package = "native",
+        .prefix = "zg",
+        .go_module = "example.com/native",
+    });
+    const shim = try temporary.dir.readFileAlloc(std.testing.io, "shim.zig", allocator, .limited(64 * 1024));
+    // The plugin's own source is imported once for its `comptime` side and
+    // called by the export wrapper; the plugin itself exports nothing.
+    try std.testing.expect(std.mem.indexOf(u8, shim, "_ = @import(\"zigo_test_native\");") != null);
+    try std.testing.expect(std.mem.indexOf(u8, shim, "export fn zg_test_answer_impl() u32 {\n    return @import(\"zigo_test_native\").answer();\n}") != null);
+    const header = try temporary.dir.readFileAlloc(std.testing.io, "zigo_native.h", allocator, .limited(64 * 1024));
+    try std.testing.expect(std.mem.indexOf(u8, header, "ZIGO_EXPORT uint32_t zg_test_answer(void);") != null);
+    const raw = try temporary.dir.readFileAlloc(std.testing.io, "internal/raw/raw_gen.go", allocator, .limited(64 * 1024));
+    try std.testing.expect(std.mem.indexOf(u8, raw, "func TestAnswer() uint32 {") != null);
+    // Nothing public is written for it: what wraps a plugin's symbol is the
+    // plugin's own `visit`.
+    const public = try temporary.dir.readFileAlloc(std.testing.io, "native/native_gen.go", allocator, .limited(64 * 1024));
+    try std.testing.expect(std.mem.indexOf(u8, public, "TestAnswer") == null);
 }
 
 test "output collision leaves existing generated files untouched" {

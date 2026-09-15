@@ -9,9 +9,9 @@ zigo는 Zig 구현을 직접 변경하거나 Zig 타입을 그대로 Go 메모�
 ```text
                  build.zig
                      │
-Zig public API ── bindings.zig
-         │           │
-         └──── zigo generator
+Zig public API ── bindings.zig ── plugin native sources
+         │           │                    │
+         └──── zigo generator ────────────┘
                      │
        ┌─────────────┼──────────────┐
        ▼             ▼              ▼
@@ -22,6 +22,8 @@ Zig public API ── bindings.zig
 - Zig API는 실제 구현과 타입을 정의합니다.
 - `bindings.zig`는 그중 Go에 공개할 선언과 변환 규칙을 선택합니다.
 - `build.zig`는 출력 위치, Go 모듈, 백엔드와 설치 정책을 정합니다.
+- 플러그인은 Zig 소스와 C 심볼을 네이티브 쪽에 더할 수 있습니다. shim이 그 소스를 함께
+  컴파일하고, 심볼은 헤더와 raw 계층에 바인딩 함수와 같은 경로로 실립니다.
 - zigo는 이 입력을 검증한 뒤 Zig shim, C 헤더, Go 코드와 메타데이터를 생성합니다.
 
 ## `bindings.zig`는 구현이 아니라 공개 계약입니다

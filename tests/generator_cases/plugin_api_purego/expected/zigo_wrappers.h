@@ -43,6 +43,7 @@ ZIGO_EXPORT int32_t zg_reduce_purego_v2(size_t ctx, int32_t acc, int32_t (*reduc
 ZIGO_EXPORT int32_t zg_job_crunch(zg_job * self, uint32_t rounds, const uint32_t * cancel, double * out_result);
 ZIGO_EXPORT int32_t zg_job_open(zg_job * * out_result);
 ZIGO_EXPORT int32_t zg_job_close(zg_job * self);
+ZIGO_EXPORT uint32_t zg_wraptest_answer(void);
 ZIGO_EXPORT const char *zg_last_error_message(void);
 ZIGO_EXPORT const char *zg_caught_panic_message(int32_t code);
 

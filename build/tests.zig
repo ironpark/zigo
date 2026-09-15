@@ -507,6 +507,7 @@ pub fn addRepositorySteps(
         }),
     });
     addGeneratorCases(b, test_step, generator_case_runner, test_filters);
+    addPluginNativeShimTest(b, test_step, generator_case_runner, target, optimize);
 
     // A plugin that fills only the `rust` slot, run against a real example's
     // document. The example's committed crate is not touched: the generator
@@ -917,6 +918,50 @@ fn testTransitiveLinkInputCollection(
     std.debug.assert(std.mem.count(u8, system_flags, "-L") == 1);
     std.debug.assert(std.mem.count(u8, system_flags, "-lzigo_transitive_test") == 1);
     std.debug.assert(std.mem.count(u8, framework_flags, "-framework ZigoTransitiveTest") == 1);
+}
+
+/// Compiles the shim the `plugin_native` case generates, with the plugin's own
+/// Zig wired in as the module the generated `@import` names -- exactly what
+/// `build.zig` does for a consuming build -- and calls both exports.
+///
+/// The golden pins the bytes; this pins that the bytes compile and run. A
+/// plugin whose source the shim could not reach, or whose implementation path
+/// did not resolve, fails here rather than in a consumer's build.
+fn addPluginNativeShimTest(
+    b: *std.Build,
+    test_step: *std.Build.Step,
+    runner: *std.Build.Step.Compile,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+) void {
+    const generated = b.addRunArtifact(runner);
+    generated.setName("plugin native shim generated");
+    generated.addDirectoryArg(b.path("tests/generator_cases/plugin_native"));
+    const output = generated.addOutputDirectoryArg("plugin-native");
+    const shim_module = b.createModule(.{
+        .root_source_file = output.path(b, "shim.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "zigo_target", .module = b.createModule(.{
+            .root_source_file = b.path("tests/plugin_native/target.zig"),
+            .target = target,
+            .optimize = optimize,
+        }) }},
+    });
+    shim_module.addImport("wraptest_native", b.createModule(.{
+        .root_source_file = b.path("tests/plugins/wrappers_native.zig"),
+        .target = target,
+        .optimize = optimize,
+    }));
+    const native = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("tests/plugin_native/shim_test.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "shim", .module = shim_module }},
+    }) });
+    const run = b.addRunArtifact(native);
+    run.setName("plugin native shim compiles and answers");
+    test_step.dependOn(&run.step);
 }
 
 fn addGeneratorCases(

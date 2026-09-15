@@ -24,6 +24,7 @@ typedef uint8_t zg_mode;
 ZIGO_EXPORT int32_t zg_context_create(zg_context * * out_result);
 ZIGO_EXPORT int32_t zg_context_deinit(zg_context * self);
 ZIGO_EXPORT int32_t zg_context_choose(zg_context * self, uint8_t mode, uint8_t * out_result);
+ZIGO_EXPORT uint32_t zg_rustmark_version(void);
 ZIGO_EXPORT const char *zg_last_error_message(void);
 ZIGO_EXPORT const char *zg_caught_panic_message(int32_t code);
 

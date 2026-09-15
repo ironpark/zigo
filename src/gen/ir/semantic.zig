@@ -892,6 +892,31 @@ fn cloneJsonValue(allocator: std.mem.Allocator, source: std.json.Value) std.mem.
     };
 }
 
+/// Where the Zig behind one plugin symbol lives: the plugin that owns it, the
+/// module name the generated shim imports its source under, and the
+/// declaration path inside that module the exported wrapper calls.
+pub const PluginOrigin = struct {
+    plugin: []const u8,
+    module: []const u8,
+    implementation: []const u8,
+};
+
+/// One C symbol a plugin contributed, as the document records it. The
+/// signature is a string rather than a lowered shape because the document may
+/// not name `abi` types -- `abi` reads the document, never the other way round
+/// -- and because the only question asked of it is whether two recordings of
+/// the same symbol agree.
+pub const PluginSymbol = struct {
+    /// The owning plugin's name, as it spells it.
+    plugin: []const u8,
+    /// The symbol's short name, as the plugin declared it.
+    name: []const u8,
+    /// The exported C symbol.
+    symbol: []const u8,
+    /// `<return>(<parameters>)`, from `plugin.nativeSignatureAlloc`.
+    signature: []const u8,
+};
+
 pub const SemanticFn = struct {
     /// Set on the two halves of a boxed constructor pair.
     boxed: ?Boxed = null,
@@ -934,6 +959,13 @@ pub const SemanticFn = struct {
     name: []const u8,
     /// Public sub-package name. Absent means the binding's default package.
     package: ?[]const u8 = null,
+    /// Set only on the synthetic function lowering mints for a plugin's
+    /// native symbol. It says which plugin owns the symbol and where the Zig
+    /// behind it lives, and its presence is what keeps the symbol out of every
+    /// public surface: the shim, the header and the raw packages carry it, and
+    /// nothing else does. Never present in a `semantic.json` on disk, which
+    /// records plugin symbols in its own `plugin_symbols` section.
+    plugin: ?PluginOrigin = null,
     /// The Zig container the function is declared in, and the owner its C
     /// symbol is built from. Go grouping goes through `goOwner`.
     namespace: ?[]const u8 = null,
@@ -1486,6 +1518,10 @@ pub const Semantic = struct {
     package: []const u8,
     /// Declared public sub-packages. Empty is omitted so legacy documents are unchanged.
     packages: ?[]const Package = null,
+    /// The C symbols the registered plugins contribute, recorded so a later
+    /// comparison against this document sees them. Absent means none, which is
+    /// every document written before plugins could reach the native side.
+    plugin_symbols: ?[]const PluginSymbol = null,
     prefix: []const u8,
     /// Declared sessions over one primary handle and its dependent children.
     /// Absent when the binding declares none, so every document written before

@@ -82,6 +82,11 @@ pub const Expr = union(enum) {
     field: struct { target: *const Expr, name: []const u8 },
     index: struct { target: *const Expr, index: *const Expr },
     call: struct { callee: *const Expr, args: []const Expr },
+    /// A call of one raw function, named by its exported C symbol. The
+    /// builder resolves the symbol in the lowered program and writes the path
+    /// the crate reaches the raw layer through, `crate::raw::answer`, so a
+    /// hook wrapping a plugin's own native symbol never spells it itself.
+    raw_call: struct { symbol: []const u8, args: []const Expr },
     method_call: struct {
         receiver: *const Expr,
         method: []const u8,
@@ -776,6 +781,13 @@ pub const Builder = struct {
                 try self.renderExpr(writer, spec.callee.*, depth);
                 try self.renderArguments(writer, spec.args, depth);
             },
+            .raw_call => |spec| {
+                const function = rawFunction(self.context.program, spec.symbol) orelse return error.UnknownRawSymbol;
+                const callee = try self.context.writers.rawCallNameAlloc(self.context, self.allocator, function);
+                defer self.allocator.free(callee);
+                try writer.writeAll(callee);
+                try self.renderArguments(writer, spec.args, depth);
+            },
             .method_call => |spec| {
                 try self.renderExpr(writer, spec.receiver.*, depth);
                 try writer.print(".{s}", .{spec.method});
@@ -977,6 +989,10 @@ pub const Builder = struct {
     }
     pub fn call(self: Builder, callee: Expr, args: []const Expr) !Expr {
         return .{ .call = .{ .callee = try self.box(callee), .args = try self.dupExprs(args) } };
+    }
+    /// A call of the raw function exported under `symbol`.
+    pub fn rawCall(self: Builder, symbol: []const u8, args: []const Expr) !Expr {
+        return .{ .raw_call = .{ .symbol = symbol, .args = try self.dupExprs(args) } };
     }
     pub fn callPath(self: Builder, name: []const u8, args: []const Expr) !Expr {
         return self.call(self.path(name), args);
@@ -1282,16 +1298,36 @@ const test_writers: plugin.RustWriters = .{
             return .{ .public_name = "take", .is_public = true, .has_error = true };
         }
     }.f,
+    .rawCallNameAlloc = struct {
+        fn f(_: plugin.RustContext, allocator: std.mem.Allocator, function: abi.AbiFn) anyerror![]u8 {
+            return std.fmt.allocPrint(allocator, "crate::raw::{s}", .{function.origin.name});
+        }
+    }.f,
 };
+
+/// One lowered function, so the raw-call node has a symbol to resolve.
+const test_origin: semantic.SemanticFn = .{ .name = "answer", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_test_answer" };
+const test_functions = [_]abi.AbiFn{.{ .symbol = "zg_test_answer", .params = &.{}, .ret = .void, .origin = &test_origin }};
 
 fn testBuilder(allocator: std.mem.Allocator) Builder {
     const context: plugin.RustContext = .{
         .allocator = allocator,
-        .program = .{ .package = "test", .prefix = "zg", .functions = &.{} },
+        .program = .{ .package = "test", .prefix = "zg", .functions = &test_functions },
         .options = .{},
         .writers = &test_writers,
     };
     return context.builder();
+}
+
+test "a raw call spells the crate's path to a symbol" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const b = testBuilder(arena.allocator());
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    try b.renderExpr(&output.writer, try b.rawCall("zg_test_answer", &.{b.int(1)}), 0);
+    try std.testing.expectEqualStrings("crate::raw::answer(1)", output.written());
+    try std.testing.expectError(error.UnknownRawSymbol, b.renderExpr(&output.writer, try b.rawCall("zg_absent", &.{}), 0));
 }
 
 /// The stub writers above never read the function they are handed, so the
@@ -1658,4 +1694,13 @@ test "rustfmt leaves a rendered file alone" {
     };
     try std.testing.expectEqualStrings("", result.stderr);
     try std.testing.expectEqualStrings("", result.stdout);
+}
+
+/// The lowered function one exported C symbol names, which is how `raw_call`
+/// turns a symbol into the crate's spelling of it.
+fn rawFunction(program: abi.Program, symbol: []const u8) ?abi.AbiFn {
+    for (program.functions) |function| {
+        if (std.mem.eql(u8, function.symbol, symbol)) return function;
+    }
+    return null;
 }

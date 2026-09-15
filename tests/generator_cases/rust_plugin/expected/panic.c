@@ -106,3 +106,15 @@ ZIGO_EXPORT int32_t zg_context_choose(zg_context * self, uint8_t mode, uint8_t *
     zg_panic_active = 0;
     return result;
 }
+
+uint32_t zg_rustmark_version_impl(void);
+ZIGO_EXPORT uint32_t zg_rustmark_version(void) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        zg_panic_fatal();
+    }
+    uint32_t result = zg_rustmark_version_impl();
+    zg_panic_active = 0;
+    return result;
+}

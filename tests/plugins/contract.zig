@@ -7,6 +7,16 @@ const semantic = @import("semantic");
 pub var validation_runs: usize = 0;
 pub var analysis_runs: usize = 0;
 pub var package_renders: usize = 0;
+/// Set by the test that wants the plugin to contribute its C symbol. The
+/// native half is off by default so the ABI-preservation check above keeps
+/// comparing a tree the plugin added nothing native to.
+pub var native_enabled = false;
+/// What the native hook was handed, so a test can check it saw the run.
+pub var document_functions: usize = 0;
+pub var label: []const u8 = "";
+/// Set by the test that wants the refusal for a signature the C ABI cannot
+/// carry, rather than a symbol the whole pipeline accepts.
+pub var unsupported_symbol = false;
 pub const plugin: api.Plugin = .{
     .name = "CONTRACT",
     .Config = struct { label: []const u8 = "default", customize: bool = false, invalid_order: bool = false, invalid_adapter: bool = false, invalid_name: bool = false, collision: bool = false, replace: []const u8 = "", claim_node: bool = false },
@@ -22,7 +32,36 @@ pub const plugin: api.Plugin = .{
         .claims = claims,
         .imports = &.{ .{ .qualifier = "fmt", .path = "fmt" }, .{ .qualifier = "time", .path = "time" } },
     },
+    .native = .{
+        .sources = &.{.{ .path = "contract_native.zig", .module = "contract_native" }},
+        .symbols = nativeSymbols,
+    },
 };
+
+/// Two symbols out of one source, which is what proves the module a symbol
+/// names is resolved rather than assumed, and that a signature with parameters
+/// travels as well as a bare one.
+fn nativeSymbols(context: api.NativeContext) ![]const api.NativeSymbol {
+    if (!native_enabled) return &.{};
+    // The document and the configuration really reach the hook, which is what
+    // lets a plugin decide its symbols from what the binding declared.
+    document_functions = context.document.functions.len;
+    label = (try context.config(plugin)).label;
+    if (unsupported_symbol) return &.{.{
+        .name = "handle",
+        .ret = .{ .snapshot = "zg_value" },
+        .implementation = "answer",
+    }};
+    return &.{
+        .{ .name = "answer", .ret = .{ .unsigned_int = 32 }, .implementation = "answer", .module = "contract_native", .doc = "The number this plugin contributes." },
+        .{
+            .name = "scale",
+            .params = &.{ .{ .name = "value", .scalar = .{ .signed_int = 32 } }, .{ .name = "factor", .scalar = .{ .signed_int = 32 } } },
+            .ret = .{ .signed_int = 32 },
+            .implementation = "scale",
+        },
+    };
+}
 
 fn validate(context: api.ValidateContext) !void {
     validation_runs += 1;

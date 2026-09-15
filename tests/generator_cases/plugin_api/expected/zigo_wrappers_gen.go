@@ -2,6 +2,10 @@
 
 package wrappers
 
+import "example.com/zigo/wrappers/internal/raw"
+
 func zigoWrap0(err error) { if err != nil { panic(err) } }
 func zigoWrap1[T any](v T, err error) T { if err != nil { panic(err) }; return v }
 func zigoWrap2[T any](v T, ok bool, err error) (T, bool) { if err != nil { panic(err) }; return v, ok }
+// WraptestAnswer returns what this plugin's own native symbol answers.
+func WraptestAnswer() uint32 { return raw.WraptestAnswer() }

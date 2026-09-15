@@ -297,6 +297,64 @@ test "plugin preflight rejects disabled dependencies and malformed config before
     }
 }
 
+test "an external plugin's native symbols reach the shim, the header and both raw backends" {
+    contract.native_enabled = true;
+    defer contract.native_enabled = false;
+    const fixture = "{\"functions\":[],\"package\":\"custom\",\"prefix\":\"zg\",\"zig_version\":\"0.16.0\"}";
+    inline for (.{ .cgo, .purego }) |backend| {
+        var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+        defer arena.deinit();
+        const allocator = arena.allocator();
+        var output = std.testing.tmpDir(.{ .iterate = true });
+        defer output.cleanup();
+        contract.document_functions = 1;
+        try generator.generate(allocator, std.testing.io, fixture, output.dir, .{
+            .package = "custom",
+            .prefix = "zg",
+            .go_module = "example.com/custom",
+            .backend = backend,
+        });
+        // The hook was handed this run's document and its configuration.
+        try std.testing.expectEqual(@as(usize, 0), contract.document_functions);
+        try std.testing.expectEqualStrings("from-build", contract.label);
+
+        const shim = try output.dir.readFileAlloc(std.testing.io, "shim.zig", allocator, .limited(1024 * 1024));
+        try std.testing.expect(std.mem.indexOf(u8, shim, "_ = @import(\"contract_native\");") != null);
+        try std.testing.expect(std.mem.indexOf(u8, shim, "return @import(\"contract_native\").answer();") != null);
+        try std.testing.expect(std.mem.indexOf(u8, shim, "return @import(\"contract_native\").scale(value, factor);") != null);
+        const header = try output.dir.readFileAlloc(std.testing.io, "zigo_custom.h", allocator, .limited(1024 * 1024));
+        try std.testing.expect(std.mem.indexOf(u8, header, "ZIGO_EXPORT uint32_t zg_contract_answer(void);") != null);
+        try std.testing.expect(std.mem.indexOf(u8, header, "ZIGO_EXPORT int32_t zg_contract_scale(int32_t value, int32_t factor);") != null);
+        const raw = try output.dir.readFileAlloc(std.testing.io, "internal/raw/raw_gen.go", allocator, .limited(1024 * 1024));
+        try std.testing.expect(std.mem.indexOf(u8, raw, "func ContractAnswer() uint32 {") != null);
+        try std.testing.expect(std.mem.indexOf(u8, raw, "func ContractScale(value int32, factor int32) int32 {") != null);
+        // The purego backend resolves it by name like every other symbol.
+        if (backend == .purego) try std.testing.expect(std.mem.indexOf(u8, raw, "resolveSymbol(handle, \"zg_contract_scale\")") != null);
+    }
+}
+
+test "a plugin symbol the C ABI cannot carry is refused with the plugin named" {
+    contract.native_enabled = true;
+    contract.unsupported_symbol = true;
+    defer {
+        contract.native_enabled = false;
+        contract.unsupported_symbol = false;
+    }
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var output = std.testing.tmpDir(.{});
+    defer output.cleanup();
+    var issues: std.ArrayList(@import("diagnostic").Diagnostic) = .empty;
+    try std.testing.expectError(error.InvalidSemantic, generator.generate(arena.allocator(), std.testing.io, "{\"functions\":[],\"package\":\"custom\",\"prefix\":\"zg\",\"zig_version\":\"0.16.0\"}", output.dir, .{
+        .package = "custom",
+        .prefix = "zg",
+        .go_module = "example.com/custom",
+        .diagnostics = &issues,
+    }));
+    try std.testing.expectEqualStrings("ZIGO067", issues.items[0].code);
+    try std.testing.expect(std.mem.indexOf(u8, issues.items[0].message, "CONTRACT") != null);
+}
+
 test {
     _ = @import("plugin_outputs.zig");
 }

@@ -253,7 +253,7 @@ pub fn exposeContractModules(b: *std.Build, generator: GeneratorModules) void {
 /// generated file naming the plugin modules the consuming build listed. It is
 /// created even when there are none, so `registry.zig` has one spelling either
 /// way and a build that lists no plugin costs one empty file.
-fn createPluginRegistry(
+pub fn createPluginRegistry(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,

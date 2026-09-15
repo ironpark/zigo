@@ -83,6 +83,9 @@ zigo는 생성 전에 소스 reflection, semantic 계약과 최종 출력을 검
 | `ZIGO063` | raw 패키지 경로에 `internal` 요소가 없습니다. raw 패키지는 지원 API가 아니므로 `internal/` 아래에 두거나(기본값 `internal/raw`) `layout.raw_colocated`를 씁니다. |
 | `ZIGO064` | 공개 Go 패키지 이름이 표준 라이브러리 패키지(`errors`, `io`, `fmt`, `time` 등)와 같습니다. `layout.go_package` 또는 하위 패키지의 `.path`로 다른 이름을 고릅니다. |
 | `ZIGO065` | 플러그인의 `claims`가 function이 아닌 node를 주장했습니다. 공개 Go 표면을 가진 node는 function뿐이므로, 나머지 node는 `visit`에 맡깁니다. |
+| `ZIGO066` | 두 플러그인이 같은 C 심볼을 내보냈거나, 바인딩 함수가 이미 쓰는 이름입니다. 플러그인 심볼의 `name`을 바꿉니다. |
+| `ZIGO067` | 플러그인 네이티브 심볼의 시그니처를 C ABI가 나를 수 없습니다. 매개변수와 반환은 `bool`, 8·16·32·64비트 정수, `usize`, `isize`, `f32`, `f64`와 반환의 `void`만 쓸 수 있습니다. |
+| `ZIGO068` | 플러그인 네이티브 심볼이 가리키는 소스가 없습니다. 심볼의 `module`을 플러그인 `native.sources` 중 하나로 지정합니다(소스가 하나뿐이면 비워 둘 수 있습니다). |
 
 `ZIGO047`은 현재 할당되지 않았습니다. 진단 번호가 연속적이라고 가정하지 마세요.
 

@@ -53,6 +53,9 @@ fn hasOutValueStructSlice(function: semantic.SemanticFn) bool {
 /// use predicates deliberately share this filter with the emitter so a
 /// hidden deinitializer cannot keep one alive by accident.
 pub fn emitsPublicFunction(program: abi.Program, function: abi.AbiFn) bool {
+    // A plugin's own symbol has no public surface of its own: the plugin
+    // decides what, if anything, wraps it, through its `visit`.
+    if (function.origin.plugin != null) return false;
     const constructor = common.constructorForInit(program, function.origin.*);
     if (constructor == null and common.constructorForDeinit(program, function.origin.*) != null) return false;
     // A release function is called for the caller by the raw layer. Exposing

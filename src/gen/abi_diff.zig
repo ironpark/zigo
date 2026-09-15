@@ -51,6 +51,77 @@ pub const Report = struct {
     }
 };
 
+/// The plugin-contributed symbols, compared straight out of the two
+/// documents. They are not lowered from anything: `plugin_symbols` already
+/// records the exported name and the whole C signature, which is the entire
+/// surface a plugin symbol has. A document written before the section existed
+/// has none, so a newly registered plugin's symbols are reported as added
+/// once and stay quiet afterwards.
+fn diffPluginSymbols(
+    allocator: std.mem.Allocator,
+    report: *Report,
+    base: semantic.Semantic,
+    current: semantic.Semantic,
+) !void {
+    const before = base.plugin_symbols orelse &[_]semantic.PluginSymbol{};
+    const after = current.plugin_symbols orelse &[_]semantic.PluginSymbol{};
+    for (before) |old| {
+        const identity = try pluginSymbolIdentity(allocator, old);
+        defer allocator.free(identity);
+        const new = findPluginSymbol(after, old) orelse {
+            try add(allocator, report, .breaking, identity, "plugin symbol removed");
+            continue;
+        };
+        if (!std.mem.eql(u8, old.symbol, new.symbol)) {
+            try add(allocator, report, .breaking, identity, "exported C symbol changed");
+        } else if (!std.mem.eql(u8, old.signature, new.signature)) {
+            try add(allocator, report, .breaking, identity, "signature changed");
+        }
+    }
+    for (after) |new| {
+        if (findPluginSymbol(before, new) != null) continue;
+        const identity = try pluginSymbolIdentity(allocator, new);
+        defer allocator.free(identity);
+        try add(allocator, report, .added, identity, "plugin symbol added");
+    }
+}
+
+/// A plugin symbol is identified by its owner and its short name: the
+/// exported C symbol is derived from both, so comparing on it would report a
+/// renamed plugin as a removal and an addition rather than as one change.
+fn findPluginSymbol(entries: []const semantic.PluginSymbol, wanted: semantic.PluginSymbol) ?semantic.PluginSymbol {
+    for (entries) |entry| {
+        if (std.mem.eql(u8, entry.plugin, wanted.plugin) and std.mem.eql(u8, entry.name, wanted.name)) return entry;
+    }
+    return null;
+}
+
+fn pluginSymbolIdentity(allocator: std.mem.Allocator, entry: semantic.PluginSymbol) ![]u8 {
+    return std.fmt.allocPrint(allocator, "plugin.{s}.{s}", .{ entry.plugin, entry.name });
+}
+
+test "a newly contributed plugin symbol is reported as added" {
+    const base: semantic.Semantic = .{ .package = "sample", .prefix = "zg", .zig_version = "0.16.0" };
+    var current = base;
+    current.plugin_symbols = &.{.{ .plugin = "TEST", .name = "answer", .symbol = "zg_test_answer", .signature = "u32()" }};
+    var report = try diff(std.testing.allocator, base, current);
+    defer report.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(usize, 1), report.changes.items.len);
+    try std.testing.expectEqual(ChangeKind.added, report.changes.items[0].kind);
+    try std.testing.expectEqualStrings("plugin.TEST.answer", report.changes.items[0].subject);
+    try std.testing.expectEqualStrings("plugin symbol added", report.changes.items[0].detail);
+
+    var removed = try diff(std.testing.allocator, current, base);
+    defer removed.deinit(std.testing.allocator);
+    try std.testing.expectEqual(ChangeKind.breaking, removed.changes.items[0].kind);
+
+    var changed_signature = current;
+    changed_signature.plugin_symbols = &.{.{ .plugin = "TEST", .name = "answer", .symbol = "zg_test_answer", .signature = "u64()" }};
+    var changed = try diff(std.testing.allocator, current, changed_signature);
+    defer changed.deinit(std.testing.allocator);
+    try std.testing.expectEqualStrings("signature changed", changed.changes.items[0].detail);
+}
+
 /// The convenience entry: cgo on both sides, judged against
 /// `targets.default`. `diffForTarget` is what the CLI calls.
 pub fn diff(allocator: std.mem.Allocator, base: semantic.Semantic, current: semantic.Semantic) !Report {
@@ -87,6 +158,7 @@ pub fn diffForTarget(allocator: std.mem.Allocator, base: semantic.Semantic, base
         try add(allocator, &report, .breaking, "document.package", "generated package identity changed");
     if (!std.mem.eql(u8, base.prefix, current.prefix))
         try add(allocator, &report, .breaking, "document.prefix", "generated C symbol prefix changed");
+    try diffPluginSymbols(allocator, &report, base, current);
 
     for (base.functions, 0..) |old, old_index| {
         const new_index = findFunctionIndex(current.functions, old) orelse {

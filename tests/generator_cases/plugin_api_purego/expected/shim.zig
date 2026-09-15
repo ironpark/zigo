@@ -15,6 +15,10 @@ fn zg_reduce_purego_v2_bits_thunk_reducer(p2: usize, p0: i32, p1: i32) callconv(
     return dispatch(p0, p1, p2);
 }
 
+comptime {
+    _ = @import("wraptest_native");
+}
+
 export fn zg_use_mode_impl(mode: u8) i32 {
     target.useMode(@enumFromInt(mode)) catch |err| return switch (err) {
         error.Failure => 1,
@@ -78,6 +82,9 @@ export fn zg_job_open_impl(out_result: **target.Job) i32 {
 export fn zg_job_close_impl(self: *target.Job) i32 {
     target.Job.close(self);
     return 0;
+}
+export fn zg_wraptest_answer_impl() u32 {
+    return @import("wraptest_native").answer();
 }
 
 /// Fails this compile when a layout zigo reflected on the build host does

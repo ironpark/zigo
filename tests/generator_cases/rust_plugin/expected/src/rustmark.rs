@@ -5,6 +5,11 @@ use core::fmt::Write;
 /// What this plugin calls itself.
 pub const RUSTMARK_NAME: &str = "RUSTMARK";
 
+/// What this plugin's own native symbol answers.
+pub fn rustmark_version() -> u32 {
+    crate::raw::rustmark_version()
+}
+
 /// Writes the plugin's name into `out`.
 pub fn rustmark_write<W: Write>(out: &mut W) -> core::fmt::Result {
     write!(out, "{RUSTMARK_NAME}")

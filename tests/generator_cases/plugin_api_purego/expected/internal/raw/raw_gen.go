@@ -55,6 +55,7 @@ type nativeBindings struct {
 	fnJobCrunch func(unsafe.Pointer, uint32, *uint32, *float64) int32
 	fnJobOpen func(*unsafe.Pointer) int32
 	fnJobClose func(unsafe.Pointer) int32
+	fnWraptestAnswer func() uint32
 }
 
 type callbackEntry struct {
@@ -259,6 +260,8 @@ func loadCandidate(path string) error {
 	if err != nil { return fail("zg_job_open", err) }
 	addrJobClose, err := resolveSymbol(handle, "zg_job_close")
 	if err != nil { return fail("zg_job_close", err) }
+	addrWraptestAnswer, err := resolveSymbol(handle, "zg_wraptest_answer")
+	if err != nil { return fail("zg_wraptest_answer", err) }
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.panicMessage, addrPanicMessage)
@@ -271,6 +274,7 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnJobCrunch, addrJobCrunch)
 	purego.RegisterFunc(&next.fnJobOpen, addrJobOpen)
 	purego.RegisterFunc(&next.fnJobClose, addrJobClose)
+	purego.RegisterFunc(&next.fnWraptestAnswer, addrWraptestAnswer)
 	loadedBindings.Store(&next)
 	return nil
 }
@@ -364,4 +368,10 @@ func JobOpen() (unsafe.Pointer, int32) {
 func JobClose(self unsafe.Pointer) int32 {
 	code := bindings().fnJobClose(self)
 	return code
+}
+
+// WraptestAnswer calls the generated purego ABI wrapper for zg_wraptest_answer.
+func WraptestAnswer() uint32 {
+	result := bindings().fnWraptestAnswer()
+	return uint32(result)
 }

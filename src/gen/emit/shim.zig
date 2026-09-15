@@ -95,6 +95,7 @@ pub fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program:
     if (common.programHasStreams(program)) try writer.writeAll(stream_adapters);
     try materialized_encoder.renderMaterializedWalker(allocator, writer, program);
     try renderStreamAccessorHelpers(allocator, writer, program);
+    try renderPluginModuleReferences(writer, program);
     for (program.functions) |function| {
         try writer.print("export fn {s}_impl(", .{function.symbol});
         for (function.params, 0..) |parameter, index| {
@@ -105,6 +106,14 @@ pub fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program:
         try writer.writeAll(") ");
         try type_spelling.writeZigType(writer, program, function.ret);
         try writer.writeAll(" {\n");
+        // A plugin symbol calls the plugin's own Zig instead of the bound
+        // library's. Nothing above applies to it: it has no semantic
+        // parameters to stage, no narrow integers to guard and no ownership
+        // to arrange, because its whole signature is scalars already.
+        if (function.origin.plugin) |owner| {
+            try writeNativeCall(writer, function, owner);
+            continue;
+        }
         try writeCallbackBitBindings(allocator, writer, program, function);
         try writeShimStreamSetups(allocator, writer, program, function);
         try writeShimStringSliceSetups(allocator, writer, function);
@@ -719,6 +728,40 @@ pub fn renderPanicSource(allocator: std.mem.Allocator, writer: *std.Io.Writer, p
         }
         try writer.writeAll(");\n    zg_panic_active = 0;\n    return result;\n}\n");
     }
+}
+
+/// A `comptime` reference to every module a plugin contributed, so a source
+/// that exports no symbol of its own is still compiled -- and its `comptime`
+/// assertions still run -- as part of the shim.
+fn renderPluginModuleReferences(writer: *std.Io.Writer, program: abi.Program) !void {
+    var written = false;
+    for (program.functions, 0..) |function, index| {
+        const owner = function.origin.plugin orelse continue;
+        var seen = false;
+        for (program.functions[0..index]) |previous| {
+            const other = previous.origin.plugin orelse continue;
+            if (std.mem.eql(u8, other.module, owner.module)) seen = true;
+        }
+        if (seen) continue;
+        try writer.print("comptime {{\n    _ = @import(\"{s}\");\n}}\n", .{owner.module});
+        written = true;
+    }
+    if (written) try writer.writeByte('\n');
+}
+
+/// The body of a plugin symbol's export: one call of the declaration the
+/// plugin named, passing the parameters straight through. The plugin's own
+/// source exports nothing, so this wrapper is the only `export` in play and
+/// the symbol it carries is the one lowering minted.
+fn writeNativeCall(writer: *std.Io.Writer, function: abi.AbiFn, owner: semantic.PluginOrigin) !void {
+    try writer.writeAll("    ");
+    if (function.ret != .void) try writer.writeAll("return ");
+    try writer.print("@import(\"{s}\").{s}(", .{ owner.module, owner.implementation });
+    for (function.params, 0..) |parameter, index| {
+        if (index != 0) try writer.writeAll(", ");
+        try writer.writeAll(parameter.name);
+    }
+    try writer.writeAll(");\n}\n");
 }
 
 /// One helper per operation of a stream a method hands out. The helper is

@@ -21,7 +21,17 @@ pub const writers: plugin.RustWriters = .{
     .receiverFormAlloc = receiverFormAlloc,
     .identifierAlloc = plugin.rustbuild.identifierAlloc,
     .functionInfo = functionInfo,
+    .rawCallNameAlloc = rawCallNameAlloc,
 };
+
+/// The path a crate body writes to reach one raw function. `raw.rs` names its
+/// wrappers after the function the same way the public layer does, so this is
+/// that name under the crate-rooted module path.
+fn rawCallNameAlloc(context: plugin.RustContext, allocator: std.mem.Allocator, function: abi.AbiFn) anyerror![]u8 {
+    const shape = try raw.Shape.of(context.allocator, context.program, function);
+    defer shape.deinit(context.allocator);
+    return std.fmt.allocPrint(allocator, "crate::raw::{s}", .{shape.raw_name});
+}
 
 /// A registered type as the crate spells it, qualified from the crate root.
 ///

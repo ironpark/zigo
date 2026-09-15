@@ -21,6 +21,7 @@ extern "C" {
     pub fn zg_context_create(out_result: *mut *mut zg_context) -> i32;
     pub fn zg_context_deinit(self_: *mut zg_context) -> i32;
     pub fn zg_context_choose(self_: *mut zg_context, mode: u8, out_result: *mut u8) -> i32;
+    pub fn zg_rustmark_version() -> u32;
     pub fn zg_last_error_message() -> *const c_char;
     pub fn zg_caught_panic_message(code: i32) -> *const c_char;
 }
@@ -104,4 +105,9 @@ pub unsafe fn context_choose(receiver: *mut zg_context, mode: u8) -> (u8, i32) {
     let mut out_result: u8 = 0;
     let code = unsafe { zg_context_choose(receiver, mode, &mut out_result) };
     (out_result, code)
+}
+
+/// Calls the generated C ABI wrapper for `zg_rustmark_version`.
+pub fn rustmark_version() -> u32 {
+    unsafe { zg_rustmark_version() }
 }

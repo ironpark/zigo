@@ -316,6 +316,88 @@ try b.emit(&.{try b.implBlock(.{ .type = b.typeName(declaration.name), .items = 
 slot을 채운 것 자체가 "이 언어를 렌더링한다"는 선언입니다. `go` slot만 채운 플러그인을 Rust
 바인딩 세트의 `.plugins`에 나열해도 error가 아니라 아무것도 쓰지 않습니다.
 
+## 네이티브 심볼 기여하기
+
+플러그인이 Zig 소스를 실어 보내고, 그 소스에서 C 심볼을 내보낼 수 있습니다. 생성된 shim이
+그 소스를 컴파일하고 심볼마다 `export` wrapper를 쓰므로, 헤더·Go raw(cgo와 purego)·Rust raw
+모듈·`abi-diff`는 바인딩 함수와 똑같은 경로로 그 심볼을 실어 나릅니다.
+
+플러그인 패키지 안에 네이티브 소스를 둡니다. `std` 말고는 아무것도 import하지 않고,
+아무것도 `export`하지 않습니다.
+
+```zig
+// src/native.zig
+/// 이 플러그인이 네이티브 library에 더하는 값입니다.
+pub fn answer() u32 {
+    return 42;
+}
+```
+
+플러그인 값에 `native`를 채웁니다.
+
+```zig
+pub const plugin: api.Plugin = .{
+    .name = "KNOWN",
+    .native = .{
+        .sources = &.{.{ .path = "native.zig", .module = "known_native" }},
+        .symbols = nativeSymbols,
+    },
+};
+
+fn nativeSymbols(_: api.NativeContext) ![]const api.NativeSymbol {
+    return &.{.{
+        .name = "answer",
+        .ret = .{ .unsigned_int = 32 },
+        .implementation = "answer",
+        .doc = "이 플러그인이 네이티브 library에 더하는 값입니다.",
+    }};
+}
+```
+
+`build.zig`는 configure 시점에 경로를 알아야 module을 만들 수 있으므로, 소비하는 빌드가
+같은 목록을 한 번 더 적습니다. `path`는 `root_source_file` 기준입니다.
+
+```zig
+.plugins = &.{.{
+    .name = "known",
+    .root_source_file = b.path("src/plugin.zig"),
+    .native_sources = &.{.{ .module = "known_native", .path = "native.zig" }},
+}},
+```
+
+`zig build go` 뒤 생성물에서 심볼을 확인할 수 있습니다. shim은 `zg_known_answer_impl`을,
+헤더는 `ZIGO_EXPORT uint32_t zg_known_answer(void);`를, raw 패키지는 `KnownAnswer()`를
+가집니다. 심볼 이름은 `<prefix>_<플러그인 소문자>_<name>`이므로 바인딩 함수와 절대 부딪히지
+않습니다.
+
+공개 패키지에는 아무것도 자동으로 쓰이지 않습니다. 감싸고 싶으면 플러그인이 자기 심볼을
+읽어 `rawCall`로 호출합니다. 심볼 이름을 직접 쓰지 않으므로 layout이나 backend가 달라도
+호출이 어긋나지 않습니다.
+
+```zig
+fn renderFile(context: api.GoContext, writer: *std.Io.Writer) !void {
+    const b = context.builder();
+    for (try context.nativeSymbols(plugin)) |symbol| {
+        try b.render(writer, &.{try b.func(.{
+            .name = "KnownAnswer",
+            .signature = .{ .explicit = .{ .results = &.{b.ident("uint32")} } },
+            .body = &.{try b.ret(&.{try b.rawCall(symbol.symbol, &.{})})},
+            .single_line = true,
+        })}, .{});
+    }
+}
+```
+
+Rust 쪽도 같은 모양이고, `rawCall`이 `crate::raw::known_answer()`를 씁니다.
+
+시그니처에는 C가 그 자체로 나르는 scalar만 쓸 수 있습니다: `bool`, 8·16·32·64비트 정수,
+`usize`, `isize`, `f32`, `f64`, 그리고 반환의 `void`. 그 밖은 플러그인 이름과 함께
+`ZIGO067`로 거절됩니다. 두 플러그인이 같은 심볼을 내보내면 `ZIGO066`, 심볼이 가리키는
+소스를 못 찾으면 `ZIGO068`입니다.
+
+네이티브 기여는 출력 언어와 무관합니다. `go` slot만 채운 플러그인이라도 Rust 바인딩 세트에서
+심볼을 그대로 기여하므로, 같은 문서에서 만든 shim은 두 경우 모두 byte 단위로 같습니다.
+
 ## 결정적인 출력
 
 - 소스 순서가 필요한 경우 semantic/ABI 배열 순서를 유지합니다.

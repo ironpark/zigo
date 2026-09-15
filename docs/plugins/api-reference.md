@@ -45,10 +45,12 @@ configuration and dependency checks
 | `analyze` | null | lowering 뒤 typed fact 계산 |
 | `go` | null | Go 렌더링 slot (`GoRender`). 채우면 Go target에서 실행됩니다 |
 | `rust` | null | Rust 렌더링 slot (`RustRender`). 채우면 Rust target에서 실행됩니다 |
+| `native` | null | 네이티브 기여(`Native`). 언어 중립이라 slot 밖에 있습니다 |
 | `artifacts` | empty | exact 바이트 출력. 언어 중립이라 slot 밖에 있습니다 |
 
 semantic transform은 C ABI에 영향을 줄 수 있습니다. 렌더링 hook과 출력은 additive
-공개 표면만 만들며 shim, 헤더와 raw API를 바꾸지 않습니다.
+공개 표면만 만들며 shim, 헤더와 raw API를 바꾸지 않습니다. `native`는 예외가 아니라
+별개의 축입니다: 바인딩 함수의 ABI는 그대로 두고 플러그인 자신의 C 심볼을 **추가**합니다.
 
 ## 렌더링 slot: `go`와 `rust`
 
@@ -215,6 +217,9 @@ const hidden = try plugin.builtins.implements.hidesOriginal(allocator, function.
 
 - lowered `program`, allocator, `options`(아래 `PluginOptions`), 읽기 전용 `facts`
 - `target()`, `config`, `optionsOf`, `publicFilePathAlloc`
+- `nativeSymbols(plugin)` — 이 플러그인 자신의 네이티브 심볼을 lowering이 넣은 모습
+  (`[]const abi.AbiFn`)으로 돌려줍니다. 감싸는 쪽은 여기서 읽은 `symbol`을 `rawCall`에
+  넘기므로 이름이 어긋날 수 없습니다
 
 `GoContext`:
 
@@ -222,6 +227,7 @@ const hidden = try plugin.builtins.implements.hidesOriginal(allocator, function.
 - 메서드 안쪽 node(`function`, `param`, `result`)의 `method` 정보
 - 공개 Go 타입/시그니처/doc writer와 식별자 도우미(`identifierAlloc`, `.pascal`/`.camel`)
 - `builder()` — Go builder
+- `nativeSymbols(plugin)`
 - `sourceFilePathAlloc`, `publicFilePathAlloc`
 
 `RustContext`:
@@ -232,6 +238,7 @@ const hidden = try plugin.builtins.implements.hidesOriginal(allocator, function.
 - `receiverFormAlloc` — 그 item이 받는 receiver 절(`&self`, `&mut self`). 연관 함수는 `null`
 - `identifierAlloc` — `.snake`, `.pascal`, `.screaming`
 - `functionInfo` — 공개 이름, 공개 여부, `Result` 여부
+- `nativeSymbols(plugin)`
 - `builder()` — Rust builder
 
 `ArtifactContext`는 allocator, full program, `options`와 config/path 도우미만 제공합니다.
@@ -246,6 +253,7 @@ context의 `options`는 플러그인이 볼 수 있는 실행 정보만 담은 v
 | `target` | 이번 실행의 출력 언어 (`context.target()`과 같음) |
 | `go_module`, `go_package`, `go_package_path` | 생성 Go 모듈과 공개 패키지 |
 | `raw_package_path` | raw 패키지 디렉터리 |
+| `raw_colocated` | raw 계층이 공개 패키지 안에 있는지. `rawCall`의 qualifier를 정합니다 |
 | `active_package` | 지금 렌더링 중인 공개 패키지. `null`은 단일 패키지 |
 | `configurations` | 빌드가 컴파일해 넣은 플러그인 설정. `config(plugin)`이 읽음 |
 | `helpers` / `emitsHelper(name)` | gated helper가 이 패키지에서 참조되는지 |
@@ -335,7 +343,7 @@ try b.emit(&.{try b.func(.{
 `ident`, `string`, `int`, `boolean`, `.nil`, `sel`/`selName`, `indexExpr`, `call`/`callName`/
 `callSel`/`callSpread`/`callForwarding`, `unary`/`addr`/`deref`/`not`, `bin`, `paren`, `ptr`,
 `sliceOf`, `variadic`, `convert`, `funcType`, `funcLiteral`, `composite`/`compositeLines`,
-그리고 escape hatch인 `raw`.
+`rawCall`, 그리고 escape hatch인 `raw`.
 
 ### generator가 답하는 node
 
@@ -346,6 +354,9 @@ core와 같은 Go spelling은 다음 node와 signature로 가져옵니다.
 - `valueType(function)` — 함수가 돌려주는 값의 Go 타입
 - `Signature.function = .{ .function, .options }` — 공개 매개변수 목록과 결과
 - `callForwarding(callee, function)` — 공개 매개변수 순서대로의 호출 인자
+- `rawCall(symbol, args)` — raw 계층 호출. 내보낸 C 심볼로 함수를 찾아 이 layout이
+  쓰는 이름(`raw.Answer`, colocated면 `zigoRawAnswer`)을 씁니다. raw import는 body가
+  qualifier를 실제로 쓸 때 자동으로 추가됩니다
 
 context에는 같은 정보를 직접 쓰는 writer도 남아 있습니다: `writeTypeName`, `writeGoType`,
 `receiverNameAlloc`, `writeSignature`/`writeSignatureWith`, `writeParameters`,
@@ -394,12 +405,13 @@ item에는 `doc`, `attributes`(`&.{"derive(Debug)", "cfg(test)"}`)와 `visibilit
 `call`/`callPath`, `methodCall`, `addr`/`addrMut`/`refType`, `deref`, `unary`/`not`, `bin`,
 `paren`, `tryExpr`(`x?`), `cast`(`x as T`), `range`, `closure`, `macroCall`/`format`/`vec`,
 `structLiteral`/`structLiteralLines`, `tuple`, `array`/`arrayLines`, `generic`(`Vec<u8>`),
-`sliceOf`(`[T]`), `blockExpr`, `matchExpr`, `ifExpr`, 그리고 escape hatch인 `raw`.
+`sliceOf`(`[T]`), `blockExpr`, `matchExpr`, `ifExpr`, `rawCall`, 그리고 escape hatch인 `raw`.
 
 ### generator가 답하는 node
 
 - `typeName(name)` — crate가 쓰는 타입 이름(`crate::Mode`)
 - `Signature.function = .{ .function, .options }` — 생성된 item이 쓴 공개 시그니처
+- `rawCall(symbol, args)` — raw 계층 호출(`crate::raw::answer(...)`)
 
 ### 삽입 지점
 
@@ -409,6 +421,109 @@ item에는 `doc`, `attributes`(`&.{"derive(Debug)", "cfg(test)"}`)와 `visibilit
 | `.file_begin` / `.file_end` | 각 생성 `.rs` file의 prelude 뒤와 파일 끝 |
 | `.type` | 그 타입의 item 뒤(`handle.rs`의 `impl`/`Drop` 뒤, `enum.rs`의 enum 뒤) |
 | `.function` | 생성된 item 뒤. `impl` block 안의 메서드는 한 단계 들여써집니다 |
+
+## `native`
+
+플러그인이 네이티브 쪽에 기여하는 방법입니다. Zig 소스 하나 이상과, 그 소스에서 내보낼 C
+심볼 목록으로 이루어집니다. 출력 언어와 무관합니다: 네이티브 library는 Go를 생성하든 Rust를
+생성하든 하나이므로, 같은 문서에서 만든 shim은 두 경우 모두 byte 단위로 같습니다.
+
+```zig
+pub const plugin: api.Plugin = .{
+    .name = "EXAMPLE",
+    .native = .{
+        .sources = &.{.{ .path = "native.zig", .module = "example_native" }},
+        .symbols = nativeSymbols,
+    },
+};
+
+fn nativeSymbols(context: api.NativeContext) ![]const api.NativeSymbol {
+    _ = context;
+    return &.{.{
+        .name = "answer",
+        .ret = .{ .unsigned_int = 32 },
+        .implementation = "answer",
+        .doc = "이 플러그인이 네이티브 library에 더하는 값입니다.",
+    }};
+}
+```
+
+```zig
+// native.zig -- `std` 말고는 아무것도 import하지 않으며, 아무것도 export하지 않습니다.
+pub fn answer() u32 {
+    return 42;
+}
+```
+
+### `NativeSource`
+
+| 필드 | 의미 |
+|---|---|
+| `path` | 플러그인의 root source file 기준 상대 경로 |
+| `module` | 생성된 shim이 `@import`에 쓰는 module 이름. Zig 식별자여야 하고 플러그인 사이에서 유일해야 합니다 |
+
+소스는 `std` 외에 아무것도 import하지 않는 평범한 Zig file입니다. `export`도 쓰지 않습니다:
+심볼마다 `export` wrapper를 쓰는 쪽은 생성된 shim입니다.
+
+### `NativeSymbol`
+
+| 필드 | 기본값 | 의미 |
+|---|---|---|
+| `name` | 필수 | 짧은 이름. 내보내는 심볼은 `<prefix>_<플러그인 소문자>_<name>` |
+| `params` | empty | `[]const abi.AbiParam` |
+| `ret` | `.void` | `abi.AbiScalar` |
+| `implementation` | 필수 | module 안의 선언 경로(`answer`, `info.build`) |
+| `module` | `""` | 어느 `sources` 항목인지. 비어 있으면 소스가 하나뿐일 때 그것 |
+| `doc` | null | 헤더와 raw 패키지에 쓰이는 주석 |
+
+시그니처에 쓸 수 있는 scalar는 C가 그 자체로 나르는 값뿐입니다: `void`, `bool_u8`,
+8·16·32·64비트 `signed_int`/`unsigned_int`, `usize`, `isize`, `f32`, `f64`. 포인터,
+aggregate, callback은 `ZIGO067`로 거절됩니다.
+
+### `NativeContext`
+
+| 필드 | 의미 |
+|---|---|
+| `allocator` | run arena. 돌려주는 slice는 여기서 할당해야 합니다 |
+| `document` | 파싱된 semantic document |
+| `configurations` | 빌드가 넘긴 설정. `context.config(plugin)`으로 읽습니다 |
+| `target` | 이번 실행의 출력 언어 |
+
+`symbols`는 결정적이어야 합니다. 같은 문서와 같은 설정은 같은 심볼을 내야 합니다:
+`semantic.json`이 `plugin_symbols` 절에 그 결과를 기록하고 `abi-diff`가 두 기록을
+비교합니다.
+
+### 심볼이 흐르는 곳
+
+| 출력 | 내용 |
+|---|---|
+| `shim.zig` | `comptime { _ = @import("<module>"); }`와 심볼마다 `export fn <symbol>_impl` |
+| `panic.c` | 다른 심볼과 같은 panic bridge wrapper |
+| `zigo_<name>.h` | `ZIGO_EXPORT <ret> <symbol>(<params>);` |
+| Go raw (cgo) | `func <Plugin><Name>(...)` |
+| Go raw (purego) | 같은 함수와 `resolveSymbol` 항목 |
+| `src/raw.rs` | `extern "C"` 선언과 안전한 wrapper |
+| `abi-diff` | `plugin.<PLUGIN>.<name>` 주체의 added/removed/changed |
+
+공개 패키지에는 아무것도 자동으로 쓰이지 않습니다. 감싸고 싶으면 플러그인이 자기 `visit`
+또는 source file에서 `Expr.rawCall`로 직접 씁니다.
+
+### 빌드 연결
+
+`build.zig`는 configure 시점에 경로를 알아야 module을 만들 수 있으므로, 소비하는 빌드가
+`PluginModule.native_sources`에 같은 목록을 적습니다.
+
+```zig
+.plugins = &.{.{
+    .name = "EXAMPLE",
+    .root_source_file = example.path("src/plugin.zig"),
+    .native_sources = &.{.{ .module = "example_native", .path = "native.zig" }},
+}},
+```
+
+`path`는 `root_source_file` 기준입니다. 생성된 shim이 import하는 module을 빌드가 주지
+않으면 shim 컴파일이 그 module 이름을 대며 실패하고, 소스 자체가 컴파일되지 않으면 Zig
+컴파일러가 그 file을 가리킵니다.
 
 ## `SourceFile` (Go slot)
 

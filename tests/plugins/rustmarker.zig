@@ -21,7 +21,24 @@ pub const plugin: api.Plugin = .{
         // really spells the path's last segment.
         .imports = &.{ .{ .path = "core::fmt::Write" }, .{ .path = "std::collections::HashMap" } },
     },
+    // The native half is target-neutral: the shim compiles this source and
+    // exports the symbol whichever language is being generated. The module
+    // below is what wraps it, through `rawCall`.
+    .native = .{
+        .sources = &.{.{ .path = "rustmarker_native.zig", .module = "rustmark_native" }},
+        .symbols = nativeSymbols,
+    },
 };
+
+fn nativeSymbols(context: api.NativeContext) ![]const api.NativeSymbol {
+    if (!(try context.config(plugin)).enabled) return &.{};
+    return &.{.{
+        .name = "version",
+        .ret = .{ .unsigned_int = 32 },
+        .implementation = "version",
+        .doc = "The version this plugin contributes to the native library.",
+    }};
+}
 
 fn enabled(context: api.RustContext) !bool {
     return (try context.config(plugin)).enabled;
@@ -77,6 +94,20 @@ fn renderMethodMarker(context: api.RustContext, b: *api.RustBuilder, function: a
     })}, .{ .blank_before = true });
 }
 
+/// The public side of the native contribution. Nothing is auto-wrapped: the
+/// plugin reads back its own symbol and spells the call with `rawCall`, which
+/// writes the crate's own path to the raw layer.
+fn nativeWrapper(context: api.RustContext, b: api.RustBuilder) !api.rustbuild.Item {
+    const symbols = try context.nativeSymbols(plugin);
+    return b.func(.{
+        .doc = .{ .text = "What this plugin's own native symbol answers." },
+        .visibility = .public,
+        .name = "rustmark_version",
+        .signature = .{ .explicit = .{ .result = b.path("u32") } },
+        .body = &.{b.tail(try b.rawCall(symbols[0].symbol, &.{}))},
+    });
+}
+
 /// The plugin's own module. The frame adds the generated marker and the `use`
 /// block; this writes only the items.
 fn renderModule(context: api.RustContext, writer: *std.Io.Writer) !void {
@@ -90,6 +121,7 @@ fn renderModule(context: api.RustContext, writer: *std.Io.Writer) !void {
             .type = b.path("&str"),
             .value = b.string("RUSTMARK"),
         }),
+        try nativeWrapper(context, b),
         try b.func(.{
             .doc = .{ .text = "Writes the plugin's name into `out`." },
             .visibility = .public,

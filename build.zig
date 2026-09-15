@@ -104,7 +104,50 @@ pub const PluginModule = struct {
     /// JSON encoded Config, the only way a build configures a plugin. Use
     /// `configJson` to serialize a Zig struct.
     config: []const u8 = "{}",
+    /// The Zig sources the plugin contributes to the native library, mirroring
+    /// the `native.sources` its `plugin` value declares. The build graph needs
+    /// the paths at configure time -- only `build.zig` can turn a path into a
+    /// module -- which is why they are repeated here; a module the generated
+    /// shim imports and the build did not provide is a compile error naming
+    /// that module.
+    native_sources: []const PluginNativeSource = &.{},
 };
+
+/// One Zig source a plugin ships for the generated shim to compile. The file
+/// is compiled against nothing but `std`: it is native code beside the bound
+/// library, not part of the generator, and it exports nothing of its own --
+/// the shim writes the `export` wrapper for every symbol the plugin declares.
+pub const PluginNativeSource = struct {
+    /// The module name, which is what the generated shim spells in `@import`.
+    /// The same name the plugin's `NativeSource.module` gives it.
+    module: []const u8,
+    /// The path to the file, relative to the plugin's `root_source_file`.
+    path: []const u8,
+};
+
+/// Hands the shim module every plugin native source as a named import, so the
+/// `@import` the generated shim writes resolves. Shared by the Go and the Rust
+/// binding sets, which compile the same shim from the same document.
+fn addPluginNativeSources(
+    bld: *std.Build,
+    shim_module: *std.Build.Module,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    plugins: []const PluginModule,
+) void {
+    for (plugins) |entry| {
+        if (entry.native_sources.len == 0) continue;
+        const root = entry.root_source_file orelse
+            std.debug.panic("plugin '{s}' has no root source file to resolve its native sources against", .{entry.name});
+        for (entry.native_sources) |source| {
+            shim_module.addImport(source.module, bld.createModule(.{
+                .root_source_file = root.dirname().path(bld, source.path),
+                .target = target,
+                .optimize = optimize,
+            }));
+        }
+    }
+}
 
 pub fn configJson(b: *std.Build, value: anytype) []const u8 {
     return std.json.Stringify.valueAlloc(b.allocator, value, .{}) catch @panic("OOM");
@@ -601,19 +644,30 @@ fn addReflection(b: *std.Build, options: ReflectionOptions) Reflection {
     // declares has to be the same type as what the generator runs.
     // A built-in plugin is already part of `zigo`, so only an added module
     // needs importing here.
-    for (options.plugins) |entry| bindings_module.addImport(entry.name, b.createModule(.{
-        .root_source_file = entry.root_source_file orelse continue,
-        .target = b.graph.host,
-        .optimize = options.optimize,
-        .imports = &.{
-            .{ .name = "plugin", .module = plugin_declaration_module },
-            .{ .name = "abi", .module = abi_declaration_module },
-            .{ .name = "semantic", .module = semantic_module },
-            .{ .name = "diagnostic", .module = diagnostic_declaration_module },
-            .{ .name = "naming", .module = naming_module },
-            .{ .name = "targets", .module = targets_module },
-        },
-    }));
+    var declaration_modules: std.ArrayList(*std.Build.Module) = .empty;
+    for (options.plugins) |entry| {
+        const declaration_module = b.createModule(.{
+            .root_source_file = entry.root_source_file orelse continue,
+            .target = b.graph.host,
+            .optimize = options.optimize,
+            .imports = &.{
+                .{ .name = "plugin", .module = plugin_declaration_module },
+                .{ .name = "abi", .module = abi_declaration_module },
+                .{ .name = "semantic", .module = semantic_module },
+                .{ .name = "diagnostic", .module = diagnostic_declaration_module },
+                .{ .name = "naming", .module = naming_module },
+                .{ .name = "targets", .module = targets_module },
+            },
+        });
+        bindings_module.addImport(entry.name, declaration_module);
+        declaration_modules.append(b.allocator, declaration_module) catch @panic("OOM");
+    }
+    // The reflector asks the same plugin values for their native symbols and
+    // records them in `semantic.json`, so a later `abi-diff` against an older
+    // document sees a symbol appear. It is the reflector rather than the
+    // generator because the document is what `abi-diff` compares, and the
+    // reflector is what writes it.
+    const reflect_registry = modules.createPluginRegistry(b, b.graph.host, options.optimize, plugin_declaration_module, declaration_modules.items, plugin_sources);
     const reflector = b.addExecutable(.{
         .name = "zigo-reflect",
         .root_module = b.createModule(.{
@@ -625,6 +679,8 @@ fn addReflection(b: *std.Build, options: ReflectionOptions) Reflection {
                 .{ .name = "naming", .module = naming_module },
                 .{ .name = "targets", .module = targets_module },
                 .{ .name = "semantic", .module = semantic_module },
+                .{ .name = "plugin", .module = plugin_declaration_module },
+                .{ .name = "plugin_registry", .module = reflect_registry },
                 // The same module instance `bindings.zig` imports, so the
                 // declaration types the reflector reads are the ones the
                 // binding was written in.
@@ -838,6 +894,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
             .optimize = options.optimize,
             .imports = &.{.{ .name = "zigo_target", .module = native.module }},
         });
+        addPluginNativeSources(b, shim_module, native.resolved, options.optimize, options.plugins);
         const lib = b.addLibrary(.{
             .name = install.library_stem,
             .linkage = switch (link_mode) {
@@ -1143,6 +1200,7 @@ pub fn addRustBindings(b: *std.Build, options: RustOptions) RustBindings {
         .optimize = options.optimize,
         .imports = &.{.{ .name = "zigo_target", .module = options.module }},
     });
+    addPluginNativeSources(b, shim_module, options.target, options.optimize, options.plugins);
     const lib = b.addLibrary(.{ .name = install.library_stem, .linkage = .static, .root_module = shim_module });
     lib.root_module.addCSourceFile(.{ .file = generated_dir.path(b, "panic.c"), .flags = &.{"-fno-sanitize=undefined"} });
     lib.root_module.linkSystemLibrary("c", .{});

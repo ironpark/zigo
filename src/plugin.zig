@@ -235,6 +235,10 @@ pub const PluginOptions = struct {
     go_package_path: []const u8 = "",
     /// Module-relative directory of the raw package.
     raw_package_path: []const u8 = "internal/raw",
+    /// Whether the raw layer sits inside the public package instead of a
+    /// package of its own, which is what decides the qualifier a raw call is
+    /// written with.
+    raw_colocated: bool = false,
     /// Null renders the legacy single package; empty selects the default package
     /// of a split document; a value selects that named sub-package.
     active_package: ?[]const u8 = null,
@@ -372,6 +376,11 @@ pub const Writers = struct {
     /// field becomes its exported member name with `.pascal`, a local or a
     /// parameter its unexported spelling with `.camel`.
     identifierAlloc: *const fn (GoContext, std.mem.Allocator, []const u8, IdentifierStyle) anyerror![]u8,
+    /// The callee a public Go body writes to reach one raw function:
+    /// `raw.Answer`, or the colocated `zigoRawAnswer` when the raw layer sits
+    /// inside the public package. The qualifier is part of it, so the builder
+    /// never has to know which layout is in force.
+    rawCallNameAlloc: *const fn (GoContext, std.mem.Allocator, abi.AbiFn) anyerror![]u8,
 };
 
 /// The receiver clause of a method header: `(name *Type)` or `(name Type)`.
@@ -438,6 +447,21 @@ pub const ContextBase = struct {
     pub fn publicFilePathAlloc(self: ContextBase, filename: []const u8) ![]u8 {
         return publicFilePathAllocImpl(self.allocator, self.program, self.options, filename);
     }
+
+    /// `P`'s own native symbols, as lowering put them into the program: the
+    /// lowered form of what `P.native.symbols` returned, in the order it
+    /// returned them. A hook that wraps one reads the symbol here and spells
+    /// the call with `Expr.rawCall`, so the two can never disagree about the
+    /// name.
+    pub fn nativeSymbols(self: ContextBase, comptime P: Plugin) ![]const abi.AbiFn {
+        var found: std.ArrayList(abi.AbiFn) = .empty;
+        for (self.program.functions) |function| {
+            const origin = function.origin.plugin orelse continue;
+            if (!std.mem.eql(u8, origin.plugin, P.name)) continue;
+            try found.append(self.allocator, function);
+        }
+        return found.toOwnedSlice(self.allocator);
+    }
 };
 
 /// What a hook is given besides its builder: the lowered program, the
@@ -465,6 +489,10 @@ pub const GoContext = struct {
     /// The output language this run generates for.
     pub fn target(self: GoContext) targets.Target {
         return self.base().target();
+    }
+    /// This plugin's own native symbols, as lowering put them into the program.
+    pub fn nativeSymbols(self: GoContext, comptime P: Plugin) ![]const abi.AbiFn {
+        return self.base().nativeSymbols(P);
     }
     pub fn config(self: GoContext, comptime P: Plugin) !P.Config {
         return self.base().config(P);
@@ -593,6 +621,9 @@ pub const RustWriters = struct {
     /// A Zig name as the crate spells it.
     identifierAlloc: *const fn (RustContext, std.mem.Allocator, []const u8, RustIdentifierStyle) anyerror![]u8,
     functionInfo: *const fn (RustContext, abi.AbiFn) anyerror!RustFunctionInfo,
+    /// The path a crate body writes to reach one raw function:
+    /// `crate::raw::answer`.
+    rawCallNameAlloc: *const fn (RustContext, std.mem.Allocator, abi.AbiFn) anyerror![]u8,
 };
 
 /// A `use` declaration a Rust hook may write. Like a Go `Import` it is added
@@ -634,6 +665,10 @@ pub const RustContext = struct {
     /// The output language this run generates for.
     pub fn target(self: RustContext) targets.Target {
         return self.base().target();
+    }
+    /// This plugin's own native symbols, as lowering put them into the program.
+    pub fn nativeSymbols(self: RustContext, comptime P: Plugin) ![]const abi.AbiFn {
+        return self.base().nativeSymbols(P);
     }
     pub fn config(self: RustContext, comptime P: Plugin) !P.Config {
         return self.base().config(P);
@@ -715,6 +750,145 @@ pub fn optionsOn(comptime P: Plugin, comptime attachment: Attachment, allocator:
 fn readOptions(comptime P: Plugin, comptime attachment: Attachment, allocator: std.mem.Allocator, ext: ?semantic.Extensions) !?Options(P, attachment) {
     const options = (ext orelse return null).get(P.name) orelse return null;
     return std.json.parseFromValueLeaky(Options(P, attachment), allocator, options, .{}) catch return error.InvalidPluginOptions;
+}
+
+/// One Zig source file a plugin ships for the generated shim to compile. The
+/// file is ordinary Zig: it declares plain functions and exports nothing, so
+/// the plugin never has to know the C symbol its declaration ends up behind.
+/// The generated shim imports it as `module` and writes the `export` wrapper.
+pub const NativeSource = struct {
+    /// The file's path relative to the plugin's own root source file, so a
+    /// plugin package names its sources the way it names its own imports.
+    path: []const u8,
+    /// The name the shim imports it under. It is also the name a
+    /// `NativeSymbol` selects the source by, and it has to be a Zig
+    /// identifier that no other plugin uses.
+    module: []const u8,
+};
+
+/// One C symbol a plugin exports out of its own native source. The signature
+/// is spelled in the lowered ABI vocabulary rather than in Zig types, because
+/// this symbol never goes through the semantic walk: it is already the C
+/// shape the header, the raw packages and `abi-diff` will carry.
+pub const NativeSymbol = struct {
+    /// The short name. The exported symbol is
+    /// `<prefix>_<plugin in lower case>_<name>`, so two plugins can both
+    /// contribute a `version` without colliding.
+    name: []const u8,
+    params: []const abi.AbiParam = &.{},
+    ret: abi.AbiScalar = .void,
+    /// The declaration inside the source that implements it, as a Zig path:
+    /// `answer`, or `info.build` for one nested in a container.
+    implementation: []const u8,
+    /// Which of the plugin's `sources` the implementation lives in, by module
+    /// name. Empty selects the plugin's only source, which is what a plugin
+    /// shipping one file wants.
+    module: []const u8 = "",
+    /// The comment written above the declaration in the C header and in the
+    /// raw packages.
+    doc: ?[]const u8 = null,
+};
+
+/// What a plugin's native contribution is: the Zig it ships and the C symbols
+/// that Zig stands behind. Both halves are optional in practice -- a plugin
+/// may ship a source that only the shim's `comptime` reference pulls in -- but
+/// a symbol without a source has nothing to call.
+pub const Native = struct {
+    sources: []const NativeSource = &.{},
+    /// Asked once per generation, before lowering appends the results to the
+    /// program. Must be deterministic: the same document and configuration
+    /// have to produce the same symbols, since `semantic.json` records them
+    /// and `abi-diff` compares two recordings.
+    symbols: ?*const fn (NativeContext) anyerror![]const NativeSymbol = null,
+};
+
+/// What `Native.symbols` is given: the document as parsed, the configuration
+/// the build passed, and the run arena every returned slice must live in.
+pub const NativeContext = struct {
+    allocator: std.mem.Allocator,
+    document: semantic.Semantic,
+    configurations: []const Configuration = &.{},
+    /// The output language this run generates for. The native side is one
+    /// library whatever the language is, so a plugin normally ignores it.
+    target: targets.Target = targets.default,
+
+    pub fn config(self: NativeContext, comptime P: Plugin) !P.Config {
+        return readConfig(P, self.allocator, self.configurations);
+    }
+};
+
+/// The exported C symbol of one plugin symbol: the binding's prefix, the
+/// plugin's name in lower case, and the symbol's own name. Lowering, the
+/// reflector's `plugin_symbols` record and `abi-diff` all spell it here, so
+/// there is one rule and no way for the three to disagree.
+pub fn nativeSymbolNameAlloc(allocator: std.mem.Allocator, prefix: []const u8, plugin_name: []const u8, name: []const u8) ![]u8 {
+    const owner = try std.ascii.allocLowerString(allocator, plugin_name);
+    defer allocator.free(owner);
+    return std.fmt.allocPrint(allocator, "{s}_{s}_{s}", .{ prefix, owner, name });
+}
+
+/// The scalars a plugin symbol may be spelled with: the values C carries by
+/// itself, with no pointer, aggregate or callback behind them. Anything else
+/// is refused with `ZIGO078` rather than lowered into a signature the raw
+/// packages would have to guess at.
+pub fn nativeScalarSupported(scalar: abi.AbiScalar) bool {
+    return switch (scalar) {
+        .void, .bool_u8, .isize, .usize => true,
+        .signed_int, .unsigned_int => |bits| abi.promotedIntBits(bits) == bits,
+        .float => |bits| bits == 32 or bits == 64,
+        else => false,
+    };
+}
+
+/// The canonical spelling of one supported scalar, which is what
+/// `plugin_symbols` records a signature with. It is deliberately not C's
+/// spelling: the document may not name a backend's types, and the only
+/// question `abi-diff` asks of it is whether two recordings are equal.
+pub fn writeNativeScalar(writer: *std.Io.Writer, scalar: abi.AbiScalar) !void {
+    switch (scalar) {
+        .void => try writer.writeAll("void"),
+        .bool_u8 => try writer.writeAll("bool"),
+        .isize => try writer.writeAll("isize"),
+        .usize => try writer.writeAll("usize"),
+        .signed_int => |bits| try writer.print("i{d}", .{bits}),
+        .unsigned_int => |bits| try writer.print("u{d}", .{bits}),
+        .float => |bits| try writer.print("f{d}", .{bits}),
+        else => return error.UnsupportedNativeSignature,
+    }
+}
+
+/// `<return>(<parameters>)`, the whole signature of a plugin symbol on one
+/// line. `semantic.json` stores this string, so a changed parameter type is a
+/// changed recording and `abi-diff` reports it without lowering anything.
+pub fn nativeSignatureAlloc(allocator: std.mem.Allocator, symbol: NativeSymbol) ![]u8 {
+    var text: std.Io.Writer.Allocating = .init(allocator);
+    errdefer text.deinit();
+    try writeNativeScalar(&text.writer, symbol.ret);
+    try text.writer.writeByte('(');
+    for (symbol.params, 0..) |parameter, index| {
+        if (index != 0) try text.writer.writeAll(", ");
+        try writeNativeScalar(&text.writer, parameter.scalar);
+    }
+    try text.writer.writeByte(')');
+    return text.toOwnedSlice();
+}
+
+test "a plugin symbol's signature records every parameter" {
+    const signature = try nativeSignatureAlloc(std.testing.allocator, .{
+        .name = "answer",
+        .params = &.{ .{ .name = "a", .scalar = .{ .unsigned_int = 32 } }, .{ .name = "b", .scalar = .bool_u8 } },
+        .ret = .{ .float = 64 },
+        .implementation = "answer",
+    });
+    defer std.testing.allocator.free(signature);
+    try std.testing.expectEqualStrings("f64(u32, bool)", signature);
+}
+
+test "the C ABI carries scalars and refuses everything else" {
+    try std.testing.expect(nativeScalarSupported(.{ .unsigned_int = 32 }));
+    try std.testing.expect(nativeScalarSupported(.usize));
+    try std.testing.expect(!nativeScalarSupported(.{ .unsigned_int = 24 }));
+    try std.testing.expect(!nativeScalarSupported(.{ .snapshot = "zg_value" }));
 }
 
 /// What a plugin attaches to: the kind of declaration, not the output
@@ -938,6 +1112,12 @@ pub const Plugin = struct {
     /// fill both slots, either one, or neither -- a plugin that only
     /// transforms the IR fills neither and still runs for every target.
     rust: ?RustRender = null,
+    /// The Zig this plugin ships for the shim to compile and the C symbols it
+    /// exports out of it. Target-neutral, like `artifacts`: the native library
+    /// is one library whichever language is generated from it, and every
+    /// symbol here reaches the header, both Go raw backends, the Rust raw
+    /// module and `abi-diff` through the same loops a bound function does.
+    native: ?Native = null,
     artifacts: []const Artifact = &.{},
 
     /// Whether this plugin renders anything for `target`: whether it filled
@@ -980,6 +1160,19 @@ pub fn ordered(comptime entries: []const Plugin) [entries.len]Plugin {
             if (entry.rust) |rust| for (rust.source_files) |file| {
                 if (!targets.rust.words.isIdentifier(file.module)) @compileError("plugin Rust module name is not an identifier: " ++ entry.name);
             };
+            if (entry.native) |native| {
+                for (native.sources) |source| {
+                    if (source.path.len == 0) @compileError("plugin native source has no path: " ++ entry.name);
+                    if (std.mem.startsWith(u8, source.path, "/")) @compileError("plugin native source path is not relative: " ++ entry.name);
+                    if (!std.zig.isValidId(source.module)) @compileError("plugin native module name is not an identifier: " ++ entry.name);
+                    for (native.sources) |other| {
+                        if (&other == &source) continue;
+                        if (std.mem.eql(u8, other.module, source.module)) @compileError("duplicate plugin native module: " ++ entry.name);
+                    }
+                }
+                if (native.symbols != null and native.sources.len == 0)
+                    @compileError("plugin exports native symbols without a source: " ++ entry.name);
+            }
             for (entries[0..i]) |previous| if (std.mem.eql(u8, previous.name, entry.name))
                 @compileError("duplicate plugin: " ++ entry.name);
             for (entry.requires) |name| {
@@ -1116,6 +1309,11 @@ pub const testing = struct {
                 return error.Unsupported;
             }
         }.f,
+        .rawCallNameAlloc = struct {
+            fn f(_: RustContext, _: std.mem.Allocator, _: abi.AbiFn) anyerror![]u8 {
+                return error.Unsupported;
+            }
+        }.f,
     };
 
     const writers: Writers = .{
@@ -1130,10 +1328,14 @@ pub const testing = struct {
         .writeResultType = unsupported.results,
         .writeCallArguments = unsupported.function,
         .identifierAlloc = format.identifierAlloc,
+        .rawCallNameAlloc = unsupported.rawCallName,
     };
 
     const unsupported = struct {
         fn typeName(_: GoContext, _: *std.Io.Writer, _: []const u8) anyerror!void {
+            return error.Unsupported;
+        }
+        fn rawCallName(_: GoContext, _: std.mem.Allocator, _: abi.AbiFn) anyerror![]u8 {
             return error.Unsupported;
         }
         fn goType(_: GoContext, _: *std.Io.Writer, _: semantic.TypeNode) anyerror!void {

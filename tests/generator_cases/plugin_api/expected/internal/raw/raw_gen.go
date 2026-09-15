@@ -147,6 +147,10 @@ func JobClose(self unsafe.Pointer) int32 {
 	code := int32(C.zg_job_close((*C.zg_job)(self)))
 	return code
 }
+// WraptestAnswer calls the generated C ABI wrapper for zg_wraptest_answer.
+func WraptestAnswer() uint32 {
+	return uint32(C.zg_wraptest_answer())
+}
 
 // PointData mirrors the zg_point layout, padding included.
 type PointData struct {

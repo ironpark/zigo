@@ -1,0 +1,14 @@
+{
+  "output_target": "rust",
+  "package": "calculator",
+  "prefix": "zg",
+  "go_module": "unused-for-rust",
+  "plugins": [
+    "WRAPTEST"
+  ],
+  "plugin_config": {
+    "WRAPTEST": {
+      "native": true
+    }
+  }
+}

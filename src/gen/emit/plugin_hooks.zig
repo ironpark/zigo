@@ -31,7 +31,17 @@ const writers: plugin.Writers = .{
     .writeResultType = writeResultType,
     .writeCallArguments = writeCallArguments,
     .identifierAlloc = plugin.format.identifierAlloc,
+    .rawCallNameAlloc = rawCallNameAlloc,
 };
+
+/// The callee a public body writes to reach one raw function. It is the raw
+/// package's own name for the function with the qualifier the layout in force
+/// calls for, which is exactly what the generated public bodies write.
+fn rawCallNameAlloc(value: plugin.GoContext, allocator: std.mem.Allocator, function: abi.AbiFn) anyerror![]u8 {
+    const go_name = try common.rawGoNameAlloc(allocator, function.origin.*);
+    defer allocator.free(go_name);
+    return std.fmt.allocPrint(allocator, "{s}{s}", .{ if (value.options.raw_colocated) "zigoRaw" else "raw.", go_name });
+}
 
 /// The context a `type` node, a `files` emitter or a validator sees.
 pub fn context(allocator: std.mem.Allocator, program: abi.Program, options: emit.Options) plugin.GoContext {

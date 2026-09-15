@@ -9,6 +9,10 @@ fn panicHandler(message: []const u8, _: ?usize) noreturn {
 pub const panic = std.debug.FullPanic(panicHandler);
 pub const std_options: std.Options = if (@hasDecl(target, "std_options")) target.std_options else .{};
 
+comptime {
+    _ = @import("rustmark_native");
+}
+
 export fn zg_context_create_impl(out_result: **target.Context) i32 {
     const result = target.Context.create() catch |err| return switch (err) {
         error.OutOfMemory => 1,
@@ -24,4 +28,7 @@ export fn zg_context_choose_impl(self: *target.Context, mode: u8, out_result: *u
     const result = target.Context.choose(self, @enumFromInt(mode));
     out_result.* = @intFromEnum(result);
     return 0;
+}
+export fn zg_rustmark_version_impl() u32 {
+    return @import("rustmark_native").version();
 }
