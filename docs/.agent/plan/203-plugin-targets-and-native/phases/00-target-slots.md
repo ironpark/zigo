@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-15T01:23:56Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `grep -rn "output_targets" src plugins docs tests` returns nothing.
 > NEXT: none

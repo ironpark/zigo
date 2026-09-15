@@ -9,7 +9,7 @@ registered_at: "2026-09-15T00:43:15Z"
 
 # Phases
 
-- [ ] [Phase 00: Per-target render slots and Rust builder](phases/00-target-slots.md)
+- [x] [Phase 00: Per-target render slots and Rust builder](phases/00-target-slots.md)
 - [ ] [Phase 01: Rust-capable shipped plugin](phases/01-rust-plugin.md)
 - [ ] [Phase 02: Native contributions](phases/02-native-contributions.md)
 - [ ] [Phase 03: Native-capable shipped plugin](phases/03-native-plugin.md)
