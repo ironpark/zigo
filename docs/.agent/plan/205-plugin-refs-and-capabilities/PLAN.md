@@ -11,7 +11,7 @@ registered_at: "2026-09-15T08:32:17Z"
 
 - [x] [Phase 00: Reference-typed options](phases/00-ref-options.md)
 - [x] [Phase 01: satisfies with checked interfaces](phases/01-satisfies-refs.md)
-- [ ] [Phase 02: Capabilities and shared facts](phases/02-capabilities.md)
+- [x] [Phase 02: Capabilities and shared facts](phases/02-capabilities.md)
 - [ ] [Phase 03: json consumes enumkit](phases/03-json-uses-enumkit.md)
 
 # Shared Verification

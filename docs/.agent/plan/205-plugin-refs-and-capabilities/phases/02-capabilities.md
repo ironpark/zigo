@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-15T09:38:18Z"
 depends_on:
 - "205-plugin-refs-and-capabilities#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `grep -rn "@import(\"must.zig\")" src/gen/plugins` returns nothing outside `must.zig`'s own tests and `registry.zig`.
 > NEXT: none
