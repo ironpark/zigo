@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-15T01:45:04Z"
 depends_on:
 - "203-plugin-targets-and-native#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `cd examples/13-rust-quick-start && zig build rust-verify-equivalent steps && cargo test` pass with the enumkit-generated Rust in use.
 > NEXT: none
