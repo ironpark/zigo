@@ -2,7 +2,7 @@
 depends_on:
 - "203-plugin-targets-and-native#2"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Example 00 `zig build go-verify` and `go-purego-verify` plus `go test ./...` pass with `BuildInfo()` in use; example 13 `cargo test` passes with `build_info()`.
 > NEXT: none
