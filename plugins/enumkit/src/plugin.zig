@@ -18,14 +18,35 @@ pub const Options = struct {
     /// Emit IsKnown(), which recognizes only exported tags, even for open enums.
     is_known: bool = true,
 };
+/// The capability this plugin publishes: which membership helpers an enum
+/// got. It is defined on the contract, so a consumer reads it without
+/// importing this file.
+pub const known = plugin_api.capabilities.enum_known;
 pub const plugin: plugin_api.Plugin = .{
     .name = name,
     .TypeOptions = Options,
     .subjects = &.{.enumeration},
+    .provides = &.{known},
+    .analyze = analyze,
     .go = .{ .visit = visitGo },
     .rust = .{ .visit = visitRust },
     .validate = validateDocument,
 };
+
+/// One fact per enum this plugin is attached to, recorded before any package
+/// is rendered so a consumer's render slot can read it. The options alone
+/// decide it: both slots emit exactly what they ask for, whatever the
+/// language spells them as.
+fn analyze(context: plugin_api.AnalyzeContext) !void {
+    for (context.render.program.types) |declaration| {
+        if (declaration.kind != .@"enum") continue;
+        const options = try context.optionsOf(plugin, .type, declaration.ext) orelse continue;
+        try context.provide(plugin, known, .declaration(declaration), .{
+            .is_known = options.is_known,
+            .values = options.values,
+        });
+    }
+}
 
 /// The enum a `type` node carries, with the options it attached and the tags
 /// that reach the public surface. Shared by both slots: which language is

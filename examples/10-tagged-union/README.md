@@ -44,7 +44,16 @@ cgo·purego 테스트가 통과하고 variant 접근, 스냅샷과 JSON 왕복�
 | `RGB`, `Flags` | packed 값 | backing 변환과 필드 API |
 
 JSON 플러그인은 열거형을 Zig 태그 문자열로, 값 타입을 정한 필드 이름으로 marshal합니다. enumkit은
-`ModeValues()`와 `IsKnown()`을 추가합니다. 렌더링 플러그인은 Go 표면만 확장하며 C ABI를
+`ModeValues()`와 `IsKnown()`을 추가합니다.
+
+`Mode`에는 두 플러그인이 모두 붙어 있고, 그래서 두 플러그인이 capability로 주고받는 모습이
+여기 있습니다. `Mode.UnmarshalJSON`은 자기 태그 목록을 들고 있지 않고 enumkit이 쓴
+`ModeValues()`와 `IsKnown()`으로 태그 이름을 해석하므로, 알려지지 않은 이름은
+`Mode: unknown value "retired"`가 되고 "알려진 태그"의 정의는 `IsKnown()` 한 곳에만
+있습니다(`go/tagged_union/plugin_json_test.go`). 두 플러그인을 함께 붙이지 않은 열거형의
+출력은 달라지지 않습니다.
+
+렌더링 플러그인은 Go 표면만 확장하며 C ABI를
 바꾸지 않습니다. union variant 추가나 스냅샷 배치 변경은 ABI 변경이 될 수 있습니다.
 
 ## 관련 문서

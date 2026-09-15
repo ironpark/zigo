@@ -55,12 +55,17 @@ error입니다. 같은 플러그인을 한 entry에 두 번 붙이면 컴파일 
 
 ## 동봉 플러그인
 
-| 플러그인 | 렌더링 slot | 하는 일 |
-|---|---|---|
-| `plugins/buildinfo` | `go`, `rust` (+ `native`) | 네이티브 library의 빌드 정보 문자열 |
-| `plugins/enumkit` | `go`, `rust` | enum 값 목록과 알려진 tag 판별 |
-| `plugins/json` | `go` | value 타입의 `MarshalJSON`/`UnmarshalJSON` |
-| `plugins/satisfies` | `go` | 검사한 interface claim과 컴파일 타임 단언 (표준 interface와 선언한 interface 참조) |
+| 플러그인 | 렌더링 slot | capability | 하는 일 |
+|---|---|---|---|
+| `plugins/buildinfo` | `go`, `rust` (+ `native`) | — | 네이티브 library의 빌드 정보 문자열 |
+| `plugins/enumkit` | `go`, `rust` | provides `enum_known` | enum 값 목록과 알려진 tag 판별 |
+| `plugins/json` | `go` | uses `enum_known` | value 타입의 `MarshalJSON`/`UnmarshalJSON` |
+| `plugins/satisfies` | `go` | — | 검사한 interface claim과 컴파일 타임 단언 (표준 interface와 선언한 interface 참조) |
+
+`enum_known`은 동봉 플러그인 둘이 실제로 주고받는 계약입니다. 한 enum에 두 플러그인을 모두
+붙이면 json의 `UnmarshalJSON`이 자기 tag 목록 대신 enumkit이 쓴 `<Type>Values()`와
+`IsKnown()`으로 tag 이름을 해석하므로, "알려진 tag"의 정의가 한 곳에만 남습니다. 읽는 쪽을
+쓰는 방법은 [Plugin 작성](authoring.md#다른-플러그인의-capability-사용하기)에 있습니다.
 
 플러그인은 생성 코드만이 아니라 네이티브 쪽에도 기여할 수 있습니다. Zig 소스를 실어
 보내면 생성된 shim이 그것을 컴파일하고, 선언한 C 심볼마다 `export` wrapper를 씁니다.
@@ -137,13 +142,13 @@ Go 쪽 연결은 [00-quick-start](../../examples/00-quick-start/README.md), Rust
 
 그래서 `src/gen/plugins/`의 소스가 곧 참조 구현입니다.
 
-| 파일 | 보여 주는 것 |
-|---|---|
-| `src/gen/plugins/iterator.zig` | function node 방문, 옵션 검증, builder로 메서드 추가 |
-| `src/gen/plugins/implements.zig` | 한 플러그인이 function·type·file 경계를 모두 쓰는 법, `claims`로 공개 메서드 대체 |
-| `src/gen/plugins/must.zig` | capability를 발행하고 `analyze`에서 fact를 남기는 법 |
-| `src/gen/plugins/interfaces.zig` | 다른 플러그인의 capability를 `uses`로 읽는 법 |
-| `src/gen/plugins/session.zig` | 여러 선언을 묶어 새 Go 타입을 만드는 법 |
+| 파일 | capability | 보여 주는 것 |
+|---|---|---|
+| `src/gen/plugins/iterator.zig` | uses `must_variant`, `implements_wrappers` | function node 방문, 옵션 검증, builder로 메서드 추가 |
+| `src/gen/plugins/implements.zig` | provides `implements_wrappers` | 한 플러그인이 function·type·file 경계를 모두 쓰는 법, `claims`로 공개 메서드 대체 |
+| `src/gen/plugins/must.zig` | provides `must_variant` | capability를 발행하고 `analyze`에서 fact를 남기는 법 |
+| `src/gen/plugins/interfaces.zig` | uses `must_variant` | 다른 플러그인의 capability를 `uses`로 읽는 법 |
+| `src/gen/plugins/session.zig` | — | 여러 선언을 묶어 새 Go 타입을 만드는 법 |
 
 ## 문서 구성
 

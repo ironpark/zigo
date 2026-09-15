@@ -394,6 +394,7 @@ fn analyze(context: api.AnalyzeContext) !void {
 |---|---|---|
 | `plugin.capabilities.must_variant` | `MUST` | `struct { name: []const u8 }` — 생성된 `Must...` 이름. fact가 없는 함수는 companion이 없습니다 |
 | `plugin.capabilities.implements_wrappers` | `IMPLEMENTS` | `struct {}` — 순서 전용 |
+| `plugin.capabilities.enum_known` | `ENUMKIT` | `struct { is_known: bool, values: bool }` — 그 enum에 `<Type>.IsKnown()`과 `<Type>Values()`가 쓰였는지. 이름은 capability의 규약이므로 consumer가 그대로 씁니다 |
 
 ## 검증과 facts
 

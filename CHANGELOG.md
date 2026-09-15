@@ -54,9 +54,15 @@
 ### Added
 
 - `plugin.Capability`와 `plugin.capabilities`: 계약이 발행하는 capability는
-  `must_variant`(`MUST`가 붙인 `Must...` companion의 이름)와
-  `implements_wrappers`(`IMPLEMENTS`의 순서 전용 계약)입니다. 실을 데이터가 없는
-  capability는 `Facts = struct {}`로 두면 순서만 정합니다.
+  `must_variant`(`MUST`가 붙인 `Must...` companion의 이름),
+  `implements_wrappers`(`IMPLEMENTS`의 순서 전용 계약),
+  `enum_known`(`ENUMKIT`이 그 enum에 `<Type>Values()`와 `<Type>.IsKnown()`을 썼는지)입니다.
+  실을 데이터가 없는 capability는 `Facts = struct {}`로 두면 순서만 정합니다.
+- 동봉 플러그인 `json`과 `enumkit`이 `enum_known`으로 붙습니다. 한 enum에 둘 다 붙이면
+  json의 `UnmarshalJSON`이 자기 tag `switch` 대신 enumkit이 쓴 `<Type>Values()`와
+  `IsKnown()`으로 tag 이름을 해석하므로, "알려진 tag"를 정하는 코드가 `IsKnown()` 하나만
+  남습니다. error 형태(`Mode: unknown value %q`)와 받아들이는 이름 집합은 그대로이고,
+  두 플러그인을 같은 enum에 붙이지 않은 바인딩의 출력은 한 바이트도 달라지지 않습니다.
 - 모든 context의 `provided(cap)`: 그 capability를 발행하는, 등록·활성화된 플러그인이
   있는지 답합니다. `uses`로 읽는 쪽이 보기 전에 묻는 질문입니다.
 - 참조 타입 옵션: `plugin.ref`의 세 타입은 어느 옵션 struct에서든 field 하나로, optional로,

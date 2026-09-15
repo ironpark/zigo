@@ -209,6 +209,7 @@ pub fn addRepositorySteps(
         "tests/generator_cases/nested_namespace/expected",
         "tests/generator_cases/plugin_disabled/expected",
         "tests/generator_cases/plugin_json/expected",
+        "tests/generator_cases/plugin_json_enumkit/expected",
         "tests/generator_cases/plugin_satisfies/expected",
         "tests/generator_cases/options_required_fields/expected",
         "tests/generator_cases/optional/expected",
@@ -537,6 +538,17 @@ pub fn addRepositorySteps(
         run.expectStdErrMatch(case[2]);
         test_step.dependOn(&run.step);
     }
+    const json_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("plugins/json/src/plugin.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "plugin", .module = showcase_modules.plugin },
+            .{ .name = "semantic", .module = showcase_modules.semantic },
+            .{ .name = "diagnostic", .module = showcase_modules.diagnostic },
+        },
+    }) });
+    test_step.dependOn(&b.addRunArtifact(json_tests).step);
     const enumkit_tests = b.addTest(.{ .root_module = b.createModule(.{
         .root_source_file = b.path("plugins/enumkit/src/plugin.zig"),
         .target = target,

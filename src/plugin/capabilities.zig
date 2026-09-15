@@ -27,3 +27,22 @@ pub const implements_wrappers: contract.Capability = .{
     .name = "zigo.implements_wrappers",
     .Facts = struct {},
 };
+
+/// `ENUMKIT`: one fact per enum the plugin attached to, saying which of its
+/// membership helpers reached the generated surface.
+///
+/// The names are the capability's own convention, so a consumer spells them
+/// without asking the provider: `<Type>Values()` lists the known values in
+/// declaration order, and `<Type>.IsKnown()` reports whether one value is an
+/// exported tag. A consumer that has to turn a tag name back into a value
+/// reads both -- the list is the candidates, `IsKnown` is the membership
+/// test -- and never restates the tag set itself.
+pub const enum_known: contract.Capability = .{
+    .name = "zigo.enum_known",
+    .Facts = struct {
+        /// Whether `<Type>.IsKnown()` is written for this enum.
+        is_known: bool,
+        /// Whether `<Type>Values()` is written for this enum.
+        values: bool,
+    },
+};

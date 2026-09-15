@@ -269,6 +269,74 @@ fn analyze(context: api.AnalyzeContext) !void {
 씁니다. `provides`에 없는 capability에 쓰면 컴파일 error입니다. 자세한 규칙은
 [API 참조](api-reference.md#capability)에 있습니다.
 
+## 다른 플러그인의 capability 사용하기
+
+동봉 플러그인 둘이 실제로 이 방식으로 붙어 있습니다. `enumkit`은 enum에 `<Type>Values()`와
+`IsKnown()`을 쓰고, `json`은 그 enum의 `UnmarshalJSON`을 씁니다. 두 코드가 각자 tag 목록을
+들고 있으면 옵션 하나만 바뀌어도 "알려진 tag"의 정의가 둘로 갈라지므로, `json`은
+`enum_known`을 통해 `enumkit`이 무엇을 썼는지만 묻고 판단은 넘깁니다.
+
+쓰는 쪽은 capability를 `provides`에 넣고 `analyze`에서 선언마다 fact를 남깁니다.
+
+```zig
+pub const known = api.capabilities.enum_known;
+pub const plugin: api.Plugin = .{
+    .name = "ENUMKIT",
+    .provides = &.{known},
+    .analyze = analyze,
+    // ...
+};
+
+fn analyze(context: api.AnalyzeContext) !void {
+    for (context.render.program.types) |declaration| {
+        if (declaration.kind != .@"enum") continue;
+        const options = try context.optionsOf(plugin, .type, declaration.ext) orelse continue;
+        try context.provide(plugin, known, .declaration(declaration), .{
+            .is_known = options.is_known,
+            .values = options.values,
+        });
+    }
+}
+```
+
+읽는 쪽은 capability를 `uses`에 넣기만 하면 `enumkit`보다 뒤에 실행되는 것이 보장되므로,
+렌더링 slot에서 fact를 읽어도 이미 채워져 있습니다.
+
+```zig
+pub const plugin: api.Plugin = .{
+    .name = "JSON",
+    .uses = &.{api.capabilities.enum_known},
+    .go = .{ .visit = visit },
+    // ...
+};
+
+fn hasMembershipHelpers(context: api.GoContext, declaration: semantic.TypeDecl) !bool {
+    const known = api.capabilities.enum_known;
+    // provider가 아예 없는 빌드에서는 fact를 찾을 필요도 없습니다.
+    if (!context.provided(known)) return false;
+    const fact = try context.facts.get(known, .declaration(declaration)) orelse return false;
+    // 둘 다 옵션 하나로 꺼질 수 있으므로 한쪽만 있는 fact는 쓸 수 없습니다.
+    return fact.is_known and fact.values;
+}
+```
+
+`hasMembershipHelpers`가 참이면 생성되는 `UnmarshalJSON`은 tag 목록 대신 상대 플러그인의
+결과를 돌립니다.
+
+```go
+for _, candidate := range ModeValues() {
+	if candidate.IsKnown() && candidate.String() == text {
+		*value = candidate
+		return nil
+	}
+}
+return fmt.Errorf("Mode: unknown value %q", text)
+```
+
+거짓이면 -- `enumkit`이 등록되지 않았거나, 이 enum에 붙지 않았거나, 옵션으로 꺼졌을 때 --
+예전과 같은 `switch`가 그대로 나옵니다. 두 플러그인을 같은 enum에 붙이지 않은 바인딩의
+출력은 한 바이트도 달라지지 않습니다.
+
 ## 별도 Go file
 
 기존 타입 바로 뒤에 코드를 붙일 필요가 없다면 slot의 `source_files`를 사용합니다.

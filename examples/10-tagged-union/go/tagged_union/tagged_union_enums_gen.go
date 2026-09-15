@@ -34,28 +34,6 @@ func (value Mode) String() string {
 	return "Mode(" + strconv.Itoa(int(value)) + ")"
 }
 
-// MarshalJSON encodes Mode as its Zig tag name.
-func (value Mode) MarshalJSON() ([]byte, error) { return json.Marshal(value.String()) }
-
-// UnmarshalJSON decodes a Zig tag name written by MarshalJSON.
-func (value *Mode) UnmarshalJSON(data []byte) error {
-	var text string
-	if err := json.Unmarshal(data, &text); err != nil {
-		return err
-	}
-	switch text {
-	case "idle":
-		*value = ModeIdle
-	case "active":
-		*value = ModeActive
-	case "paused":
-		*value = ModePaused
-	default:
-		return fmt.Errorf("Mode: unknown value %q", text)
-	}
-	return nil
-}
-
 // ModeValues returns a fresh slice of known values in declaration order.
 func ModeValues() []Mode {
 	return []Mode{
@@ -68,6 +46,27 @@ func ModeValues() []Mode {
 // IsKnown reports whether value is an exported tag; unknown open-enum values return false.
 func (value Mode) IsKnown() bool {
 	return value >= 0 && value <= 2
+}
+
+// MarshalJSON encodes Mode as its Zig tag name.
+func (value Mode) MarshalJSON() ([]byte, error) { return json.Marshal(value.String()) }
+
+// UnmarshalJSON decodes a Zig tag name written by MarshalJSON.
+//
+// ModeValues supplies the candidates and IsKnown decides which of them a name may
+// select, so this and the membership helpers cannot disagree.
+func (value *Mode) UnmarshalJSON(data []byte) error {
+	var text string
+	if err := json.Unmarshal(data, &text); err != nil {
+		return err
+	}
+	for _, candidate := range ModeValues() {
+		if candidate.IsKnown() && candidate.String() == text {
+			*value = candidate
+			return nil
+		}
+	}
+	return fmt.Errorf("Mode: unknown value %q", text)
 }
 
 // ValueTag represents the corresponding Zig enum.

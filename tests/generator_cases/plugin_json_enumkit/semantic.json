@@ -1,0 +1,85 @@
+{
+  "functions": [
+    {
+      "name": "echoMode",
+      "params": [
+        {
+          "direction": "in",
+          "name": "mode",
+          "type": {
+            "kind": "enum",
+            "ref": "Mode"
+          }
+        },
+        {
+          "direction": "in",
+          "name": "channel",
+          "type": {
+            "kind": "enum",
+            "ref": "Channel"
+          }
+        }
+      ],
+      "return": {
+        "kind": "enum",
+        "ref": "Mode"
+      },
+      "symbol": "zg_echo_mode"
+    }
+  ],
+  "ir_version": 1,
+  "package": "palette",
+  "prefix": "zg",
+  "types": [
+    {
+      "exhaustive": true,
+      "ext": {
+        "ENUMKIT": {},
+        "JSON": {}
+      },
+      "fields": [
+        {
+          "name": "idle",
+          "value": 0
+        },
+        {
+          "name": "active",
+          "value": 1
+        }
+      ],
+      "kind": "enum",
+      "name": "Mode",
+      "tag_type": {
+        "bits": 8,
+        "is_usize": false,
+        "kind": "int",
+        "signed": false
+      }
+    },
+    {
+      "exhaustive": true,
+      "ext": {
+        "JSON": {}
+      },
+      "fields": [
+        {
+          "name": "left",
+          "value": 0
+        },
+        {
+          "name": "right",
+          "value": 1
+        }
+      ],
+      "kind": "enum",
+      "name": "Channel",
+      "tag_type": {
+        "bits": 8,
+        "is_usize": false,
+        "kind": "int",
+        "signed": false
+      }
+    }
+  ],
+  "zig_version": "0.16.0"
+}

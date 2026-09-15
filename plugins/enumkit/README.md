@@ -29,6 +29,17 @@ let known = Mode::try_from(255).map(|mode| mode.is_known());
 - Go adapter가 지정된 enum은 지원하지 않으며 `ENUMKIT002` 진단을 냅니다.
 - `.text = true` 및 JSON 플러그인과 함께 사용할 수 있습니다. 생성될 `<Type>Values`와 `IsKnown` 이름은 사용자 선언에서 비워 두세요.
 
+## 다른 플러그인에 알리는 것
+
+이 플러그인은 붙은 enum마다 capability `plugin.capabilities.enum_known`으로 fact 하나를
+남깁니다. 실리는 것은 `is_known`과 `values`, 즉 두 도우미가 실제로 쓰였는지 뿐이고, 이름은
+capability의 규약(`<Type>Values()`와 `<Type>.IsKnown()`)이므로 읽는 쪽이 그대로 씁니다.
+
+[json 플러그인](../json/README.md)이 그 소비자입니다. 한 enum에 두 플러그인을 모두 붙이면
+json의 `UnmarshalJSON`이 자기 tag 목록 대신 이 플러그인이 쓴 두 도우미로 tag 이름을
+해석하므로, "알려진 tag"를 정하는 코드는 `IsKnown()` 하나만 남습니다. 옵션으로 `values`나
+`is_known`을 끄면 json은 예전의 `switch`로 되돌아갑니다.
+
 ## Rust 출력
 
 같은 옵션이 crate의 enum 옆 `impl` block 하나로 나옵니다. 두 옵션을 모두 끄면 block 자체를
