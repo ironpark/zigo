@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-15T02:25:43Z"
 depends_on:
 - "203-plugin-targets-and-native#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: The TEST plugin's symbol appears in the C header, `raw_gen.go` (cgo and purego), and `src/raw.rs` goldens, and `abi-diff` lists it when added.
 > NEXT: none
