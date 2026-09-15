@@ -451,6 +451,10 @@ pub fn addRepositorySteps(
             test_step.dependOn(&go_test.step);
         }
     }
+    const capability_prelude =
+        "const api = @import(\"plugin\");\n" ++
+        "const CAP: api.Capability = .{ .name = \"CAP\", .Facts = struct {} };\n" ++
+        "const OTHER: api.Capability = .{ .name = \"OTHER\", .Facts = struct {} };\n";
     inline for (.{
         .{ "old-version", ".{ .name = \"BAD\", .min_contract = .{ .major = 1, .minor = 1 } }", "incompatible plugin contract: BAD" },
         .{ "raw-scope", ".{ .name = \"BAD\", .go = .{ .source_files = &.{.{ .package = .raw, .pathAlloc = undefined, .render = undefined }} } }", "raw Go files require document scope: BAD" },
@@ -459,12 +463,26 @@ pub fn addRepositorySteps(
         .{ "rust-module", ".{ .name = \"BAD\", .rust = .{ .source_files = &.{.{ .module = \"not a module\", .render = undefined }} } }", "plugin Rust module name is not an identifier: BAD" },
         .{ "version", ".{ .name = \"BAD\", .min_contract = .{ .major = 99, .minor = 0 } }", "incompatible plugin contract: BAD" },
         .{ "duplicate", ".{ .name = \"A\" }, .{ .name = \"A\" }", "duplicate plugin: A" },
-        .{ "dependency", ".{ .name = \"A\", .requires = &.{\"MISSING\"} }", "missing plugin dependency: A requires MISSING" },
-        .{ "cycle", ".{ .name = \"A\", .after = &.{\"B\"} }, .{ .name = \"B\", .after = &.{\"A\"} }", "cycle in plugin ordering" },
+        .{ "dependency", ".{ .name = \"A\", .requires = &.{CAP} }", "missing capability provider: A requires CAP" },
+        .{ "cycle", ".{ .name = \"A\", .provides = &.{CAP}, .uses = &.{OTHER} }, .{ .name = \"B\", .provides = &.{OTHER}, .uses = &.{CAP} }", "cycle in plugin ordering" },
+        .{ "duplicate-provider", ".{ .name = \"A\", .provides = &.{CAP} }, .{ .name = \"B\", .provides = &.{CAP} }", "duplicate capability provider: CAP" },
     }) |case| {
-        const source = b.addWriteFiles().add(case[0] ++ ".zig", "comptime { _ = @import(\"plugin\").ordered(&.{" ++ case[1] ++ "}); }\n");
+        const source = b.addWriteFiles().add(case[0] ++ ".zig", capability_prelude ++ "comptime { _ = api.ordered(&.{" ++ case[1] ++ "}); }\n");
         const rejected = b.addTest(.{ .root_module = b.createModule(.{ .root_source_file = source, .target = target, .optimize = optimize, .imports = &.{.{ .name = "plugin", .module = generator_modules.plugin }} }) });
         rejected.expect_errors = .{ .contains = case[2] };
+        test_step.dependOn(&rejected.step);
+    }
+    // Writing a fact under a capability the plugin never published is the
+    // same kind of registration error, caught where the write is spelled.
+    {
+        const source = b.addWriteFiles().add("non_provider.zig", capability_prelude ++
+            "const P: api.Plugin = .{ .name = \"A\", .uses = &.{CAP} };\n" ++
+            "pub fn record(context: api.AnalyzeContext) !void {\n" ++
+            "    try context.provide(P, CAP, .{ .kind = .document, .name = \"\" }, .{});\n" ++
+            "}\n" ++
+            "comptime { _ = &record; }\n");
+        const rejected = b.addTest(.{ .root_module = b.createModule(.{ .root_source_file = source, .target = target, .optimize = optimize, .imports = &.{.{ .name = "plugin", .module = generator_modules.plugin }} }) });
+        rejected.expect_errors = .{ .contains = "plugin does not provide capability: A does not provide CAP" };
         test_step.dependOn(&rejected.step);
     }
     // Compile the complete external-plugin surface, including a foreign

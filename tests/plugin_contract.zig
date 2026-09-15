@@ -64,6 +64,25 @@ test "the generator speaks plugin contract 7.0 and the fixture plugin is written
     try std.testing.expectEqual(plugin.contract_version.major, contract.plugin.min_contract.major);
 }
 
+test "a capability orders every consumer after its provider and stays typed across plugins" {
+    // The fixture publishes both halves a capability has: a typed facts
+    // contract and an ordering-only one. A consumer names the capability,
+    // never the plugin behind it.
+    const consumer: plugin.Plugin = .{ .name = "CONSUMER", .requires = &.{contract.validated}, .uses = &.{contract.lifecycle} };
+    const entries = plugin.ordered(&.{ consumer, contract.plugin });
+    try std.testing.expectEqualStrings("CONTRACT", entries[0].name);
+    try std.testing.expectEqualStrings("CONSUMER", entries[1].name);
+    try std.testing.expect(contract.plugin.providesCapability(contract.validated));
+    try std.testing.expect(!consumer.providesCapability(contract.validated));
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var facts: plugin.Facts = .{};
+    const id: plugin.DeclarationId = .{ .kind = .document, .name = "" };
+    try facts.put(arena.allocator(), contract.validated, id, .{ .validated = true });
+    try std.testing.expect((try facts.get(contract.validated, id)).?.validated);
+}
+
 test "plugin configuration overrides compiled defaults by registered name" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

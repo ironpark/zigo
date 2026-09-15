@@ -52,6 +52,19 @@ pub fn contributes(comptime index: usize, selected: ?[]const []const u8) bool {
     return false;
 }
 
+/// The capabilities the enabled plugins provide, by name. A context carries
+/// this so `context.provided(cap)` answers without the contract having to see
+/// the registry.
+pub fn capabilityNamesAlloc(allocator: @import("std").mem.Allocator, selected: ?[]const []const u8, target: targets.Target) ![]const []const u8 {
+    var names: @import("std").ArrayList([]const u8) = .empty;
+    inline for (plugins, 0..) |registered, index| {
+        if (runs(index, selected, target)) inline for (registered.provides) |published| {
+            try names.append(allocator, published.name);
+        };
+    }
+    return names.toOwnedSlice(allocator);
+}
+
 /// Validation and emission share the same selection; built-ins always run.
 pub fn runs(comptime index: usize, selected: ?[]const []const u8, target: targets.Target) bool {
     // The output language gates first, and gates the built-ins too: a

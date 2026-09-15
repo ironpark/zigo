@@ -240,6 +240,35 @@ reflection이 기록한 Zig 소스 위치(파일, 줄, 열)를 가리키고, 위
 않는 플러그인은 `002`부터 시작해도 됩니다. core 진단을 숨기지 않도록 core 검증이 먼저
 실행됩니다.
 
+## 다른 플러그인과 주고받기
+
+다른 플러그인이 계산한 결과가 필요하면 그 플러그인의 이름이 아니라 **capability**를 지목합니다.
+capability는 이름이 붙은 typed facts 계약이고, provider가 `provides`로 발행하고 consumer가
+`uses`(있을 때만)나 `requires`(반드시 있어야 함)로 읽습니다. 어느 쪽이든 provider가 먼저
+실행됩니다.
+
+```zig
+pub const plugin: api.Plugin = .{
+    .name = "KNOWN",
+    // MUST가 `Must...` companion을 붙인 method는 여기서도 그렇게 다룹니다.
+    .uses = &.{api.capabilities.must_variant},
+    .analyze = analyze,
+    // ...
+};
+
+fn analyze(context: api.AnalyzeContext) !void {
+    if (!context.provided(api.capabilities.must_variant)) return;
+    for (context.render.program.functions) |function| {
+        const fact = try context.facts.get(api.capabilities.must_variant, .function(function.origin.*)) orelse continue;
+        _ = fact.name; // 생성된 companion 이름
+    }
+}
+```
+
+자기 결과를 남길 때는 capability를 선언해 `provides`에 넣고 `context.provide(plugin, cap, id, value)`로
+씁니다. `provides`에 없는 capability에 쓰면 컴파일 error입니다. 자세한 규칙은
+[API 참조](api-reference.md#capability)에 있습니다.
+
 ## 별도 Go file
 
 기존 타입 바로 뒤에 코드를 붙일 필요가 없다면 slot의 `source_files`를 사용합니다.

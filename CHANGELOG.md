@@ -25,6 +25,23 @@
   | 플러그인 자체 rule 번호는 `002`부터 | 참조 옵션을 선언하면 `003`부터 (`002`는 core 예약) |
   | `satisfies`의 `interfaces`는 검사하지 않는 이름 문자열 | 표준 interface는 검사되는 이름, 선언한 interface는 `generated` 참조 |
 
+- 플러그인 API 7.0: 플러그인 사이의 순서와 공유 데이터가 이름 문자열이 아니라
+  **capability**로 묶입니다. `Plugin.after`와 문자열 `Plugin.requires`가 사라지고
+  `provides`/`requires`/`uses: []const Capability`가 그 자리를 받습니다. capability는
+  이름과 `Facts` 타입을 가진 계약이라, consumer는 provider 플러그인이 누구인지 몰라도
+  되고 `Facts`는 양쪽이 같은 선언을 공유하므로 타입이 어긋날 수 없습니다. 내장
+  플러그인의 capability는 `plugin.capabilities`가 내보냅니다. 호환 shim은 없습니다.
+
+  | 이전 (6.0) | 이후 (7.0) |
+  |---|---|
+  | `.after = &.{"MUST"}` | `.uses = &.{plugin.capabilities.must_variant}` |
+  | `.requires = &.{"MUST"}` | `.requires = &.{<capability>}` (provider가 없으면 컴파일 error) |
+  | 의존 대상이 없어도 되는지 hook이 스스로 추측 | `context.provided(cap)` |
+  | `Plugin.Facts: type` | `Capability.Facts: type` |
+  | `facts.put(allocator, plugin, id, value)` | `context.provide(plugin, cap, id, value)` (`provides`에 없으면 컴파일 error) |
+  | `facts.get(plugin, id)` | `context.facts.get(cap, id)` |
+  | 같은 이름의 플러그인이 둘이면 컴파일 error | 같은 capability의 provider가 둘이어도 컴파일 error (`multi = true` 제외) |
+
 - `satisfies` 플러그인 옵션: `interfaces`는 이제 플러그인이 아는 Go 표준 라이브러리
   interface 이름만 받고, 바인딩이 `zigo.interface(...)`로 선언한 interface는 새
   `generated: []const plugin.ref.Interface` field에 참조로 적습니다. 두 claim 모두
@@ -36,6 +53,12 @@
 
 ### Added
 
+- `plugin.Capability`와 `plugin.capabilities`: 계약이 발행하는 capability는
+  `must_variant`(`MUST`가 붙인 `Must...` companion의 이름)와
+  `implements_wrappers`(`IMPLEMENTS`의 순서 전용 계약)입니다. 실을 데이터가 없는
+  capability는 `Facts = struct {}`로 두면 순서만 정합니다.
+- 모든 context의 `provided(cap)`: 그 capability를 발행하는, 등록·활성화된 플러그인이
+  있는지 답합니다. `uses`로 읽는 쪽이 보기 전에 묻는 질문입니다.
 - 참조 타입 옵션: `plugin.ref`의 세 타입은 어느 옵션 struct에서든 field 하나로, optional로,
   slice로 쓸 수 있고 중첩 struct 안에서도 동작합니다. JSON에서는 문자열 하나입니다.
 - `ContextBase.resolveType`/`resolveFunction`/`resolveInterface`와 같은 세 메서드의

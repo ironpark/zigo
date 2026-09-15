@@ -17,8 +17,10 @@ configuration and dependency checks
   → rendering hooks and outputs
 ```
 
-`requires`는 플러그인이 등록·활성화되어야 하는 의존성이고 먼저 실행됩니다. `after`는 존재할
-때만 순서를 정합니다. cycle과 duplicate 이름은 컴파일 error입니다.
+순서는 이름이 아니라 **capability**가 정합니다. `requires`의 capability는 등록·활성화된
+provider가 있어야 하고, `uses`의 capability는 있을 때만 순서를 정합니다. 어느 쪽이든 그
+capability를 `provides`한 플러그인이 모두 먼저 실행됩니다. cycle과 duplicate 이름은 컴파일
+error입니다.
 
 ## `Plugin`
 
@@ -27,7 +29,6 @@ configuration and dependency checks
 | `min_contract` | 현재 7.0 | 필요한 계약 version |
 | `name` | 필수 | 식별 정보와 진단 접두사 |
 | `Config` | `struct {}` | 빌드 전체 설정 타입 |
-| `Facts` | `struct {}` | analyze 결과의 typed storage |
 | `FunctionOptions` | `struct {}` | 함수 연결 옵션 |
 | `TypeOptions` | `struct {}` | 타입 연결 옵션 |
 | `ParamOptions` | `struct {}` | 매개변수 연결 옵션 |
@@ -35,8 +36,9 @@ configuration and dependency checks
 | `FieldOptions` | `struct {}` | value·materialized 구조체 field 연결 옵션 |
 | `TagOptions` | `struct {}` | 등록된 enum tag 연결 옵션 |
 | `subjects` | 모든 node 종류 | 연결되는 node 종류 제한. 출력 언어가 아니라 node kind입니다 |
-| `requires` | empty | 필수 플러그인 의존성 |
-| `after` | empty | optional ordering constraint |
+| `provides` | empty | 발행하는 capability 목록 |
+| `requires` | empty | provider가 반드시 있어야 하는 capability |
+| `uses` | empty | 있을 때만 읽는 capability |
 | `transform` | null | semantic document 교체·추가·제거 |
 | `name_type` | null | 타입과 core reference rename |
 | `map_type` | null | 기존 Go 어댑터 선택 |
@@ -198,25 +200,25 @@ const hidden = try plugin.builtins.implements.hidesOriginal(allocator, function.
 `TransformContext`:
 
 - `allocator`, 불변 입력 `document`, configurations, diagnostics, `target`
-- `config`, `optionsOf`, `diagnose`
+- `config`, `optionsOf`, `diagnose`, `provided(cap)`
 - `reorderParameters(function, new_order)`
 
 `ValidateContext`:
 
 - `allocator`, validated semantic `document`, configurations, diagnostics, `facts`(쓰기 가능), `target`
-- `config`, `optionsOf`, `diagnose`
+- `config`, `optionsOf`, `diagnose`, `provide(plugin, cap, id, value)`, `provided(cap)`
 
 `AnalyzeContext`:
 
 - 언어 중립 view인 `render`(`ContextBase`)
 - 이번 실행 target의 렌더링 context가 들어 있는 `go`/`rust` slot. 나머지 하나는 `null`입니다
 - `facts`(쓰기 가능), diagnostics
-- `config`, `optionsOf`, `diagnose`
+- `config`, `optionsOf`, `diagnose`, `provide(plugin, cap, id, value)`, `provided(cap)`
 
 `ContextBase` — 모든 렌더링 context가 공유하는 절반:
 
 - lowered `program`, allocator, `options`(아래 `PluginOptions`), 읽기 전용 `facts`
-- `target()`, `config`, `optionsOf`, `publicFilePathAlloc`
+- `target()`, `provided(cap)`, `config`, `optionsOf`, `publicFilePathAlloc`
 - `nativeSymbols(plugin)` — 이 플러그인 자신의 네이티브 심볼을 lowering이 넣은 모습
   (`[]const abi.AbiFn`)으로 돌려줍니다. 감싸는 쪽은 여기서 읽은 `symbol`을 `rawCall`에
   넘기므로 이름이 어긋날 수 없습니다
@@ -330,15 +332,79 @@ context의 `options`는 플러그인이 볼 수 있는 실행 정보만 담은 v
 later 플러그인은 앞선 플러그인의 결과를 봅니다. 플러그인-owned opaque extension JSON은 타입 rename으로
 자동 수정되지 않습니다.
 
+## Capability
+
+capability는 플러그인 사이의 **이름이 붙은 typed facts 계약**입니다. provider가 발행하고
+consumer가 읽습니다. consumer는 상대 플러그인이 아니라 capability를 지목하므로, provider를
+다른 플러그인으로 교체해도 consumer는 그대로입니다.
+
+```zig
+pub const Capability = struct {
+    name: []const u8,
+    Facts: type,          // 이 capability가 싣는 값. 없으면 `struct {}`
+    multi: bool = false,  // provider가 둘 이상일 수 있는지
+};
+```
+
+선언은 양쪽이 공유하는 module에 둡니다. 내장 플러그인의 capability는 계약 자신이
+`plugin.capabilities`로 re-export합니다.
+
+```zig
+const api = @import("plugin");
+
+pub const plugin: api.Plugin = .{
+    .name = "DOCS",
+    // 이 플러그인이 발행하는 계약
+    .provides = &.{docs_summary},
+    // provider가 없으면 등록 자체가 거부됩니다
+    .requires = &.{api.capabilities.implements_wrappers},
+    // 있을 때만 읽습니다
+    .uses = &.{api.capabilities.must_variant},
+    .analyze = analyze,
+};
+
+pub const docs_summary: api.Capability = .{ .name = "DOCS.summary", .Facts = struct { text: []const u8 } };
+
+fn analyze(context: api.AnalyzeContext) !void {
+    for (context.render.program.functions) |function| {
+        // 쓰기: `provides`에 없는 capability면 컴파일 error입니다.
+        try context.provide(plugin, docs_summary, .function(function.origin.*), .{ .text = "..." });
+        // 읽기: capability만 알면 됩니다.
+        if (try context.facts.get(api.capabilities.must_variant, .function(function.origin.*))) |must| {
+            _ = must.name; // 생성된 `Must...` 이름
+        }
+    }
+}
+```
+
+순서 규칙은 셋뿐입니다.
+
+- `requires`는 hard입니다: 등록된 provider가 없으면 컴파일 error, 활성화된 provider가 없으면
+  `DisabledPluginDependency`입니다. provider는 모두 먼저 실행됩니다.
+- `uses`는 soft입니다: provider가 있으면 먼저 실행되고, 없으면 facts가 비어 있을 뿐입니다.
+  `context.provided(cap)`이 모든 context에서 그 여부를 답합니다.
+- 같은 capability를 두 플러그인이 `provides`하면 컴파일 error입니다. `multi = true`인
+  capability만 provider를 여럿 가질 수 있습니다.
+
+실을 데이터가 없는 capability는 `Facts = struct {}`로 두면 순서만 정하는 계약이 됩니다.
+
+### 계약이 발행하는 capability
+
+| capability | provider | `Facts` |
+|---|---|---|
+| `plugin.capabilities.must_variant` | `MUST` | `struct { name: []const u8 }` — 생성된 `Must...` 이름. fact가 없는 함수는 companion이 없습니다 |
+| `plugin.capabilities.implements_wrappers` | `IMPLEMENTS` | `struct {}` — 순서 전용 |
+
 ## 검증과 facts
 
 진단은 `severity`, 플러그인-owned `code`, `message`, `site`와 `hint`를 가집니다. 여러 문제를
 한 번에 append할 수 있습니다.
 
-`Facts.put`과 `Facts.get`은 플러그인 식별 정보와 `DeclarationId`를 key로 하는 typed storage입니다.
-validation/analyze에서 계산한 결과를 렌더링 hook이 소스 text 재분석 없이 읽도록 사용합니다.
-중복 put과 잘못된 타입 read는 오류입니다. 접근 경로는 하나입니다: `ValidateContext.facts`와
-`AnalyzeContext.facts`는 쓰고, 렌더링 `Context.facts`는 읽기만 합니다.
+`Facts`는 capability와 `DeclarationId`를 key로 하는 typed storage입니다. validation/analyze에서
+계산한 결과를 렌더링 hook이 소스 text 재분석 없이 읽도록 사용합니다. 중복 put과 잘못된 타입
+read는 오류입니다. 접근 경로는 하나입니다: `ValidateContext.provide`와 `AnalyzeContext.provide`가
+쓰고 -- 쓰는 플러그인이 그 capability를 `provides`하는지 comptime에 확인합니다 -- 렌더링
+`Context.facts`는 읽기만 합니다.
 
 진단의 `site`는 `plugin.site`가 만듭니다. `functionSite(function)`/`functionSiteFor(function, path)`와
 `typeSite(declaration)`/`typeSiteFor(declaration, name)`은 reflection이 기록한 Zig 소스 위치를

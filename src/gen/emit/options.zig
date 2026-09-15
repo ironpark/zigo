@@ -103,6 +103,9 @@ pub const Options = struct {
     /// What the plugins' `analyze` recorded; rendering reads it through the
     /// context's read-only view.
     facts: *const plugin.Facts = &.{},
+    /// The capabilities the enabled plugins provide, by name, which is what
+    /// `context.provided(cap)` answers from.
+    capabilities: []const []const u8 = &.{},
 
     /// The part of these options a plugin may see.
     pub fn view(self: Options) plugin.PluginOptions {
@@ -117,6 +120,7 @@ pub const Options = struct {
             .configurations = self.configurations,
             .helpers = if (self.helpers) |set| set.helperSet() else null,
             .file = self.file,
+            .capabilities = self.capabilities,
         };
     }
 

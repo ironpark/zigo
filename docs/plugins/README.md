@@ -141,7 +141,8 @@ Go 쪽 연결은 [00-quick-start](../../examples/00-quick-start/README.md), Rust
 |---|---|
 | `src/gen/plugins/iterator.zig` | function node 방문, 옵션 검증, builder로 메서드 추가 |
 | `src/gen/plugins/implements.zig` | 한 플러그인이 function·type·file 경계를 모두 쓰는 법, `claims`로 공개 메서드 대체 |
-| `src/gen/plugins/must.zig` | `analyze`에서 `Facts`를 만들고 렌더링에서 읽는 법 |
+| `src/gen/plugins/must.zig` | capability를 발행하고 `analyze`에서 fact를 남기는 법 |
+| `src/gen/plugins/interfaces.zig` | 다른 플러그인의 capability를 `uses`로 읽는 법 |
 | `src/gen/plugins/session.zig` | 여러 선언을 묶어 새 Go 타입을 만드는 법 |
 
 ## 문서 구성

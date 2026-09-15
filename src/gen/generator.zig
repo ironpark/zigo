@@ -170,6 +170,7 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
         .plugins = options.plugins,
         .configurations = options.configurations,
         .facts = &facts,
+        .capabilities = try @import("plugins/registry.zig").capabilityNamesAlloc(scratch_allocator, options.plugins, options.output_target),
         .backend = options.backend,
         .link_mode = options.link_mode,
         .cgo_targets = options.cgo_targets,

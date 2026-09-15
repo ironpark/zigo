@@ -85,8 +85,44 @@ pub const DeclarationId = struct {
     }
 };
 
-/// A run-arena-owned, typed store. Keys borrow the document; values must live
-/// until generation ends. Rendering receives only a const view of the store.
+/// Whether `names`, the capabilities the enabled plugins provide, holds `cap`.
+fn hasCapability(names: []const []const u8, comptime cap: Capability) bool {
+    for (names) |name| if (std.mem.eql(u8, name, cap.name)) return true;
+    return false;
+}
+
+/// A named, typed facts contract between plugins. The provider publishes it
+/// in `Plugin.provides` and writes facts under it; a consumer names the same
+/// capability in `requires` or `uses`, is ordered after every provider of it,
+/// and reads those facts without knowing which plugin wrote them.
+///
+/// Capabilities are compared by `name`, so a provider and a consumer that
+/// share a definition share a type. A capability with no data to carry keeps
+/// `Facts` at the empty struct and is ordering alone.
+pub const Capability = struct {
+    name: []const u8,
+    /// The value one fact under this capability carries.
+    Facts: type,
+    /// Whether more than one enabled plugin may provide it. A non-`multi`
+    /// capability with two providers is a registration error.
+    multi: bool = false,
+};
+
+/// The capabilities the generator's own plugins publish, importable by any
+/// plugin that wants to read or extend what a built-in records.
+pub const capabilities = @import("plugin/capabilities.zig");
+
+/// Whether `P` may write facts under `cap`; a compile error when it may not.
+pub fn assertProvides(comptime P: Plugin, comptime cap: Capability) void {
+    comptime {
+        for (P.provides) |entry| if (std.mem.eql(u8, entry.name, cap.name)) return;
+        @compileError("plugin does not provide capability: " ++ P.name ++ " does not provide " ++ cap.name);
+    }
+}
+
+/// A run-arena-owned, typed store keyed by capability. Keys borrow the
+/// document; values must live until generation ends. Rendering receives only
+/// a const view of the store.
 pub const Facts = struct {
     const Key = struct { owner: []const u8, id: DeclarationId };
     const Value = struct { type_name: []const u8, data: *const anyopaque };
@@ -109,17 +145,20 @@ pub const Facts = struct {
     };
     entries: std.HashMapUnmanaged(Key, Value, KeyContext, 80) = .empty,
 
-    pub fn put(self: *Facts, allocator: std.mem.Allocator, comptime P: Plugin, id: DeclarationId, value: P.Facts) !void {
-        const key: Key = .{ .owner = P.name, .id = id };
+    /// Writes one fact under `cap`. The checked path is `context.provide`,
+    /// which also proves the writing plugin provides the capability.
+    pub fn put(self: *Facts, allocator: std.mem.Allocator, comptime cap: Capability, id: DeclarationId, value: cap.Facts) !void {
+        const key: Key = .{ .owner = cap.name, .id = id };
         if (self.entries.contains(key)) return error.DuplicatePluginFact;
-        const stored = try allocator.create(P.Facts);
+        const stored = try allocator.create(cap.Facts);
         stored.* = value;
-        try self.entries.put(allocator, key, .{ .type_name = @typeName(P.Facts), .data = stored });
+        try self.entries.put(allocator, key, .{ .type_name = @typeName(cap.Facts), .data = stored });
     }
-    pub fn get(self: *const Facts, comptime P: Plugin, id: DeclarationId) !?P.Facts {
-        const value = self.entries.get(.{ .owner = P.name, .id = id }) orelse return null;
-        if (!std.mem.eql(u8, value.type_name, @typeName(P.Facts))) return error.PluginFactTypeMismatch;
-        const stored: *const P.Facts = @ptrCast(@alignCast(value.data));
+    /// Reads the fact `cap` carries for `id`, whichever plugin provided it.
+    pub fn get(self: *const Facts, comptime cap: Capability, id: DeclarationId) !?cap.Facts {
+        const value = self.entries.get(.{ .owner = cap.name, .id = id }) orelse return null;
+        if (!std.mem.eql(u8, value.type_name, @typeName(cap.Facts))) return error.PluginFactTypeMismatch;
+        const stored: *const cap.Facts = @ptrCast(@alignCast(value.data));
         return stored.*;
     }
 };
@@ -133,6 +172,14 @@ pub const TransformContext = struct {
     diagnostics: *std.ArrayList(diagnostic.Diagnostic),
     /// The output language this run generates for.
     target: targets.Target = targets.default,
+    /// The capabilities the enabled plugins provide, by name.
+    capabilities: []const []const u8 = &.{},
+
+    /// Whether a registered and enabled plugin provides `cap`, which is what
+    /// a consumer of a soft capability asks before it looks for facts.
+    pub fn provided(self: TransformContext, comptime cap: Capability) bool {
+        return hasCapability(self.capabilities, cap);
+    }
 
     pub fn config(self: TransformContext, comptime P: Plugin) !P.Config {
         return readConfig(P, self.allocator, self.configurations);
@@ -222,6 +269,20 @@ pub const ValidateContext = struct {
     facts: *Facts,
     /// The output language this run generates for.
     target: targets.Target = targets.default,
+    /// The capabilities the enabled plugins provide, by name.
+    capabilities: []const []const u8 = &.{},
+
+    /// Records one fact under `cap`, which `P` has to provide.
+    pub fn provide(self: ValidateContext, comptime P: Plugin, comptime cap: Capability, id: DeclarationId, value: cap.Facts) !void {
+        comptime assertProvides(P, cap);
+        return self.facts.put(self.allocator, cap, id, value);
+    }
+
+    /// Whether a registered and enabled plugin provides `cap`, which is what
+    /// a consumer of a soft capability asks before it looks for facts.
+    pub fn provided(self: ValidateContext, comptime cap: Capability) bool {
+        return hasCapability(self.capabilities, cap);
+    }
 
     pub fn diagnose(self: ValidateContext, issue: diagnostic.Diagnostic) !void {
         try self.diagnostics.append(self.allocator, issue);
@@ -276,6 +337,8 @@ pub const PluginOptions = struct {
     helpers: ?HelperSet = null,
     /// The file being rendered, when the hook runs inside one.
     file: ?FileInfo = null,
+    /// The capabilities the enabled plugins provide, by name.
+    capabilities: []const []const u8 = &.{},
 
     /// Whether a gated helper of this name is written.
     pub fn emitsHelper(self: PluginOptions, name: []const u8) bool {
@@ -465,6 +528,11 @@ pub const ContextBase = struct {
     pub fn target(self: ContextBase) targets.Target {
         return self.options.target;
     }
+    /// Whether a registered and enabled plugin provides `cap`, which is what
+    /// a consumer of a soft capability asks before it looks for facts.
+    pub fn provided(self: ContextBase, comptime cap: Capability) bool {
+        return hasCapability(self.options.capabilities, cap);
+    }
     pub fn config(self: ContextBase, comptime P: Plugin) !P.Config {
         return readConfig(P, self.allocator, self.options.configurations);
     }
@@ -537,6 +605,11 @@ pub const GoContext = struct {
     /// The output language this run generates for.
     pub fn target(self: GoContext) targets.Target {
         return self.base().target();
+    }
+    /// Whether a registered and enabled plugin provides `cap`, which is what
+    /// a consumer of a soft capability asks before it looks for facts.
+    pub fn provided(self: GoContext, comptime cap: Capability) bool {
+        return self.base().provided(cap);
     }
     /// This plugin's own native symbols, as lowering put them into the program.
     pub fn nativeSymbols(self: GoContext, comptime P: Plugin) ![]const abi.AbiFn {
@@ -722,6 +795,11 @@ pub const RustContext = struct {
     /// The output language this run generates for.
     pub fn target(self: RustContext) targets.Target {
         return self.base().target();
+    }
+    /// Whether a registered and enabled plugin provides `cap`, which is what
+    /// a consumer of a soft capability asks before it looks for facts.
+    pub fn provided(self: RustContext, comptime cap: Capability) bool {
+        return self.base().provided(cap);
     }
     /// This plugin's own native symbols, as lowering put them into the program.
     pub fn nativeSymbols(self: RustContext, comptime P: Plugin) ![]const abi.AbiFn {
@@ -1185,7 +1263,6 @@ pub const RustRender = struct {
 pub const Plugin = struct {
     min_contract: ContractVersion = contract_version,
     Config: type = struct {},
-    Facts: type = struct {},
     /// Once, before core validation. May remove, replace or synthesize IR.
     transform: ?*const fn (TransformContext) anyerror!semantic.Semantic = null,
     /// Rename registered types and their core IR references after transforms.
@@ -1198,10 +1275,19 @@ pub const Plugin = struct {
     /// existing name. Native paths, C symbols and raw Go names are unchanged.
     name_function: ?*const fn (TransformContext, semantic.SemanticFn) anyerror!?[]const u8 = null,
     analyze: ?*const fn (AnalyzeContext) anyerror!void = null,
-    /// Ordering only: absent plugins in after are ignored.
-    after: []const []const u8 = &.{},
-    /// Required registered and enabled plugins; also run before this plugin.
-    requires: []const []const u8 = &.{},
+    /// The facts contracts this plugin publishes. It may write facts under
+    /// each of them, and every consumer of one runs after it. Two plugins
+    /// providing the same capability is a registration error unless the
+    /// capability is `multi`.
+    provides: []const Capability = &.{},
+    /// Capabilities this plugin cannot work without: some registered and
+    /// enabled plugin has to provide each one, and every provider runs first.
+    requires: []const Capability = &.{},
+    /// Capabilities this plugin reads when they are there. A provider that is
+    /// registered runs first; an absent one is no error, and the consumer
+    /// finds no facts under it. `context.provided(cap)` is the question a
+    /// hook asks before it looks.
+    uses: []const Capability = &.{},
     /// The plugin's identity: the `ext` key its options travel under, the
     /// prefix of its diagnostic codes, and the suffix of the files it writes.
     /// Spelled in upper case, since the diagnostic codes are.
@@ -1255,6 +1341,18 @@ pub const Plugin = struct {
         return self.rendersFor(target);
     }
 
+    /// Whether this plugin publishes `cap`.
+    pub fn providesCapability(comptime self: Plugin, comptime cap: Capability) bool {
+        inline for (self.provides) |entry| if (comptime std.mem.eql(u8, entry.name, cap.name)) return true;
+        return false;
+    }
+
+    /// The capabilities this plugin is ordered behind: the hard ones and the
+    /// soft ones together.
+    pub fn dependencies(comptime self: Plugin) []const Capability {
+        return self.requires ++ self.uses;
+    }
+
     pub fn supports(comptime self: Plugin, subject: ?Subject) bool {
         const requested = subject orelse return false;
         inline for (self.subjects) |candidate| if (candidate == requested) return true;
@@ -1292,12 +1390,21 @@ pub fn ordered(comptime entries: []const Plugin) [entries.len]Plugin {
             }
             for (entries[0..i]) |previous| if (std.mem.eql(u8, previous.name, entry.name))
                 @compileError("duplicate plugin: " ++ entry.name);
-            for (entry.requires) |name| {
+            for (entry.provides) |published| {
+                if (published.multi) continue;
+                for (entries[0..i]) |previous| for (previous.provides) |other| {
+                    if (std.mem.eql(u8, other.name, published.name))
+                        @compileError("duplicate capability provider: " ++ published.name);
+                };
+            }
+            for (entry.requires) |required| {
                 var found = false;
                 for (entries) |candidate| {
-                    if (std.mem.eql(u8, candidate.name, name)) found = true;
+                    for (candidate.provides) |published| {
+                        if (std.mem.eql(u8, published.name, required.name)) found = true;
+                    }
                 }
-                if (!found) @compileError("missing plugin dependency: " ++ entry.name ++ " requires " ++ name);
+                if (!found) @compileError("missing capability provider: " ++ entry.name ++ " requires " ++ required.name);
             }
         }
         var result: [entries.len]Plugin = undefined;
@@ -1307,9 +1414,12 @@ pub fn ordered(comptime entries: []const Plugin) [entries.len]Plugin {
             for (entries, 0..) |entry, index| {
                 if (used[index]) continue;
                 var ready = true;
-                for (entry.after ++ entry.requires) |dependency| {
+                for (entry.dependencies()) |dependency| {
                     for (entries, 0..) |candidate, dependency_index| {
-                        if (std.mem.eql(u8, candidate.name, dependency) and !used[dependency_index]) ready = false;
+                        if (used[dependency_index]) continue;
+                        for (candidate.provides) |published| {
+                            if (std.mem.eql(u8, published.name, dependency.name)) ready = false;
+                        }
                     }
                 }
                 if (!ready) continue;
@@ -1324,11 +1434,43 @@ pub fn ordered(comptime entries: []const Plugin) [entries.len]Plugin {
     }
 }
 
-test "plugin ordering is stable and respects dependencies" {
-    const entries = ordered(&.{ .{ .name = "C", .requires = &.{"B"} }, .{ .name = "A" }, .{ .name = "B", .after = &.{ "A", "ABSENT" } } });
+const test_alpha: Capability = .{ .name = "test.alpha", .Facts = struct {} };
+const test_beta: Capability = .{ .name = "test.beta", .Facts = struct {} };
+const test_absent: Capability = .{ .name = "test.absent", .Facts = struct {} };
+const test_shared: Capability = .{ .name = "test.shared", .Facts = struct {}, .multi = true };
+
+test "plugin ordering is stable and puts every provider before its consumers" {
+    const entries = ordered(&.{
+        .{ .name = "C", .requires = &.{test_beta} },
+        .{ .name = "A", .provides = &.{test_alpha} },
+        .{ .name = "B", .provides = &.{test_beta}, .uses = &.{ test_alpha, test_absent } },
+    });
     try std.testing.expectEqualStrings("A", entries[0].name);
     try std.testing.expectEqualStrings("B", entries[1].name);
     try std.testing.expectEqualStrings("C", entries[2].name);
+}
+
+test "a soft capability with no provider orders the consumer normally" {
+    const entries = ordered(&.{ .{ .name = "B", .uses = &.{test_absent} }, .{ .name = "A" } });
+    try std.testing.expectEqualStrings("B", entries[0].name);
+    try std.testing.expectEqualStrings("A", entries[1].name);
+}
+
+test "a multi capability takes several providers and orders after all of them" {
+    const entries = ordered(&.{
+        .{ .name = "C", .uses = &.{test_shared} },
+        .{ .name = "A", .provides = &.{test_shared} },
+        .{ .name = "B", .provides = &.{test_shared} },
+    });
+    try std.testing.expectEqualStrings("A", entries[0].name);
+    try std.testing.expectEqualStrings("B", entries[1].name);
+    try std.testing.expectEqualStrings("C", entries[2].name);
+}
+
+test "a plugin publishes only the capabilities it lists" {
+    const provider: Plugin = .{ .name = "P", .provides = &.{test_alpha} };
+    try std.testing.expect(provider.providesCapability(test_alpha));
+    try std.testing.expect(!provider.providesCapability(test_beta));
 }
 
 test "plugin config decodes defaults and rejects unknown fields" {
@@ -1361,6 +1503,18 @@ pub const AnalyzeContext = struct {
     /// The output language this run generates for.
     pub fn target(self: AnalyzeContext) targets.Target {
         return self.render.target();
+    }
+
+    /// Records one fact under `cap`, which `P` has to provide.
+    pub fn provide(self: AnalyzeContext, comptime P: Plugin, comptime cap: Capability, id: DeclarationId, value: cap.Facts) !void {
+        comptime assertProvides(P, cap);
+        return self.facts.put(self.render.allocator, cap, id, value);
+    }
+
+    /// Whether a registered and enabled plugin provides `cap`, which is what
+    /// a consumer of a soft capability asks before it looks for facts.
+    pub fn provided(self: AnalyzeContext, comptime cap: Capability) bool {
+        return self.render.provided(cap);
     }
 
     pub fn diagnose(self: AnalyzeContext, issue: diagnostic.Diagnostic) !void {
@@ -1533,17 +1687,55 @@ pub fn configurationsAlloc(allocator: std.mem.Allocator, defaults: []const Confi
     return result.toOwnedSlice(allocator);
 }
 
-test "plugin facts preserve typed validation results across copied declarations" {
+const test_count: Capability = .{ .name = "test.count", .Facts = struct { count: usize } };
+
+test "capability facts preserve typed results across copied declarations" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     var facts: Facts = .{};
-    const p: Plugin = .{ .name = "FACT", .Facts = struct { count: usize } };
     const id: DeclarationId = .{ .kind = .function, .name = "zg_run" };
-    try facts.put(arena.allocator(), p, id, .{ .count = 42 });
+    try facts.put(arena.allocator(), test_count, id, .{ .count = 42 });
     const copied = try arena.allocator().dupe(u8, "zg_run");
-    try std.testing.expectEqual(@as(usize, 42), (try facts.get(p, .{ .kind = .function, .name = copied })).?.count);
-    try std.testing.expect(try facts.get(p, .{ .kind = .type, .name = copied }) == null);
-    try std.testing.expectError(error.DuplicatePluginFact, facts.put(arena.allocator(), p, id, .{ .count = 1 }));
+    try std.testing.expectEqual(@as(usize, 42), (try facts.get(test_count, .{ .kind = .function, .name = copied })).?.count);
+    try std.testing.expect(try facts.get(test_count, .{ .kind = .type, .name = copied }) == null);
+    try std.testing.expectError(error.DuplicatePluginFact, facts.put(arena.allocator(), test_count, id, .{ .count = 1 }));
+}
+
+test "one plugin reads what another provided, and a mistyped capability is refused" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const provider: Plugin = .{ .name = "PROVIDER", .provides = &.{test_count} };
+    const consumer: Plugin = .{ .name = "CONSUMER", .uses = &.{test_count} };
+    const entries = ordered(&.{ consumer, provider });
+    try std.testing.expectEqualStrings("PROVIDER", entries[0].name);
+
+    var facts: Facts = .{};
+    var issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
+    const render = testing.goContext(allocator, .{ .package = "test", .prefix = "test", .functions = &.{} });
+    const analyze: AnalyzeContext = .{ .render = render.base(), .go = render, .facts = &facts, .diagnostics = &issues };
+    const id: DeclarationId = .{ .kind = .function, .name = "zg_run" };
+    try analyze.provide(provider, test_count, id, .{ .count = 7 });
+    // The consumer names the capability, not the plugin behind it.
+    try std.testing.expectEqual(@as(usize, 7), (try analyze.facts.get(test_count, id)).?.count);
+
+    // A capability of the same name carrying another type reads nothing.
+    const mistyped: Capability = .{ .name = test_count.name, .Facts = struct { count: bool } };
+    try std.testing.expectError(error.PluginFactTypeMismatch, facts.get(mistyped, id));
+}
+
+test "a context answers whether a capability has an enabled provider" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
+    var facts: Facts = .{};
+    const document: semantic.Semantic = .{ .package = "test", .prefix = "test", .zig_version = "0.16.0", .types = &.{}, .functions = &.{} };
+    const present: ValidateContext = .{ .allocator = arena.allocator(), .document = document, .diagnostics = &issues, .facts = &facts, .capabilities = &.{test_count.name} };
+    var absent = present;
+    absent.capabilities = &.{};
+    try std.testing.expect(present.provided(test_count));
+    try std.testing.expect(!absent.provided(test_count));
+    try std.testing.expect(!present.provided(test_alpha));
 }
 
 pub const FileInfo = struct {

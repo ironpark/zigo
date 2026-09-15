@@ -17,14 +17,21 @@ pub var label: []const u8 = "";
 /// Set by the test that wants the refusal for a signature the C ABI cannot
 /// carry, rather than a symbol the whole pipeline accepts.
 pub var unsupported_symbol = false;
+/// The typed facts contract this fixture publishes: every declaration it
+/// validated, and then every function it analyzed.
+pub const validated: api.Capability = .{ .name = "CONTRACT.validated", .Facts = struct { validated: bool } };
+/// A capability with nothing to carry: naming it is how another plugin says
+/// it has to run after this one. A consumer declares the same value -- a
+/// capability is matched by name -- without seeing this file.
+pub const lifecycle: api.Capability = .{ .name = "CONTRACT.lifecycle", .Facts = struct {} };
 pub const plugin: api.Plugin = .{
     .name = "CONTRACT",
+    .provides = &.{ validated, lifecycle },
     .Config = struct { label: []const u8 = "default", customize: bool = false, invalid_order: bool = false, invalid_adapter: bool = false, invalid_name: bool = false, collision: bool = false, replace: []const u8 = "", claim_node: bool = false },
     .transform = transform,
     .map_type = mapType,
     .name_function = nameFunction,
     .name_type = nameType,
-    .Facts = struct { validated: bool },
     // A reference-typed option, so the fixture proves the frame resolves one
     // for an external plugin exactly as it does for a built-in.
     .TypeOptions = struct { target: ?api.ref.Type = null },
@@ -68,15 +75,15 @@ fn nativeSymbols(context: api.NativeContext) ![]const api.NativeSymbol {
 
 fn validate(context: api.ValidateContext) !void {
     validation_runs += 1;
-    try context.facts.put(context.allocator, plugin, .{ .kind = .document, .name = "" }, .{ .validated = true });
+    try context.provide(plugin, validated, .{ .kind = .document, .name = "" }, .{ .validated = true });
 }
 
 fn analyze(context: api.AnalyzeContext) !void {
     analysis_runs += 1;
-    const fact = (try context.facts.get(plugin, .{ .kind = .document, .name = "" })) orelse return error.MissingValidationFact;
+    const fact = (try context.facts.get(validated, .{ .kind = .document, .name = "" })) orelse return error.MissingValidationFact;
     if (!fact.validated) return error.InvalidValidationFact;
     for (context.render.program.functions) |function|
-        try context.facts.put(context.render.allocator, plugin, .function(function.origin.*), fact);
+        try context.provide(plugin, validated, .function(function.origin.*), fact);
 }
 
 /// Every node kind the contract offers, so the fixture proves the whole walk
@@ -108,7 +115,7 @@ fn visit(context: api.GoContext, node: api.Node, b: *api.Builder) !void {
 }
 
 fn renderMethod(context: api.GoContext, writer: *std.Io.Writer, function: abi.AbiFn) !void {
-    _ = (try context.facts.get(plugin, .function(function.origin.*))) orelse return error.MissingAnalysisFact;
+    _ = (try context.facts.get(validated, .function(function.origin.*))) orelse return error.MissingAnalysisFact;
     try writer.writeAll("\n// ContractAnalyzed\n");
     if (!try claims(context, .{ .function = function })) return;
     // The whole Go surface of a claimed declaration: the exported name, with

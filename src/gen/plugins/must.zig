@@ -6,17 +6,22 @@ const plugin_api = @import("plugin");
 const naming = @import("naming");
 
 pub const Config = struct { enabled: bool = false };
-pub const Variant = struct { enabled: bool };
+/// The capability this plugin publishes: the companion a method also gets.
+/// It is defined on the contract, so a consumer reads it without importing
+/// this file.
+pub const variant = plugin_api.capabilities.must_variant;
 pub const plugin: plugin_api.Plugin = .{
     .name = "MUST",
     .Config = Config,
-    .Facts = Variant,
+    .provides = &.{variant},
     .analyze = analyze,
     .go = .{ .visit = visit },
 };
 
-pub fn hasVariant(context: plugin_api.GoContext, function: abi.AbiFn) !bool {
-    return if (try context.facts.get(plugin, .function(function.origin.*))) |fact| fact.enabled else false;
+/// The companion's exported name, or null when this method gets none.
+pub fn variantName(context: plugin_api.GoContext, function: abi.AbiFn) !?[]const u8 {
+    const fact = try context.facts.get(variant, .function(function.origin.*)) orelse return null;
+    return fact.name;
 }
 
 fn analyze(context: plugin_api.AnalyzeContext) !void {
@@ -35,9 +40,9 @@ fn analyze(context: plugin_api.AnalyzeContext) !void {
         const returns_value = function.origin.@"return".errorPayload() != .void;
         const hidden = try plugin_api.builtins.implements.hidesOriginal(allocator, function.origin.ext);
         const enabled = entry.is_public and entry.has_error and returns_value and !std.mem.eql(u8, entry.public_name, "Close") and !hidden;
-        try context.facts.put(allocator, plugin, .function(function.origin.*), .{ .enabled = enabled });
         if (!enabled) continue;
         const must_name = try std.fmt.allocPrint(allocator, "Must{s}", .{entry.public_name});
+        try context.provide(plugin, variant, .function(function.origin.*), .{ .name = must_name });
         const origin = function.origin.*;
         const path = try plugin_api.site.functionDeclarationAlloc(allocator, origin);
         if (origin.receiver == null) for (render.program.types) |declaration| {
@@ -112,9 +117,8 @@ fn visit(context: plugin_api.GoContext, node: plugin_api.Node, b: *plugin_api.Bu
         .function => |value| value,
         else => return,
     };
-    if (!try hasVariant(context, function)) return;
+    const name = try variantName(context, function) orelse return;
     const method = context.method.?;
-    const name = try std.fmt.allocPrint(context.allocator, "Must{s}", .{method.public_name});
     const doc = try std.fmt.allocPrint(context.allocator, "{0s} calls {1s} and panics with its typed error on failure.", .{ name, method.public_name });
     // The name the generated body was written under, which differs from the
     // exported one when another plugin claimed this declaration.

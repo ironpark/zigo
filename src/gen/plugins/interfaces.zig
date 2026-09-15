@@ -7,7 +7,6 @@
 const std = @import("std");
 const abi = @import("abi");
 const diagnostic = @import("diagnostic");
-const must = @import("must.zig");
 const naming = @import("naming");
 const plugin_api = @import("plugin");
 const semantic = @import("semantic");
@@ -16,7 +15,10 @@ const interface_rules = plugin_api.interfaces;
 pub const plugin: plugin_api.Plugin = .{
     .name = "INTERFACES",
     .validate = validateDocument,
-    .requires = &.{"MUST"},
+    // The `Must` companions belong in the interface when they exist; the
+    // capability is what says whether they do, and orders this plugin after
+    // whoever records them.
+    .uses = &.{plugin_api.capabilities.must_variant},
     .analyze = analyze,
     .go = .{ .source_files = &.{.{ .pathAlloc = interfacesPath, .render = renderInterfacesBody }} },
 };
@@ -80,8 +82,15 @@ fn comparableSignatureAlloc(context: plugin_api.GoContext, function: abi.AbiFn) 
     defer context.allocator.free(go_name);
     try buffer.writer.writeAll(go_name);
     try context.writeSignatureWith(&buffer.writer, function, .{ .parameter_names = false });
-    if (try must.hasVariant(context, function)) try buffer.writer.writeAll(" +Must");
+    if (try mustVariantName(context, function) != null) try buffer.writer.writeAll(" +Must");
     return buffer.toOwnedSlice();
+}
+
+/// The `Must` companion this method also gets, as whoever provides
+/// `must_variant` recorded it.
+fn mustVariantName(context: plugin_api.GoContext, function: abi.AbiFn) !?[]const u8 {
+    const fact = try context.facts.get(plugin_api.capabilities.must_variant, .function(function.origin.*)) orelse return null;
+    return fact.name;
 }
 
 pub fn interfacesPath(context: plugin_api.GoContext) ![]u8 {
@@ -155,9 +164,9 @@ fn renderInterface(context: plugin_api.GoContext, writer: *std.Io.Writer, interf
             method_doc = .{ .text = try std.fmt.allocPrint(allocator, "{s} calls the Zig method {s} of the implementing handle.", .{ go_name, function.origin.name }) };
         }
         try methods.append(allocator, .{ .doc = method_doc, .name = go_name, .signature = .{ .function = .{ .function = function } } });
-        if (try must.hasVariant(context, function)) try methods.append(allocator, .{
-            .doc = .{ .text = try std.fmt.allocPrint(allocator, "Must{s} calls {s} and panics with its typed error on failure.", .{ go_name, go_name }) },
-            .name = try std.fmt.allocPrint(allocator, "Must{s}", .{go_name}),
+        if (try mustVariantName(context, function)) |must_name| try methods.append(allocator, .{
+            .doc = .{ .text = try std.fmt.allocPrint(allocator, "{s} calls {s} and panics with its typed error on failure.", .{ must_name, go_name }) },
+            .name = must_name,
             .signature = .{ .function = .{ .function = function, .options = .{ .omit_error = true } } },
         });
     }

@@ -23,6 +23,9 @@ pub const Options = plugin_api.builtins.implements.Options;
 /// authoring module attaches with -- plus this file's hooks.
 pub const plugin: plugin_api.Plugin = blk: {
     var declared = plugin_api.builtins.implements.plugin;
+    // Which methods the wrappers hide is settled here; a plugin that writes
+    // next to one of them says so by using this capability.
+    declared.provides = &.{plugin_api.capabilities.implements_wrappers};
     declared.validate = validateDocument;
     declared.go = .{ .claims = hidesOriginal, .visit = visit };
     break :blk declared;

@@ -158,6 +158,7 @@ pub fn prepareDocument(allocator: std.mem.Allocator, input: semantic.Semantic, s
 /// validation facts and lowering. Every hook runs in registry dependency order.
 pub fn transformDocument(allocator: std.mem.Allocator, input: semantic.Semantic, selected: ?[]const []const u8, configurations: []const plugin.Configuration, issues: *std.ArrayList(diagnostic.Diagnostic), target: targets.Target) !semantic.Semantic {
     try checkPluginSelection(selected, configurations, target);
+    const capabilities = try registry.capabilityNamesAlloc(allocator, selected, target);
     inline for (registry.plugins, 0..) |registered, index| {
         if (registry.runs(index, selected, target)) {
             _ = plugin.readConfig(registered, allocator, configurations) catch |err| switch (err) {
@@ -172,13 +173,13 @@ pub fn transformDocument(allocator: std.mem.Allocator, input: semantic.Semantic,
     var document = input;
     inline for (registry.plugins, 0..) |registered, index| {
         if (registered.transform) |hook| if (registry.runs(index, selected, target)) {
-            document = try hook(.{ .allocator = allocator, .document = document, .configurations = configurations, .diagnostics = issues, .target = target });
+            document = try hook(.{ .allocator = allocator, .document = document, .configurations = configurations, .diagnostics = issues, .target = target, .capabilities = capabilities });
             if (issues.items.len != 0) return document;
         };
     }
     inline for (registry.plugins, 0..) |registered, index| {
         if (registered.name_type) |hook| if (registry.runs(index, selected, target)) {
-            const context: plugin.TransformContext = .{ .allocator = allocator, .document = document, .configurations = configurations, .diagnostics = issues, .target = target };
+            const context: plugin.TransformContext = .{ .allocator = allocator, .document = document, .configurations = configurations, .diagnostics = issues, .target = target, .capabilities = capabilities };
             var changes: std.ArrayList(plugin.rename.Rename) = .empty;
             for (document.types) |declaration| {
                 if (registered.supports(plugin.typeSubject(declaration.kind))) {
@@ -196,7 +197,7 @@ pub fn transformDocument(allocator: std.mem.Allocator, input: semantic.Semantic,
     // receive every plugin's adapter and naming policy.
     inline for (registry.plugins, 0..) |registered, index| {
         if (registry.runs(index, selected, target) and (registered.map_type != null or registered.name_function != null)) {
-            const context: plugin.TransformContext = .{ .allocator = allocator, .document = document, .configurations = configurations, .diagnostics = issues, .target = target };
+            const context: plugin.TransformContext = .{ .allocator = allocator, .document = document, .configurations = configurations, .diagnostics = issues, .target = target, .capabilities = capabilities };
             const functions_copy = try allocator.dupe(semantic.SemanticFn, document.functions);
             const types_copy = try allocator.dupe(semantic.TypeDecl, document.types);
             if (registered.map_type) |hook| {
@@ -243,13 +244,20 @@ fn checkPluginSelection(selected: ?[]const []const u8, configurations: []const p
         };
         if (!known) return error.UnknownPlugin;
     };
+    // A hard capability has a provider among the registered plugins --
+    // `ordered` refused the registration otherwise -- but the selection can
+    // still leave every provider of it switched off.
     inline for (registry.plugins, 0..) |registered, index| {
         if (registry.runs(index, selected, target)) inline for (registered.requires) |required| {
-            inline for (registry.plugins, 0..) |dependency, dependency_index| {
-                if (comptime std.mem.eql(u8, dependency.name, required)) {
-                    if (!registry.runs(dependency_index, selected, target)) return error.DisabledPluginDependency;
+            var available = false;
+            inline for (registry.plugins, 0..) |candidate, candidate_index| {
+                inline for (candidate.provides) |published| {
+                    if (comptime std.mem.eql(u8, published.name, required.name)) {
+                        if (registry.runs(candidate_index, selected, target)) available = true;
+                    }
                 }
             }
+            if (!available) return error.DisabledPluginDependency;
         };
     }
 }
@@ -262,9 +270,10 @@ pub fn findIssuesWithFacts(allocator: std.mem.Allocator, document: semantic.Sema
         return issues.toOwnedSlice(allocator);
     };
     try checkPluginSelection(selected, configurations, target);
+    const capabilities = try registry.capabilityNamesAlloc(allocator, selected, target);
     inline for (registry.plugins, 0..) |registered, index| {
         if (registry.runs(index, selected, target)) {
-            try appendPluginIssuesWithFacts(registered, allocator, document, configurations, &issues, facts, target);
+            try appendPluginIssuesWithFacts(registered, allocator, document, configurations, &issues, facts, target, capabilities);
         }
     }
     return issues.toOwnedSlice(allocator);
@@ -276,11 +285,11 @@ pub fn findIssues(allocator: std.mem.Allocator, document: semantic.Semantic) ![]
 
 fn appendPluginIssues(comptime registered: plugin.Plugin, allocator: std.mem.Allocator, document: semantic.Semantic, configurations: []const plugin.Configuration, issues: *std.ArrayList(diagnostic.Diagnostic)) !void {
     var facts: plugin.Facts = .{};
-    return appendPluginIssuesWithFacts(registered, allocator, document, configurations, issues, &facts, targets.default);
+    return appendPluginIssuesWithFacts(registered, allocator, document, configurations, issues, &facts, targets.default, &.{});
 }
 
-fn appendPluginIssuesWithFacts(comptime registered: plugin.Plugin, allocator: std.mem.Allocator, document: semantic.Semantic, configurations: []const plugin.Configuration, issues: *std.ArrayList(diagnostic.Diagnostic), facts: *plugin.Facts, target: targets.Target) !void {
-    const context: plugin.ValidateContext = .{ .allocator = allocator, .document = document, .configurations = configurations, .diagnostics = issues, .facts = facts, .target = target };
+fn appendPluginIssuesWithFacts(comptime registered: plugin.Plugin, allocator: std.mem.Allocator, document: semantic.Semantic, configurations: []const plugin.Configuration, issues: *std.ArrayList(diagnostic.Diagnostic), facts: *plugin.Facts, target: targets.Target, capabilities: []const []const u8) !void {
+    const context: plugin.ValidateContext = .{ .allocator = allocator, .document = document, .configurations = configurations, .diagnostics = issues, .facts = facts, .target = target, .capabilities = capabilities };
     if (try pluginOptionsIssue(registered, context)) |issue| {
         try issues.append(allocator, issue);
         return;

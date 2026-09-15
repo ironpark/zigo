@@ -23,7 +23,9 @@ pub const Options = plugin_api.builtins.iterator.Options;
 /// authoring module attaches with -- plus this file's hooks.
 pub const plugin: plugin_api.Plugin = blk: {
     var declared = plugin_api.builtins.iterator.plugin;
-    declared.after = &.{ "MUST", "IMPLEMENTS" };
+    // The wrapper is written next to a method whose exported surface the
+    // `Must` companions and the `.implements` wrappers may still be deciding.
+    declared.uses = &.{ plugin_api.capabilities.must_variant, plugin_api.capabilities.implements_wrappers };
     declared.validate = validateDocument;
     declared.go = .{ .visit = visit };
     break :blk declared;

@@ -4,14 +4,20 @@ const api = @import("plugin");
 const semantic = @import("semantic");
 pub var runs: usize = 0;
 pub var policies: usize = 0;
+/// The capability CONTRACT publishes, declared here rather than imported: a
+/// capability is matched by name, and this one carries no facts, so naming it
+/// is the whole dependency. It is hard -- with no provider enabled this
+/// plugin cannot run at all.
+const lifecycle: api.Capability = .{ .name = "CONTRACT.lifecycle", .Facts = struct {} };
 pub const plugin: api.Plugin = .{
     .name = "OBSERVER",
-    .requires = &.{"CONTRACT"},
+    .requires = &.{lifecycle},
     .transform = transform,
     .name_function = nameFunction,
 };
 fn transform(context: api.TransformContext) !semantic.Semantic {
     runs += 1;
+    if (!context.provided(lifecycle)) return error.MissingCapabilityProvider;
     for (context.document.functions) |function| {
         if (std.mem.eql(u8, function.name, "combine")) {
             var derived = false;
