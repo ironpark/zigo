@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Runs the release checklist from CONTRIBUTING.md end to end: format
-# check, the full test suite, every example's generated-tree check,
+# check, the full test suite, every example's generated-tree check and
+# native library build,
 # staticcheck over the example Go modules, then the version bump
 # (CHANGELOG section, build.zig.zon, README and getting-started fetch lines),
 # the release commit and the tag. Pushing is opt-in.
@@ -91,16 +92,18 @@ if [[ $skip_checks -eq 0 ]]; then
   step "zig build test"
   zig build test --summary all
 
-  step "example generated trees (go-check)"
+  # `go-lib` installs the C header the cgo raw package includes, which
+  # staticcheck below needs to typecheck the module at all.
+  step "example generated trees and native libraries (go-check, go-lib)"
   for example in examples/*/; do
     # The Rust examples have no `go-check` step; they are checked below.
     if grep -q 'addRustBindings' "$example/build.zig"; then
       continue
     fi
     if grep -q 'variant = "purego"' "$example/build.zig"; then
-      (cd "$example" && zig build go-check go-purego-check --summary all)
+      (cd "$example" && zig build go-check go-lib go-purego-check --summary all)
     else
-      (cd "$example" && zig build go-check --summary all)
+      (cd "$example" && zig build go-check go-lib --summary all)
     fi
   done
   (cd examples/10-tagged-union && zig build go-check -Dpurego --summary all)
