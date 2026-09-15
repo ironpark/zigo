@@ -25,6 +25,9 @@ pub const plugin: api.Plugin = .{
     .name_function = nameFunction,
     .name_type = nameType,
     .Facts = struct { validated: bool },
+    // A reference-typed option, so the fixture proves the frame resolves one
+    // for an external plugin exactly as it does for a built-in.
+    .TypeOptions = struct { target: ?api.ref.Type = null },
     .validate = validate,
     .analyze = analyze,
     .go = .{
@@ -82,7 +85,13 @@ fn visit(context: api.GoContext, node: api.Node, b: *api.Builder) !void {
     const writer = try b.output();
     switch (node) {
         .function => |function| try renderMethod(context, writer, function),
-        .type => |declaration| try writer.print("// ContractType {s} {s}\n", .{ @tagName(declaration.kind), declaration.name }),
+        .type => |declaration| {
+            try writer.print("// ContractType {s} {s}\n", .{ @tagName(declaration.kind), declaration.name });
+            if (try context.optionsOf(plugin, .type, node)) |options| if (options.target) |reference| {
+                const resolved = try context.resolveType(reference);
+                try writer.print("// ContractRef {s}\n", .{if (resolved) |target| target.name else "unresolved"});
+            };
+        },
         .file_begin => |file| try writer.print("// ContractFile begin {s}\n", .{file.path}),
         .file_end => |file| {
             try writer.print("// ContractFile end {s}\n", .{file.path});

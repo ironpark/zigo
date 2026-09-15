@@ -19,6 +19,17 @@ pub var path_override: ?[]const u8 = null;
 /// back, and that a value outside the type is a diagnostic rather than a panic.
 pub const Options = struct {
     mode: enum { a, b } = .a,
+    /// A function the declaration names rather than spells. The frame checks
+    /// it at the binding and resolves it here, so this field is what proves
+    /// a reference-typed option survives the round trip.
+    helper: ?plugin_api.ref.Function = null,
+};
+
+/// The reference-typed options a type declaration carries: one type, and a
+/// list of interfaces it claims to satisfy.
+pub const TypeOptions = struct {
+    target: ?plugin_api.ref.Type = null,
+    satisfies: []const plugin_api.ref.Interface = &.{},
 };
 
 /// What a node-level attachment carries. One shape serves the parameter, the
@@ -32,6 +43,7 @@ pub const plugin: plugin_api.Plugin = .{
     .name = "TEST",
     .validate = validateAll,
     .FunctionOptions = Options,
+    .TypeOptions = TypeOptions,
     .ParamOptions = NodeOptions,
     .ResultOptions = NodeOptions,
     .FieldOptions = NodeOptions,
@@ -77,6 +89,7 @@ fn visit(context: plugin_api.GoContext, node: plugin_api.Node, b: *plugin_api.Bu
         .type => |declaration| {
             const text = try std.fmt.allocPrint(context.allocator, "zigoTestHook saw {s}.", .{declaration.name});
             try b.emit(&.{.{ .comment = .{ .text = text } }}, .{ .blank_after = true });
+            try renderReferences(context, b, node);
         },
         // Tags and fields are the same IR node; which node kind the walk
         // offers is what says which of the two option types reads it.
@@ -86,11 +99,33 @@ fn visit(context: plugin_api.GoContext, node: plugin_api.Node, b: *plugin_api.Bu
     }
 }
 
+/// What the type's reference-typed options resolved to, named the way the
+/// program spells them now: a plugin reads a reference back as the
+/// declaration, never as the string it travelled as.
+fn renderReferences(context: plugin_api.GoContext, b: *plugin_api.Builder, node: plugin_api.Node) !void {
+    const options = try context.optionsOf(plugin, .type, node) orelse return;
+    if (options.target) |reference| {
+        const resolved = try context.resolveType(reference);
+        const text = try std.fmt.allocPrint(context.allocator, "zigoTestHook target {s}.", .{if (resolved) |declaration| declaration.name else "unresolved"});
+        try b.emit(&.{.{ .comment = .{ .text = text } }}, .{ .blank_after = true });
+    }
+    for (options.satisfies) |reference| {
+        const resolved = try context.resolveInterface(reference);
+        const text = try std.fmt.allocPrint(context.allocator, "zigoTestHook satisfies {s}.", .{if (resolved) |interface| interface.name else "unresolved"});
+        try b.emit(&.{.{ .comment = .{ .text = text } }}, .{ .blank_after = true });
+    }
+}
+
 /// A method next to the bound one, spelled from the names the method used.
 fn renderMethod(context: plugin_api.GoContext, b: *plugin_api.Builder, function: abi.AbiFn) !void {
     const method = context.method.?;
     const receiver = method.receiver orelse return;
     const options = try context.optionsOf(plugin, .function, function.origin.ext) orelse Options{};
+    if (options.helper) |reference| {
+        const resolved = try context.resolveFunction(reference);
+        const text = try std.fmt.allocPrint(context.allocator, "zigoTestHook helper {s}.", .{if (resolved) |declaration| declaration.name else "unresolved"});
+        try b.emit(&.{.{ .comment = .{ .text = text } }}, .{ .blank_before = true });
+    }
     const name = try std.fmt.allocPrint(context.allocator, "{s}TestHook", .{method.public_name});
     const doc = try std.fmt.allocPrint(context.allocator, "{s} reports the name of {s}.", .{ name, method.public_name });
     try b.emit(&.{try b.func(.{

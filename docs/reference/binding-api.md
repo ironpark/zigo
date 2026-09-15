@@ -109,6 +109,32 @@ api.enumeration("CursorStyle", .{ .fields = &.{
 | enum tag | `(zigo.EnumField{ .name = "idle" }).use(P, .{ ... })` | `P.TagOptions` |
 | handle field | `(zigo.HandleField{ .path = "x" }).extend(P, .{ ... })` | `P.FunctionOptions` |
 
+플러그인 옵션 field의 타입이 `plugin.ref.*`이면 그 자리에는 이름 문자열이 아니라 선언을
+씁니다. 선언·매개변수·반환값의 `use`가 이 형태를 받습니다.
+
+| 옵션 field 타입 | 바인딩이 쓰는 값 |
+|---|---|
+| `plugin.ref.Type` | `api.typeRef("Context")` 또는 `Handle.typeRef()` |
+| `plugin.ref.Function` | `api.ref("open")` 또는 `Handle.ref("close")` |
+| `plugin.ref.Interface` | `.{ .entry = readable }`(= `zigo.interface(...)`가 돌려준 entry) 또는 `.{ .name = "Readable" }` |
+
+optional과 slice도 같은 방식으로 적습니다.
+
+```zig
+const readable = zigo.interface(.{ .name = "Readable", .methods = &.{"read"}, .types = &.{api.typeRef("Counter")} });
+const Counter = api.handle("Counter", .{}).context();
+
+Counter.members(&.{api.func("read", .{})}).use(refs.plugin, .{
+    .target = api.typeRef("Context"),
+    .satisfies = &.{.{ .entry = readable }},
+})
+```
+
+참조는 선언 시점에 검사합니다. 종류가 맞지 않거나 다른 `zigo.define`의 선언을 가리키면
+컴파일 error입니다. `semantic.json`에는 Go 이름이 아니라 native Zig path가 실리므로 이후의
+rename이 해석을 깨뜨리지 않고, 가리키는 선언이 없으면 생성 시점에 `<NAME>002` 진단이
+나옵니다.
+
 handle field는 getter와 setter 함수로 펼쳐지므로 함수 옵션을 받으며, 두 함수가 모두
 같은 옵션을 가집니다. 붙인 옵션은 `semantic.json`의 해당 node `ext`에 실려 플러그인에
 전달됩니다. 플러그인이 `subjects`로 선언하지 않은 node에 붙이면 그 자리에서 컴파일

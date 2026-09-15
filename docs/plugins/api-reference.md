@@ -1,6 +1,6 @@
 # 플러그인 API 참조
 
-현재 플러그인 계약은 `6.0`입니다. 이 문서는 `src/plugin.zig`이 제공하는 공개 타입과 실행
+현재 플러그인 계약은 `7.0`입니다. 이 문서는 `src/plugin.zig`이 제공하는 공개 타입과 실행
 순서를 요약합니다. 정확한 함수 시그니처는 [소스](../../src/plugin.zig)가 정본입니다.
 
 ## 실행 순서
@@ -24,7 +24,7 @@ configuration and dependency checks
 
 | 필드 | 기본값 | 역할 |
 |---|---|---|
-| `min_contract` | 현재 6.0 | 필요한 계약 version |
+| `min_contract` | 현재 7.0 | 필요한 계약 version |
 | `name` | 필수 | 식별 정보와 진단 접두사 |
 | `Config` | `struct {}` | 빌드 전체 설정 타입 |
 | `Facts` | `struct {}` | analyze 결과의 typed storage |
@@ -242,6 +242,66 @@ const hidden = try plugin.builtins.implements.hidesOriginal(allocator, function.
 - `builder()` — Rust builder
 
 `ArtifactContext`는 allocator, full program, `options`와 config/path 도우미만 제공합니다.
+
+## 참조 타입 옵션
+
+옵션이 타입·함수·interface를 가리켜야 할 때는 이름을 문자열로 받지 마세요. `plugin.ref`의
+세 타입은 선언을 가리키는 옵션 field이고, 바인딩이 실제 선언으로 쓰며, 값이 가리키는 것이
+없으면 generator가 진단합니다.
+
+| 옵션 field 타입 | 바인딩이 쓰는 값 | wire 형태 |
+|---|---|---|
+| `plugin.ref.Type` | `api.typeRef("Context")`, `Handle.typeRef()` | 그 Zig 타입의 native path (`"mylib.Context"`) |
+| `plugin.ref.Function` | `api.ref("open")`, `Handle.ref("close")` | `"open"` 또는 `"mylib.Context.close"` |
+| `plugin.ref.Interface` | `.{ .entry = Readable }`, `.{ .name = "Readable" }` | interface 이름 (`"Readable"`) |
+
+세 타입 모두 JSON에서는 문자열 하나입니다. field 하나로, optional로, slice로 쓸 수 있고
+옵션 struct 안에 중첩된 struct에 두어도 됩니다. 바인딩이 선언으로 적는 형태는
+`FunctionOptions`·`TypeOptions`·`ParamOptions`·`ResultOptions`에서 쓸 수 있습니다.
+`FieldOptions`와 `TagOptions`도 참조를 담을 수 있지만, 그 자리에서는 path를 직접 적어야
+합니다. 해석과 `<NAME>002` 검사는 어느 attachment든 같습니다.
+
+```zig
+pub const TypeOptions = struct {
+    target: ?api.ref.Type = null,
+    satisfies: []const api.ref.Interface = &.{},
+};
+pub const FunctionOptions = struct { helper: ?api.ref.Function = null };
+```
+
+```zig
+// 바인딩 쪽. 참조는 선언 시점에 타입이 맞는지, 그리고 같은 `zigo.define`의 것인지
+// 검사합니다. 다른 root의 선언을 가리키면 그 자리에서 컴파일 error입니다.
+api.handle("Counter", .{}).use(refs.plugin, .{
+    .target = api.typeRef("Context"),
+    .satisfies = &.{.{ .entry = readable }},
+})
+```
+
+wire에 실리는 것은 **native Zig path**이지 Go 이름이 아닙니다. 바인딩이 `.name`으로 바꾼
+이름도, 플러그인 `name_type`·`name_function`이 바꾼 이름도 해석을 깨뜨리지 않습니다:
+해석은 native path에서 지금의 선언을 찾습니다.
+
+읽을 때는 옵션을 평소처럼 `optionsOf`로 읽고, 참조를 선언으로 바꿀 때만 context의
+`resolve*`를 씁니다.
+
+| 메서드 | 렌더링 context(`ContextBase`, `GoContext`, `RustContext`, `AnalyzeContext`) | `TransformContext`·`ValidateContext` |
+|---|---|---|
+| `resolveType(ref)` | `?*const semantic.TypeDecl` | `?*const semantic.TypeDecl` |
+| `resolveFunction(ref)` | `?*const semantic.SemanticFn` | `?*const semantic.SemanticFn` |
+| `resolveInterface(ref)` | `?abi.AbiInterface` | `?*const semantic.Interface` |
+
+```zig
+const options = try context.optionsOf(plugin, .type, node) orelse return;
+if (options.target) |reference| {
+    const target = try context.resolveType(reference) orelse return;
+    // target.name은 rename을 모두 거친 지금의 이름입니다.
+}
+```
+
+가리키는 선언이 없는 참조는 core 검증이 `<NAME>002`로 보고합니다. 플러그인이 직접 확인할
+필요는 없습니다: 검증은 옵션 타입을 따라 걸으므로, field를 선언하는 것만으로 검사를
+얻습니다. 그래서 hook에서 `resolve*`가 `null`이면 "쓸 것이 없다"로 다루면 됩니다.
 
 ## `PluginOptions`
 

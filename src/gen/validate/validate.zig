@@ -311,6 +311,10 @@ fn pluginOptionsIssue(comptime registered: plugin.Plugin, context: plugin.Valida
                 const declaration = try site.functionDeclarationAlloc(allocator, function);
                 return try pluginOptionsDiagnostic(registered, allocator, site.functionSiteFor(function, declaration), declaration);
             };
+            if (comptime plugin.ref.mentionsRef(plugin.Options(registered, .function))) {
+                const declaration = try site.functionDeclarationAlloc(allocator, function);
+                if (try refIssue(registered, .function, context, function.ext, site.functionSiteFor(function, declaration), declaration)) |issue| return issue;
+            }
         }
         for (function.params, 0..) |parameter, index| {
             if (try nodeOptionsIssue(registered, context, .param, parameter.ext, site.paramSite(function, index))) |issue| return issue;
@@ -324,6 +328,7 @@ fn pluginOptionsIssue(comptime registered: plugin.Plugin, context: plugin.Valida
             _ = context.optionsOf(registered, .type, declaration.ext) catch {
                 return try pluginOptionsDiagnostic(registered, allocator, site.typeSite(declaration), declaration.name);
             };
+            if (try refIssue(registered, .type, context, declaration.ext, site.typeSite(declaration), declaration.name)) |issue| return issue;
         }
         // Tags and fields are the same IR node, so which of the two option
         // types reads it is decided by the container's kind alone.
@@ -358,7 +363,37 @@ fn nodeOptionsIssue(
     _ = context.optionsOf(registered, attachment, ext) catch {
         return try pluginOptionsDiagnostic(registered, context.allocator, where, where.declaration);
     };
-    return null;
+    return refIssue(registered, attachment, context, ext, where, where.declaration);
+}
+
+/// Every reference-typed option, on every attachment, checked against the
+/// document it was written for. A plugin never resolves its own references to
+/// find out whether they resolve at all: the walk is reflective over the
+/// option type, so a plugin gains the check by declaring the field.
+fn refIssue(
+    comptime registered: plugin.Plugin,
+    comptime attachment: plugin.Attachment,
+    context: plugin.ValidateContext,
+    ext: ?semantic.Extensions,
+    where: diagnostic.Site,
+    declaration: []const u8,
+) !?diagnostic.Diagnostic {
+    const Options = plugin.Options(registered, attachment);
+    if (comptime !plugin.ref.mentionsRef(Options)) return null;
+    const read = context.optionsOf(registered, attachment, ext) catch return null;
+    const options = read orelse return null;
+    const missing = plugin.ref.unresolvedIn(Options, options, context.document) orelse return null;
+    return .{
+        .severity = .@"error",
+        .code = comptime plugin.refCode(registered),
+        .message = try std.fmt.allocPrint(
+            context.allocator,
+            "unresolved {s} reference `{s}` in the `{s}` options of `{s}`",
+            .{ @tagName(missing.kind), missing.path, registered.name, declaration },
+        ),
+        .site = where,
+        .hint = "reference a declaration this binding registers: `api.typeRef(...)`, `api.ref(...)`, or the entry `zigo.interface(...)` returned",
+    };
 }
 
 fn pluginOptionsDiagnostic(
@@ -505,6 +540,29 @@ test "options a plugin cannot read are its own diagnostic, not a panic" {
     try std.testing.expectEqualStrings("TEST001", issue.code);
     try std.testing.expect(std.mem.indexOf(u8, issue.message, "`TEST` plugin") != null);
     try std.testing.expectError(error.InvalidSemantic, semanticDocument(std.testing.allocator, parsed.value));
+}
+
+test "a reference no declaration answers is the plugin's own 002 diagnostic" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    // The same document twice: once with the reference the binding would
+    // have written, once with a path nothing declares.
+    const template =
+        \\{"functions":[],"ir_version":1,"package":"meter","prefix":"zg","types":[{"kind":"opaque","name":"Context","zig_path":"meter.Context"},{"ext":{"TEST":{"target":"PATH"}},"kind":"opaque","name":"Counter","zig_path":"meter.Counter"}],"zig_version":"0.16.0"}
+    ;
+    const resolved = try std.mem.replaceOwned(u8, allocator, template, "PATH", "meter.Context");
+    var parsed = try semantic.Semantic.parse(allocator, resolved);
+    defer parsed.deinit();
+    try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try findIssue(allocator, parsed.value));
+
+    const unresolved = try std.mem.replaceOwned(u8, allocator, template, "PATH", "meter.Gone");
+    var missing = try semantic.Semantic.parse(allocator, unresolved);
+    defer missing.deinit();
+    const issue = (try findIssue(allocator, missing.value)) orelse return error.MissingDiagnostic;
+    try std.testing.expectEqualStrings("TEST002", issue.code);
+    try std.testing.expect(std.mem.indexOf(u8, issue.message, "unresolved type reference `meter.Gone`") != null);
+    try std.testing.expectEqualStrings("Counter", issue.site.declaration);
 }
 
 test "node options a plugin cannot read or does not subscribe to are diagnostics" {

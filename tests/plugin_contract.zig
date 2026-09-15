@@ -58,8 +58,8 @@ test "external plugin validates and analyzes once, renders every public scope, a
     };
 }
 
-test "the generator speaks plugin contract 6.0 and the fixture plugin is written against it" {
-    try std.testing.expectEqual(@as(u16, 6), plugin.contract_version.major);
+test "the generator speaks plugin contract 7.0 and the fixture plugin is written against it" {
+    try std.testing.expectEqual(@as(u16, 7), plugin.contract_version.major);
     try std.testing.expectEqual(@as(u16, 0), plugin.contract_version.minor);
     try std.testing.expectEqual(plugin.contract_version.major, contract.plugin.min_contract.major);
 }
@@ -357,4 +357,51 @@ test "a plugin symbol the C ABI cannot carry is refused with the plugin named" {
 
 test {
     _ = @import("plugin_outputs.zig");
+}
+
+/// One type declaration whose `CONTRACT` options reference another by its
+/// native Zig path, which is the wire form `use` writes.
+fn referenceDocument(comptime target: []const u8) []const u8 {
+    return "{\"package\":\"refs\",\"prefix\":\"zg\",\"zig_version\":\"0.16.0\",\"types\":[" ++
+        "{\"kind\":\"opaque\",\"name\":\"Other\",\"zig_path\":\"refs.Other\"}," ++
+        "{\"kind\":\"opaque\",\"name\":\"Holder\",\"zig_path\":\"refs.Holder\",\"ext\":{\"CONTRACT\":{\"target\":\"" ++ target ++ "\"}}}]}";
+}
+
+test "a reference-typed option resolves to the declaration it names" {
+    var output = std.testing.tmpDir(.{ .iterate = true });
+    defer output.cleanup();
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    try generator.generate(arena.allocator(), std.testing.io, referenceDocument("refs.Other"), output.dir, .{
+        .package = "refs",
+        .prefix = "zg",
+        .go_module = "example.com/refs",
+    });
+    var walker = try output.dir.walk(arena.allocator());
+    defer walker.deinit();
+    var seen = false;
+    while (try walker.next(std.testing.io)) |entry| {
+        if (entry.kind != .file) continue;
+        const rendered = try output.dir.readFileAlloc(std.testing.io, entry.path, arena.allocator(), .limited(1024 * 1024));
+        if (std.mem.indexOf(u8, rendered, "// ContractRef Other") != null) seen = true;
+    }
+    try std.testing.expect(seen);
+}
+
+test "a reference no declaration answers is reported as <NAME>002" {
+    const diagnostic = @import("diagnostic");
+    var output = std.testing.tmpDir(.{ .iterate = true });
+    defer output.cleanup();
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
+    try std.testing.expectError(error.InvalidSemantic, generator.generate(arena.allocator(), std.testing.io, referenceDocument("refs.Gone"), output.dir, .{
+        .package = "refs",
+        .prefix = "zg",
+        .go_module = "example.com/refs",
+        .diagnostics = &issues,
+    }));
+    try std.testing.expectEqualStrings("CONTRACT002", issues.items[0].code);
+    try std.testing.expect(std.mem.indexOf(u8, issues.items[0].message, "`refs.Gone`") != null);
+    try std.testing.expectEqualStrings("Holder", issues.items[0].site.declaration);
 }

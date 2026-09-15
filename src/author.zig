@@ -29,6 +29,115 @@ pub const TypeRef = struct {
     path: []const u8,
 };
 
+/// How a plugin option names an interface: the `Entry` `zigo.interface(...)`
+/// returned, or the name the binding gave it. An interface has no Zig
+/// declaration behind it, so the name is the whole reference.
+pub const InterfaceRef = union(enum) {
+    entry: Entry,
+    name: []const u8,
+};
+
+/// The authoring spelling of one plugin option type. Every field whose type
+/// is a `plugin.ref.*` reference is written with the authoring value that
+/// names the declaration -- a `TypeRef`, a `FunctionRef`, an `InterfaceRef`
+/// -- and `use` turns it into the path the document carries. Optionals,
+/// slices and nested option structs map element by element; a plugin that
+/// declares no reference gets its own option type back, unchanged.
+pub fn Authored(comptime Options: type) type {
+    if (Options == plugin.ref.Type) return TypeRef;
+    if (Options == plugin.ref.Function) return FunctionRef;
+    if (Options == plugin.ref.Interface) return InterfaceRef;
+    return switch (@typeInfo(Options)) {
+        .optional => |optional| blk: {
+            const Child = Authored(optional.child);
+            break :blk if (Child == optional.child) Options else ?Child;
+        },
+        .pointer => |pointer| blk: {
+            if (pointer.size != .slice or pointer.child == u8) break :blk Options;
+            const Child = Authored(pointer.child);
+            break :blk if (Child == pointer.child) Options else []const Child;
+        },
+        .@"struct" => AuthoredStruct(Options),
+        else => Options,
+    };
+}
+
+fn AuthoredStruct(comptime Options: type) type {
+    const info = @typeInfo(Options).@"struct";
+    if (info.layout != .auto) return Options;
+    comptime var mapped = false;
+    comptime var names: [info.fields.len][:0]const u8 = undefined;
+    comptime var types: [info.fields.len]type = undefined;
+    comptime var attributes: [info.fields.len]std.builtin.Type.StructField.Attributes = undefined;
+    inline for (info.fields, 0..) |field, index| {
+        const Mapped = Authored(field.type);
+        names[index] = field.name;
+        types[index] = Mapped;
+        attributes[index] = if (Mapped == field.type)
+            .{ .default_value_ptr = field.default_value_ptr }
+        else
+            .{ .default_value_ptr = authoredDefault(Mapped) };
+        if (Mapped != field.type) mapped = true;
+    }
+    if (!mapped) return Options;
+    const frozen_names = names;
+    const frozen_types = types;
+    const frozen_attributes = attributes;
+    return @Struct(.auto, null, &frozen_names, &frozen_types, &frozen_attributes);
+}
+
+/// What a mapped field defaults to: nothing to reference, or no default at
+/// all when the plugin asked for a reference outright.
+fn authoredDefault(comptime Mapped: type) ?*const anyopaque {
+    return switch (@typeInfo(Mapped)) {
+        .optional => @ptrCast(&@as(Mapped, null)),
+        .pointer => @ptrCast(&@as(Mapped, &.{})),
+        else => null,
+    };
+}
+
+/// One authoring option value as the document carries it. `root` is the
+/// binding the attachment belongs to, when the attachment site knows it: a
+/// reference into another `zigo.define` is refused here rather than resolving
+/// to nothing at generation time.
+fn authoredOptions(comptime Options: type, comptime value: Authored(Options), comptime root: ?type) Options {
+    if (Options == plugin.ref.Type) {
+        comptime checkReferenceRoot(value.root, root, value.path);
+        return .{ .path = @typeName(value.type) };
+    }
+    if (Options == plugin.ref.Function) {
+        comptime checkReferenceRoot(value.root, root, value.path);
+        return .{ .path = if (value.container == value.root) value.name else @typeName(value.container) ++ "." ++ value.name };
+    }
+    if (Options == plugin.ref.Interface) return .{ .name = switch (value) {
+        .entry => |entry| if (entry == .interface) entry.interface.name else @compileError("zigo an interface reference requires a zigo.interface declaration"),
+        .name => |name| name,
+    } };
+    if (Authored(Options) == Options) return value;
+    return switch (@typeInfo(Options)) {
+        .optional => |optional| if (value) |inner| authoredOptions(optional.child, inner, root) else null,
+        .pointer => |pointer| blk: {
+            comptime var mapped: [value.len]pointer.child = undefined;
+            inline for (value, 0..) |item, index| mapped[index] = authoredOptions(pointer.child, item, root);
+            const frozen = mapped;
+            break :blk &frozen;
+        },
+        .@"struct" => |info| blk: {
+            var result: Options = undefined;
+            inline for (info.fields) |field| {
+                @field(result, field.name) = authoredOptions(field.type, @field(value, field.name), root);
+            }
+            break :blk result;
+        },
+        else => value,
+    };
+}
+
+fn checkReferenceRoot(comptime actual: type, comptime expected: ?type, comptime path: []const u8) void {
+    const binding = expected orelse return;
+    if (actual != binding) @compileError("zigo plugin option references a type outside this binding: " ++ path);
+}
+
 /// A constructor is static unless it explicitly selects a receiver.
 pub const Receiver = union(enum) {
     none,
@@ -62,15 +171,16 @@ pub const Returns = struct {
     /// Attach plugin `P` with its `ResultOptions` to this function's result.
     /// A plugin whose `subjects` exclude `.result` is refused here, at the
     /// declaration, rather than as a diagnostic long afterwards.
-    pub fn use(comptime self: Returns, comptime P: plugin.Plugin, comptime options: P.ResultOptions) Returns {
+    pub fn use(comptime self: Returns, comptime P: plugin.Plugin, comptime options: Authored(P.ResultOptions)) Returns {
         comptime checkNodeSubject(P, .result);
         comptime checkDuplicateAttachment(self.extensions, P.name);
         const Captured = struct {
             pub const name = P.name;
             pub const Options = P.ResultOptions;
         };
+        const written = comptime authoredOptions(P.ResultOptions, options, null);
         var result = self;
-        result.extensions = self.extensions ++ [_]ir.Extension{ir.extension(Captured, options)};
+        result.extensions = self.extensions ++ [_]ir.Extension{ir.extension(Captured, written)};
         return result;
     }
 };
@@ -127,15 +237,18 @@ pub const Param = struct {
 
     /// Attach plugin `P` with its `ParamOptions` to this parameter. A plugin
     /// whose `subjects` exclude `.param` is refused here, at the declaration.
-    pub fn use(comptime self: Param, comptime P: plugin.Plugin, comptime options: P.ParamOptions) Param {
+    pub fn use(comptime self: Param, comptime P: plugin.Plugin, comptime options: Authored(P.ParamOptions)) Param {
         comptime checkNodeSubject(P, .param);
         comptime checkDuplicateAttachment(self.extensions, P.name);
         const Captured = struct {
             pub const name = P.name;
             pub const Options = P.ParamOptions;
         };
+        // A parameter names no binding of its own, so a reference here is
+        // checked only where every reference is: against the document.
+        const written = comptime authoredOptions(P.ParamOptions, options, null);
         var copy = self;
-        copy.extensions = self.extensions ++ [_]ir.Extension{ir.extension(Captured, options)};
+        copy.extensions = self.extensions ++ [_]ir.Extension{ir.extension(Captured, written)};
         return copy;
     }
 };
@@ -281,9 +394,10 @@ pub const Entry = union(enum) {
         }
         const Captured = struct {
             pub const name = P.name;
-            pub const Options = pluginOptions(P, self);
+            pub const Options = pluginWireOptions(P, self);
         };
-        var captured = ir.extension(Captured, options);
+        const written = comptime authoredOptions(Captured.Options, options, entryRoot(self));
+        var captured = ir.extension(Captured, written);
         // The two built-ins whose options the reflector resolves before it
         // writes them -- an iterator name derived from the method it advances,
         // the interface list checked for emptiness here rather than a
@@ -296,10 +410,10 @@ pub const Entry = union(enum) {
         };
         if (on_function) {
             if (std.mem.eql(u8, P.name, features.iterator.name)) {
-                captured.builtin = .{ .iterator = options };
+                captured.builtin = .{ .iterator = written };
             } else if (std.mem.eql(u8, P.name, features.implements.name)) {
-                if (options.kinds.len == 0) @compileError("zigo implements needs a non-empty `.kinds`");
-                captured.builtin = .{ .implements = options };
+                if (written.kinds.len == 0) @compileError("zigo implements needs a non-empty `.kinds`");
+                captured.builtin = .{ .implements = written };
             }
         }
         const extended = extensions ++ [_]ir.Extension{captured};
@@ -331,8 +445,24 @@ pub const Entry = union(enum) {
     }
 };
 
+/// What a declaration writes when it attaches `P`: the plugin's own option
+/// type, with every reference field spelled the way a binding names a
+/// declaration.
 fn pluginOptions(comptime P: plugin.Plugin, comptime entry: Entry) type {
+    return Authored(pluginWireOptions(P, entry));
+}
+/// The same options as the document carries them.
+fn pluginWireOptions(comptime P: plugin.Plugin, comptime entry: Entry) type {
     return if (entry == .function) P.FunctionOptions else P.TypeOptions;
+}
+/// The binding a declaration belongs to, which is the root every reference in
+/// its options has to resolve against.
+fn entryRoot(comptime entry: Entry) type {
+    return switch (entry) {
+        .function => |f| f.ref.root,
+        .type => |t| t.ref.root,
+        else => @compileError("zigo plugins attach to functions or types"),
+    };
 }
 /// The subject check the node-level `use` methods share: a parameter, a
 /// result, a field or an enum tag is a node kind the plugin has to declare,
@@ -581,4 +711,48 @@ test "plugin options are selected by attachment target" {
     defer std.testing.allocator.free(t_json);
     try std.testing.expectEqualStrings("{\"checked\":true}", f_json);
     try std.testing.expectEqualStrings("{\"key\":\"value\"}", t_json);
+}
+
+test "reference options travel as the native path a reflector writes" {
+    const Lib = struct {
+        pub const Context = opaque {
+            pub fn close(_: *@This()) void {}
+        };
+        pub fn open() void {}
+    };
+    const P: plugin.Plugin = .{
+        .name = "REF",
+        .TypeOptions = struct {
+            target: ?plugin.ref.Type = null,
+            satisfies: []const plugin.ref.Interface = &.{},
+        },
+        .FunctionOptions = struct { helper: ?plugin.ref.Function = null },
+        .subjects = &.{ .handle, .function },
+    };
+    const api = scope(Lib);
+    const readable = comptime interface(.{ .name = "Readable", .methods = &.{"close"}, .types = &.{api.typeRef("Context")} });
+    const Holder = comptime api.handle("Context", .{}).context();
+    const declared = comptime Holder.members(&.{}).use(P, .{
+        .target = api.typeRef("Context"),
+        .satisfies = &.{ .{ .entry = readable }, .{ .name = "Closer" } },
+    });
+    const type_json = try declared.type.extensions[0].jsonAlloc(std.testing.allocator);
+    defer std.testing.allocator.free(type_json);
+    var parsed = try std.json.parseFromSlice(struct { target: []const u8, satisfies: []const []const u8 }, std.testing.allocator, type_json, .{});
+    defer parsed.deinit();
+    try std.testing.expectEqualStrings(@typeName(Lib.Context), parsed.value.target);
+    try std.testing.expect(std.mem.endsWith(u8, parsed.value.target, ".Context"));
+    try std.testing.expectEqualStrings("Readable", parsed.value.satisfies[0]);
+    try std.testing.expectEqualStrings("Closer", parsed.value.satisfies[1]);
+
+    // A function declared at the binding root is its own path; one reached
+    // through a type carries the container the method is declared in.
+    const free = comptime api.func("open", .{}).use(P, .{ .helper = api.ref("open") });
+    const free_json = try free.function.extensions[0].jsonAlloc(std.testing.allocator);
+    defer std.testing.allocator.free(free_json);
+    try std.testing.expectEqualStrings("{\"helper\":\"open\"}", free_json);
+    const method = comptime api.func("open", .{}).use(P, .{ .helper = Holder.ref("close") });
+    const method_json = try method.function.extensions[0].jsonAlloc(std.testing.allocator);
+    defer std.testing.allocator.free(method_json);
+    try std.testing.expect(std.mem.indexOf(u8, method_json, ".Context.close\"}") != null);
 }

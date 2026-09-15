@@ -1,0 +1,9 @@
+{
+  "package": "refs",
+  "prefix": "zg",
+  "go_module": "example.com/zigo/refs",
+  "go_package_path": ".",
+  "plugins": [
+    "REFS"
+  ]
+}

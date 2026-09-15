@@ -17,6 +17,9 @@ pub const Binding = author.Binding;
 pub const Entry = author.Entry;
 pub const FunctionRef = author.FunctionRef;
 pub const TypeRef = author.TypeRef;
+/// How a plugin option names an interface: the entry `zigo.interface(...)`
+/// returned, or its name.
+pub const InterfaceRef = author.InterfaceRef;
 pub const FunctionOptions = author.FunctionOptions;
 pub const TypeOptions = author.TypeOptions;
 pub const HandleOptions = author.HandleOptions;

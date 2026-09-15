@@ -4,6 +4,37 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Changed (breaking)
+
+- 플러그인 API 7.0: 옵션이 선언을 가리킬 수 있습니다. 타입·함수·interface를 이름 문자열로
+  받던 자리를 `plugin.ref.Type`, `plugin.ref.Function`, `plugin.ref.Interface`가 대신합니다.
+  바인딩은 `use`에서 `api.typeRef(...)`, `api.ref(...)`, `zigo.interface(...)`가 돌려준
+  entry를 그대로 쓰고, 종류가 다르거나 다른 `zigo.define`의 선언을 가리키면 그 자리에서
+  컴파일 error입니다. wire에는 Go 이름이 아니라 native Zig path가 실리므로 바인딩의
+  `.name`이나 플러그인의 `name_type`·`name_function` rename이 해석을 깨뜨리지 않습니다.
+  호환 shim은 없습니다.
+
+  | 이전 (6.0) | 이후 (7.0) |
+  |---|---|
+  | `min_contract` 기본값 6.0 | 7.0 |
+  | 선언을 가리키는 옵션 field `[]const u8` | `plugin.ref.Type` / `plugin.ref.Function` / `plugin.ref.Interface` |
+  | 이름 문자열을 플러그인이 직접 조회 | `context.resolveType` / `resolveFunction` / `resolveInterface` |
+  | 해석 실패는 플러그인의 자체 진단 | core가 `<NAME>002`로 보고 |
+  | 플러그인 자체 rule 번호는 `002`부터 | 참조 옵션을 선언하면 `003`부터 (`002`는 core 예약) |
+
+### Added
+
+- 참조 타입 옵션: `plugin.ref`의 세 타입은 어느 옵션 struct에서든 field 하나로, optional로,
+  slice로 쓸 수 있고 중첩 struct 안에서도 동작합니다. JSON에서는 문자열 하나입니다.
+- `ContextBase.resolveType`/`resolveFunction`/`resolveInterface`와 같은 세 메서드의
+  `GoContext`·`RustContext`·`AnalyzeContext`·`TransformContext`·`ValidateContext` 판.
+  렌더링 쪽은 lowered program을, transform과 validation은 document를 봅니다.
+- 진단 `<NAME>002`: 플러그인 옵션의 참조가 가리키는 선언이 없을 때. core 검증이 모든
+  플러그인의 옵션을 옵션 타입을 따라 걸어 보고하므로, 플러그인은 field를 선언하는 것만으로
+  검사를 얻습니다.
+
 ## [0.28.0] - 2026-09-15
 
 ### Changed (breaking)

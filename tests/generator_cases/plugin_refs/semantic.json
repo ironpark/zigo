@@ -1,0 +1,38 @@
+{
+  "functions": [
+    {
+      "ext": { "REFS": { "helper": "reset" } },
+      "name": "read",
+      "params": [],
+      "receiver": "Counter",
+      "return": { "bits": 64, "is_usize": true, "kind": "int", "signed": false },
+      "symbol": "zg_counter_read"
+    },
+    {
+      "name": "reset",
+      "params": [],
+      "return": { "kind": "void" },
+      "symbol": "zg_reset"
+    }
+  ],
+  "interfaces": [
+    {
+      "closer": false,
+      "methods": ["read"],
+      "name": "Readable",
+      "types": ["Counter"]
+    }
+  ],
+  "package": "refs",
+  "prefix": "zg",
+  "types": [
+    { "kind": "opaque", "name": "Context", "zig_path": "refs.Context" },
+    {
+      "ext": { "REFS": { "target": "refs.Context", "satisfies": ["Readable"] } },
+      "kind": "opaque",
+      "name": "Counter",
+      "zig_path": "refs.Counter"
+    }
+  ],
+  "zig_version": "0.16.0"
+}

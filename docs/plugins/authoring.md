@@ -235,8 +235,10 @@ fn validate(context: api.ValidateContext) !void {
 reflection이 기록한 Zig 소스 위치(파일, 줄, 열)를 가리키고, 위치가 없는 선언은 `semantic.json`의
 해당 항목으로 떨어집니다. 경로를 직접 쓰지 마세요.
 
-`NAME001`은 옵션 decode failure에 사용되므로 플러그인의 자체 rule은 일반적으로 `002`부터
-시작합니다. core 진단을 숨기지 않도록 core 검증이 먼저 실행됩니다.
+`NAME001`은 옵션 decode failure, `NAME002`는 참조 타입 옵션의 해석 실패에 core가 씁니다.
+참조 타입 옵션(`plugin.ref.*`)을 선언하는 플러그인은 자기 rule을 `003`부터 매기고, 선언하지
+않는 플러그인은 `002`부터 시작해도 됩니다. core 진단을 숨기지 않도록 core 검증이 먼저
+실행됩니다.
 
 ## 별도 Go file
 

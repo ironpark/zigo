@@ -368,6 +368,7 @@ pub fn addRepositorySteps(
         .{ .path = b.path("plugins/buildinfo/src/plugin.zig") },
         .{ .path = b.path("tests/plugins/wrappers.zig") },
         .{ .path = b.path("tests/plugins/nodeext.zig") },
+        .{ .path = b.path("tests/plugins/refs.zig") },
         .{ .path = b.path("tests/plugins/rustmarker.zig") },
     });
     const contract_modules = modules.createGeneratorModules(b, b.path("src"), target, optimize, &.{ .{ .path = b.path("tests/plugins/transform_observer.zig") }, .{ .path = b.path("tests/plugins/contract.zig"), .config = "{\"label\":\"from-build\"}" }, .{ .path = b.path("tests/plugins/outputs.zig") } });
@@ -1294,6 +1295,8 @@ fn addBindingAuthoringErrors(b: *std.Build, test_step: *std.Build.Step) void {
         .{ "plugin_field_subject", "zigo plugin TEST does not support field" },
         .{ "plugin_tag_subject", "zigo plugin TEST does not support enum_tag" },
         .{ "plugin_options", "no field named 'limit'" },
+        .{ "plugin_ref_root", "zigo plugin option references a type outside this binding" },
+        .{ "plugin_ref_kind", "zigo an interface reference requires a zigo.interface declaration" },
     };
     inline for (cases) |case| {
         const run = b.addSystemCommand(&.{ b.graph.zig_exe, "build-obj", "-fno-emit-bin", "--dep", "zigo" });

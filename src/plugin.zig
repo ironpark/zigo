@@ -22,7 +22,7 @@ const targets = @import("targets");
 
 /// Major versions are incompatible; minor versions add capabilities.
 pub const ContractVersion = struct { major: u16, minor: u16 };
-pub const contract_version: ContractVersion = .{ .major = 6, .minor = 0 };
+pub const contract_version: ContractVersion = .{ .major = 7, .minor = 0 };
 
 /// Serialized build configuration; decoded as the registered plugin's Config.
 pub const Configuration = struct { name: []const u8, json: []const u8 };
@@ -49,6 +49,12 @@ pub const session = @import("plugin/session.zig");
 const site_module = @import("plugin/site.zig");
 pub const site = site_module;
 pub const rename = @import("plugin/rename.zig");
+/// Reference-typed option fields: `ref.Type`, `ref.Function` and
+/// `ref.Interface` name a declaration instead of spelling it as free text.
+/// A binding writes them with `api.typeRef(...)`, `api.ref(...)` and the
+/// entry `zigo.interface(...)` returned; a hook reads them back through the
+/// `resolve*` helpers every context carries.
+pub const ref = @import("plugin/ref.zig");
 /// The Go formatting helpers that need no generator state. The emitter's
 /// writers table points at them; a plugin calls them through its context.
 pub const format = @import("plugin/format.zig");
@@ -137,6 +143,18 @@ pub const TransformContext = struct {
     pub fn optionsOf(self: TransformContext, comptime P: Plugin, comptime attachment: Attachment, ext: ?semantic.Extensions) !?Options(P, attachment) {
         return readOptions(P, attachment, self.allocator, ext);
     }
+    /// The declarations a reference-typed option names, in the document as it
+    /// stands. Rendering contexts answer the same three questions against the
+    /// lowered program.
+    pub fn resolveType(self: TransformContext, reference: ref.Type) !?*const semantic.TypeDecl {
+        return ref.findType(self.document.types, reference);
+    }
+    pub fn resolveFunction(self: TransformContext, reference: ref.Function) !?*const semantic.SemanticFn {
+        return ref.findFunction(self.document.types, self.document.functions, reference);
+    }
+    pub fn resolveInterface(self: TransformContext, reference: ref.Interface) !?*const semantic.Interface {
+        return ref.findInterface(self.document.interfaces orelse &.{}, reference);
+    }
 
     /// new_order[new_index] is the old parameter index. Native argument order
     /// (including injected arguments and the receiver) is preserved across
@@ -215,6 +233,15 @@ pub const ValidateContext = struct {
 
     pub fn optionsOf(self: ValidateContext, comptime P: Plugin, comptime attachment: Attachment, ext: ?semantic.Extensions) !?Options(P, attachment) {
         return readOptions(P, attachment, self.allocator, ext);
+    }
+    pub fn resolveType(self: ValidateContext, reference: ref.Type) !?*const semantic.TypeDecl {
+        return ref.findType(self.document.types, reference);
+    }
+    pub fn resolveFunction(self: ValidateContext, reference: ref.Function) !?*const semantic.SemanticFn {
+        return ref.findFunction(self.document.types, self.document.functions, reference);
+    }
+    pub fn resolveInterface(self: ValidateContext, reference: ref.Interface) !?*const semantic.Interface {
+        return ref.findInterface(self.document.interfaces orelse &.{}, reference);
     }
 };
 
@@ -448,6 +475,27 @@ pub const ContextBase = struct {
         return publicFilePathAllocImpl(self.allocator, self.program, self.options, filename);
     }
 
+    /// The declaration a `ref.Type` option names, as the program carries it
+    /// after every rename. Null means the reference resolves to nothing,
+    /// which core validation has already reported as `<NAME>002`: a hook that
+    /// reaches here can treat null as "nothing to write".
+    pub fn resolveType(self: ContextBase, reference: ref.Type) !?*const semantic.TypeDecl {
+        return ref.findType(self.program.types, reference);
+    }
+    /// The function a `ref.Function` option names.
+    pub fn resolveFunction(self: ContextBase, reference: ref.Function) !?*const semantic.SemanticFn {
+        return ref.findFunction(self.program.types, self.program.origins, reference);
+    }
+    /// The interface a `ref.Interface` option names, as the lowered program
+    /// spells it: the methods and the implementing types, not the document's
+    /// record of what the binding said.
+    pub fn resolveInterface(self: ContextBase, reference: ref.Interface) !?abi.AbiInterface {
+        for (self.program.interfaces) |interface| {
+            if (std.mem.eql(u8, interface.name, reference.name)) return interface;
+        }
+        return null;
+    }
+
     /// `P`'s own native symbols, as lowering put them into the program: the
     /// lowered form of what `P.native.symbols` returned, in the order it
     /// returned them. A hook that wraps one reads the symbol here and spells
@@ -496,6 +544,15 @@ pub const GoContext = struct {
     }
     pub fn config(self: GoContext, comptime P: Plugin) !P.Config {
         return self.base().config(P);
+    }
+    pub fn resolveType(self: GoContext, reference: ref.Type) !?*const semantic.TypeDecl {
+        return self.base().resolveType(reference);
+    }
+    pub fn resolveFunction(self: GoContext, reference: ref.Function) !?*const semantic.SemanticFn {
+        return self.base().resolveFunction(reference);
+    }
+    pub fn resolveInterface(self: GoContext, reference: ref.Interface) !?abi.AbiInterface {
+        return self.base().resolveInterface(reference);
     }
 
     // The writers below render Go source, and that is exactly what the `go`
@@ -676,6 +733,15 @@ pub const RustContext = struct {
     pub fn optionsOf(self: RustContext, comptime P: Plugin, comptime attachment: Attachment, source: anytype) !?Options(P, attachment) {
         return self.base().optionsOf(P, attachment, source);
     }
+    pub fn resolveType(self: RustContext, reference: ref.Type) !?*const semantic.TypeDecl {
+        return self.base().resolveType(reference);
+    }
+    pub fn resolveFunction(self: RustContext, reference: ref.Function) !?*const semantic.SemanticFn {
+        return self.base().resolveFunction(reference);
+    }
+    pub fn resolveInterface(self: RustContext, reference: ref.Interface) !?abi.AbiInterface {
+        return self.base().resolveInterface(reference);
+    }
 
     pub fn writeTypeName(self: RustContext, writer: *std.Io.Writer, name: []const u8) !void {
         return self.writers.writeTypeName(self, writer, name);
@@ -715,6 +781,13 @@ fn extensionsOf(source: anytype) ?semantic.Extensions {
 /// diagnostic always says which plugin objected.
 pub fn optionsCode(comptime P: anytype) []const u8 {
     return P.name ++ "001";
+}
+
+/// The diagnostic code an unresolvable reference in a plugin's options is
+/// reported under: its name followed by `002`. Core validation raises it, so
+/// a plugin never has to check its own references.
+pub fn refCode(comptime P: anytype) []const u8 {
+    return P.name ++ "002";
 }
 
 /// `P`'s options on a declaration, or null when the declaration did not
@@ -1301,6 +1374,15 @@ pub const AnalyzeContext = struct {
     pub fn optionsOf(self: AnalyzeContext, comptime P: Plugin, comptime attachment: Attachment, ext: ?semantic.Extensions) !?Options(P, attachment) {
         return readOptions(P, attachment, self.render.allocator, ext);
     }
+    pub fn resolveType(self: AnalyzeContext, reference: ref.Type) !?*const semantic.TypeDecl {
+        return self.render.resolveType(reference);
+    }
+    pub fn resolveFunction(self: AnalyzeContext, reference: ref.Function) !?*const semantic.SemanticFn {
+        return self.render.resolveFunction(reference);
+    }
+    pub fn resolveInterface(self: AnalyzeContext, reference: ref.Interface) !?abi.AbiInterface {
+        return self.render.resolveInterface(reference);
+    }
 };
 
 /// Support for a plugin's own unit tests: a rendering context whose
@@ -1597,4 +1679,8 @@ test "the test context builds declarations, identifiers and literals like the ge
     defer std.testing.allocator.free(camel);
     try std.testing.expectEqualStrings("lowWater", camel);
     try std.testing.expectError(error.Unsupported, context.writeTypeName(&output.writer, "Mode"));
+}
+
+test {
+    _ = ref;
 }
