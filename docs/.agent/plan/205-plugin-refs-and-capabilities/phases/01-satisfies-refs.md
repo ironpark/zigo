@@ -2,7 +2,7 @@
 depends_on:
 - "205-plugin-refs-and-capabilities#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Example 11 `go-verify` and `go test ./...` pass with a generated-interface assertion; a wrong name in a test binding yields `SATIS002`/`SATIS003`.
 > NEXT: none
