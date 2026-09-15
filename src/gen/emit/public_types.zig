@@ -332,9 +332,35 @@ fn writeValueUnionPayloadFromRaw(
     field_name: []const u8,
     raw_value: []const u8,
 ) !void {
+    try writeUnionPayloadFromRaw(allocator, writer, program, options, node, field_name, raw_value, false);
+}
+
+fn writeUnionPayloadFromRaw(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    program: abi.Program,
+    options: emit.Options,
+    node: semantic.TypeNode,
+    field_name: []const u8,
+    raw_value: []const u8,
+    is_raw: bool,
+) !void {
     if (node == .value_struct) {
         const declaration = type_spelling.enumDecl(program, node.value_struct.ref);
-        try writer.print("{s}{{", .{declaration.name});
+        if (is_raw and declaration.layout == .@"packed") {
+            const member = try naming.pascalAlloc(allocator, field_name);
+            defer allocator.free(member);
+            try writer.print("{s}.{s}", .{ raw_value, member });
+            return;
+        }
+        const adapted = !is_raw and declaration.goAdapter() != null;
+        if (adapted) try writer.print("zigo{s}FromRaw(", .{declaration.name});
+        if (is_raw or adapted) {
+            try public_writers.writeRawTypeReferencePrefix(writer, options);
+            try writer.print("{s}{s}{{", .{ declaration.name, common.raw_struct_suffix });
+        } else {
+            try writer.print("{s}{{", .{declaration.name});
+        }
         const layout = program.packedLayout(declaration.name);
         for (declaration.fields, 0..) |field, index| {
             if (index != 0) try writer.writeAll(", ");
@@ -349,16 +375,21 @@ fn writeValueUnionPayloadFromRaw(
             } else {
                 const child_name = try std.fmt.allocPrint(allocator, "{s}_{s}", .{ field_name, field.name });
                 defer allocator.free(child_name);
-                try writeValueUnionPayloadFromRaw(allocator, writer, program, options, field.type.?, child_name, raw_value);
+                try writeUnionPayloadFromRaw(allocator, writer, program, options, field.type.?, child_name, raw_value, is_raw or adapted);
             }
         }
         try writer.writeByte('}');
+        if (adapted) try writer.writeByte(')');
         return;
     }
     const raw_member = try naming.pascalAlloc(allocator, field_name);
     defer allocator.free(raw_member);
     const expression = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ raw_value, raw_member });
     defer allocator.free(expression);
+    if (is_raw) {
+        try writer.writeAll(expression);
+        return;
+    }
     switch (node) {
         .bool => try writer.print("{s} != 0", .{expression}),
         .@"enum" => |value| try public_writers.writeEnumFromRaw(.{ .program = program, .active_package = options.active_package }, writer, value.ref, expression),

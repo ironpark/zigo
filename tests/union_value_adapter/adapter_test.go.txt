@@ -1,0 +1,38 @@
+package viewport
+
+import (
+    "testing"
+    "example.com/zigo/viewport/internal/raw"
+)
+
+// Reversed storage makes ignoring the adapter observable even if code compiles.
+type Color [3]byte
+func colorToRaw(c Color) raw.RGBData { return raw.RGBData{R:c[2], G:c[1], B:c[0]} }
+func colorFromRaw(c raw.RGBData) Color { return Color{c.B, c.G, c.R} }
+type Area struct { Position int16; Active bool; Tint Color; Smooth bool }
+func areaToRaw(a Area) raw.RegionData {
+    var enabled, mode uint8
+    if a.Active { enabled = 1 }
+    if a.Smooth { mode = 1 }
+    return raw.RegionData{X:a.Position, Enabled:enabled, Color:colorToRaw(a.Tint), Mode:mode}
+}
+func areaFromRaw(a raw.RegionData) Area {
+    return Area{a.X, a.Enabled != 0, colorFromRaw(a.Color), a.Mode != 0}
+}
+
+func TestUnionAdapterBoundary(t *testing.T) {
+    for _, active := range []bool{false, true} {
+        want := ScrollViewportRegion(Area{-123, active, Color{0x11, 0x80, 0xff}, active})
+        Apply(want)
+        if raw.Last.RegionX != -123 || raw.Last.RegionEnabled != zigoBoolToUint8(active) || raw.Last.RegionMode != zigoBoolToUint8(active) || raw.Last.RegionColorR != 0xff || raw.Last.RegionColorG != 0x80 || raw.Last.RegionColorB != 0x11 {
+            t.Fatalf("nested adapter arguments: %+v", raw.Last)
+        }
+        got, err := Current()
+        if err != nil || got != want { t.Fatalf("nested round trip = %+v, %v; want %+v", got, err, want) }
+    }
+    want := ScrollViewportRgb(Color{1, 2, 3})
+    Apply(want)
+    if raw.Last.RgbR != 3 || raw.Last.RgbG != 2 || raw.Last.RgbB != 1 { t.Fatalf("color arguments: %+v", raw.Last) }
+    got, err := Current()
+    if err != nil || got != want { t.Fatalf("color round trip = %+v, %v; want %+v", got, err, want) }
+}

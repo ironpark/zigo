@@ -919,22 +919,48 @@ fn writePublicTaggedUnionPayloadRawArguments(
     node: semantic.TypeNode,
     expression: []const u8,
 ) !void {
+    try writeUnionPayloadRawArguments(allocator, writer, program, node, expression, false);
+}
+
+// Once an adapter has produced a raw mirror, every descendant is already raw.
+fn writeUnionPayloadRawArguments(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    program: abi.Program,
+    node: semantic.TypeNode,
+    expression: []const u8,
+    is_raw: bool,
+) !void {
     if (node == .value_struct) {
         const declaration = type_spelling.enumDecl(program, node.value_struct.ref);
-        if (declaration.layout == .@"packed") {
+        if (declaration.layout == .@"packed" and !is_raw) {
             try writer.print(", zigo{s}ToBacking({s})", .{ declaration.name, expression });
             return;
         }
+        if (declaration.layout == .@"packed") {
+            try writer.print(", {s}", .{expression});
+            return;
+        }
+        const adapted = !is_raw and declaration.goAdapter() != null;
+        const raw_expression = if (adapted)
+            try std.fmt.allocPrint(allocator, "zigo{s}ToRaw({s})", .{ declaration.name, expression })
+        else
+            try allocator.dupe(u8, expression);
+        defer allocator.free(raw_expression);
         for (declaration.fields) |field| {
             const member = try naming.pascalAlloc(allocator, field.name);
             defer allocator.free(member);
-            const child = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ expression, member });
+            const child = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ raw_expression, member });
             defer allocator.free(child);
-            try writePublicTaggedUnionPayloadRawArguments(allocator, writer, program, field.type.?, child);
+            try writeUnionPayloadRawArguments(allocator, writer, program, field.type.?, child, is_raw or adapted);
         }
         return;
     }
     try writer.writeAll(", ");
+    if (is_raw) {
+        try writer.writeAll(expression);
+        return;
+    }
     switch (node) {
         .bool => try writer.print("zigoBoolToUint8({s})", .{expression}),
         .@"enum" => |value| try writeEnumToRaw(program, writer, value.ref, expression),

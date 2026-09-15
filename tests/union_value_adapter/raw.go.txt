@@ -1,0 +1,55 @@
+// A recording ABI stub: tests inspect the flattened arguments passed by Go.
+package raw
+
+import "errors"
+
+var Last ScrollViewportData
+var ErrLibraryLoad = errors.New("test loader")
+type LibraryError struct{}
+func (*LibraryError) Error() string { return "test loader" }
+func LoadLibrary(string) error { return nil }
+func LibraryLoaded() bool { return true }
+var DefaultLibraryName = "test"
+func PanicMessage(int32) string { return "test panic" }
+
+type RGBData struct {
+	R uint8
+	G uint8
+	B uint8
+}
+
+type RegionData struct {
+	X int16
+	Enabled uint8
+	Color RGBData
+	Mode uint8
+	_ [1]byte
+}
+
+type ScrollViewportData struct {
+	Tag uint8
+	_ [7]byte
+	Delta int
+	Page uint
+	Ratio float64
+	Animated uint8
+	Mode uint8
+	RgbR uint8
+	RgbG uint8
+	RgbB uint8
+	_ [1]byte
+	RegionX int16
+	RegionEnabled uint8
+	RegionColorR uint8
+	RegionColorG uint8
+	RegionColorB uint8
+	RegionMode uint8
+	_ [3]byte
+}
+
+func Apply(behavior_tag uint8, behavior_delta int, behavior_page uint, behavior_ratio float64, behavior_animated uint8, behavior_mode uint8, behavior_rgb_r uint8, behavior_rgb_g uint8, behavior_rgb_b uint8, behavior_region_x int16, behavior_region_enabled uint8, behavior_region_color_r uint8, behavior_region_color_g uint8, behavior_region_color_b uint8, behavior_region_mode uint8) int64 {
+Last = ScrollViewportData{Tag: behavior_tag, Delta: behavior_delta, Page: behavior_page, Ratio: behavior_ratio, Animated: behavior_animated, Mode: behavior_mode, RgbR: behavior_rgb_r, RgbG: behavior_rgb_g, RgbB: behavior_rgb_b, RegionX: behavior_region_x, RegionEnabled: behavior_region_enabled, RegionColorR: behavior_region_color_r, RegionColorG: behavior_region_color_g, RegionColorB: behavior_region_color_b, RegionMode: behavior_region_mode}
+return 0
+}
+func Current() (ScrollViewportData, int32) { return Last, 0 }
+func Parse(string) (ScrollViewportData, int32) { return Last, 0 }

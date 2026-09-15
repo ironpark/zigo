@@ -289,6 +289,18 @@ pub fn addRepositorySteps(
     json_test.setName("JSON plugin generated Go round trips codepoints");
     json_test.setCwd(json_fixture.getDirectory());
     test_step.dependOn(&json_test.step);
+    // Compile and run the public union adapters against a recording raw ABI.
+    for ([_][]const u8{ "union_value_adapter", "union_value_adapter_purego" }) |case_name| {
+        const fixture = b.addWriteFiles();
+        _ = fixture.add("go.mod", "module example.com/zigo/viewport\n\ngo 1.26\n");
+        _ = fixture.addCopyDirectory(b.path(b.fmt("tests/generator_cases/{s}/expected/viewport", .{case_name})), "viewport", .{ .include_extensions = &.{".go"} });
+        _ = fixture.addCopyFile(b.path("tests/union_value_adapter/raw.go.txt"), "internal/raw/raw.go");
+        _ = fixture.addCopyFile(b.path("tests/union_value_adapter/adapter_test.go.txt"), "viewport/adapter_test.go");
+        const run = b.addSystemCommand(&.{ "go", "test", "./..." });
+        run.setName(b.fmt("generated union adapters round trip ({s})", .{case_name}));
+        run.setCwd(fixture.getDirectory());
+        test_step.dependOn(&run.step);
+    }
     const lookup_bench = b.step("lookup-bench", "Compare generated lookups with switch and map alternatives");
     for ([_][]const u8{ "enum_lookup", "enum_lookup_purego" }) |case_name| {
         const fixture = b.addWriteFiles();

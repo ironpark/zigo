@@ -1,0 +1,273 @@
+{
+  "functions": [
+    {
+      "name": "apply",
+      "params": [
+        {
+          "name": "behavior",
+          "type": {
+            "kind": "value_struct",
+            "ref": "ScrollViewport"
+          }
+        }
+      ],
+      "return": {
+        "bits": 64,
+        "kind": "int",
+        "signed": true
+      },
+      "symbol": "ignored"
+    },
+    {
+      "name": "current",
+      "params": [],
+      "return": {
+        "kind": "value_struct",
+        "ref": "ScrollViewport"
+      },
+      "symbol": "ignored"
+    }
+  ],
+  "package": "viewport",
+  "prefix": "zg",
+  "types": [
+    {
+      "fields": [
+        {
+          "name": "top",
+          "type": {
+            "kind": "void"
+          },
+          "value": 0
+        },
+        {
+          "name": "delta",
+          "type": {
+            "bits": 64,
+            "is_usize": true,
+            "kind": "int",
+            "signed": true
+          },
+          "value": 1
+        },
+        {
+          "name": "page",
+          "type": {
+            "bits": 64,
+            "is_usize": true,
+            "kind": "int",
+            "signed": false
+          },
+          "value": 2
+        },
+        {
+          "name": "ratio",
+          "type": {
+            "bits": 64,
+            "kind": "float"
+          },
+          "value": 3
+        },
+        {
+          "name": "animated",
+          "type": {
+            "kind": "bool"
+          },
+          "value": 4
+        },
+        {
+          "name": "mode",
+          "type": {
+            "kind": "enum",
+            "ref": "Mode"
+          },
+          "value": 5
+        },
+        {
+          "name": "rgb",
+          "type": {
+            "kind": "value_struct",
+            "ref": "RGB"
+          },
+          "value": 6
+        },
+        {
+          "name": "region",
+          "type": {
+            "kind": "value_struct",
+            "ref": "Region"
+          },
+          "value": 7
+        },
+        {
+          "name": "unknown",
+          "type": {
+            "const": true,
+            "element": {
+              "bits": 8,
+              "kind": "int",
+              "signed": false
+            },
+            "kind": "slice"
+          },
+          "value": 8
+        }
+      ],
+      "kind": "tagged_union",
+      "name": "ScrollViewport",
+      "omitted_variants": [
+        "unknown"
+      ],
+      "tag_type": {
+        "kind": "enum",
+        "ref": "ScrollViewportTag"
+      }
+    },
+    {
+      "fields": [
+        {
+          "name": "top",
+          "value": 0
+        },
+        {
+          "name": "delta",
+          "value": 1
+        },
+        {
+          "name": "page",
+          "value": 2
+        },
+        {
+          "name": "ratio",
+          "value": 3
+        },
+        {
+          "name": "animated",
+          "value": 4
+        },
+        {
+          "name": "mode",
+          "value": 5
+        },
+        {
+          "name": "rgb",
+          "value": 6
+        },
+        {
+          "name": "region",
+          "value": 7
+        },
+        {
+          "name": "unknown",
+          "value": 8
+        }
+      ],
+      "kind": "enum",
+      "name": "ScrollViewportTag",
+      "omitted_variants": [
+        "unknown"
+      ],
+      "tag_type": {
+        "bits": 8,
+        "kind": "int",
+        "signed": false
+      }
+    },
+    {
+      "fields": [
+        {
+          "name": "r",
+          "type": {
+            "bits": 8,
+            "kind": "int",
+            "signed": false
+          }
+        },
+        {
+          "name": "g",
+          "type": {
+            "bits": 8,
+            "kind": "int",
+            "signed": false
+          }
+        },
+        {
+          "name": "b",
+          "type": {
+            "bits": 8,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "kind": "value_struct",
+      "layout": "extern",
+      "name": "RGB",
+      "go_adapter": {
+        "type": "Color",
+        "to_raw": "colorToRaw",
+        "from_raw": "colorFromRaw"
+      }
+    },
+    {
+      "fields": [
+        {
+          "name": "x",
+          "type": {
+            "bits": 16,
+            "kind": "int",
+            "signed": true
+          }
+        },
+        {
+          "name": "enabled",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "value_struct",
+            "ref": "RGB"
+          }
+        },
+        {
+          "name": "mode",
+          "type": {
+            "kind": "enum",
+            "ref": "Mode"
+          }
+        }
+      ],
+      "kind": "value_struct",
+      "layout": "extern",
+      "name": "Region",
+      "go_adapter": {
+        "type": "Area",
+        "to_raw": "areaToRaw",
+        "from_raw": "areaFromRaw"
+      }
+    },
+    {
+      "fields": [
+        {
+          "name": "instant",
+          "value": 0
+        },
+        {
+          "name": "smooth",
+          "value": 1
+        }
+      ],
+      "kind": "enum",
+      "name": "Mode",
+      "tag_type": {
+        "bits": 8,
+        "kind": "int",
+        "signed": false
+      }
+    }
+  ],
+  "zig_version": "0.16.0"
+}
