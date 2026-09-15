@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-15T10:59:09Z"
 depends_on:
 - "206-plugin-refs-followups#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Generated `UnmarshalJSON` for a `.text` enum contains `Parse<Type>(` and, with enumkit, `IsKnown()`, and no `Values()` loop.
 > NEXT: none

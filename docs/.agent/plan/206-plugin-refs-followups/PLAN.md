@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-15T10:59:09Z"
 depends_on:
 - plugin-refs-and-capabilities
 description: "Close plan 205 follow-ups: authoring-typed refs on field and tag use, and json enum decoding through the generated Parse<Type> when text is on"
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-15T10:07:00Z"
 ---
 > NEXT: Field and tag use with authoring refs. ([Phase 0](phases/00-field-tag-refs.md))
@@ -10,7 +11,7 @@ registered_at: "2026-09-15T10:07:00Z"
 # Phases
 
 - [x] [Phase 00: Field and tag use with authoring refs](phases/00-field-tag-refs.md)
-- [ ] [Phase 01: json decodes through Parse<Type>](phases/01-json-parse.md)
+- [x] [Phase 01: json decodes through Parse<Type>](phases/01-json-parse.md)
 
 # Shared Verification
 
