@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-15T08:59:45Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: A test plugin option of type `plugin.ref.Type` written as `.target = api.typeRef("Context")` round-trips to `ext` as a path and resolves to the `TypeDecl` in a test; an unknown path yields `TEST002`.
 > NEXT: none
