@@ -2,7 +2,7 @@
 depends_on:
 - "205-plugin-refs-and-capabilities#2"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Example 10 `go-verify` (+ purego) and `go test ./...` pass with the capability-driven `UnmarshalJSON`; goldens for json without enumkit unchanged.
 > NEXT: none
