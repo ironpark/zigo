@@ -25,10 +25,13 @@ const CaseOptions = struct {
     raw_package_name: []const u8 = "raw",
     raw_colocated: bool = false,
     plugin_config: std.json.Value = .{ .object = .empty },
-    /// Added plugins this case runs, by name. Absent runs every plugin the
-    /// case runner was built with, which is what an ordinary case wants: none
-    /// of the goldens below name one.
-    plugins: ?[]const []const u8 = null,
+    /// Added plugins this case runs, by name. A case gets exactly the ones it
+    /// names and no others, so an ordinary case -- which names none -- sees
+    /// only the built-ins. The runner is built with every shipped plugin
+    /// compiled in, and one of them contributes at the package boundary
+    /// rather than off an attachment, so "every registered plugin" would put
+    /// that plugin's output in every golden.
+    plugins: []const []const u8 = &.{},
     errors_lock_path: ?[]const u8 = null,
     link_mode: enum { static, dynamic } = .static,
     /// cgo platforms the raw package links for; empty keeps the single line.

@@ -44,6 +44,7 @@ zig build rust
 데모가 다음을 출력하고 `cargo test`가 통과합니다.
 
 ```
+zig 0.16.0; Debug; aarch64-macos-none
 2 + 3 = 5
 sum([1, 2, 3]) = 6
 7 / 2 = 3
@@ -56,7 +57,8 @@ tally.render() = total=42
 live bytes after drop = 0
 ```
 
-마지막 줄이 중요합니다. `Drop`이 실제로 네이티브 destructor에 도달했다는 증거는
+첫 줄은 `buildinfo` 플러그인이 더한 것이라 네이티브 library를 실제로 빌드한
+toolchain과 target에 따라 달라집니다. 마지막 줄이 중요합니다. `Drop`이 실제로 네이티브 destructor에 도달했다는 증거는
 라이브러리가 스스로 세는 바이트 수가 0으로 돌아오는 것뿐입니다. 코드 어디에도
 `close`나 `deinit` 호출은 없습니다.
 
@@ -72,10 +74,12 @@ live bytes after drop = 0
 6. [rust/src/handle.rs](rust/src/handle.rs) — 생성된 핸들과 view 타입
 7. [rust/src/enum.rs](rust/src/enum.rs) — 생성된 enum과 `enumkit` 플러그인이
    그 옆에 쓴 `impl` block
-8. [rust/src/buffer.rs](rust/src/buffer.rs) — 생성된 `OwnedSlice<T>`
-9. [rust/src/raw.rs](rust/src/raw.rs) — 생성된 `extern "C"` 선언과 마셜링
-10. [rust/src/error.rs](rust/src/error.rs) — `errors.lock.json`에서 생성된 오류 타입
-11. [rust/examples/demo.rs](rust/examples/demo.rs)와
+8. [rust/src/buildinfo.rs](rust/src/buildinfo.rs) — `buildinfo` 플러그인이 쓴
+   모듈. 네이티브 심볼 하나를 감쌉니다
+9. [rust/src/buffer.rs](rust/src/buffer.rs) — 생성된 `OwnedSlice<T>`
+10. [rust/src/raw.rs](rust/src/raw.rs) — 생성된 `extern "C"` 선언과 마셜링
+11. [rust/src/error.rs](rust/src/error.rs) — `errors.lock.json`에서 생성된 오류 타입
+12. [rust/examples/demo.rs](rust/examples/demo.rs)와
     [rust/tests/bindings.rs](rust/tests/bindings.rs) — 호출하는 쪽
 
 ## 빌드 단계
@@ -127,6 +131,14 @@ live bytes after drop = 0
   쪽 표기는 한 줄로 같고, 무엇이 생성되는지는 플러그인이 채운 렌더링 slot이
   정합니다. `rust/tests/bindings.rs`의
   `an_enum_crosses_by_name_and_carries_its_plugin_helpers`가 둘 다 호출합니다.
+- **플러그인은 네이티브 쪽에도 기여합니다**: 두 번째 동봉 플러그인
+  [buildinfo](../../plugins/buildinfo/README.md)는 선언에 붙지 않습니다. Zig
+  소스 하나를 실어 보내고 shim이 그것을 컴파일한 뒤, 그 심볼을 crate의
+  `build_info()`가 감쌉니다. 그 값은 생성 코드가 알 수 없는 것 — 네이티브
+  library를 컴파일한 Zig version, optimize mode, target triple — 이라서
+  렌더링이 아니라 네이티브 기여입니다.
+  `rust/tests/bindings.rs`의 `build_info_names_the_zig_that_built_the_library`가
+  호출합니다.
 - **빈 슬라이스**: Rust의 빈 슬라이스도 null이 아닌 정렬된 포인터를 돌려주는데,
   이는 Zig `[]const T`가 요구하는 것과 정확히 같습니다. Go 쪽 `zigoZeroSlot`에
   해당하는 장치가 필요하지 않습니다.

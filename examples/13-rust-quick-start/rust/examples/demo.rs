@@ -1,6 +1,9 @@
 //! The Rust mirror of `examples/00-quick-start`'s Go demo.
 
 fn main() {
+    // Contributed by the buildinfo plugin rather than by the binding.
+    println!("{}", calculator::build_info());
+
     // A scalar, which is the whole of the Go quick start.
     println!("2 + 3 = {}", calculator::add(2, 3));
     // A borrowed slice.

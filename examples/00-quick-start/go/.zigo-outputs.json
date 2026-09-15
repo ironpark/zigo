@@ -22,6 +22,10 @@
       "kind": "go"
     },
     {
+      "path": "calculator/zigo_buildinfo_gen.go",
+      "kind": "go"
+    },
+    {
       "path": "errors.lock.json",
       "kind": "native"
     }

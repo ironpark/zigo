@@ -16,6 +16,9 @@ pub use handle::*;
 mod buffer;
 pub use buffer::OwnedSlice;
 
+mod buildinfo;
+pub use buildinfo::*;
+
 /// Adds two signed 32-bit integers. The sum must fit in i32.
 pub fn add(a: i32, b: i32) -> i32 {
     raw::add(a, b)

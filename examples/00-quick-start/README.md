@@ -19,20 +19,37 @@ zig build go
 
 ## 예상 결과
 
-프로그램은 `2 + 3 = 5`를 출력하고 Go 테스트가 통과합니다.
+프로그램은 두 줄을 출력하고 Go 테스트가 통과합니다.
+
+```text
+2 + 3 = 5
+zig 0.16.0; Debug; aarch64-macos-none
+```
+
+둘째 줄은 바인딩이 아니라 동봉 플러그인 [buildinfo](../../plugins/buildinfo/README.md)가
+더한 것이라, 네이티브 library를 실제로 빌드한 toolchain과 target에 따라 달라집니다.
 
 ## 핵심 파일
 
 1. [src/root.zig](src/root.zig) — 원래 Zig 함수
 2. [src/bindings.zig](src/bindings.zig) — 노출할 함수 선택
-3. [빌드.zig](build.zig) — Zig 모듈과 생성 단계 연결
+3. [빌드.zig](build.zig) — Zig 모듈, 플러그인과 생성 단계 연결
 4. [Go 프로그램](go/cmd/demo/main.go) — 생성 패키지를 import해 호출
 5. [Go 예제 테스트](go/calculator/example_test.go) — 반환값과 출력 검증
+6. [go/calculator/zigo_buildinfo_gen.go](go/calculator/zigo_buildinfo_gen.go) —
+   `buildinfo` 플러그인이 쓴 파일
 
 ## 동작과 주의사항
 
 `zig build go`는 공개 `calculator` 패키지와 `go/internal/raw`를 생성하고 네이티브 라이브러리를
-빌드합니다. `*_gen.go`와 raw 패키지는 직접 수정하지 않습니다. 외부 프로젝트에서는
+빌드합니다. `*_gen.go`와 raw 패키지는 직접 수정하지 않습니다.
+
+`build.zig`에는 플러그인이 하나 연결되어 있습니다. `buildinfo`는 선언에 붙지 않고 Zig
+소스 하나를 실어 보내며, 생성된 shim이 그것을 컴파일하고 C 심볼 하나를 내보냅니다.
+`BuildInfo()`는 그 심볼을 감싼 것입니다 — 즉 생성 코드가 답할 수 없고 네이티브 library만
+답할 수 있는 값이며, 플러그인이 네이티브 쪽에 기여할 수 있다는 것을 보여 주는 최소 예제입니다.
+빼고 싶으면 `build.zig`의 `.plugins`에서 지우고 다시 생성하세요.
+자세한 내용은 [플러그인 문서](../../docs/plugins/README.md)를 참고하세요. 외부 프로젝트에서는
 `build.zig.zon`의 상대 경로 대신 [시작 가이드](../../docs/getting-started.md)처럼 zigo 의존성를
 추가하고 `go_module`을 자신의 모듈 경로로 바꾸세요.
 

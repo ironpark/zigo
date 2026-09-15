@@ -776,6 +776,7 @@ pub const NativeSymbol = struct {
     /// contribute a `version` without colliding.
     name: []const u8,
     params: []const abi.AbiParam = &.{},
+    /// A plain scalar, or `plugin.c_string` for a NUL-terminated string.
     ret: abi.AbiScalar = .void,
     /// The declaration inside the source that implements it, as a Zig path:
     /// `answer`, or `info.build` for one nested in a container.
@@ -827,6 +828,34 @@ pub fn nativeSymbolNameAlloc(allocator: std.mem.Allocator, prefix: []const u8, p
     return std.fmt.allocPrint(allocator, "{s}_{s}_{s}", .{ prefix, owner, name });
 }
 
+/// The byte a C string points at. Named because `c_string` below needs an
+/// address, and a `comptime` temporary has none that outlives the expression.
+const c_string_byte: abi.AbiScalar = .{ .unsigned_int = 8 };
+
+/// The one non-scalar a plugin symbol may hand back: a NUL-terminated string.
+///
+/// C spells it `const char *`, but neither public side ever sees a pointer:
+/// the Go raw package copies the bytes into a `string` and the Rust raw module
+/// borrows them as `&'static str`, exactly as both already do for the panic
+/// message accessors. That borrow is the contract -- the plugin owns the bytes
+/// and has to keep them valid for the life of the process, which is what a
+/// `comptime`-built literal is. A buffer the plugin would free is not one of
+/// these, and there is no way to spell one: a plugin symbol has no release
+/// half for the raw layer to call.
+pub const c_string: abi.AbiScalar = .{ .pointer = .{
+    .child = &c_string_byte,
+    .is_const = true,
+    .is_many = true,
+    .is_c_string = true,
+} };
+
+/// Whether `scalar` is the C string above. Only a return may be one; a
+/// parameter is a plain scalar, because the plugin symbol would then have to
+/// answer for the lifetime of a string the caller built.
+pub fn isNativeCString(scalar: abi.AbiScalar) bool {
+    return scalar == .pointer and scalar.pointer.is_c_string;
+}
+
 /// The scalars a plugin symbol may be spelled with: the values C carries by
 /// itself, with no pointer, aggregate or callback behind them. Anything else
 /// is refused with `ZIGO078` rather than lowered into a signature the raw
@@ -845,6 +874,7 @@ pub fn nativeScalarSupported(scalar: abi.AbiScalar) bool {
 /// spelling: the document may not name a backend's types, and the only
 /// question `abi-diff` asks of it is whether two recordings are equal.
 pub fn writeNativeScalar(writer: *std.Io.Writer, scalar: abi.AbiScalar) !void {
+    if (isNativeCString(scalar)) return writer.writeAll("c_string");
     switch (scalar) {
         .void => try writer.writeAll("void"),
         .bool_u8 => try writer.writeAll("bool"),
@@ -889,6 +919,20 @@ test "the C ABI carries scalars and refuses everything else" {
     try std.testing.expect(nativeScalarSupported(.usize));
     try std.testing.expect(!nativeScalarSupported(.{ .unsigned_int = 24 }));
     try std.testing.expect(!nativeScalarSupported(.{ .snapshot = "zg_value" }));
+    // A C string is not one of them: it is a pointer, and only a return may
+    // be one, which is `isNativeCString`'s question rather than this one's.
+    try std.testing.expect(!nativeScalarSupported(c_string));
+    try std.testing.expect(isNativeCString(c_string));
+}
+
+test "a C-string return records its own signature spelling" {
+    const signature = try nativeSignatureAlloc(std.testing.allocator, .{
+        .name = "build_info",
+        .ret = c_string,
+        .implementation = "buildInfo",
+    });
+    defer std.testing.allocator.free(signature);
+    try std.testing.expectEqualStrings("c_string()", signature);
 }
 
 /// What a plugin attaches to: the kind of declaration, not the output
@@ -1309,9 +1353,17 @@ pub const testing = struct {
                 return error.Unsupported;
             }
         }.f,
+        // The raw path of a plugin's own symbol, which a unit test can
+        // answer for: lowering gives such a symbol no receiver and no
+        // namespace, so `raw.rs` names its wrapper by case-converting the
+        // function's name and nothing else. Any other function needs the
+        // lowered shape, which only the generator has.
         .rawCallNameAlloc = struct {
-            fn f(_: RustContext, _: std.mem.Allocator, _: abi.AbiFn) anyerror![]u8 {
-                return error.Unsupported;
+            fn f(context: RustContext, allocator: std.mem.Allocator, function: abi.AbiFn) anyerror![]u8 {
+                if (function.origin.plugin == null) return error.Unsupported;
+                const converted = try rustbuild.identifierAlloc(context, allocator, function.origin.name, .snake);
+                defer allocator.free(converted);
+                return std.fmt.allocPrint(allocator, "crate::raw::{s}", .{converted});
             }
         }.f,
     };
@@ -1328,8 +1380,18 @@ pub const testing = struct {
         .writeResultType = unsupported.results,
         .writeCallArguments = unsupported.function,
         .identifierAlloc = format.identifierAlloc,
-        .rawCallNameAlloc = unsupported.rawCallName,
+        .rawCallNameAlloc = pluginRawCallName,
     };
+
+    /// The Go counterpart of the Rust table's entry above, under the same
+    /// restriction: a plugin symbol alone, whose raw name is the Pascal
+    /// spelling of its function name.
+    fn pluginRawCallName(context: GoContext, allocator: std.mem.Allocator, function: abi.AbiFn) anyerror![]u8 {
+        if (function.origin.plugin == null) return error.Unsupported;
+        const converted = try format.identifierAlloc(context, allocator, function.origin.name, .pascal);
+        defer allocator.free(converted);
+        return std.fmt.allocPrint(allocator, "raw.{s}", .{converted});
+    }
 
     const unsupported = struct {
         fn typeName(_: GoContext, _: *std.Io.Writer, _: []const u8) anyerror!void {

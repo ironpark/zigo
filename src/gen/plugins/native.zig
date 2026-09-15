@@ -127,6 +127,7 @@ pub fn append(
             params[index] = .{ .name = parameter.name, .role = .value, .scalar = parameter.scalar, .source_index = index };
             semantic_params[index] = .{ .name = parameter.name, .type = nodeFor(parameter.scalar).? };
         }
+        const returns_text = plugin.isNativeCString(declared.ret);
         const origin = try allocator.create(semantic.SemanticFn);
         origin.* = .{
             // The Go raw layer names a function by pascal-casing this, so the
@@ -135,7 +136,11 @@ pub fn append(
             .name = try std.fmt.allocPrint(allocator, "{s}_{s}", .{ try std.ascii.allocLowerString(allocator, owner), declared.name }),
             .doc = declared.doc,
             .params = semantic_params,
-            .@"return" = nodeFor(declared.ret).?,
+            .@"return" = if (returns_text) try cStringNode(allocator) else nodeFor(declared.ret).?,
+            // What makes the raw layers copy the bytes instead of handing a
+            // pointer over. Lowering decides this for a bound function from
+            // the hint; a plugin symbol has no hint to read, so it is stated.
+            .return_semantic = if (returns_text) .c_string else null,
             .symbol = symbol,
             .custom_symbol = true,
             .plugin = .{ .plugin = owner, .module = contribution.module, .implementation = declared.implementation },
@@ -144,6 +149,7 @@ pub fn append(
             .symbol = symbol,
             .params = params,
             .ret = declared.ret,
+            .ret_string = if (returns_text) .c_string else .none,
             .origin = origin,
         });
     }
@@ -173,7 +179,11 @@ pub fn recordAlloc(
 /// backends and the Rust raw module can spell without a semantic type behind it.
 fn signatureIssue(allocator: std.mem.Allocator, owner: []const u8, symbol: plugin.NativeSymbol) !?diagnostic.Diagnostic {
     var offender: ?[]const u8 = null;
-    if (!plugin.nativeScalarSupported(symbol.ret)) offender = "the return";
+    // The return may also be a C string, which is the one shape both raw
+    // layers already copy out of native memory without a semantic type behind
+    // it. A parameter may not: the plugin would then have to answer for the
+    // lifetime of a string the caller built.
+    if (!plugin.nativeScalarSupported(symbol.ret) and !plugin.isNativeCString(symbol.ret)) offender = "the return";
     for (symbol.params) |parameter| {
         if (plugin.nativeScalarSupported(parameter.scalar)) continue;
         offender = parameter.name;
@@ -185,8 +195,16 @@ fn signatureIssue(allocator: std.mem.Allocator, owner: []const u8, symbol: plugi
         .code = "ZIGO067",
         .message = try std.fmt.allocPrint(allocator, "plugin `{s}` symbol `{s}` cannot carry {s} across the C ABI", .{ owner, symbol.name, part }),
         .site = try siteFor(allocator, owner),
-        .hint = "a plugin symbol takes and returns plain scalars: bool, an 8, 16, 32 or 64-bit integer, usize, isize, f32 or f64",
+        .hint = "a plugin symbol takes and returns plain scalars: bool, an 8, 16, 32 or 64-bit integer, usize, isize, f32 or f64; a return may also be `plugin.c_string`",
     };
+}
+
+/// The semantic return of a C-string symbol: the same `[]const u8` a bound
+/// function carrying `.c_string` declares, so every emitter reads one shape.
+fn cStringNode(allocator: std.mem.Allocator) !semantic.TypeNode {
+    const element = try allocator.create(semantic.TypeNode);
+    element.* = .{ .int = .{ .bits = 8, .signed = false } };
+    return .{ .slice = .{ .@"const" = true, .element = element } };
 }
 
 /// The semantic type one supported scalar stands for. Every emitter that
@@ -234,6 +252,36 @@ test "a second plugin symbol of the same name is refused" {
     try std.testing.expectEqualStrings("TEST", program.functions[0].origin.plugin.?.plugin);
     try std.testing.expectEqual(@as(usize, 1), issues.items.len);
     try std.testing.expectEqualStrings("ZIGO066", issues.items[0].code);
+}
+
+test "a C-string return lowers to the shape both raw layers already copy" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    var program: abi.Program = .{ .package = "sample", .prefix = "zg", .functions = &.{} };
+    var issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
+    try append(allocator, &program, &.{.{
+        .plugin = "BUILDINFO",
+        .symbol = .{ .name = "build_info", .ret = plugin.c_string, .implementation = "buildInfo" },
+        .module = "buildinfo_native",
+    }}, &issues);
+    try std.testing.expectEqual(@as(usize, 0), issues.items.len);
+    const lowered = program.functions[0];
+    try std.testing.expectEqual(abi.AbiFn.StringRole.c_string, lowered.ret_string);
+    try std.testing.expect(lowered.ret.pointer.is_c_string);
+    try std.testing.expect(semantic.isCStringSlice(lowered.origin.@"return", lowered.origin.return_semantic));
+}
+
+test "a C string is refused as a parameter" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const issue = try signatureIssue(arena.allocator(), "BUILDINFO", .{
+        .name = "build_info",
+        .params = &.{.{ .name = "label", .scalar = plugin.c_string }},
+        .ret = plugin.c_string,
+        .implementation = "buildInfo",
+    });
+    try std.testing.expectEqualStrings("ZIGO067", issue.?.code);
 }
 
 test "the record names every contributed symbol" {

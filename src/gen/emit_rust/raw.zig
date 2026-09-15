@@ -241,8 +241,9 @@ fn renderWrapper(
     // with an out parameter but no status code is a statement, but the C
     // wrapper returns `void`, so binding `code` to it binds `()` and rustc
     // rejects the unused name under `-D warnings`.
-    const reads_after_call = shape.payload != null;
+    const reads_after_call = shape.payload != null or shape.c_string;
     try writer.writeAll("    ");
+    if (shape.c_string) try writer.writeAll("let pointer = ");
     if (reads_after_call and shape.has_status_code) try writer.writeAll("let code = ");
     try writer.print("unsafe {{ {s}(", .{function.symbol});
     for (function.params, 0..) |parameter, index| {
@@ -312,6 +313,12 @@ pub const Shape = struct {
     /// The scalar the call returns directly, when it returns one and it is not
     /// a status code.
     direct: ?Direct = null,
+    /// The call hands back one NUL-terminated pointer the native side owns
+    /// for the life of the process, which the raw wrapper borrows as
+    /// `&'static str` so no caller of it ever holds a raw pointer. Only a
+    /// plugin's own symbol reaches here; `types.unsupported` refuses every
+    /// other borrowed C-string result.
+    c_string: bool = false,
     /// The C return is a status code rather than the result, so the result
     /// travels through an out parameter and the code has to be inspected.
     ///
@@ -533,7 +540,13 @@ pub const Shape = struct {
             .has_status_code = has_status_code,
             .declares_errors = function.errors.len != 0,
         };
-        if (payload_node == .opaque_ptr) {
+        if (function.ret_string == .c_string) {
+            // Before the `.slice` branch below: the semantic return really is
+            // `[]const u8`, but a C string crosses as one pointer with no
+            // length beside it, so there is nothing for that branch's out
+            // parameters to read.
+            shape.c_string = true;
+        } else if (payload_node == .opaque_ptr) {
             const handle = types.renderableHandle(program, payload_node.opaque_ptr.ref) orelse
                 return error.UnsupportedType;
             shape.payload = .{ .handle = .{
@@ -675,11 +688,22 @@ pub const Shape = struct {
             if (self.has_status_code) try writer.writeAll(", i32");
             return writer.writeByte(')');
         }
+        if (self.c_string) return writer.writeAll(" -> &'static str");
         if (self.has_status_code) return writer.writeAll(" -> i32");
         if (self.direct) |direct| return writer.print(" -> {s}", .{direct.raw});
     }
 
     pub fn writeRawReturn(self: Shape, writer: *std.Io.Writer) !void {
+        // A null pointer and invalid UTF-8 both answer with the empty string
+        // rather than panicking: the raw layer reports what the native side
+        // said, and neither is a condition a caller could act on.
+        if (self.c_string) return writer.writeAll(
+            \\    if pointer.is_null() {
+            \\        return "";
+            \\    }
+            \\    unsafe { core::ffi::CStr::from_ptr(pointer) }.to_str().unwrap_or("")
+            \\
+        );
         if (self.payload) |payload| {
             try writer.writeAll("    (");
             switch (payload) {

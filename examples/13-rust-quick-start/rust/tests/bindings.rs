@@ -186,3 +186,19 @@ fn an_enum_crosses_by_name_and_carries_its_plugin_helpers() {
     assert!(Rounding::try_from(3u8).is_err());
     assert_eq!(Rounding::try_from(2u8), Ok(Rounding::Nearest));
 }
+
+/// `build_info()` is the buildinfo plugin's, not the binding's: the plugin
+/// ships its own Zig and the native library answers out of it. Its exact text
+/// depends on the toolchain and target this example was built with, so what
+/// the test pins is the shape -- and that the crate really reads a string out
+/// of native memory.
+#[test]
+fn build_info_names_the_zig_that_built_the_library() {
+    let info = calculator::build_info();
+    assert!(
+        info.starts_with("zig "),
+        "build_info() = {info:?}, want a string starting with \"zig \""
+    );
+    // `zig <version>; <optimize mode>; <target triple>`.
+    assert_eq!(info.matches("; ").count(), 2, "build_info() = {info:?}");
+}

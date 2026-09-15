@@ -1,0 +1,10 @@
+.{
+    .name = .zigo_buildinfo,
+    .version = "0.0.0",
+    .fingerprint = 0xc63e35147a1c9f38,
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{
+        .zigo = .{ .path = "../.." },
+    },
+    .paths = .{ "build.zig", "build.zig.zon", "src", "README.md" },
+}

@@ -353,6 +353,7 @@ pub fn addRepositorySteps(
         .{ .path = b.path("plugins/satisfies/src/plugin.zig") },
         .{ .path = b.path("plugins/json/src/plugin.zig") },
         .{ .path = b.path("plugins/enumkit/src/plugin.zig") },
+        .{ .path = b.path("plugins/buildinfo/src/plugin.zig") },
         .{ .path = b.path("tests/plugins/wrappers.zig") },
         .{ .path = b.path("tests/plugins/nodeext.zig") },
         .{ .path = b.path("tests/plugins/rustmarker.zig") },
@@ -497,6 +498,27 @@ pub fn addRepositorySteps(
         },
     }) });
     test_step.dependOn(&b.addRunArtifact(enumkit_tests).step);
+    const buildinfo_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("plugins/buildinfo/src/plugin.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "plugin", .module = showcase_modules.plugin },
+            .{ .name = "abi", .module = showcase_modules.abi },
+            .{ .name = "semantic", .module = showcase_modules.semantic },
+            .{ .name = "naming", .module = showcase_modules.naming },
+            .{ .name = "diagnostic", .module = showcase_modules.diagnostic },
+        },
+    }) });
+    test_step.dependOn(&b.addRunArtifact(buildinfo_tests).step);
+    // The Zig the plugin ships for the shim, tested on its own: the shim
+    // compiles it against nothing but `std`, and so does this.
+    const buildinfo_native_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("plugins/buildinfo/src/native.zig"),
+        .target = target,
+        .optimize = optimize,
+    }) });
+    test_step.dependOn(&b.addRunArtifact(buildinfo_native_tests).step);
     const generator_case_runner = b.addExecutable(.{
         .name = "zigo-generator-case",
         .root_module = b.createModule(.{
@@ -507,7 +529,21 @@ pub fn addRepositorySteps(
         }),
     });
     addGeneratorCases(b, test_step, generator_case_runner, test_filters);
-    addPluginNativeShimTest(b, test_step, generator_case_runner, target, optimize);
+    addPluginNativeShimTest(b, test_step, generator_case_runner, target, optimize, .{
+        .case = "plugin_native",
+        .module = "wraptest_native",
+        .source = "tests/plugins/wrappers_native.zig",
+        .root = "tests/plugin_native/shim_test.zig",
+    });
+    // The same for the shipped plugin, whose symbol returns a C string: the
+    // one signature a plugin symbol may have that is not a plain scalar, and
+    // the one whose Zig spelling the shim has to get right.
+    addPluginNativeShimTest(b, test_step, generator_case_runner, target, optimize, .{
+        .case = "plugin_buildinfo",
+        .module = "buildinfo_native",
+        .source = "plugins/buildinfo/src/native.zig",
+        .root = "tests/plugin_native/buildinfo_shim_test.zig",
+    });
 
     // A plugin that fills only the `rust` slot, run against a real example's
     // document. The example's committed crate is not touched: the generator
@@ -933,11 +969,12 @@ fn addPluginNativeShimTest(
     runner: *std.Build.Step.Compile,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
+    case: PluginNativeShimCase,
 ) void {
     const generated = b.addRunArtifact(runner);
-    generated.setName("plugin native shim generated");
-    generated.addDirectoryArg(b.path("tests/generator_cases/plugin_native"));
-    const output = generated.addOutputDirectoryArg("plugin-native");
+    generated.setName(b.fmt("plugin native shim generated ({s})", .{case.case}));
+    generated.addDirectoryArg(b.path(b.fmt("tests/generator_cases/{s}", .{case.case})));
+    const output = generated.addOutputDirectoryArg(b.fmt("{s}-shim", .{case.case}));
     const shim_module = b.createModule(.{
         .root_source_file = output.path(b, "shim.zig"),
         .target = target,
@@ -948,21 +985,31 @@ fn addPluginNativeShimTest(
             .optimize = optimize,
         }) }},
     });
-    shim_module.addImport("wraptest_native", b.createModule(.{
-        .root_source_file = b.path("tests/plugins/wrappers_native.zig"),
+    shim_module.addImport(case.module, b.createModule(.{
+        .root_source_file = b.path(case.source),
         .target = target,
         .optimize = optimize,
     }));
     const native = b.addTest(.{ .root_module = b.createModule(.{
-        .root_source_file = b.path("tests/plugin_native/shim_test.zig"),
+        .root_source_file = b.path(case.root),
         .target = target,
         .optimize = optimize,
         .imports = &.{.{ .name = "shim", .module = shim_module }},
     }) });
     const run = b.addRunArtifact(native);
-    run.setName("plugin native shim compiles and answers");
+    run.setName(b.fmt("plugin native shim compiles and answers ({s})", .{case.case}));
     test_step.dependOn(&run.step);
 }
+
+/// One generator case whose shim carries a plugin's native source: the case
+/// that generates it, the module name the generated `@import` spells, the
+/// file behind that name, and the test that calls the exports.
+const PluginNativeShimCase = struct {
+    case: []const u8,
+    module: []const u8,
+    source: []const u8,
+    root: []const u8,
+};
 
 fn addGeneratorCases(
     b: *std.Build,

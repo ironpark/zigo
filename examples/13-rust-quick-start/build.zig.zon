@@ -6,6 +6,7 @@
     .dependencies = .{
         .zigo = .{ .path = "../.." },
         .zigo_enumkit = .{ .path = "../../plugins/enumkit" },
+        .zigo_buildinfo = .{ .path = "../../plugins/buildinfo" },
     },
     .paths = .{ "build.zig", "build.zig.zon", "src", "rust", "zigo" },
 }

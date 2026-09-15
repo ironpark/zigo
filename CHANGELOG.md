@@ -29,6 +29,7 @@
   | (없음) | `.native = .{ .sources, .symbols }` — Zig 소스와 C 심볼 기여 |
   | `Writers` | `rawCallNameAlloc` 추가 (`Expr.rawCall`의 backend) |
   | `RustWriters` | `rawCallNameAlloc` 추가 |
+  | (없음) | `plugin.c_string` — 네이티브 심볼이 돌려줄 수 있는 유일한 비-scalar |
 
 ### Added
 
@@ -69,6 +70,21 @@
   플러그인을 나열해도 error가 아니라 아무것도 쓰지 않습니다.
 - `plugin.testing.rustContext`의 `writeTypeName`이 실제로 답합니다(`crate::<PascalName>`).
   `impl` block을 쓰는 Rust slot을 generator 없이 단위 테스트할 수 있습니다.
+- 동봉 플러그인 `plugins/buildinfo`. 네이티브 library를 빌드한 Zig version, optimize mode,
+  target triple을 담은 문자열 하나를 `BuildInfo() string`과 `build_info() -> &'static str`로
+  공개합니다. 선언에 붙지 않고 `build.zig`의 `.plugins`에 넣는 것만으로 동작하며, 소스 하나와
+  심볼 하나로 네이티브 기여의 기준 예제 역할을 합니다. 빌드 설정은 `enabled`(기본 `true`)
+  하나이고, 끄면 심볼도 wrapper도 만들지 않습니다.
+  [00-quick-start](examples/00-quick-start/README.md)와
+  [13-rust-quick-start](examples/13-rust-quick-start/README.md)가 연결 예제입니다.
+- `plugin.c_string`: 네이티브 심볼의 반환에만 쓸 수 있는 NUL 종료 문자열입니다. 구현은
+  `[*:0]const u8`을 돌려주고, 공개 쪽은 포인터를 보지 않습니다. Go raw 패키지가 `string`으로
+  복사하고 Rust raw 모듈이 `&'static str`로 빌려 옵니다. 포인터는 프로세스가 사는 동안
+  유효해야 하며, `semantic.json`에는 `c_string()`으로 기록됩니다. 매개변수는 여전히 plain
+  scalar만 받습니다.
+- `plugin.testing`의 두 context가 플러그인 자기 심볼에 한해 `rawCallNameAlloc`을 답합니다
+  (`raw.<PascalName>`, `crate::raw::<snake_name>`). 네이티브 wrapper를 generator 없이 단위
+  테스트할 수 있습니다.
 
 ## [0.27.0] - 2026-09-14
 

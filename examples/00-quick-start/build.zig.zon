@@ -3,6 +3,9 @@
     .version = "0.0.0",
     .fingerprint = 0xce8acdb77cfeb6f5,
     .minimum_zig_version = "0.16.0",
-    .dependencies = .{ .zigo = .{ .path = "../.." } },
+    .dependencies = .{
+        .zigo = .{ .path = "../.." },
+        .zigo_buildinfo = .{ .path = "../../plugins/buildinfo" },
+    },
     .paths = .{ "build.zig", "build.zig.zon", "src", "go", "zigo", "README.md" },
 }

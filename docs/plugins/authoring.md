@@ -395,6 +395,22 @@ Rust 쪽도 같은 모양이고, `rawCall`이 `crate::raw::known_answer()`를 �
 `ZIGO067`로 거절됩니다. 두 플러그인이 같은 심볼을 내보내면 `ZIGO066`, 심볼이 가리키는
 소스를 못 찾으면 `ZIGO068`입니다.
 
+예외는 반환뿐입니다. `.ret = api.c_string`은 NUL로 끝나는 문자열을 뜻하며, 구현은
+`[*:0]const u8`을 돌려줍니다. 공개 쪽은 포인터를 보지 않습니다. Go raw 패키지가 바이트를
+`string`으로 복사하고(cgo는 `C.GoString`, purego는 자체 NUL scan), Rust raw 모듈은
+`&'static str`로 빌려 옵니다. 그 `'static`이 곧 계약입니다. 포인터는 프로세스가 사는 동안
+유효해야 하므로 comptime에 만든 문자열이 이 자리에 맞고, 플러그인이 해제해야 할 buffer는
+맞지 않습니다. 매개변수는 이 예외를 받지 않습니다.
+
+```zig
+.ret = api.c_string,
+.implementation = "buildInfo",
+```
+
+전체 구현은 동봉된 [buildinfo 플러그인](../../plugins/buildinfo/README.md)이 기준입니다.
+소스 하나, 심볼 하나, target마다 wrapper 하나로 네이티브 기여의 처음부터 끝까지를 보여
+줍니다.
+
 네이티브 기여는 출력 언어와 무관합니다. `go` slot만 채운 플러그인이라도 Rust 바인딩 세트에서
 심볼을 그대로 기여하므로, 같은 문서에서 만든 shim은 두 경우 모두 byte 단위로 같습니다.
 

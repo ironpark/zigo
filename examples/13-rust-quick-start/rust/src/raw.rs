@@ -48,6 +48,7 @@ extern "C" {
     pub fn zg_reading_total(self_: *mut zg_reading, out_result: *mut i64) -> i32;
     pub fn zg_free_rendered(text_ptr: *const u8, text_len: usize);
     pub fn zg_live_bytes() -> usize;
+    pub fn zg_buildinfo_build_info() -> *const c_char;
     pub fn zg_last_error_message() -> *const c_char;
     pub fn zg_caught_panic_message(code: i32) -> *const c_char;
 }
@@ -234,4 +235,15 @@ pub fn free_rendered(text: &str) {
 /// Calls the generated C ABI wrapper for `zg_live_bytes`.
 pub fn live_bytes() -> usize {
     unsafe { zg_live_bytes() }
+}
+
+/// Calls the generated C ABI wrapper for `zg_buildinfo_build_info`.
+pub fn buildinfo_build_info() -> &'static str {
+    let pointer = unsafe { zg_buildinfo_build_info() };
+    if pointer.is_null() {
+        return "";
+    }
+    unsafe { core::ffi::CStr::from_ptr(pointer) }
+        .to_str()
+        .unwrap_or("")
 }

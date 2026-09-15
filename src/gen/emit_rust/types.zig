@@ -350,6 +350,16 @@ pub fn unsupported(program: abi.Program, function: abi.AbiFn) ?Unsupported {
         .what = "a slice-of-strings result",
         .hint = "the minimal Rust backend supports one scalar or one byte slice",
     };
+    // A borrowed C string is rendered for a plugin's own symbol and for
+    // nothing else. The crate hands it back as `&'static str`, which is only
+    // true because the plugin contract says the bytes live as long as the
+    // process; a bound function that borrows a C string out of an object
+    // makes no such promise, and the lifetime it would need is the
+    // receiver's.
+    if (function.ret_string == .c_string and function.origin.plugin == null) return .{
+        .what = "a borrowed C-string result",
+        .hint = "return `[]const u8` marked `utf8_string`, which crosses as a pointer and a length the crate can bound",
+    };
     for (function.params) |parameter| if (!supportedRole(parameter.role)) return .{
         .what = roleDescription(parameter.role),
         .hint = "the Rust backend supports scalar, slice and handle parameters only",
@@ -484,6 +494,10 @@ pub fn rawScalar(value: abi.AbiScalar) ?[]const u8 {
             64 => "f64",
             else => null,
         },
+        // `const char *`, which is what the panic-message accessors and a
+        // plugin's C-string symbol both cross as. Every other pointer is
+        // spelled by `writeRawScalar`, which recurses into the pointee.
+        .pointer => |pointer| if (pointer.is_c_string) "*const c_char" else null,
         else => null,
     };
 }
@@ -496,6 +510,7 @@ pub fn rawScalar(value: abi.AbiScalar) ?[]const u8 {
 pub fn writeRawScalar(writer: *std.Io.Writer, value: abi.AbiScalar) !void {
     switch (value) {
         .pointer => |pointer| {
+            if (pointer.is_c_string) return writer.writeAll("*const c_char");
             try writer.print("*{s} ", .{if (pointer.is_const) "const" else "mut"});
             try writeRawScalar(writer, pointer.child.*);
         },
@@ -540,8 +555,10 @@ fn elementScalar(node: semantic.TypeNode) ?abi.AbiScalar {
 }
 
 test "every scalar the minimal backend accepts has a Rust spelling" {
+    const byte: abi.AbiScalar = .{ .unsigned_int = 8 };
     const cases = [_]struct { scalar: abi.AbiScalar, rust: []const u8 }{
         .{ .scalar = .void, .rust = "()" },
+        .{ .scalar = .{ .pointer = .{ .child = &byte, .is_const = true, .is_many = true, .is_c_string = true } }, .rust = "*const c_char" },
         .{ .scalar = .bool_u8, .rust = "u8" },
         .{ .scalar = .usize, .rust = "usize" },
         .{ .scalar = .isize, .rust = "isize" },

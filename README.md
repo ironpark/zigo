@@ -30,10 +30,12 @@ zig build go
 (cd go && go test ./... && go run ./cmd/demo)
 ```
 
-마지막 명령은 테스트를 통과한 뒤 다음을 출력합니다.
+마지막 명령은 테스트를 통과한 뒤 다음을 출력합니다. 둘째 줄은 `buildinfo` 플러그인이
+더한 것으로, 네이티브 library를 실제로 빌드한 toolchain과 target에 따라 달라집니다.
 
 ```text
 2 + 3 = 5
+zig 0.16.0; Debug; aarch64-macos-none
 ```
 
 자신의 Zig 프로젝트에 연결하려면 [시작 가이드](docs/getting-started.md)를 따라가세요.

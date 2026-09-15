@@ -57,9 +57,15 @@ error입니다. 같은 플러그인을 한 entry에 두 번 붙이면 컴파일 
 
 | 플러그인 | 렌더링 slot | 하는 일 |
 |---|---|---|
+| `plugins/buildinfo` | `go`, `rust` (+ `native`) | 네이티브 library의 빌드 정보 문자열 |
 | `plugins/enumkit` | `go`, `rust` | enum 값 목록과 알려진 tag 판별 |
 | `plugins/json` | `go` | value 타입의 `MarshalJSON`/`UnmarshalJSON` |
 | `plugins/satisfies` | `go` | 생성 타입이 지정한 interface를 만족하는지 컴파일 타임 단언 |
+
+플러그인은 생성 코드만이 아니라 네이티브 쪽에도 기여할 수 있습니다. Zig 소스를 실어
+보내면 생성된 shim이 그것을 컴파일하고, 선언한 C 심볼마다 `export` wrapper를 씁니다.
+그 심볼은 C 헤더·Go raw(cgo와 purego)·Rust raw 모듈·`abi-diff`에 바인딩 함수와 똑같은
+경로로 실립니다. `plugins/buildinfo`가 그 기준 예제입니다.
 
 ## bundled enumkit
 
@@ -93,6 +99,33 @@ impl crate::Mode {
 전체 연결은 Go 쪽 [10-tagged-union](../../examples/10-tagged-union/README.md)과 Rust 쪽
 [13-rust-quick-start](../../examples/13-rust-quick-start/README.md), 플러그인 패키지 사용법은
 [enumkit README](../../plugins/enumkit/README.md)를 참고하세요.
+
+## bundled buildinfo
+
+`plugins/buildinfo`는 네이티브 기여의 기준 예제입니다. 읽을 선언이 없습니다. 공개하는 것이
+문서의 사실이 아니라 네이티브 library의 사실이므로, Zig 소스 하나를 실어 보내고 그 뒤의
+C 심볼을 선언한 다음 두 slot이 각자의 언어로 그 심볼을 감쌉니다. attachment가 아니라
+`build.zig`의 `.plugins`에 넣는 것만으로 동작합니다.
+
+```zig
+const buildinfo: zigo.PluginModule = .{
+    .name = "zigo_buildinfo",
+    .root_source_file = b.dependency("zigo_buildinfo", .{}).path("src/plugin.zig"),
+    .native_sources = &.{.{ .module = "buildinfo_native", .path = "native.zig" }},
+};
+```
+
+```go
+fmt.Println(calculator.BuildInfo()) // zig 0.16.0; Debug; aarch64-macos-none
+```
+
+```rust
+println!("{}", calculator::build_info());
+```
+
+Go 쪽 연결은 [00-quick-start](../../examples/00-quick-start/README.md), Rust 쪽 연결은
+[13-rust-quick-start](../../examples/13-rust-quick-start/README.md),
+플러그인 패키지 사용법은 [buildinfo README](../../plugins/buildinfo/README.md)를 참고하세요.
 
 ## 내장 플러그인도 같은 계약을 씁니다
 

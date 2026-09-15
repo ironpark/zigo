@@ -471,7 +471,7 @@ pub fn answer() u32 {
 |---|---|---|
 | `name` | 필수 | 짧은 이름. 내보내는 심볼은 `<prefix>_<플러그인 소문자>_<name>` |
 | `params` | empty | `[]const abi.AbiParam` |
-| `ret` | `.void` | `abi.AbiScalar` |
+| `ret` | `.void` | `abi.AbiScalar`, 또는 `api.c_string` |
 | `implementation` | 필수 | module 안의 선언 경로(`answer`, `info.build`) |
 | `module` | `""` | 어느 `sources` 항목인지. 비어 있으면 소스가 하나뿐일 때 그것 |
 | `doc` | null | 헤더와 raw 패키지에 쓰이는 주석 |
@@ -479,6 +479,15 @@ pub fn answer() u32 {
 시그니처에 쓸 수 있는 scalar는 C가 그 자체로 나르는 값뿐입니다: `void`, `bool_u8`,
 8·16·32·64비트 `signed_int`/`unsigned_int`, `usize`, `isize`, `f32`, `f64`. 포인터,
 aggregate, callback은 `ZIGO067`로 거절됩니다.
+
+반환만 한 가지 예외를 받습니다. `api.c_string`은 NUL로 끝나는 문자열이고, 구현은
+`[*:0]const u8`을 돌려줍니다. 공개 쪽에는 포인터가 나타나지 않습니다: Go raw 패키지가
+바이트를 `string`으로 복사하고(cgo는 `C.GoString`, purego는 자체 NUL scan), Rust raw
+모듈은 `&'static str`로 빌려 옵니다. 그 `'static`이 계약이므로 포인터는 프로세스가 사는
+동안 유효해야 하며, 해제해야 할 buffer는 쓸 수 없습니다 — 플러그인 심볼에는 raw 계층이
+부를 release 짝이 없습니다. `semantic.json`에는 `c_string()`으로 기록됩니다. 매개변수는
+이 예외를 받지 않습니다: 호출자가 만든 문자열의 수명을 심볼이 책임질 수 없기 때문입니다.
+동봉된 [buildinfo](../../plugins/buildinfo/README.md)가 이 반환을 쓰는 기준 예제입니다.
 
 ### `NativeContext`
 

@@ -38,6 +38,10 @@
       "kind": "go"
     },
     {
+      "path": "src/buildinfo.rs",
+      "kind": "go"
+    },
+    {
       "path": "errors.lock.json",
       "kind": "native"
     }

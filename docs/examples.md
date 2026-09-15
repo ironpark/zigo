@@ -22,7 +22,7 @@ zig build go
 
 | 목적 | 예제 |
 |---|---|
-| 가장 작은 생성과 Go 호출 | [00-quick-start](../examples/00-quick-start/README.md) |
+| 가장 작은 생성과 Go 호출, 네이티브 기여 플러그인 | [00-quick-start](../examples/00-quick-start/README.md) |
 | C++ 링크 입력과 cgo 동적 링크 | [01-스칼라](../examples/01-scalar/README.md) |
 | Zig 오류 유니온을 Go `error`로 사용 | [02-errors](../examples/02-errors/README.md) |
 | 객체 생성, 메서드와 `Close` | [03-opaque](../examples/03-opaque/README.md) |
@@ -51,8 +51,12 @@ zig build go
 Rust로 미러링하며, C ABI shim과 C 헤더가 두 타겟에서 바이트 단위로 같은 파일임을
 보여줍니다. `Rounding` enum에는 `enumkit` 플러그인을 붙여 두었습니다. 같은 attachment가
 Go에서는 `RoundingValues()`와 `IsKnown()`을, 여기서는 `Rounding::values()`와
-`Rounding::is_known()`을 만들며, crate의 통합 테스트가 그 둘을 호출합니다. Rust 백엔드는 스칼라·슬라이스·error union만 다루는 최소 구현이라
-다른 열두 예제의 기능은 아직 Go 전용입니다.
+`Rounding::is_known()`을 만들며, crate의 통합 테스트가 그 둘을 호출합니다.
+`buildinfo` 플러그인도 두 예제에 함께 붙어 있습니다. 이쪽은 렌더링이 아니라 네이티브
+기여여서, 플러그인이 실어 보낸 Zig 소스가 shim에 컴파일되고 그 심볼을
+`00-quick-start`에서는 `BuildInfo()`가, 여기서는 `build_info()`가 감쌉니다. Rust 백엔드는
+스칼라·슬라이스·error union만 다루는 최소 구현이라 다른 열두 예제의 기능은 아직 Go
+전용입니다.
 
 ## purego 예제
 

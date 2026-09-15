@@ -471,6 +471,14 @@
   ],
   "ir_version": 2,
   "package": "calculator",
+  "plugin_symbols": [
+    {
+      "plugin": "BUILDINFO",
+      "name": "build_info",
+      "symbol": "zg_buildinfo_build_info",
+      "signature": "c_string()"
+    }
+  ],
   "prefix": "zg",
   "types": [
     {

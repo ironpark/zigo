@@ -7,9 +7,11 @@ package raw
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libcalculator_zigo.a
+#include <stdlib.h>
 #include "zigo_calculator.h"
 */
 import "C"
+import "unsafe"
 
 // LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
@@ -17,7 +19,20 @@ func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
 // PanicMessage returns the message of the native panic a status code of -256 or below names.
 func PanicMessage(code int32) string { return C.GoString(C.zg_caught_panic_message(C.int32_t(code))) }
 
+// zigoCString copies value into a NUL-terminated Go buffer the native call
+// may read for its duration.
+func zigoCString(value string) *C.char {
+	buffer := make([]byte, len(value)+1)
+	copy(buffer, value)
+	return (*C.char)(unsafe.Pointer(&buffer[0]))
+}
+
 // Add calls the generated C ABI wrapper for zg_add.
 func Add(a int32, b int32) int32 {
 	return int32(C.zg_add(C.int32_t(a), C.int32_t(b)))
+}
+
+// BuildinfoBuildInfo calls the generated C ABI wrapper for zg_buildinfo_build_info.
+func BuildinfoBuildInfo() string {
+	return C.GoString(C.zg_buildinfo_build_info())
 }
