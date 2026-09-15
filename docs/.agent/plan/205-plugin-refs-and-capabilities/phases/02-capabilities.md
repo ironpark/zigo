@@ -2,7 +2,7 @@
 depends_on:
 - "205-plugin-refs-and-capabilities#1"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `grep -rn "@import(\"must.zig\")" src/gen/plugins` returns nothing outside `must.zig`'s own tests and `registry.zig`.
 > NEXT: none
