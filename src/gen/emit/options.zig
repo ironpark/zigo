@@ -20,8 +20,9 @@ pub const Options = struct {
         flags: []const u8,
     };
     /// The output language this run generates for. The generator resolves it
-    /// once and every context reads the one value. The emitters do not read
-    /// it: they are Go's, which is what `Plugin.output_targets` records.
+    /// once and every context reads the one value. The emitters in this
+    /// directory do not read it: they are Go's, which is what a plugin's `go`
+    /// render slot records.
     target: targets.Target = targets.default,
     // The `go_*` fields below describe the Go module system specifically -- a
     // module path, a package name, a package directory, a package doc. A

@@ -18,7 +18,7 @@ pub const plugin: plugin_api.Plugin = .{
     .validate = validateDocument,
     .requires = &.{"MUST"},
     .analyze = analyze,
-    .source_files = &.{.{ .pathAlloc = interfacesPath, .render = renderInterfacesBody }},
+    .go = .{ .source_files = &.{.{ .pathAlloc = interfacesPath, .render = renderInterfacesBody }} },
 };
 
 /// The declaration rules live with the other validation rules; the plugin is
@@ -43,7 +43,7 @@ pub const Mismatch = struct {
 /// types. Rendering, rather than a second structural rule, is what keeps
 /// this from ever disagreeing with the file that spells the methods out.
 /// The strings in the result live on `allocator`.
-pub fn signatureMismatch(context: plugin_api.Context) !?Mismatch {
+pub fn signatureMismatch(context: plugin_api.GoContext) !?Mismatch {
     const allocator = context.allocator;
     const program = context.program;
     for (program.interfaces) |interface| {
@@ -73,7 +73,7 @@ pub fn signatureMismatch(context: plugin_api.Context) !?Mismatch {
 /// The signature two implementations have to share: parameter types, result,
 /// and whether a `Must` variant accompanies it. Parameter names are left out
 /// because Go does not read them when deciding whether a method matches.
-fn comparableSignatureAlloc(context: plugin_api.Context, function: abi.AbiFn) ![]u8 {
+fn comparableSignatureAlloc(context: plugin_api.GoContext, function: abi.AbiFn) ![]u8 {
     var buffer: std.Io.Writer.Allocating = .init(context.allocator);
     errdefer buffer.deinit();
     const go_name = (try context.functionInfo(function)).public_name;
@@ -84,7 +84,7 @@ fn comparableSignatureAlloc(context: plugin_api.Context, function: abi.AbiFn) ![
     return buffer.toOwnedSlice();
 }
 
-pub fn interfacesPath(context: plugin_api.Context) ![]u8 {
+pub fn interfacesPath(context: plugin_api.GoContext) ![]u8 {
     const package = if (context.options.go_package.len != 0) try context.allocator.dupe(u8, context.options.go_package) else try naming.snakeAlloc(context.allocator, context.program.package);
     defer context.allocator.free(package);
     const filename = try std.fmt.allocPrint(context.allocator, "{s}_interfaces_gen.go", .{package});
@@ -93,7 +93,7 @@ pub fn interfacesPath(context: plugin_api.Context) ![]u8 {
 }
 
 fn analyze(context: plugin_api.AnalyzeContext) !void {
-    const mismatch = try signatureMismatch(context.render) orelse return;
+    const mismatch = try signatureMismatch(context.go.?) orelse return;
     try context.diagnose(.{
         .severity = .@"error",
         .code = "ZIGO049",
@@ -110,7 +110,7 @@ fn analyze(context: plugin_api.AnalyzeContext) !void {
 /// The declarations alone: the generated marker, the package clause and the
 /// import block come from the public-file frame every plugin file renders
 /// through, so this writes exactly what the file declares and no more.
-pub fn renderInterfacesBody(context: plugin_api.Context, writer: *std.Io.Writer) !void {
+pub fn renderInterfacesBody(context: plugin_api.GoContext, writer: *std.Io.Writer) !void {
     const program = context.program;
     const options = context.options;
     var written: usize = 0;
@@ -122,7 +122,7 @@ pub fn renderInterfacesBody(context: plugin_api.Context, writer: *std.Io.Writer)
     }
 }
 
-fn renderInterface(context: plugin_api.Context, writer: *std.Io.Writer, interface: abi.AbiInterface) !void {
+fn renderInterface(context: plugin_api.GoContext, writer: *std.Io.Writer, interface: abi.AbiInterface) !void {
     const allocator = context.allocator;
     const b = context.builder();
 

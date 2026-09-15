@@ -24,14 +24,13 @@ pub const Options = plugin_api.builtins.implements.Options;
 pub const plugin: plugin_api.Plugin = blk: {
     var declared = plugin_api.builtins.implements.plugin;
     declared.validate = validateDocument;
-    declared.claims = hidesOriginal;
-    declared.visit = visit;
+    declared.go = .{ .claims = hidesOriginal, .visit = visit };
     break :blk declared;
 };
 
 /// The wrappers are the public spelling: the zigo-shaped method is written
 /// under its unexported checked name unless the declaration asked to keep it.
-fn hidesOriginal(context: plugin_api.Context, node: plugin_api.Node) !bool {
+fn hidesOriginal(context: plugin_api.GoContext, node: plugin_api.Node) !bool {
     if (node != .function) return false;
     const options = try context.optionsOf(plugin, .function, node) orelse return false;
     return options.hidesOriginal();
@@ -40,7 +39,7 @@ fn hidesOriginal(context: plugin_api.Context, node: plugin_api.Node) !bool {
 /// The three places this plugin writes: the interface wrappers after the
 /// method they adapt, the assertions after the handle that carries them, and
 /// the counting streams at the end of the runtime file.
-fn visit(context: plugin_api.Context, node: plugin_api.Node, b: *plugin_api.Builder) !void {
+fn visit(context: plugin_api.GoContext, node: plugin_api.Node, b: *plugin_api.Builder) !void {
     switch (node) {
         .function => |function| try renderWrappers(context, b, function),
         .type => |declaration| try renderAssertions(context, b, declaration),
@@ -52,7 +51,7 @@ fn visit(context: plugin_api.Context, node: plugin_api.Node, b: *plugin_api.Buil
 /// One assertion per interface a handle satisfies through `.implements`, so
 /// a wrapper that stops matching the interface fails this package's build
 /// rather than a consumer's.
-fn renderAssertions(context: plugin_api.Context, b: *plugin_api.Builder, declaration: semantic.TypeDecl) !void {
+fn renderAssertions(context: plugin_api.GoContext, b: *plugin_api.Builder, declaration: semantic.TypeDecl) !void {
     if (declaration.kind != .@"opaque") return;
     var assertions: std.ArrayList(plugin_api.gobuild.Decl) = .empty;
     defer assertions.deinit(context.allocator);
@@ -68,7 +67,7 @@ fn renderAssertions(context: plugin_api.Context, b: *plugin_api.Builder, declara
     try b.emit(assertions.items, .{ .blank_before = true, .blank_between = false });
 }
 
-fn renderWrappers(context: plugin_api.Context, b: *plugin_api.Builder, function: abi.AbiFn) !void {
+fn renderWrappers(context: plugin_api.GoContext, b: *plugin_api.Builder, function: abi.AbiFn) !void {
     const options = try context.optionsOf(plugin, .function, function.origin.ext) orelse return;
     const method = context.method.?;
     // One wrapper per named interface, in the order the declaration named
@@ -92,7 +91,7 @@ fn validateDocument(context: plugin_api.ValidateContext) !void {
 /// only adapts the shape. A `void` result means the whole input was handled;
 /// an integer result is the count the interface reports.
 pub fn renderImplementsWrapper(
-    context: plugin_api.Context,
+    context: plugin_api.GoContext,
     b: *plugin_api.Builder,
     function: abi.AbiFn,
     implements: semantic.Implements,
@@ -300,7 +299,7 @@ fn stringWriterPassesString(function: semantic.SemanticFn) bool {
 
 /// The counting stream types the `void`-result `WriteTo`/`ReadFrom`
 /// wrappers route their stream through. Only emitted when one needs them.
-pub fn renderCountingStreams(context: plugin_api.Context, b: *plugin_api.Builder) !void {
+pub fn renderCountingStreams(context: plugin_api.GoContext, b: *plugin_api.Builder) !void {
     if (try programNeedsCountingStream(context, .writer_to)) try renderCountingStream(b, .{
         .name = "zigoCountingWriter",
         .doc = "zigoCountingWriter counts the bytes a WriteTo wrapper sends on to w.",
@@ -355,7 +354,7 @@ fn renderCountingStream(b: *plugin_api.Builder, spec: CountingStream) !void {
     }, .{ .blank_after = true });
 }
 
-fn programNeedsCountingStream(context: plugin_api.Context, kind: semantic.Implements) !bool {
+fn programNeedsCountingStream(context: plugin_api.GoContext, kind: semantic.Implements) !bool {
     for (context.program.functions) |function| {
         if (function.origin.@"return".errorPayload() != .void) continue;
         const options = try context.optionsOf(plugin, .function, function.origin.ext) orelse continue;

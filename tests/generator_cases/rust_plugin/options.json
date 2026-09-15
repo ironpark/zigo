@@ -1,0 +1,8 @@
+{
+  "output_target": "rust",
+  "package": "opaque",
+  "prefix": "zg",
+  "go_module": "unused-by-rust",
+  "plugins": ["RUSTMARK", "WRAPTEST"],
+  "plugin_config": { "RUSTMARK": { "enabled": true } }
+}

@@ -1,7 +1,8 @@
 # 생성기 플러그인
 
-플러그인은 core 바인딩 계약을 검증·변형하거나 생성 공개 Go 패키지에 코드와 파일을
-추가합니다. 일반 바인딩 작성과 분리된 확장 지점이며, 현재 계약 version은 5.0입니다.
+플러그인은 core 바인딩 계약을 검증·변형하거나 생성 공개 패키지에 코드와 파일을
+추가합니다. 일반 바인딩 작성과 분리된 확장 지점이며, 현재 계약 version은 6.0입니다.
+출력 언어는 플러그인이 채운 렌더링 slot(`go`, `rust`)이 정합니다.
 
 ## 언제 플러그인을 사용하나요?
 
@@ -76,7 +77,7 @@ func (value Mode) IsKnown() bool
 
 `MUST`, `ITERATOR`, `IMPLEMENTS`, `INTERFACES`, `SESSION`은 generator 안에 있을 뿐, 외부
 플러그인이 쓸 수 없는 통로는 하나도 쓰지 않습니다. 옵션은 선언의 `ext`에 실려 오고
-(`use(zigo.features.iterator, ...)`), hook은 `Context`가 주는 것만 읽으며, 출력은 builder로
+(`use(zigo.features.iterator, ...)`), hook은 `GoContext`가 주는 것만 읽으며, 출력은 builder로
 씁니다. core 규칙이 내장 플러그인의 옵션을 볼 때도 계약의 reader
 (`plugin.builtins.iterator.read`, `plugin.builtins.implements.read`)를 그대로 씁니다.
 

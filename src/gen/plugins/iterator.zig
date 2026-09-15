@@ -25,14 +25,14 @@ pub const plugin: plugin_api.Plugin = blk: {
     var declared = plugin_api.builtins.iterator.plugin;
     declared.after = &.{ "MUST", "IMPLEMENTS" };
     declared.validate = validateDocument;
-    declared.visit = visit;
+    declared.go = .{ .visit = visit };
     break :blk declared;
 };
 
 /// The wrapper is written after the method it drives, in the file that owns
 /// the method: a visit of the function node is exactly where the direct call
 /// was.
-fn visit(context: plugin_api.Context, node: plugin_api.Node, b: *plugin_api.Builder) !void {
+fn visit(context: plugin_api.GoContext, node: plugin_api.Node, b: *plugin_api.Builder) !void {
     if (node != .function) return;
     const options = try context.optionsOf(plugin, .function, node) orelse return;
     try renderIteratorWrapper(context, b, node.function, options);
@@ -56,7 +56,7 @@ fn validateDocument(context: plugin_api.ValidateContext) !void {
 /// carries an `error` yields `iter.Seq2[T, error]`: the error is yielded
 /// once, with the zero value, and the sequence stops. Otherwise it yields
 /// `iter.Seq[T]`.
-pub fn renderIteratorWrapper(context: plugin_api.Context, b: *plugin_api.Builder, function: abi.AbiFn, iterator: Options) !void {
+pub fn renderIteratorWrapper(context: plugin_api.GoContext, b: *plugin_api.Builder, function: abi.AbiFn, iterator: Options) !void {
     const allocator = context.allocator;
     const method = context.method.?;
     const receiver_name = method.receiver_name.?;

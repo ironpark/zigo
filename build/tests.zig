@@ -354,6 +354,7 @@ pub fn addRepositorySteps(
         .{ .path = b.path("plugins/json/src/plugin.zig") },
         .{ .path = b.path("tests/plugins/wrappers.zig") },
         .{ .path = b.path("tests/plugins/nodeext.zig") },
+        .{ .path = b.path("tests/plugins/rustmarker.zig") },
     });
     const contract_modules = modules.createGeneratorModules(b, b.path("src"), target, optimize, &.{ .{ .path = b.path("tests/plugins/transform_observer.zig") }, .{ .path = b.path("tests/plugins/contract.zig"), .config = "{\"label\":\"from-build\"}" }, .{ .path = b.path("tests/plugins/outputs.zig") } });
     const contract_tests = b.addTest(.{ .root_module = b.createModule(.{
@@ -437,9 +438,10 @@ pub fn addRepositorySteps(
     }
     inline for (.{
         .{ "old-version", ".{ .name = \"BAD\", .min_contract = .{ .major = 1, .minor = 1 } }", "incompatible plugin contract: BAD" },
-        .{ "raw-scope", ".{ .name = \"BAD\", .source_files = &.{.{ .package = .raw, .pathAlloc = undefined, .render = undefined }} }", "raw Go files require document scope: BAD" },
-        .{ "external-kind", ".{ .name = \"BAD\", .source_files = &.{.{ .package = .external_test, .pathAlloc = undefined, .render = undefined }} }", "external test Go files require test kind: BAD" },
-        .{ "build-constraint", ".{ .name = \"BAD\", .source_files = &.{.{ .build_constraint = \"linux &&\", .pathAlloc = undefined, .render = undefined }} }", "invalid Go build constraint: BAD" },
+        .{ "raw-scope", ".{ .name = \"BAD\", .go = .{ .source_files = &.{.{ .package = .raw, .pathAlloc = undefined, .render = undefined }} } }", "raw Go files require document scope: BAD" },
+        .{ "external-kind", ".{ .name = \"BAD\", .go = .{ .source_files = &.{.{ .package = .external_test, .pathAlloc = undefined, .render = undefined }} } }", "external test Go files require test kind: BAD" },
+        .{ "build-constraint", ".{ .name = \"BAD\", .go = .{ .source_files = &.{.{ .build_constraint = \"linux &&\", .pathAlloc = undefined, .render = undefined }} } }", "invalid Go build constraint: BAD" },
+        .{ "rust-module", ".{ .name = \"BAD\", .rust = .{ .source_files = &.{.{ .module = \"not a module\", .render = undefined }} } }", "plugin Rust module name is not an identifier: BAD" },
         .{ "version", ".{ .name = \"BAD\", .min_contract = .{ .major = 99, .minor = 0 } }", "incompatible plugin contract: BAD" },
         .{ "duplicate", ".{ .name = \"A\" }, .{ .name = \"A\" }", "duplicate plugin: A" },
         .{ "dependency", ".{ .name = \"A\", .requires = &.{\"MISSING\"} }", "missing plugin dependency: A requires MISSING" },
@@ -504,6 +506,37 @@ pub fn addRepositorySteps(
         }),
     });
     addGeneratorCases(b, test_step, generator_case_runner, test_filters);
+
+    // A plugin that fills only the `rust` slot, run against a real example's
+    // document. The example's committed crate is not touched: the generator
+    // writes into a build output directory and the crate root is compiled
+    // from there, which is what proves the plugin's items land in a crate
+    // `rustc` accepts under `-D warnings` rather than only in a golden.
+    const rust_plugin_modules = modules.createGeneratorModules(b, b.path("src"), target, optimize, &.{
+        .{ .path = b.path("tests/plugins/rustmarker.zig"), .config = "{\"enabled\":true}" },
+    });
+    const rust_plugin_generator = modules.addGeneratorWithModules(b, b.path("src/main.zig"), target, optimize, rust_plugin_modules);
+    const rust_plugin_generate = b.addRunArtifact(rust_plugin_generator);
+    rust_plugin_generate.setName("Rust-only plugin renders into example 13's crate");
+    rust_plugin_generate.addArgs(&.{ "generate", "--semantic" });
+    rust_plugin_generate.addFileArg(b.path("examples/13-rust-quick-start/zigo/rust/semantic.json"));
+    rust_plugin_generate.addArg("--output");
+    const rust_plugin_output = rust_plugin_generate.addOutputDirectoryArg("rust-plugin-output");
+    rust_plugin_generate.addArgs(&.{ "--package", "calculator", "--output-target", "rust" });
+    rust_plugin_generate.expectExitCode(0);
+    test_step.dependOn(&rust_plugin_generate.step);
+
+    const rust_plugin_compiles = b.addSystemCommand(&.{
+        "rustc",         "--edition",       "2021",
+        "--crate-type",  "lib",             "--crate-name",
+        "zigo_rustmark", "--emit=metadata", "-D",
+        "warnings",
+    });
+    rust_plugin_compiles.setName("the example 13 crate with the Rust-only plugin compiles");
+    _ = rust_plugin_compiles.addPrefixedOutputFileArg("-o", "rust-plugin-crate.rmeta");
+    rust_plugin_compiles.addFileArg(rust_plugin_output.path(b, "src/lib.rs"));
+    rust_plugin_compiles.expectExitCode(0);
+    test_step.dependOn(&rust_plugin_compiles.step);
 
     const check_step = b.step("check", "Compile all project artifacts without running tests");
     check_step.dependOn(&generator.step);

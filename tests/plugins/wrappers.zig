@@ -7,11 +7,10 @@ const api = @import("plugin");
 pub const plugin: api.Plugin = .{
     .name = "WRAPTEST",
     .subjects = &.{.function},
-    .visit = visit,
-    .source_files = &.{.{ .pathAlloc = path, .render = helpers }},
+    .go = .{ .visit = visit, .source_files = &.{.{ .pathAlloc = path, .render = helpers }} },
 };
 
-fn visit(context: api.Context, node: api.Node, b: *api.Builder) !void {
+fn visit(context: api.GoContext, node: api.Node, b: *api.Builder) !void {
     if (node != .function) return;
     const function = node.function;
     _ = try context.optionsOf(plugin, .function, node) orelse return;
@@ -31,14 +30,14 @@ fn visit(context: api.Context, node: api.Node, b: *api.Builder) !void {
     try writer.writeAll("))\n}\n");
 }
 
-fn path(context: api.Context) ![]u8 {
+fn path(context: api.GoContext) ![]u8 {
     const allocator = context.allocator;
     const program = context.program;
     const options = context.options;
     return api.publicFilePathAlloc(allocator, program, options, "zigo_wrappers_gen.go");
 }
 
-fn helpers(context: api.Context, writer: *std.Io.Writer) !void {
+fn helpers(context: api.GoContext, writer: *std.Io.Writer) !void {
     const options = context.options;
     if (options.emitsHelper("zigoWrap0")) try writer.writeAll("func zigoWrap0(err error) { if err != nil { panic(err) } }\n");
     if (options.emitsHelper("zigoWrap1")) try writer.writeAll("func zigoWrap1[T any](v T, err error) T { if err != nil { panic(err) }; return v }\n");

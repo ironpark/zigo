@@ -79,7 +79,7 @@ const builtin_public_emitters = [_]Emitter{
 /// plugin with a `visit` may write at a package boundary; a file none of them
 /// wrote into stays at its prelude, which the generator drops.
 fn hasPackageHooks() bool {
-    inline for (registry.plugins) |registered| if (registered.visit != null) return true;
+    inline for (registry.plugins) |registered| if (plugin_hooks.goSlot(registered).visit != null) return true;
     return false;
 }
 
@@ -143,7 +143,7 @@ pub const PublicEmitters = struct {
         }
         var offset = builtin_count;
         inline for (registry.plugins, 0..) |registered, plugin_index| {
-            inline for (registered.source_files) |file| {
+            inline for (comptime plugin_hooks.goSlot(registered).source_files) |file| {
                 if (file.scope == self.scope) {
                     if (self.index == offset) {
                         self.index += 1;

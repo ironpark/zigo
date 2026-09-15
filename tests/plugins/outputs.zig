@@ -9,15 +9,17 @@ pub var path_runs: usize = 0;
 pub const plugin: api.Plugin = .{
     .name = "OUTPUTS",
     .Config = struct { enabled: bool = false, artifact_path: ?[]const u8 = null, go_path: ?[]const u8 = null, fail: bool = false },
-    .source_files = &.{
-        .{ .enabled = enabledGo, .imports = publicImports, .pathAlloc = publicPath, .render = renderPublic },
-        .{ .enabled = enabledGo, .scope = .document, .pathAlloc = documentGoPath, .render = renderDocumentGo },
-        .{ .enabled = enabledGo, .scope = .document, .package = .raw, .pathAlloc = rawPath, .render = renderRaw },
-        .{ .enabled = enabledGo, .scope = .document, .package = .raw, .kind = .test_file, .imports = testImports, .pathAlloc = rawTestPath, .render = renderRawTest },
-        .{ .enabled = enabledGo, .kind = .test_file, .imports = testImports, .pathAlloc = internalTestPath, .render = renderInternalTest },
-        .{ .enabled = enabledGo, .package = .external_test, .kind = .test_file, .imports = externalImports, .pathAlloc = externalTestPath, .render = renderExternalTest },
-        .{ .enabled = enabledGo, .build_constraint = "!zigo_output_disabled", .pathAlloc = taggedPath, .render = renderTagged },
-        .{ .enabled = enabledGo, .build_constraint = "zigo_output_never", .pathAlloc = excludedPath, .render = renderExcluded },
+    .go = .{
+        .source_files = &.{
+            .{ .enabled = enabledGo, .imports = publicImports, .pathAlloc = publicPath, .render = renderPublic },
+            .{ .enabled = enabledGo, .scope = .document, .pathAlloc = documentGoPath, .render = renderDocumentGo },
+            .{ .enabled = enabledGo, .scope = .document, .package = .raw, .pathAlloc = rawPath, .render = renderRaw },
+            .{ .enabled = enabledGo, .scope = .document, .package = .raw, .kind = .test_file, .imports = testImports, .pathAlloc = rawTestPath, .render = renderRawTest },
+            .{ .enabled = enabledGo, .kind = .test_file, .imports = testImports, .pathAlloc = internalTestPath, .render = renderInternalTest },
+            .{ .enabled = enabledGo, .package = .external_test, .kind = .test_file, .imports = externalImports, .pathAlloc = externalTestPath, .render = renderExternalTest },
+            .{ .enabled = enabledGo, .build_constraint = "!zigo_output_disabled", .pathAlloc = taggedPath, .render = renderTagged },
+            .{ .enabled = enabledGo, .build_constraint = "zigo_output_never", .pathAlloc = excludedPath, .render = renderExcluded },
+        },
     },
     .artifacts = &.{
         .{ .enabled = enabledArtifact, .pathAlloc = markdownPath, .render = renderMarkdown },
@@ -30,71 +32,71 @@ pub const plugin: api.Plugin = .{
         .{ .enabled = enabledArtifact, .scope = .package, .pathAlloc = packagePath, .render = renderPackage },
     },
 };
-fn enabledGo(context: api.Context) !bool {
+fn enabledGo(context: api.GoContext) !bool {
     return (try context.config(plugin)).enabled;
 }
 fn enabledArtifact(context: api.ArtifactContext) !bool {
     return (try context.config(plugin)).enabled;
 }
-fn publicPath(context: api.Context) ![]u8 {
+fn publicPath(context: api.GoContext) ![]u8 {
     path_runs += 1;
     if ((try context.config(plugin)).go_path) |path| return context.allocator.dupe(u8, path);
     return context.sourceFilePathAlloc("zigo_output_gen.go");
 }
-fn documentGoPath(context: api.Context) ![]u8 {
+fn documentGoPath(context: api.GoContext) ![]u8 {
     return context.sourceFilePathAlloc("zigo_document_gen.go");
 }
-fn rawPath(context: api.Context) ![]u8 {
+fn rawPath(context: api.GoContext) ![]u8 {
     return context.sourceFilePathAlloc("zigo_raw_extra.go");
 }
-fn rawTestPath(context: api.Context) ![]u8 {
+fn rawTestPath(context: api.GoContext) ![]u8 {
     return context.sourceFilePathAlloc("zigo_raw_extra_test.go");
 }
-fn internalTestPath(context: api.Context) ![]u8 {
+fn internalTestPath(context: api.GoContext) ![]u8 {
     return context.sourceFilePathAlloc("zigo_internal_test.go");
 }
-fn externalTestPath(context: api.Context) ![]u8 {
+fn externalTestPath(context: api.GoContext) ![]u8 {
     return context.sourceFilePathAlloc("zigo_external_test.go");
 }
-fn taggedPath(context: api.Context) ![]u8 {
+fn taggedPath(context: api.GoContext) ![]u8 {
     return context.sourceFilePathAlloc("zigo_tagged.go");
 }
-fn excludedPath(context: api.Context) ![]u8 {
+fn excludedPath(context: api.GoContext) ![]u8 {
     return context.sourceFilePathAlloc("zigo_excluded.go");
 }
-fn renderPublic(_: api.Context, writer: *std.Io.Writer) !void {
+fn renderPublic(_: api.GoContext, writer: *std.Io.Writer) !void {
     try writer.writeAll("const PluginPublicAnswer = 42\n//go:embed api.md\nvar PluginDoc string\n");
 }
-fn renderDocumentGo(context: api.Context, writer: *std.Io.Writer) !void {
+fn renderDocumentGo(context: api.GoContext, writer: *std.Io.Writer) !void {
     document_go_runs += 1;
     try writer.print("const DocumentFunctionCount = {d}\n", .{context.program.functions.len});
 }
-fn renderRaw(_: api.Context, writer: *std.Io.Writer) !void {
+fn renderRaw(_: api.GoContext, writer: *std.Io.Writer) !void {
     raw_runs += 1;
     try writer.writeAll("const PluginRawAnswer = 42\n");
 }
-fn renderRawTest(_: api.Context, writer: *std.Io.Writer) !void {
+fn renderRawTest(_: api.GoContext, writer: *std.Io.Writer) !void {
     try writer.writeAll("func TestRawPlugin(t *testing.T) { if PluginRawAnswer != 42 { t.Fatal(PluginRawAnswer) } }\n");
 }
-fn renderInternalTest(_: api.Context, writer: *std.Io.Writer) !void {
+fn renderInternalTest(_: api.GoContext, writer: *std.Io.Writer) !void {
     try writer.writeAll("func ExamplePluginPublicAnswer() {\nfmt.Println(PluginPublicAnswer)\n// Output: 42\n}\n");
 }
-fn renderExternalTest(_: api.Context, writer: *std.Io.Writer) !void {
+fn renderExternalTest(_: api.GoContext, writer: *std.Io.Writer) !void {
     try writer.writeAll("func TestExternalPlugin(t *testing.T) { if bindings.PluginPublicAnswer != 42 || bindings.PluginDoc == \"\" { t.Fatal(bindings.PluginPublicAnswer) } }\n");
 }
-fn renderTagged(_: api.Context, writer: *std.Io.Writer) !void {
+fn renderTagged(_: api.GoContext, writer: *std.Io.Writer) !void {
     try writer.writeAll("const PluginTaggedAnswer = 7\n");
 }
-fn renderExcluded(_: api.Context, writer: *std.Io.Writer) !void {
+fn renderExcluded(_: api.GoContext, writer: *std.Io.Writer) !void {
     try writer.writeAll("var excludedBuildTag MustNotCompileWithoutBuildConstraint\n");
 }
-fn publicImports(_: api.Context) ![]const api.Import {
+fn publicImports(_: api.GoContext) ![]const api.Import {
     return &.{.{ .qualifier = "_", .path = "embed" }};
 }
-fn testImports(_: api.Context) ![]const api.Import {
+fn testImports(_: api.GoContext) ![]const api.Import {
     return &.{ .{ .qualifier = "testing", .path = "testing" }, .{ .qualifier = "fmt", .path = "fmt" } };
 }
-fn externalImports(context: api.Context) ![]const api.Import {
+fn externalImports(context: api.GoContext) ![]const api.Import {
     const directory = std.mem.trimEnd(u8, try context.publicFilePathAlloc(""), "/");
     const imports = try context.allocator.alloc(api.Import, 2);
     imports[0] = .{ .qualifier = "testing", .path = "testing" };

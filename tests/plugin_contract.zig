@@ -58,8 +58,8 @@ test "external plugin validates and analyzes once, renders every public scope, a
     };
 }
 
-test "the generator speaks plugin contract 5.0 and the fixture plugin is written against it" {
-    try std.testing.expectEqual(@as(u16, 5), plugin.contract_version.major);
+test "the generator speaks plugin contract 6.0 and the fixture plugin is written against it" {
+    try std.testing.expectEqual(@as(u16, 6), plugin.contract_version.major);
     try std.testing.expectEqual(@as(u16, 0), plugin.contract_version.minor);
     try std.testing.expectEqual(plugin.contract_version.major, contract.plugin.min_contract.major);
 }

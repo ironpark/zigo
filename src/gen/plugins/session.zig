@@ -19,12 +19,12 @@ const Stmt = plugin_api.gobuild.Stmt;
 pub const plugin: plugin_api.Plugin = .{
     .name = "SESSION",
     .validate = validateDocument,
-    .source_files = &.{.{ .imports = sessionImports, .pathAlloc = sessionsPath, .render = renderSessionsBody }},
+    .go = .{ .source_files = &.{.{ .imports = sessionImports, .pathAlloc = sessionsPath, .render = renderSessionsBody }} },
 };
 
 /// Every session file closes handles, joins the failures and guards the whole
 /// thing with a `sync.Once`, so the three standard packages are always used.
-fn sessionImports(_: plugin_api.Context) anyerror![]const plugin_api.Import {
+fn sessionImports(_: plugin_api.GoContext) anyerror![]const plugin_api.Import {
     return &.{
         .{ .path = "errors", .qualifier = "errors" },
         .{ .path = "io", .qualifier = "io" },
@@ -38,7 +38,7 @@ fn validateDocument(context: plugin_api.ValidateContext) !void {
     if (try session_rules.sessionIssue(context.allocator, context.document, context.target)) |issue| try context.diagnose(issue);
 }
 
-pub fn sessionsPath(context: plugin_api.Context) ![]u8 {
+pub fn sessionsPath(context: plugin_api.GoContext) ![]u8 {
     const package = if (context.options.go_package.len != 0) try context.allocator.dupe(u8, context.options.go_package) else try naming.snakeAlloc(context.allocator, context.program.package);
     defer context.allocator.free(package);
     const filename = try std.fmt.allocPrint(context.allocator, "{s}_sessions_gen.go", .{package});
@@ -48,7 +48,7 @@ pub fn sessionsPath(context: plugin_api.Context) ![]u8 {
 
 /// `<package>_sessions_gen.go`: every declared session of the active package,
 /// in declaration order.
-pub fn renderSessionsBody(context: plugin_api.Context, writer: *std.Io.Writer) !void {
+pub fn renderSessionsBody(context: plugin_api.GoContext, writer: *std.Io.Writer) !void {
     var written: usize = 0;
     for (context.program.sessions) |session| {
         if (!plugin_api.packageMatches(session.package, context.options.active_package)) continue;
@@ -58,7 +58,7 @@ pub fn renderSessionsBody(context: plugin_api.Context, writer: *std.Io.Writer) !
     }
 }
 
-fn renderSession(context: plugin_api.Context, writer: *std.Io.Writer, session: abi.AbiSession) !void {
+fn renderSession(context: plugin_api.GoContext, writer: *std.Io.Writer, session: abi.AbiSession) !void {
     const allocator = context.allocator;
     const b = context.builder();
     const members = try sessionMembers(allocator, session);

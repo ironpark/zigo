@@ -15,18 +15,18 @@ pub const plugin: plugin_api.Plugin = .{
     .name = name,
     .TypeOptions = Options,
     .subjects = &.{.enumeration},
-    .visit = visit,
+    .go = .{ .visit = visit },
     .validate = validateDocument,
 };
 
-fn visit(context: plugin_api.Context, node: plugin_api.Node, b: *plugin_api.Builder) !void {
+fn visit(context: plugin_api.GoContext, node: plugin_api.Node, b: *plugin_api.Builder) !void {
     if (node != .type) return;
     const declaration = node.type;
     const options = try context.optionsOf(plugin, .type, node) orelse return;
     try render(context, b, declaration.name, context.program.liveFields(declaration.name), options);
 }
 
-fn render(context: plugin_api.Context, b: *plugin_api.Builder, type_name: []const u8, fields: []const semantic.TypeField, options: Options) !void {
+fn render(context: plugin_api.GoContext, b: *plugin_api.Builder, type_name: []const u8, fields: []const semantic.TypeField, options: Options) !void {
     const allocator = context.allocator;
     var decls: std.ArrayList(plugin_api.gobuild.Decl) = .empty;
     defer decls.deinit(allocator);
@@ -104,12 +104,12 @@ fn validateDocument(context: plugin_api.ValidateContext) !void {
 
 /// The builder keeps the strings it is handed, and the generator backs the
 /// context allocator with the run arena; the tests do the same.
-fn testContext(arena: *std.heap.ArenaAllocator) plugin_api.Context {
-    return plugin_api.testing.context(arena.allocator(), .{ .package = "enumkit", .prefix = "zg", .functions = &.{} });
+fn testContext(arena: *std.heap.ArenaAllocator) plugin_api.GoContext {
+    return plugin_api.testing.goContext(arena.allocator(), .{ .package = "enumkit", .prefix = "zg", .functions = &.{} });
 }
 
 /// The builder a visit is handed: the same context, writing into `writer`.
-fn testBuilder(context: plugin_api.Context, writer: *std.Io.Writer) plugin_api.Builder {
+fn testBuilder(context: plugin_api.GoContext, writer: *std.Io.Writer) plugin_api.Builder {
     var b = context.builder();
     b.out = writer;
     return b;

@@ -20,10 +20,10 @@ pub const plugin: api.Plugin = .{
     .name = "KNOWN",
     .TypeOptions = Options,
     .subjects = &.{.enumeration},
-    .visit = visit,
+    .go = .{ .visit = visit },
 };
 
-fn visit(context: api.Context, node: api.Node, b: *api.Builder) !void {
+fn visit(context: api.GoContext, node: api.Node, b: *api.Builder) !void {
     if (node != .type) return;
     const declaration = node.type;
     const options = try context.optionsOf(plugin, .type, node) orelse return;
@@ -49,7 +49,13 @@ fn visit(context: api.Context, node: api.Node, b: *api.Builder) !void {
 }
 ```
 
-렌더링 hook은 `visit` 하나입니다. generator가 프로그램의 모든 [`Node`](api-reference.md#렌더링-hook-visit)를
+`visit`은 [렌더링 slot](api-reference.md#렌더링-slot-go와-rust) 안에 있습니다. 어떤 출력 언어를
+쓸지는 slot을 채우는 것으로 정합니다: Go를 쓰면 `.go`, Rust를 쓰면 `.rust`, 둘 다 쓰면 둘 다.
+채우지 않은 target에는 transform도 진단도 출력 file도 기여하지 않으므로, Go writer로 쓴 hook이
+Rust 실행에 끌려 나올 일이 없습니다. slot을 하나도 채우지 않은 플러그인은 IR에만 기여하는
+플러그인이고 모든 target에서 실행됩니다.
+
+렌더링 hook은 slot마다 `visit` 하나입니다. generator가 프로그램의 모든 [`Node`](api-reference.md#렌더링-hook-visit)를
 document 순서로 넘기고, 플러그인은 관심 있는 node만 처리합니다. 선언과 그 안쪽 node에 붙은
 옵션은 모든 context에서 같은 한 가지 방법, `optionsOf(plugin, attachment, ext)`로 읽습니다
 (`ext` 자리에 `Node`를 그대로 넘겨도 됩니다). Go 출력은 `visit`이 받은
@@ -234,24 +240,24 @@ reflection이 기록한 Zig 소스 위치(파일, 줄, 열)를 가리키고, 위
 
 ## 별도 Go file
 
-기존 타입 바로 뒤에 코드를 붙일 필요가 없다면 `source_files`를 사용합니다.
+기존 타입 바로 뒤에 코드를 붙일 필요가 없다면 slot의 `source_files`를 사용합니다.
 
 ```zig
 pub const plugin: api.Plugin = .{
     .name = "KNOWN",
-    .source_files = &.{.{
-        .pathAlloc = path,
-        .render = render,
-    }},
+    .go = .{ .source_files = &.{.{ .pathAlloc = path, .render = render }} },
+    .rust = .{ .source_files = &.{.{ .module = "known", .render = renderRust }} },
 };
 
-fn path(context: api.Context) ![]u8 {
+fn path(context: api.GoContext) ![]u8 {
     return context.publicFilePathAlloc("known_gen.go");
 }
 ```
 
 Go file은 패키지 clause, 빌드 constraint와 import framing을 generator가 맡고 body만 플러그인이
-씁니다. Go가 아닌 정확한 바이트 산출물은 `artifacts`를 사용합니다.
+씁니다. Rust module은 `src/<module>.rs`에 쓰이고 `lib.rs`가 `mod`와 재export를 써 주므로
+플러그인은 경로도 `mod` 줄도 고르지 않습니다. Go도 Rust도 아닌 정확한 바이트 산출물은
+언어 중립인 `artifacts`를 사용합니다.
 
 ## 결정적인 출력
 

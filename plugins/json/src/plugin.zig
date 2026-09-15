@@ -35,16 +35,18 @@ pub const plugin: plugin_api.Plugin = .{
     .TypeOptions = Options,
     .subjects = &.{ .value, .enumeration },
     .validate = validateDocument,
-    .visit = visit,
-    // Written by the methods below. They are added to a file only when its
-    // body really spells the qualifier.
-    .imports = &.{
-        .{ .qualifier = "json", .path = "encoding/json" },
-        .{ .qualifier = "fmt", .path = "fmt" },
+    .go = .{
+        .visit = visit,
+        // Written by the methods below. They are added to a file only when
+        // its body really spells the qualifier.
+        .imports = &.{
+            .{ .qualifier = "json", .path = "encoding/json" },
+            .{ .qualifier = "fmt", .path = "fmt" },
+        },
     },
 };
 
-fn visit(context: plugin_api.Context, node: plugin_api.Node, b: *plugin_api.Builder) !void {
+fn visit(context: plugin_api.GoContext, node: plugin_api.Node, b: *plugin_api.Builder) !void {
     if (node != .type) return;
     const declaration = node.type;
     const options = try context.optionsOf(plugin, .type, node) orelse return;
@@ -58,7 +60,7 @@ fn visit(context: plugin_api.Context, node: plugin_api.Node, b: *plugin_api.Buil
 /// An enum crosses as its Zig tag name. `String` already spells it, so
 /// marshalling is one call; unmarshalling is the switch that `String` does not
 /// have an inverse for unless the binding asked for `.text`.
-fn renderEnum(context: plugin_api.Context, b: *plugin_api.Builder, declaration: semantic.TypeDecl) !void {
+fn renderEnum(context: plugin_api.GoContext, b: *plugin_api.Builder, declaration: semantic.TypeDecl) !void {
     const allocator = context.allocator;
     const by_value: plugin_api.Receiver = .{ .name = "value", .type = declaration.name };
     const by_pointer: plugin_api.Receiver = .{ .name = "value", .type = declaration.name, .pointer = true };
@@ -121,7 +123,7 @@ fn unmarshalInto(b: *plugin_api.Builder, target: []const u8) !plugin_api.gobuild
 /// struct carries the tags so the public struct stays the mirror of the Zig
 /// one, which is what every other generated conversion reads.
 fn renderValueStruct(
-    context: plugin_api.Context,
+    context: plugin_api.GoContext,
     b: *plugin_api.Builder,
     declaration: semantic.TypeDecl,
     options: Options,
@@ -210,7 +212,7 @@ test "an enum writes its tag names as string literals through the builder" {
     // context allocator with the run arena; the test does the same.
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
-    const context = plugin_api.testing.context(arena.allocator(), .{ .package = "palette", .prefix = "zg", .functions = &.{} });
+    const context = plugin_api.testing.goContext(arena.allocator(), .{ .package = "palette", .prefix = "zg", .functions = &.{} });
     var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer output.deinit();
     var b = context.builder();

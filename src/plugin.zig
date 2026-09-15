@@ -5,9 +5,11 @@
 //!
 //! A plugin declares two independent things about what it applies to.
 //! `subjects` is the kind of declaration -- function, handle, value and so on.
-//! `output_targets` is the output language, and it defaults to Go alone,
-//! because the rendering surface a plugin writes through writes Go. A plugin
-//! whose `output_targets` exclude the resolved target contributes nothing.
+//! The output language is the `go` and `rust` render slots: a slot holds the
+//! visit, the claims answer, the source files and the imports for one
+//! language, and a plugin renders for exactly the languages whose slot it
+//! filled. There is no list of target names to keep in step with the writers
+//! a hook actually calls, because the writers *are* the slot.
 //!
 //! Semantic transforms run before validation and may change the ABI. Rendering
 //! hooks are additive; they cannot modify the shim, header or raw API.
@@ -20,7 +22,7 @@ const targets = @import("targets");
 
 /// Major versions are incompatible; minor versions add capabilities.
 pub const ContractVersion = struct { major: u16, minor: u16 };
-pub const contract_version: ContractVersion = .{ .major = 5, .minor = 0 };
+pub const contract_version: ContractVersion = .{ .major = 6, .minor = 0 };
 
 /// Serialized build configuration; decoded as the registered plugin's Config.
 pub const Configuration = struct { name: []const u8, json: []const u8 };
@@ -51,10 +53,15 @@ pub const rename = @import("plugin/rename.zig");
 /// writers table points at them; a plugin calls them through its context.
 pub const format = @import("plugin/format.zig");
 
-/// The Go AST a hook builds instead of printing Go source. `Context.builder`
+/// The Go AST a hook builds instead of printing Go source. `GoContext.builder`
 /// is how a plugin reaches it.
 pub const gobuild = @import("plugin/gobuild.zig");
 pub const Builder = gobuild.Builder;
+
+/// The Rust AST a hook builds instead of printing Rust source.
+/// `RustContext.builder` is how a plugin reaches it.
+pub const rustbuild = @import("plugin/rustbuild.zig");
+pub const RustBuilder = rustbuild.Builder;
 
 /// Runs before lowering. All allocations and diagnostics belong to the run arena.
 pub const DeclarationId = struct {
@@ -263,15 +270,15 @@ pub const FileKind = enum { source, test_file };
 /// package directory. Use sourceFilePathAlloc to construct it. Raw outputs require
 /// document scope; external_test outputs require test kind.
 pub const SourceFile = struct {
-    enabled: ?*const fn (Context) anyerror!bool = null,
+    enabled: ?*const fn (GoContext) anyerror!bool = null,
     scope: OutputScope = .package,
     package: PackageKind = .public,
     kind: FileKind = .source,
     /// Single-line ASCII Go build expression (up to 4096 bytes).
     build_constraint: ?[]const u8 = null,
-    imports: ?*const fn (Context) anyerror![]const Import = null,
-    pathAlloc: *const fn (Context) anyerror![]u8,
-    render: *const fn (Context, *std.Io.Writer) anyerror!void,
+    imports: ?*const fn (GoContext) anyerror![]const Import = null,
+    pathAlloc: *const fn (GoContext) anyerror![]u8,
+    render: *const fn (GoContext, *std.Io.Writer) anyerror!void,
 };
 
 /// Exact bytes, including empty output and trailing newlines. No Go framing,
@@ -347,24 +354,24 @@ pub const Import = struct {
 pub const Writers = struct {
     /// The type name as this package spells it, qualified when the type lives
     /// in another generated package.
-    writeTypeName: *const fn (Context, *std.Io.Writer, []const u8) anyerror!void,
+    writeTypeName: *const fn (GoContext, *std.Io.Writer, []const u8) anyerror!void,
     /// The Go spelling of a semantic type node.
-    writeGoType: *const fn (Context, *std.Io.Writer, semantic.TypeNode) anyerror!void,
+    writeGoType: *const fn (GoContext, *std.Io.Writer, semantic.TypeNode) anyerror!void,
     /// The receiver name a method of this type is written with.
-    receiverNameAlloc: *const fn (Context, std.mem.Allocator, []const u8) anyerror![]u8,
+    receiverNameAlloc: *const fn (GoContext, std.mem.Allocator, []const u8) anyerror![]u8,
     /// The parameter list and result of a public function, parentheses
     /// included, exactly as the method being hooked spells them.
-    writeSignature: *const fn (Context, *std.Io.Writer, abi.AbiFn, SignatureOptions) anyerror!void,
-    writeValueType: *const fn (Context, *std.Io.Writer, abi.AbiFn) anyerror!void,
+    writeSignature: *const fn (GoContext, *std.Io.Writer, abi.AbiFn, SignatureOptions) anyerror!void,
+    writeValueType: *const fn (GoContext, *std.Io.Writer, abi.AbiFn) anyerror!void,
     writeDoc: *const fn (*std.Io.Writer, []const u8, []const u8, []const u8) anyerror!void,
-    functionInfo: *const fn (Context, abi.AbiFn) anyerror!FunctionInfo,
-    writeParameters: *const fn (Context, *std.Io.Writer, abi.AbiFn) anyerror!void,
-    writeResultType: *const fn (Context, *std.Io.Writer, abi.AbiFn, ResultOptions) anyerror!usize,
-    writeCallArguments: *const fn (Context, *std.Io.Writer, abi.AbiFn) anyerror!void,
+    functionInfo: *const fn (GoContext, abi.AbiFn) anyerror!FunctionInfo,
+    writeParameters: *const fn (GoContext, *std.Io.Writer, abi.AbiFn) anyerror!void,
+    writeResultType: *const fn (GoContext, *std.Io.Writer, abi.AbiFn, ResultOptions) anyerror!usize,
+    writeCallArguments: *const fn (GoContext, *std.Io.Writer, abi.AbiFn) anyerror!void,
     /// A Zig name as the generated package spells it: an enum tag or a struct
     /// field becomes its exported member name with `.pascal`, a local or a
     /// parameter its unexported spelling with `.camel`.
-    identifierAlloc: *const fn (Context, std.mem.Allocator, []const u8, IdentifierStyle) anyerror![]u8,
+    identifierAlloc: *const fn (GoContext, std.mem.Allocator, []const u8, IdentifierStyle) anyerror![]u8,
 };
 
 /// The receiver clause of a method header: `(name *Type)` or `(name Type)`.
@@ -377,9 +384,10 @@ pub const Receiver = struct {
 /// How `identifierAlloc` spells a name: `SomeName` or `someName`.
 pub const IdentifierStyle = enum { pascal, camel };
 
-/// What a `function` node is adjacent to: the method the generator just
-/// wrote. The names are the ones the method itself used, so a wrapper that
-/// calls it can never spell the call differently.
+/// What a `function` node is adjacent to: the method or item the generator
+/// just wrote. The names are the ones it used, so a wrapper that calls it can
+/// never spell the call differently. Shared by both render slots; where a
+/// field names Go below, Rust's answer is the same fact in Rust's spelling.
 pub const Method = struct {
     /// The method's exported name in the output language. A declaration a
     /// plugin claimed with `claims` has no method under this name yet: the
@@ -389,23 +397,54 @@ pub const Method = struct {
     /// `public_name`, except on a declaration this plugin claimed, where it is
     /// the unexported name the wrapper has to call.
     checked_name: []const u8,
-    /// The Go receiver type, absent for a free function.
+    /// The receiver type, absent for a free function. `Rust` names the handle
+    /// type the `impl` block is for.
     receiver: ?[]const u8 = null,
-    /// The receiver variable name, absent for a free function.
+    /// The receiver variable name, absent for a free function. Always `self`
+    /// in Rust.
     receiver_name: ?[]const u8 = null,
-    /// The Go parameter names, indexed by semantic parameter.
+    /// The public parameter names, indexed by semantic parameter.
     param_names: [][]u8,
     /// The handle type a constructor hands back, when it is one.
     owned_type: ?[]const u8 = null,
-    /// Whether the method's Go signature carries an `error`.
+    /// Whether the public signature carries a failure channel: Go's trailing
+    /// `error`, Rust's `Result`.
     needs_check: bool = false,
+};
+
+/// What every rendering context answers for, whatever language it renders:
+/// the lowered program, the plugin's view of the options in force, the run
+/// arena, and the facts `analyze` recorded. `GoContext` and `RustContext` each
+/// carry these four and reach the behaviour here through `base`, so the
+/// language-neutral half of the contract is written once and a hook still
+/// spells `context.allocator` rather than `context.base.allocator`.
+pub const ContextBase = struct {
+    allocator: std.mem.Allocator,
+    program: abi.Program,
+    options: PluginOptions,
+    /// What `analyze` recorded, read-only: rendering may not add facts.
+    facts: *const Facts = &.{},
+
+    /// The output language this run generates for.
+    pub fn target(self: ContextBase) targets.Target {
+        return self.options.target;
+    }
+    pub fn config(self: ContextBase, comptime P: Plugin) !P.Config {
+        return readConfig(P, self.allocator, self.options.configurations);
+    }
+    pub fn optionsOf(self: ContextBase, comptime P: Plugin, comptime attachment: Attachment, source: anytype) !?Options(P, attachment) {
+        return readOptions(P, attachment, self.allocator, extensionsOf(source));
+    }
+    pub fn publicFilePathAlloc(self: ContextBase, filename: []const u8) ![]u8 {
+        return publicFilePathAllocImpl(self.allocator, self.program, self.options, filename);
+    }
 };
 
 /// What a hook is given besides its builder: the lowered program, the
 /// plugin's view of the options in force, the writers table, the facts
 /// `analyze` recorded, and -- on the nodes inside a method -- the method the
 /// output is being written after.
-pub const Context = struct {
+pub const GoContext = struct {
     allocator: std.mem.Allocator,
     program: abi.Program,
     options: PluginOptions,
@@ -417,37 +456,42 @@ pub const Context = struct {
     /// other rendering context.
     method: ?Method = null,
 
+    /// The language-neutral half of this context, which is what a helper
+    /// that does not write Go asks for.
+    pub fn base(self: GoContext) ContextBase {
+        return .{ .allocator = self.allocator, .program = self.program, .options = self.options, .facts = self.facts };
+    }
+
     /// The output language this run generates for.
-    pub fn target(self: Context) targets.Target {
-        return self.options.target;
+    pub fn target(self: GoContext) targets.Target {
+        return self.base().target();
     }
-    pub fn config(self: Context, comptime P: Plugin) !P.Config {
-        return readConfig(P, self.allocator, self.options.configurations);
+    pub fn config(self: GoContext, comptime P: Plugin) !P.Config {
+        return self.base().config(P);
     }
 
-    // The writers below render Go source. They are not target-generic and
-    // renaming them would not make them so: there is one emitter, and it is
-    // Go's. A plugin that calls any of them belongs to the default
-    // `output_targets = &.{"go"}` and will not be run for another language.
+    // The writers below render Go source, and that is exactly what the `go`
+    // render slot means: a plugin reaches them only from a hook it put in
+    // that slot, so they never have to answer for another language.
 
-    pub fn writeTypeName(self: Context, writer: *std.Io.Writer, name: []const u8) !void {
+    pub fn writeTypeName(self: GoContext, writer: *std.Io.Writer, name: []const u8) !void {
         return self.writers.writeTypeName(self, writer, name);
     }
 
-    pub fn writeGoType(self: Context, writer: *std.Io.Writer, node: semantic.TypeNode) !void {
+    pub fn writeGoType(self: GoContext, writer: *std.Io.Writer, node: semantic.TypeNode) !void {
         return self.writers.writeGoType(self, writer, node);
     }
 
-    pub fn receiverNameAlloc(self: Context, allocator: std.mem.Allocator, type_name: []const u8) ![]u8 {
+    pub fn receiverNameAlloc(self: GoContext, allocator: std.mem.Allocator, type_name: []const u8) ![]u8 {
         return self.writers.receiverNameAlloc(self, allocator, type_name);
     }
 
-    pub fn writeSignature(self: Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
+    pub fn writeSignature(self: GoContext, writer: *std.Io.Writer, function: abi.AbiFn) !void {
         return self.writers.writeSignature(self, writer, function, .{});
     }
 
     /// Public parameter list including parentheses. Names are derived outside method hooks.
-    pub fn writeParameters(self: Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
+    pub fn writeParameters(self: GoContext, writer: *std.Io.Writer, function: abi.AbiFn) !void {
         const write = self.writers.writeParameters;
         return write(self, writer, function);
     }
@@ -455,38 +499,38 @@ pub const Context = struct {
     /// Public results including their leading space and any tuple parentheses.
     /// Returns the number of emitted results, allowing wrappers to choose a
     /// forwarding helper without parsing Go source. Zero results write nothing.
-    pub fn writeResultType(self: Context, writer: *std.Io.Writer, function: abi.AbiFn, options: ResultOptions) !usize {
+    pub fn writeResultType(self: GoContext, writer: *std.Io.Writer, function: abi.AbiFn, options: ResultOptions) !usize {
         const write = self.writers.writeResultType;
         return write(self, writer, function, options);
     }
 
     /// Arguments in public parameter order, without parentheses.
-    pub fn writeCallArguments(self: Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
+    pub fn writeCallArguments(self: GoContext, writer: *std.Io.Writer, function: abi.AbiFn) !void {
         const write = self.writers.writeCallArguments;
         return write(self, writer, function);
     }
 
-    pub fn writeSignatureWith(self: Context, writer: *std.Io.Writer, function: abi.AbiFn, options: SignatureOptions) !void {
+    pub fn writeSignatureWith(self: GoContext, writer: *std.Io.Writer, function: abi.AbiFn, options: SignatureOptions) !void {
         return self.writers.writeSignature(self, writer, function, options);
     }
-    pub fn writeValueType(self: Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
+    pub fn writeValueType(self: GoContext, writer: *std.Io.Writer, function: abi.AbiFn) !void {
         return self.writers.writeValueType(self, writer, function);
     }
-    pub fn writeDoc(self: Context, writer: *std.Io.Writer, public_name: []const u8, zig_name: []const u8, doc: []const u8) !void {
+    pub fn writeDoc(self: GoContext, writer: *std.Io.Writer, public_name: []const u8, zig_name: []const u8, doc: []const u8) !void {
         return self.writers.writeDoc(writer, public_name, zig_name, doc);
     }
-    pub fn functionInfo(self: Context, function: abi.AbiFn) !FunctionInfo {
+    pub fn functionInfo(self: GoContext, function: abi.AbiFn) !FunctionInfo {
         return self.writers.functionInfo(self, function);
     }
 
     /// Path in this SourceFile's selected package, or the public package in other hooks.
-    pub fn sourceFilePathAlloc(self: Context, filename: []const u8) ![]u8 {
+    pub fn sourceFilePathAlloc(self: GoContext, filename: []const u8) ![]u8 {
         const selected_package = if (self.options.file) |file| if (file.source_file) |go| go.package else .public else .public;
         return sourceFilePathAllocImpl(self.allocator, self.program, self.options, selected_package, filename);
     }
 
-    pub fn publicFilePathAlloc(self: Context, filename: []const u8) ![]u8 {
-        return publicFilePathAllocImpl(self.allocator, self.program, self.options, filename);
+    pub fn publicFilePathAlloc(self: GoContext, filename: []const u8) ![]u8 {
+        return self.base().publicFilePathAlloc(filename);
     }
 
     /// `P`'s options on the node whose `ext` this is -- the function being
@@ -494,20 +538,134 @@ pub const Context = struct {
     /// or null when nothing attached `P` there. `source` is the `ext` object
     /// itself or the `Node` carrying it, so a visit reads its own node with
     /// `optionsOf(P, .param, node)`.
-    pub fn optionsOf(self: Context, comptime P: Plugin, comptime attachment: Attachment, source: anytype) !?Options(P, attachment) {
-        return readOptions(P, attachment, self.allocator, extensionsOf(source));
+    pub fn optionsOf(self: GoContext, comptime P: Plugin, comptime attachment: Attachment, source: anytype) !?Options(P, attachment) {
+        return self.base().optionsOf(P, attachment, source);
     }
 
     /// The Go AST builder a hook composes its output with. Nodes it builds
     /// live on this context's allocator, which the generator backs with the
     /// run arena.
-    pub fn builder(self: Context) Builder {
+    pub fn builder(self: GoContext) Builder {
         return .{ .allocator = self.allocator, .context = self };
     }
 
     /// A Zig name as the generated package spells it. The caller owns the result.
-    pub fn identifierAlloc(self: Context, allocator: std.mem.Allocator, name: []const u8, style: IdentifierStyle) ![]u8 {
+    pub fn identifierAlloc(self: GoContext, allocator: std.mem.Allocator, name: []const u8, style: IdentifierStyle) ![]u8 {
         return self.writers.identifierAlloc(self, allocator, name, style);
+    }
+};
+
+/// How `RustWriters.identifierAlloc` spells a name: `some_name`, `SomeName`
+/// or `SOME_NAME`. Rust's three casings, which is one more than Go has, so
+/// the Rust slot takes its own style enum rather than borrowing Go's.
+pub const RustIdentifierStyle = enum { snake, pascal, screaming };
+
+pub const RustSignatureOptions = struct {
+    /// Write the parameter names as well as the types.
+    parameter_names: bool = true,
+    /// Write the receiver, when the bound method has one.
+    receiver: bool = true,
+};
+
+/// Names are allocated from the context's allocator.
+pub const RustFunctionInfo = struct {
+    /// The function's public Rust name, snake case.
+    public_name: []const u8,
+    /// Whether the crate publishes this function at all.
+    is_public: bool,
+    /// Whether the public signature is a `Result`.
+    has_error: bool,
+};
+
+/// The crate's writers a hook needs but cannot reimplement, the Rust
+/// counterpart of `Writers`. They are the Rust builder's backend:
+/// `rustbuild.Expr.type_name` and `rustbuild.Signature.function` render
+/// through them.
+pub const RustWriters = struct {
+    /// The type name as the crate spells it.
+    writeTypeName: *const fn (RustContext, *std.Io.Writer, []const u8) anyerror!void,
+    /// The parameter list and result of a public function, parentheses
+    /// included, exactly as the generated item spells them.
+    writeSignature: *const fn (RustContext, *std.Io.Writer, abi.AbiFn, RustSignatureOptions) anyerror!void,
+    /// The receiver clause a method of this function takes -- `&self`,
+    /// `&mut self` or `self` -- or null for an associated function.
+    receiverFormAlloc: *const fn (RustContext, std.mem.Allocator, abi.AbiFn) anyerror!?[]u8,
+    /// A Zig name as the crate spells it.
+    identifierAlloc: *const fn (RustContext, std.mem.Allocator, []const u8, RustIdentifierStyle) anyerror![]u8,
+    functionInfo: *const fn (RustContext, abi.AbiFn) anyerror!RustFunctionInfo,
+};
+
+/// A `use` declaration a Rust hook may write. Like a Go `Import` it is added
+/// to a file only when the rendered body spells the path's last segment.
+pub const RustImport = struct {
+    /// The path after `use`, without the trailing semicolon: `core::fmt::Write`.
+    path: []const u8,
+};
+
+/// A module the crate declares beside the generated ones. The file is
+/// `src/<module>.rs` and `lib.rs` declares and re-exports it, so a plugin
+/// never writes a `mod` line and never picks a path a `cargo` build cannot
+/// find. Crate scope only: a Cargo crate has no per-package walk.
+pub const RustSourceFile = struct {
+    enabled: ?*const fn (RustContext) anyerror!bool = null,
+    /// The module name, which is also the file stem. A Rust identifier.
+    module: []const u8,
+    imports: ?*const fn (RustContext) anyerror![]const RustImport = null,
+    render: *const fn (RustContext, *std.Io.Writer) anyerror!void,
+};
+
+/// What a Rust hook is given besides its builder. The same shape as
+/// `GoContext`, with the crate's writers in place of the package's.
+pub const RustContext = struct {
+    allocator: std.mem.Allocator,
+    program: abi.Program,
+    options: PluginOptions,
+    writers: *const RustWriters,
+    /// What `analyze` recorded, read-only: rendering may not add facts.
+    facts: *const Facts = &.{},
+    /// Set on the `function`, `param` and `result` nodes, which are all
+    /// written at the insertion point the generated item itself left.
+    method: ?Method = null,
+
+    pub fn base(self: RustContext) ContextBase {
+        return .{ .allocator = self.allocator, .program = self.program, .options = self.options, .facts = self.facts };
+    }
+
+    /// The output language this run generates for.
+    pub fn target(self: RustContext) targets.Target {
+        return self.base().target();
+    }
+    pub fn config(self: RustContext, comptime P: Plugin) !P.Config {
+        return self.base().config(P);
+    }
+    pub fn optionsOf(self: RustContext, comptime P: Plugin, comptime attachment: Attachment, source: anytype) !?Options(P, attachment) {
+        return self.base().optionsOf(P, attachment, source);
+    }
+
+    pub fn writeTypeName(self: RustContext, writer: *std.Io.Writer, name: []const u8) !void {
+        return self.writers.writeTypeName(self, writer, name);
+    }
+    pub fn writeSignature(self: RustContext, writer: *std.Io.Writer, function: abi.AbiFn) !void {
+        return self.writers.writeSignature(self, writer, function, .{});
+    }
+    pub fn writeSignatureWith(self: RustContext, writer: *std.Io.Writer, function: abi.AbiFn, options: RustSignatureOptions) !void {
+        return self.writers.writeSignature(self, writer, function, options);
+    }
+    /// The receiver clause of the generated method, or null when the function
+    /// is not one. The caller owns the result.
+    pub fn receiverFormAlloc(self: RustContext, allocator: std.mem.Allocator, function: abi.AbiFn) !?[]u8 {
+        return self.writers.receiverFormAlloc(self, allocator, function);
+    }
+    pub fn identifierAlloc(self: RustContext, allocator: std.mem.Allocator, name: []const u8, style: RustIdentifierStyle) ![]u8 {
+        return self.writers.identifierAlloc(self, allocator, name, style);
+    }
+    pub fn functionInfo(self: RustContext, function: abi.AbiFn) !RustFunctionInfo {
+        return self.writers.functionInfo(self, function);
+    }
+
+    /// The Rust AST builder a hook composes its output with.
+    pub fn builder(self: RustContext) RustBuilder {
+        return .{ .allocator = self.allocator, .context = self };
     }
 };
 
@@ -549,7 +707,7 @@ pub fn attached(
 
 /// `P`'s options on an `ext` object, for a caller holding no context: the
 /// generator's own rules read a built-in's attachment through exactly what a
-/// hook reads it through. A hook has `Context.optionsOf` and wants that.
+/// hook reads it through. A hook has `GoContext.optionsOf` and wants that.
 pub fn optionsOn(comptime P: Plugin, comptime attachment: Attachment, allocator: std.mem.Allocator, ext: ?semantic.Extensions) !?Options(P, attachment) {
     return readOptions(P, attachment, allocator, ext);
 }
@@ -669,7 +827,7 @@ pub const Node = union(enum) {
 
     /// Where a diagnostic about this node points. A member names itself under
     /// its container's location, which is why the allocator is needed.
-    pub fn site(self: Node, context: Context) !diagnostic.Site {
+    pub fn site(self: Node, context: ContextBase) !diagnostic.Site {
         return switch (self) {
             .package_begin, .package_end => site_module.documentSite(context.program.package),
             .file_begin, .file_end => |file| site_module.documentSite(file.path),
@@ -681,6 +839,54 @@ pub const Node = union(enum) {
             .enum_tag => |node| site_module.tagSite(node.declaration, context.allocator, node.index),
         };
     }
+};
+
+/// One language's whole rendering surface. The `go` and `rust` slots on a
+/// plugin hold one of these each, and the pair is the contract's answer to
+/// "which languages does this plugin write": a filled slot renders, an empty
+/// one does not, and a hook can only be written against the writers of the
+/// slot it sits in.
+pub const GoRender = struct {
+    /// The one rendering hook. It is called at every `Node` this plugin's
+    /// `subjects` cover, in document order, and writes through the builder it
+    /// is handed. What the builder took during the call is flushed at that
+    /// node's insertion point: after the method for `function`, after the type
+    /// for `type`, inside the package/import frame for the file boundaries,
+    /// and into `zigo_plugins_gen.go` for the package ones. A `param`,
+    /// `result`, `field` or `enum_tag` node is inside a declaration and has no
+    /// insertion point of its own, so its output follows the owning function's
+    /// or type's. Called on every render pass; must be deterministic and must
+    /// not mutate analysis state.
+    visit: ?*const fn (GoContext, Node, *Builder) anyerror!void = null,
+    /// Whether this node's public surface belongs to this plugin alone.
+    /// A claimed declaration still gets its whole generated body, under an
+    /// unexported name the visit reads from `Method.checked_name`; what
+    /// changes is that nothing exported is written for it, so the plugin's
+    /// wrapper replaces the method instead of sitting next to it. The C symbol,
+    /// the shim and the raw package are untouched.
+    ///
+    /// Only a `function` node has a public method to hand over. `true` for any
+    /// other node is refused with `ZIGO065`, and two plugins cannot claim one
+    /// declaration; the generator refuses that with `ZIGO024`.
+    claims: ?*const fn (GoContext, Node) anyerror!bool = null,
+    source_files: []const SourceFile = &.{},
+    /// Non-standard imports the hooks may write, added where they are used.
+    imports: []const Import = &.{},
+};
+
+/// The Rust half of the same shape. `visit` walks the same `Node` order the
+/// Go one does and flushes at the crate's equivalent insertion points: after
+/// each generated `impl` method, after each type item, at the boundaries of
+/// each emitted `.rs` file, and into `src/zigo_plugins.rs` for the package
+/// boundaries.
+pub const RustRender = struct {
+    visit: ?*const fn (RustContext, Node, *RustBuilder) anyerror!void = null,
+    /// Whether this function's public Rust surface belongs to this plugin
+    /// alone, read under the same two rules Go's `claims` is.
+    claims: ?*const fn (RustContext, Node) anyerror!bool = null,
+    source_files: []const RustSourceFile = &.{},
+    /// `use` declarations the hooks may write, added where they are used.
+    imports: []const RustImport = &.{},
 };
 
 /// A generator plugin. Every field but `name` is optional, so a plugin that
@@ -723,47 +929,33 @@ pub const Plugin = struct {
     /// The node kinds this plugin attaches to. A plugin left at the default
     /// attaches to all of them.
     subjects: []const Subject = &.{ .function, .handle, .value, .enumeration, .tagged_union, .callback, .materialized, .error_set, .param, .result, .field, .enum_tag },
-    /// The output languages this plugin can render for, by `targets.Target`
-    /// name. The default is Go alone, because the rendering surface a plugin
-    /// writes through -- `Context.writeGoType` and its siblings -- writes Go.
-    /// A plugin whose list excludes the resolved target contributes nothing:
-    /// no transform, no diagnostic, no output file. That is what lets those
-    /// writers stay Go's without the contract pretending otherwise.
-    output_targets: []const []const u8 = &.{"go"},
     /// Runs after core and option validation; report any number of diagnostics.
     validate: ?*const fn (ValidateContext) anyerror!void = null,
-    /// The one rendering hook. It is called at every `Node` this plugin's
-    /// `subjects` cover, in document order, and writes through the builder it
-    /// is handed. What the builder took during the call is flushed at that
-    /// node's insertion point: after the method for `function`, after the type
-    /// for `type`, inside the package/import frame for the file boundaries,
-    /// and into `zigo_plugins_gen.go` for the package ones. A `param`,
-    /// `result`, `field` or `enum_tag` node is inside a declaration and has no
-    /// insertion point of its own, so its output follows the owning function's
-    /// or type's. Called on every render pass; must be deterministic and must
-    /// not mutate analysis state.
-    visit: ?*const fn (Context, Node, *Builder) anyerror!void = null,
-    /// Whether this node's public surface belongs to this plugin alone.
-    /// A claimed declaration still gets its whole generated body, under an
-    /// unexported name the visit reads from `Method.checked_name`; what
-    /// changes is that nothing exported is written for it, so the plugin's
-    /// wrapper replaces the method instead of sitting next to it. The C symbol,
-    /// the shim and the raw package are untouched.
-    ///
-    /// Only a `function` node has a public method to hand over. `true` for any
-    /// other node is refused with `ZIGO065`, and two plugins cannot claim one
-    /// declaration; the generator refuses that with `ZIGO024`.
-    claims: ?*const fn (Context, Node) anyerror!bool = null,
-    source_files: []const SourceFile = &.{},
+    /// What this plugin renders for Go, or null when it renders no Go at
+    /// all. Filling the slot is what makes the plugin run for the Go target.
+    go: ?GoRender = null,
+    /// What this plugin renders for Rust, in the same shape. A plugin can
+    /// fill both slots, either one, or neither -- a plugin that only
+    /// transforms the IR fills neither and still runs for every target.
+    rust: ?RustRender = null,
     artifacts: []const Artifact = &.{},
 
-    /// Non-standard imports the hooks may write, added where they are used.
-    imports: []const Import = &.{},
-
-    /// Whether this plugin runs at all for `target`.
+    /// Whether this plugin renders anything for `target`: whether it filled
+    /// that target's slot.
     pub fn rendersFor(comptime self: Plugin, target: targets.Target) bool {
-        inline for (self.output_targets) |candidate| if (std.mem.eql(u8, candidate, target.name)) return true;
+        if (std.mem.eql(u8, target.name, targets.go.target.name)) return self.go != null;
+        if (std.mem.eql(u8, target.name, targets.rust.target.name)) return self.rust != null;
         return false;
+    }
+
+    /// Whether this plugin takes part in a generation for `target` at all --
+    /// its transform, its validation, its analysis and its artifacts, none of
+    /// which write in a language. A plugin that renders for the target does;
+    /// so does one that renders for no target, which is a plugin whose whole
+    /// contribution is to the IR.
+    pub fn runsFor(comptime self: Plugin, target: targets.Target) bool {
+        if (self.go == null and self.rust == null) return true;
+        return self.rendersFor(target);
     }
 
     pub fn supports(comptime self: Plugin, subject: ?Subject) bool {
@@ -780,11 +972,14 @@ pub fn ordered(comptime entries: []const Plugin) [entries.len]Plugin {
         for (entries, 0..) |entry, i| {
             if (entry.min_contract.major != contract_version.major or entry.min_contract.minor > contract_version.minor)
                 @compileError("incompatible plugin contract: " ++ entry.name);
-            for (entry.source_files) |file| {
+            if (entry.go) |go| for (go.source_files) |file| {
                 if (file.package == .raw and file.scope != .document) @compileError("raw Go files require document scope: " ++ entry.name);
                 if (file.package == .external_test and file.kind != .test_file) @compileError("external test Go files require test kind: " ++ entry.name);
                 if (file.build_constraint) |constraint| if (!@import("plugin/build_constraint.zig").valid(constraint)) @compileError("invalid Go build constraint: " ++ entry.name);
-            }
+            };
+            if (entry.rust) |rust| for (rust.source_files) |file| {
+                if (!targets.rust.words.isIdentifier(file.module)) @compileError("plugin Rust module name is not an identifier: " ++ entry.name);
+            };
             for (entries[0..i]) |previous| if (std.mem.eql(u8, previous.name, entry.name))
                 @compileError("duplicate plugin: " ++ entry.name);
             for (entry.requires) |name| {
@@ -836,12 +1031,20 @@ test "plugin config decodes defaults and rejects unknown fields" {
 }
 
 pub const SignatureOptions = struct { parameter_names: bool = true, omit_error: bool = false };
-/// Names are allocated from Context.allocator. The caller owns go_name.
+/// Names are allocated from GoContext.allocator. The caller owns go_name.
 pub const FunctionInfo = struct { public_name: []const u8, is_public: bool, has_error: bool };
 
 /// Once per generation, after lowering and before any package is rendered.
 pub const AnalyzeContext = struct {
-    render: Context,
+    /// The language-neutral view. `analyze` runs once per generation whatever
+    /// the target is, so this is the half every implementation can read.
+    render: ContextBase,
+    /// The rendering context of the target being generated for, in the slot
+    /// that names its language. An analysis that has to spell a generated
+    /// signature reads the one it was written against and finds the other
+    /// null.
+    go: ?GoContext = null,
+    rust: ?RustContext = null,
     facts: *Facts,
     diagnostics: *std.ArrayList(diagnostic.Diagnostic),
 
@@ -868,9 +1071,40 @@ pub const AnalyzeContext = struct {
 /// that spell types, signatures and parameter names -- report
 /// `error.Unsupported`, since only the generator can answer for those.
 pub const testing = struct {
-    pub fn context(allocator: std.mem.Allocator, program: abi.Program) Context {
+    /// A Go rendering context whose generator-backed writers report
+    /// `error.Unsupported`.
+    pub fn goContext(allocator: std.mem.Allocator, program: abi.Program) GoContext {
         return .{ .allocator = allocator, .program = program, .options = .{}, .writers = &writers };
     }
+
+    /// The same for Rust.
+    pub fn rustContext(allocator: std.mem.Allocator, program: abi.Program) RustContext {
+        return .{ .allocator = allocator, .program = program, .options = .{}, .writers = &rust_writers };
+    }
+
+    const rust_writers: RustWriters = .{
+        .writeTypeName = struct {
+            fn f(_: RustContext, _: *std.Io.Writer, _: []const u8) anyerror!void {
+                return error.Unsupported;
+            }
+        }.f,
+        .writeSignature = struct {
+            fn f(_: RustContext, _: *std.Io.Writer, _: abi.AbiFn, _: RustSignatureOptions) anyerror!void {
+                return error.Unsupported;
+            }
+        }.f,
+        .receiverFormAlloc = struct {
+            fn f(_: RustContext, _: std.mem.Allocator, _: abi.AbiFn) anyerror!?[]u8 {
+                return error.Unsupported;
+            }
+        }.f,
+        .identifierAlloc = rustbuild.identifierAlloc,
+        .functionInfo = struct {
+            fn f(_: RustContext, _: abi.AbiFn) anyerror!RustFunctionInfo {
+                return error.Unsupported;
+            }
+        }.f,
+    };
 
     const writers: Writers = .{
         .writeTypeName = unsupported.typeName,
@@ -887,28 +1121,28 @@ pub const testing = struct {
     };
 
     const unsupported = struct {
-        fn typeName(_: Context, _: *std.Io.Writer, _: []const u8) anyerror!void {
+        fn typeName(_: GoContext, _: *std.Io.Writer, _: []const u8) anyerror!void {
             return error.Unsupported;
         }
-        fn goType(_: Context, _: *std.Io.Writer, _: semantic.TypeNode) anyerror!void {
+        fn goType(_: GoContext, _: *std.Io.Writer, _: semantic.TypeNode) anyerror!void {
             return error.Unsupported;
         }
-        fn receiverName(_: Context, _: std.mem.Allocator, _: []const u8) anyerror![]u8 {
+        fn receiverName(_: GoContext, _: std.mem.Allocator, _: []const u8) anyerror![]u8 {
             return error.Unsupported;
         }
-        fn signature(_: Context, _: *std.Io.Writer, _: abi.AbiFn, _: SignatureOptions) anyerror!void {
+        fn signature(_: GoContext, _: *std.Io.Writer, _: abi.AbiFn, _: SignatureOptions) anyerror!void {
             return error.Unsupported;
         }
-        fn function(_: Context, _: *std.Io.Writer, _: abi.AbiFn) anyerror!void {
+        fn function(_: GoContext, _: *std.Io.Writer, _: abi.AbiFn) anyerror!void {
             return error.Unsupported;
         }
         fn doc(_: *std.Io.Writer, _: []const u8, _: []const u8, _: []const u8) anyerror!void {
             return error.Unsupported;
         }
-        fn info(_: Context, _: abi.AbiFn) anyerror!FunctionInfo {
+        fn info(_: GoContext, _: abi.AbiFn) anyerror!FunctionInfo {
             return error.Unsupported;
         }
-        fn results(_: Context, _: *std.Io.Writer, _: abi.AbiFn, _: ResultOptions) anyerror!usize {
+        fn results(_: GoContext, _: *std.Io.Writer, _: abi.AbiFn, _: ResultOptions) anyerror!usize {
             return error.Unsupported;
         }
     };
@@ -956,9 +1190,15 @@ test "plugin facts preserve typed validation results across copied declarations"
 
 pub const FileInfo = struct {
     source_file: ?SourceFile = null,
+    /// The Rust module this file is, when a plugin's `rust` slot declared it.
+    rust_source_file: ?RustSourceFile = null,
     path: []const u8,
     owner: []const u8 = "generator",
-    kind: enum { api, enums, structs, handles, runtime, errors, tagged_union, plugin, package },
+    /// What the emitter wrote into this file. `raw` and `buffer` are the two
+    /// the Rust crate has and the Go tree does not: Go's raw layer is a
+    /// package of its own rather than a public file, and Go copies a native
+    /// buffer instead of owning one.
+    kind: enum { api, enums, structs, handles, runtime, errors, tagged_union, raw, buffer, plugin, package },
 };
 
 test "validation and transformation contexts read every attachment's option type" {
@@ -981,8 +1221,8 @@ test "validation and transformation contexts read every attachment's option type
     var facts: Facts = .{};
     const validate: ValidateContext = .{ .allocator = allocator, .document = .{ .package = "test", .prefix = "test", .zig_version = "0.16.0", .types = &.{}, .functions = &.{} }, .diagnostics = &issues, .facts = &facts };
     const transform: TransformContext = .{ .allocator = allocator, .document = validate.document, .diagnostics = &issues };
-    const render = testing.context(allocator, .{ .package = "test", .prefix = "test", .functions = &.{} });
-    const analyze: AnalyzeContext = .{ .render = render, .facts = &facts, .diagnostics = &issues };
+    const render = testing.goContext(allocator, .{ .package = "test", .prefix = "test", .functions = &.{} });
+    const analyze: AnalyzeContext = .{ .render = render.base(), .go = render, .facts = &facts, .diagnostics = &issues };
     inline for (.{ Attachment.function, .type, .param, .result, .field, .enum_tag }) |attachment| {
         try std.testing.expect((try validate.optionsOf(p, attachment, value)).?.enabled);
         try std.testing.expect((try transform.optionsOf(p, attachment, value)).?.enabled);
@@ -1016,7 +1256,7 @@ test "every node answers for its subject, its attachment, its ext and its site" 
         .ext = extensions,
         .tag_type = .{ .int = .{ .bits = 8, .signed = false } },
     };
-    const context = testing.context(allocator, .{ .package = "meter", .prefix = "zg", .functions = &.{} });
+    const context = testing.goContext(allocator, .{ .package = "meter", .prefix = "zg", .functions = &.{} });
     const p: Plugin = .{ .name = "LOOKUP", .FunctionOptions = struct { enabled: bool }, .ParamOptions = struct { enabled: bool }, .TagOptions = struct { enabled: bool } };
 
     const nodes = [_]Node{
@@ -1035,7 +1275,7 @@ test "every node answers for its subject, its attachment, its ext and its site" 
         try std.testing.expectEqual(subject, node.subject());
         try std.testing.expectEqual(attachment, node.attachment());
         try std.testing.expectEqual(attachment == null, node.ext() == null);
-        try std.testing.expectEqualStrings(named, (try node.site(context)).declaration);
+        try std.testing.expectEqualStrings(named, (try node.site(context.base())).declaration);
     }
     // A node hands `optionsOf` its own `ext`, which is what lets a visit read
     // the node it was called for without spelling the field.
@@ -1048,7 +1288,7 @@ test "every node answers for its subject, its attachment, its ext and its site" 
 test "the test context builds declarations, identifiers and literals like the generator" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
-    const context = testing.context(arena.allocator(), .{ .package = "test", .prefix = "test", .functions = &.{} });
+    const context = testing.goContext(arena.allocator(), .{ .package = "test", .prefix = "test", .functions = &.{} });
     const b = context.builder();
     var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer output.deinit();

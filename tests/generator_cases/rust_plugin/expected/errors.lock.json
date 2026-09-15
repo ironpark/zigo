@@ -1,0 +1,14 @@
+{
+  "codes": {
+    "OutOfMemory": 1
+  },
+  "ir_version": 1,
+  "next_code": 2,
+  "reserved": {
+    "-1": "Unknown",
+    "-2": "PanicCaught",
+    "-3": "CallbackPanic",
+    "-4": "InvalidHandle",
+    "0": "OK"
+  }
+}

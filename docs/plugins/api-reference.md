@@ -1,6 +1,6 @@
 # 플러그인 API 참조
 
-현재 플러그인 계약은 `5.0`입니다. 이 문서는 `src/plugin.zig`이 제공하는 공개 타입과 실행
+현재 플러그인 계약은 `6.0`입니다. 이 문서는 `src/plugin.zig`이 제공하는 공개 타입과 실행
 순서를 요약합니다. 정확한 함수 시그니처는 [소스](../../src/plugin.zig)가 정본입니다.
 
 ## 실행 순서
@@ -24,7 +24,7 @@ configuration and dependency checks
 
 | 필드 | 기본값 | 역할 |
 |---|---|---|
-| `min_contract` | 현재 5.0 | 필요한 계약 version |
+| `min_contract` | 현재 6.0 | 필요한 계약 version |
 | `name` | 필수 | 식별 정보와 진단 접두사 |
 | `Config` | `struct {}` | 빌드 전체 설정 타입 |
 | `Facts` | `struct {}` | analyze 결과의 typed storage |
@@ -35,7 +35,6 @@ configuration and dependency checks
 | `FieldOptions` | `struct {}` | value·materialized 구조체 field 연결 옵션 |
 | `TagOptions` | `struct {}` | 등록된 enum tag 연결 옵션 |
 | `subjects` | 모든 node 종류 | 연결되는 node 종류 제한. 출력 언어가 아니라 node kind입니다 |
-| `output_targets` | `&.{"go"}` | 렌더링할 수 있는 출력 언어. 해석된 target이 목록에 없으면 이 plugin은 아무것도 하지 않습니다 |
 | `requires` | empty | 필수 플러그인 의존성 |
 | `after` | empty | optional ordering constraint |
 | `transform` | null | semantic document 교체·추가·제거 |
@@ -44,14 +43,37 @@ configuration and dependency checks
 | `name_function` | null | exact 공개 Go 함수 이름 |
 | `validate` | null | core 이후 플러그인 진단 |
 | `analyze` | null | lowering 뒤 typed fact 계산 |
-| `visit` | null | 프로그램의 모든 node에서 불리는 하나뿐인 렌더링 hook |
-| `claims` | null | 이 node의 공개 Go 표면을 이 플러그인이 가져감 |
-| `source_files` | empty | framed 출력 언어 소스 file |
-| `artifacts` | empty | exact 바이트 출력 |
-| `imports` | empty | hook이 사용할 non-standard Go import |
+| `go` | null | Go 렌더링 slot (`GoRender`). 채우면 Go target에서 실행됩니다 |
+| `rust` | null | Rust 렌더링 slot (`RustRender`). 채우면 Rust target에서 실행됩니다 |
+| `artifacts` | empty | exact 바이트 출력. 언어 중립이라 slot 밖에 있습니다 |
 
 semantic transform은 C ABI에 영향을 줄 수 있습니다. 렌더링 hook과 출력은 additive
-Go surface만 만들며 shim, 헤더와 raw API를 바꾸지 않습니다.
+공개 표면만 만들며 shim, 헤더와 raw API를 바꾸지 않습니다.
+
+## 렌더링 slot: `go`와 `rust`
+
+플러그인이 어떤 출력 언어를 쓰는지는 이름 목록이 아니라 **채운 slot**이 정합니다. 두 slot의
+모양은 같고, 담긴 타입만 그 언어의 것입니다.
+
+| 필드 | `go: ?GoRender` | `rust: ?RustRender` |
+|---|---|---|
+| `visit` | `fn (GoContext, Node, *Builder) anyerror!void` | `fn (RustContext, Node, *RustBuilder) anyerror!void` |
+| `claims` | `fn (GoContext, Node) anyerror!bool` | `fn (RustContext, Node) anyerror!bool` |
+| `source_files` | `[]const SourceFile` (framed `.go` file) | `[]const RustSourceFile` (`src/<module>.rs`) |
+| `imports` | `[]const Import` (qualifier + path) | `[]const RustImport` (`use` 경로) |
+
+```zig
+pub const plugin: api.Plugin = .{
+    .name = "EXAMPLE",
+    .go = .{ .visit = visitGo },
+    .rust = .{ .visit = visitRust },
+};
+```
+
+- slot이 비어 있는 target에는 아무것도 기여하지 않습니다: transform도, 진단도, 출력 file도.
+- 두 slot이 모두 비어 있는 플러그인은 IR에만 기여하는 플러그인이므로 모든 target에서 실행됩니다.
+- `artifacts`, `transform`, `validate`, `analyze`, `name_*`, `map_type`은 언어 중립이라
+  slot 밖에 있습니다.
 
 ## 렌더링 hook: `visit`
 
@@ -59,9 +81,9 @@ Go surface만 만들며 shim, 헤더와 raw API를 바꾸지 않습니다.
 걸으면서 각 node를 `subjects`가 덮는 모든 플러그인에게 등록 순서대로 넘깁니다.
 
 ```zig
-.visit = visit,   // fn (Context, Node, *Builder) anyerror!void
+.go = .{ .visit = visit },   // fn (GoContext, Node, *Builder) anyerror!void
 
-fn visit(context: api.Context, node: api.Node, b: *api.Builder) !void {
+fn visit(context: api.GoContext, node: api.Node, b: *api.Builder) !void {
     switch (node) {
         .type => |declaration| try b.emit(&.{ ... }, .{ .blank_after = true }),
         else => {},
@@ -104,7 +126,7 @@ fn visit(context: api.Context, node: api.Node, b: *api.Builder) !void {
 `claims`가 그 선언을 주장합니다.
 
 ```zig
-.claims = claims,   // fn (Context, Node) anyerror!bool
+.go = .{ .claims = claims },   // fn (GoContext, Node) anyerror!bool
 ```
 
 주장한 선언은 생성된 본문을 그대로 받되 exported 되지 않는 이름으로 받습니다.
@@ -184,17 +206,33 @@ const hidden = try plugin.builtins.implements.hidesOriginal(allocator, function.
 
 `AnalyzeContext`:
 
-- 렌더링 `Context`인 `render`
+- 언어 중립 view인 `render`(`ContextBase`)
+- 이번 실행 target의 렌더링 context가 들어 있는 `go`/`rust` slot. 나머지 하나는 `null`입니다
 - `facts`(쓰기 가능), diagnostics
 - `config`, `optionsOf`, `diagnose`
 
-렌더링 `Context`:
+`ContextBase` — 모든 렌더링 context가 공유하는 절반:
 
 - lowered `program`, allocator, `options`(아래 `PluginOptions`), 읽기 전용 `facts`
+- `target()`, `config`, `optionsOf`, `publicFilePathAlloc`
+
+`GoContext`:
+
+- `ContextBase`의 전부(`base()`로 꺼낼 수 있습니다)
 - 메서드 안쪽 node(`function`, `param`, `result`)의 `method` 정보
-- 공개 타입/시그니처/doc writer와 header·식별자·리터럴 도우미
-- `config`, `optionsOf`
+- 공개 Go 타입/시그니처/doc writer와 식별자 도우미(`identifierAlloc`, `.pascal`/`.camel`)
+- `builder()` — Go builder
 - `sourceFilePathAlloc`, `publicFilePathAlloc`
+
+`RustContext`:
+
+- `ContextBase`의 전부, 그리고 같은 `method` 정보
+- `writeTypeName` — crate가 쓰는 타입 이름(`crate::Mode`)
+- `writeSignature`/`writeSignatureWith` — 생성된 item이 쓴 그대로의 공개 시그니처
+- `receiverFormAlloc` — 그 item이 받는 receiver 절(`&self`, `&mut self`). 연관 함수는 `null`
+- `identifierAlloc` — `.snake`, `.pascal`, `.screaming`
+- `functionInfo` — 공개 이름, 공개 여부, `Result` 여부
+- `builder()` — Rust builder
 
 `ArtifactContext`는 allocator, full program, `options`와 config/path 도우미만 제공합니다.
 
@@ -317,7 +355,62 @@ context에는 같은 정보를 직접 쓰는 writer도 남아 있습니다: `wri
 직접 타입, 패키지 qualifier, 매개변수 이름이나 식별자를 재구성하면 하위 패키지와 이름 collision,
 initialism 표기에서 core 출력과 달라질 수 있습니다.
 
-## `SourceFile`
+## Rust builder
+
+Rust slot의 hook은 `plugin.RustBuilder`로 item을 조립합니다. Go builder와 같은 모양이고,
+렌더링은 4-space indent로 `rustfmt`가 그대로 두는 형태입니다. generics, lifetime,
+`where` 절은 raw 문자열입니다.
+
+```zig
+try b.emit(&.{try b.func(.{
+    .doc = .{ .text = "The name this method was generated under." },
+    .visibility = .public,
+    .name = "choose_marker",
+    .signature = .{ .explicit = .{ .receiver = .reference, .result = b.path("&'static str") } },
+    .body = &.{b.tail(b.string("choose"))},
+})}, .{ .blank_before = true });
+```
+
+### item
+
+`use`, `module`(`mod x;`와 `mod x { .. }`), `func`, `implBlock`(inherent와 trait `impl`),
+`structItem`(unit·tuple·named), `enumItem`, `constItem`, `staticItem`, 그리고
+`.{ .comment = ... }`와 `.{ .raw = ... }`.
+
+item에는 `doc`, `attributes`(`&.{"derive(Debug)", "cfg(test)"}`)와 `visibility`
+(`.private`, `.public`, `.crate`)가 있습니다. `doc`은 `.none`, `.text`(`///`),
+`.line`(`//`), `.module`(`//!`), `.rendered`(이미 마커가 붙은 줄)입니다.
+
+### statement
+
+`let`/`letMut`, `exprStmt`, `tail`(세미콜론 없는 block 값), `ret`, `assign`, `ifStmt`
+(`else if` 체인은 `ifBranch`), `matchStmt`(arm에 `pattern`, 선택적 `guard`, expression
+또는 block body), `forLoop`, `whileLoop`, `loopStmt`, `blockStmt`, `.break_stmt`,
+`.continue_stmt`, `.blank`, `commentStmt`, `rawStmt`.
+
+### expression
+
+`path`, `typeName`, `string`, `int`, `float`, `boolean`, `.unit`, `fieldOf`, `indexExpr`,
+`call`/`callPath`, `methodCall`, `addr`/`addrMut`/`refType`, `deref`, `unary`/`not`, `bin`,
+`paren`, `tryExpr`(`x?`), `cast`(`x as T`), `range`, `closure`, `macroCall`/`format`/`vec`,
+`structLiteral`/`structLiteralLines`, `tuple`, `array`/`arrayLines`, `generic`(`Vec<u8>`),
+`sliceOf`(`[T]`), `blockExpr`, `matchExpr`, `ifExpr`, 그리고 escape hatch인 `raw`.
+
+### generator가 답하는 node
+
+- `typeName(name)` — crate가 쓰는 타입 이름(`crate::Mode`)
+- `Signature.function = .{ .function, .options }` — 생성된 item이 쓴 공개 시그니처
+
+### 삽입 지점
+
+| `Node` | 출력이 놓이는 곳 |
+|---|---|
+| `.package_begin` / `.package_end` | `src/zigo_plugins.rs`. 내용이 있을 때만 `lib.rs`가 선언합니다 |
+| `.file_begin` / `.file_end` | 각 생성 `.rs` file의 prelude 뒤와 파일 끝 |
+| `.type` | 그 타입의 item 뒤(`handle.rs`의 `impl`/`Drop` 뒤, `enum.rs`의 enum 뒤) |
+| `.function` | 생성된 item 뒤. `impl` block 안의 메서드는 한 단계 들여써집니다 |
+
+## `SourceFile` (Go slot)
 
 | 필드 | 기본값 | 의미 |
 |---|---|---|
@@ -332,6 +425,20 @@ initialism 표기에서 core 출력과 달라질 수 있습니다.
 
 raw 출력은 document scope, external 테스트 출력은 테스트 kind여야 합니다. import는 실제 body가
 qualifier를 사용할 때만 포함됩니다. 소스는 `gofmt`를 통과합니다.
+
+## `RustSourceFile` (Rust slot)
+
+| 필드 | 기본값 | 의미 |
+|---|---|---|
+| `enabled` | null | 출력 조건 |
+| `module` | 필수 | module 이름이자 file stem. file은 `src/<module>.rs` |
+| `imports` | null | candidate `use` 목록 |
+| `render` | 필수 | framed Rust body |
+
+`lib.rs`가 `mod <module>; pub use <module>::*;`를 써 주므로 플러그인은 `mod` 줄을 쓰지 않고
+경로도 고르지 않습니다. `use`는 실제 body가 경로의 마지막 segment를 철자할 때만 포함됩니다.
+body가 비어 있으면 file은 쓰이지 않습니다. crate에는 패키지 walk가 없으므로 scope는
+crate 하나뿐입니다.
 
 ## `Artifact`
 

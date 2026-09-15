@@ -12,15 +12,15 @@ pub const plugin: plugin_api.Plugin = .{
     .Config = Config,
     .Facts = Variant,
     .analyze = analyze,
-    .visit = visit,
+    .go = .{ .visit = visit },
 };
 
-pub fn hasVariant(context: plugin_api.Context, function: abi.AbiFn) !bool {
+pub fn hasVariant(context: plugin_api.GoContext, function: abi.AbiFn) !bool {
     return if (try context.facts.get(plugin, .function(function.origin.*))) |fact| fact.enabled else false;
 }
 
 fn analyze(context: plugin_api.AnalyzeContext) !void {
-    const render = context.render;
+    const render = context.go.?;
     if (!(try render.config(plugin)).enabled) return;
     const allocator = render.allocator;
     const functions = render.program.functions;
@@ -107,7 +107,7 @@ fn analyze(context: plugin_api.AnalyzeContext) !void {
 /// The mirror of one method: the values through `zigoMust`, or the value
 /// and its presence flag through `zigoMustMatch`. `analyze` only enables a
 /// method that has a value, so there is no error-only shape here.
-fn visit(context: plugin_api.Context, node: plugin_api.Node, b: *plugin_api.Builder) !void {
+fn visit(context: plugin_api.GoContext, node: plugin_api.Node, b: *plugin_api.Builder) !void {
     const function = switch (node) {
         .function => |value| value,
         else => return,

@@ -6,7 +6,7 @@
 //! Rendering is deterministic and indents with tabs, the way the generated
 //! tree is already written, so `gofmt` leaves the result alone. The generator
 //! answers for anything a plugin cannot spell on its own -- type names, public
-//! signatures, parameter names -- through the writers behind `plugin.Context`,
+//! signatures, parameter names -- through the writers behind `plugin.GoContext`,
 //! which `Expr.typeName`, `Expr.valueType` and `Signature.function` reach.
 const std = @import("std");
 const abi = @import("abi");
@@ -176,7 +176,7 @@ pub fn writeStringLiteral(writer: *std.Io.Writer, text: []const u8) !void {
 /// was built from.
 pub const Builder = struct {
     allocator: std.mem.Allocator,
-    context: plugin.Context,
+    context: plugin.GoContext,
     /// Where `emit` writes: the buffer the generator flushes at the insertion
     /// point of the node being visited. It is null on the builder a plugin
     /// makes for one of its own files, which renders into the writer that file
@@ -911,43 +911,43 @@ fn indent(writer: *std.Io.Writer, depth: usize) !void {
 /// builder does with a generator answer rather than what the generator says.
 const test_writers: plugin.Writers = .{
     .writeTypeName = struct {
-        fn f(_: plugin.Context, writer: *std.Io.Writer, name: []const u8) anyerror!void {
+        fn f(_: plugin.GoContext, writer: *std.Io.Writer, name: []const u8) anyerror!void {
             return writer.print("other.{s}", .{name});
         }
     }.f,
     .writeGoType = struct {
-        fn f(_: plugin.Context, writer: *std.Io.Writer, _: semantic.TypeNode) anyerror!void {
+        fn f(_: plugin.GoContext, writer: *std.Io.Writer, _: semantic.TypeNode) anyerror!void {
             return writer.writeAll("uint8");
         }
     }.f,
     .writeValueType = struct {
-        fn f(_: plugin.Context, writer: *std.Io.Writer, _: abi.AbiFn) anyerror!void {
+        fn f(_: plugin.GoContext, writer: *std.Io.Writer, _: abi.AbiFn) anyerror!void {
             return writer.writeAll("Payload");
         }
     }.f,
     .writeSignature = struct {
-        fn f(_: plugin.Context, writer: *std.Io.Writer, _: abi.AbiFn, options: plugin.SignatureOptions) anyerror!void {
+        fn f(_: plugin.GoContext, writer: *std.Io.Writer, _: abi.AbiFn, options: plugin.SignatureOptions) anyerror!void {
             return writer.writeAll(if (options.omit_error) "(count int) Payload" else "(count int) (Payload, error)");
         }
     }.f,
     .writeCallArguments = struct {
-        fn f(_: plugin.Context, writer: *std.Io.Writer, _: abi.AbiFn) anyerror!void {
+        fn f(_: plugin.GoContext, writer: *std.Io.Writer, _: abi.AbiFn) anyerror!void {
             return writer.writeAll("count");
         }
     }.f,
     .writeParameters = struct {
-        fn f(_: plugin.Context, writer: *std.Io.Writer, _: abi.AbiFn) anyerror!void {
+        fn f(_: plugin.GoContext, writer: *std.Io.Writer, _: abi.AbiFn) anyerror!void {
             return writer.writeAll("(count int)");
         }
     }.f,
     .writeResultType = struct {
-        fn f(_: plugin.Context, writer: *std.Io.Writer, _: abi.AbiFn, options: plugin.ResultOptions) anyerror!usize {
+        fn f(_: plugin.GoContext, writer: *std.Io.Writer, _: abi.AbiFn, options: plugin.ResultOptions) anyerror!usize {
             try writer.writeAll(if (options.omit_error) " Payload" else " (Payload, error)");
             return if (options.omit_error) 1 else 2;
         }
     }.f,
     .receiverNameAlloc = struct {
-        fn f(_: plugin.Context, allocator: std.mem.Allocator, _: []const u8) anyerror![]u8 {
+        fn f(_: plugin.GoContext, allocator: std.mem.Allocator, _: []const u8) anyerror![]u8 {
             return allocator.dupe(u8, "value");
         }
     }.f,
@@ -957,7 +957,7 @@ const test_writers: plugin.Writers = .{
         }
     }.f,
     .functionInfo = struct {
-        fn f(_: plugin.Context, _: abi.AbiFn) anyerror!plugin.FunctionInfo {
+        fn f(_: plugin.GoContext, _: abi.AbiFn) anyerror!plugin.FunctionInfo {
             return .{ .public_name = "Take", .is_public = true, .has_error = true };
         }
     }.f,
@@ -965,7 +965,7 @@ const test_writers: plugin.Writers = .{
 };
 
 fn testBuilder(allocator: std.mem.Allocator) Builder {
-    const context: plugin.Context = .{
+    const context: plugin.GoContext = .{
         .allocator = allocator,
         .program = .{ .package = "test", .prefix = "zg", .functions = &.{} },
         .options = .{},

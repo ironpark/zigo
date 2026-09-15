@@ -31,12 +31,12 @@ pub const plugin: plugin_api.Plugin = .{
     .TypeOptions = Options,
     .subjects = &.{ .handle, .value, .enumeration, .tagged_union },
     .validate = validateDocument,
-    .visit = visit,
+    .go = .{ .visit = visit },
 };
 
 /// The assertion goes after the type, in the file that declares it, so the
 /// two are read together and `go build` reports them together.
-fn visit(context: plugin_api.Context, node: plugin_api.Node, b: *plugin_api.Builder) !void {
+fn visit(context: plugin_api.GoContext, node: plugin_api.Node, b: *plugin_api.Builder) !void {
     if (node != .type) return;
     const declaration = node.type;
     const options = try context.optionsOf(plugin, .type, node) orelse return;
@@ -87,7 +87,7 @@ test "each claimed interface gets one assertion in the requested form" {
     // generator backs with the run arena; the test does the same.
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
-    const context = plugin_api.testing.context(arena.allocator(), .{ .package = "streams", .prefix = "zg", .functions = &.{} });
+    const context = plugin_api.testing.goContext(arena.allocator(), .{ .package = "streams", .prefix = "zg", .functions = &.{} });
     var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer output.deinit();
     var b = context.builder();

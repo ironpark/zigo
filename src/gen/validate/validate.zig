@@ -559,11 +559,13 @@ test "options a plugin can read leave the document valid" {
     try std.testing.expect(try findIssue(arena.allocator(), parsed.value) == null);
 }
 
-// A plugin whose `output_targets` excludes the resolved target contributes
-// nothing: not a transform, not a diagnostic, not an output file. That is the
-// mechanism that lets `Context.writeGoType` and its siblings stay Go's while
-// the contract itself stays honest about which language a plugin renders.
-test "a plugin that does not render for the target does not run" {
+// A plugin that filled no render slot for the resolved target contributes
+// nothing to it: not a transform, not a diagnostic, not an output file. That
+// is the mechanism that lets `GoContext.writeGoType` and its siblings stay
+// Go's while the contract itself stays honest about which language a plugin
+// renders. Every plugin the in-tree registry carries fills the `go` slot
+// alone, so none of them runs here.
+test "a plugin that fills no slot for the target does not run" {
     const rust: targets.Target = .{
         .name = "rust",
         .display_name = "Rust",

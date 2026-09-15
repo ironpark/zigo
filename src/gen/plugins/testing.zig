@@ -34,14 +34,13 @@ pub const plugin: plugin_api.Plugin = .{
     .ResultOptions = NodeOptions,
     .FieldOptions = NodeOptions,
     .TagOptions = NodeOptions,
-    .visit = visit,
-    .source_files = &.{.{ .pathAlloc = filePath, .render = renderFile }},
+    .go = .{ .visit = visit, .source_files = &.{.{ .pathAlloc = filePath, .render = renderFile }} },
 };
 
 /// Every node the frame offers, which is what makes this plugin a test of the
 /// walk itself: a method beside the bound one, a comment after a type, and one
 /// marker per node that attached `TEST`.
-fn visit(context: plugin_api.Context, node: plugin_api.Node, b: *plugin_api.Builder) !void {
+fn visit(context: plugin_api.GoContext, node: plugin_api.Node, b: *plugin_api.Builder) !void {
     if (!enabled) return;
     switch (node) {
         .function => |function| try renderMethod(context, b, function),
@@ -69,7 +68,7 @@ fn visit(context: plugin_api.Context, node: plugin_api.Node, b: *plugin_api.Buil
 }
 
 /// A method next to the bound one, spelled from the names the method used.
-fn renderMethod(context: plugin_api.Context, b: *plugin_api.Builder, function: abi.AbiFn) !void {
+fn renderMethod(context: plugin_api.GoContext, b: *plugin_api.Builder, function: abi.AbiFn) !void {
     const method = context.method.?;
     const receiver = method.receiver orelse return;
     const options = try context.optionsOf(plugin, .function, function.origin.ext) orelse Options{};
@@ -87,7 +86,7 @@ fn renderMethod(context: plugin_api.Context, b: *plugin_api.Builder, function: a
 
 /// One comment per member that attached `TEST`, which is what proves a field's
 /// and a tag's `ext` reach a visit at all.
-fn renderMember(context: plugin_api.Context, b: *plugin_api.Builder, node: plugin_api.Node, member: plugin_api.Node.Member, kind: []const u8) !void {
+fn renderMember(context: plugin_api.GoContext, b: *plugin_api.Builder, node: plugin_api.Node, member: plugin_api.Node.Member, kind: []const u8) !void {
     const options = if (node == .enum_tag)
         try context.optionsOf(plugin, .enum_tag, node)
     else
@@ -98,7 +97,7 @@ fn renderMember(context: plugin_api.Context, b: *plugin_api.Builder, node: plugi
     try b.emit(&.{.{ .comment = .{ .text = marker } }}, .{ .blank_after = true });
 }
 
-fn filePath(context: plugin_api.Context) ![]u8 {
+fn filePath(context: plugin_api.GoContext) ![]u8 {
     const allocator = context.allocator;
     const program = context.program;
     const options = context.options;
@@ -109,7 +108,7 @@ fn filePath(context: plugin_api.Context) ![]u8 {
 
 /// Only the declarations: the marker, the package clause and the import block
 /// come from the public-file frame the generator wraps every plugin file in.
-fn renderFile(context: plugin_api.Context, writer: *std.Io.Writer) !void {
+fn renderFile(context: plugin_api.GoContext, writer: *std.Io.Writer) !void {
     if (!enabled) return;
     const b = context.builder();
     try b.render(writer, &.{try b.constant(.{

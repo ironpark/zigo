@@ -4,6 +4,40 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Changed (breaking)
+
+- 플러그인 API 6.0: 렌더링 표면이 출력 언어별 slot이 되었습니다. `Plugin`에서 `visit`,
+  `claims`, `source_files`, `imports`, `output_targets`가 사라지고 `go: ?GoRender`와
+  `rust: ?RustRender`가 그 자리를 받습니다. 채운 slot이 곧 "이 플러그인이 렌더링하는
+  언어"이므로, target 이름 목록을 hook이 실제로 부르는 writer와 따로 관리할 일이 없습니다.
+  `artifacts`, `transform`, `validate`, `analyze`, `name_*`, `map_type`은 언어 중립이라
+  slot 밖에 남습니다. 호환 shim은 없습니다.
+
+  | 이전 (5.0) | 이후 (6.0) |
+  |---|---|
+  | `.visit = visit` | `.go = .{ .visit = visit }` |
+  | `.claims = claims` | `.go = .{ .claims = claims }` |
+  | `.source_files = &.{...}` | `.go = .{ .source_files = &.{...} }` |
+  | `.imports = &.{...}` | `.go = .{ .imports = &.{...} }` |
+  | `.output_targets = &.{"go"}` | `.go` slot을 채우는 것 |
+  | `.output_targets = &.{"rust"}` | `.rust` slot을 채우는 것 |
+  | `plugin.Context` | `plugin.GoContext` (Rust는 `plugin.RustContext`) |
+  | `plugin.testing.context` | `plugin.testing.goContext` / `plugin.testing.rustContext` |
+  | `AnalyzeContext.render` (Go context) | `AnalyzeContext.render` (`ContextBase`) + `.go` / `.rust` slot |
+
+### Added
+
+- Rust 렌더링 slot: `RustContext`, `plugin.RustBuilder`(`src/plugin/rustbuild.zig`),
+  `RustSourceFile`과 `RustImport`. builder는 item(fn, `impl`, trait `impl`, struct, enum,
+  const, static, use, mod, doc comment, attribute), statement(`let`, match, if/else, for,
+  while, loop, block), expression(call, method call, closure, `?`, macro, struct literal,
+  cast, range, raw escape hatch)을 조립하고 `rustfmt`가 그대로 두는 형태로 렌더링합니다.
+- Rust visitor dispatch: 생성된 `impl` 메서드 뒤, 타입 item 뒤, 각 `.rs` file의 경계,
+  그리고 package 경계용 `src/zigo_plugins.rs`. 플러그인 module은 `src/<name>.rs`로 쓰이고
+  `lib.rs`가 `mod`와 재export를 씁니다. 둘 다 내용이 있을 때만 선언됩니다.
+
 ## [0.27.0] - 2026-09-14
 
 빌드 API, 바인딩 DSL, 생성된 Go 패키지, 플러그인 계약을 한 개념 한 표기로 정리한 릴리스입니다.

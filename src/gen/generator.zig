@@ -165,7 +165,8 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
         .library_platform_dirs = options.library_platform_dirs,
     };
     var analysis_issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
-    try plugin_hooks.analyze(scratch_allocator, program, emitter_options, &facts, &analysis_issues);
+    const backend = backendFor(options.output_target);
+    try backend.analyze(scratch_allocator, program, emitter_options, &facts, &analysis_issues);
     if (analysis_issues.items.len != 0) {
         if (options.diagnostics) |issues| for (analysis_issues.items) |issue| try issues.append(allocator, try issue.clone(allocator));
         return error.InvalidSemantic;
@@ -178,7 +179,6 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
     // error-code lock, the same lowered program -- and everything below is
     // the selected target's own tree. The two trees share
     // `emit.neutral_emitters` and nothing else.
-    const backend = backendFor(options.output_target);
     if (backend.unsupportedIssues) |refuse| {
         var issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
         try refuse(scratch_allocator, program, &issues);
@@ -293,6 +293,17 @@ const Backend = struct {
         issues: *std.ArrayList(diagnostic.Diagnostic),
     ) anyerror!void = null,
     appendTree: *const fn (tree: Tree) anyerror!void,
+    /// The plugin analyses and the claim rules, run with this language's
+    /// rendering context. `analyze` is target-neutral in the contract -- it is
+    /// not inside a render slot -- but the context it is handed is not, so the
+    /// dispatch belongs to the backend rather than to the Go emitter.
+    analyze: *const fn (
+        allocator: std.mem.Allocator,
+        program: abi.Program,
+        options: emit.Options,
+        facts: *plugin.Facts,
+        diagnostics: *std.ArrayList(diagnostic.Diagnostic),
+    ) anyerror!void,
 };
 
 /// What every backend needs to write its tree, so that one signature serves
@@ -306,11 +317,12 @@ const Tree = struct {
 };
 
 const backends = [_]Backend{
-    .{ .target_name = targets.go.target.name, .appendTree = appendGoTree },
+    .{ .target_name = targets.go.target.name, .appendTree = appendGoTree, .analyze = plugin_hooks.analyze },
     .{
         .target_name = targets.rust.target.name,
         .unsupportedIssues = emit_rust.unsupportedIssues,
         .appendTree = appendRustTree,
+        .analyze = emit_rust.analyze,
     },
 };
 
@@ -342,7 +354,7 @@ fn appendRustTree(tree: Tree) !void {
     try appendEmitters(tree.scratch_allocator, tree.prepared, tree.program, tree.emitter_options, &emit_rust.core_emitters);
     // Plugin artifacts are byte blobs at plugin-supplied paths -- nothing
     // about them is Go-shaped -- and `registry.runs` already gates them on the
-    // plugin's `output_targets`. Skipping the call here would drop a plugin's
+    // plugin's render slots. Skipping the call here would drop a plugin's
     // files with no message rather than letting the contract decide.
     try appendArtifacts(tree.scratch_allocator, tree.prepared, tree.program, tree.emitter_options, .document);
 }

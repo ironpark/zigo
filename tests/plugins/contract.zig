@@ -17,9 +17,11 @@ pub const plugin: api.Plugin = .{
     .Facts = struct { validated: bool },
     .validate = validate,
     .analyze = analyze,
-    .visit = visit,
-    .claims = claims,
-    .imports = &.{ .{ .qualifier = "fmt", .path = "fmt" }, .{ .qualifier = "time", .path = "time" } },
+    .go = .{
+        .visit = visit,
+        .claims = claims,
+        .imports = &.{ .{ .qualifier = "fmt", .path = "fmt" }, .{ .qualifier = "time", .path = "time" } },
+    },
 };
 
 fn validate(context: api.ValidateContext) !void {
@@ -37,7 +39,7 @@ fn analyze(context: api.AnalyzeContext) !void {
 
 /// Every node kind the contract offers, so the fixture proves the whole walk
 /// reaches an external plugin module.
-fn visit(context: api.Context, node: api.Node, b: *api.Builder) !void {
+fn visit(context: api.GoContext, node: api.Node, b: *api.Builder) !void {
     const writer = try b.output();
     switch (node) {
         .function => |function| try renderMethod(context, writer, function),
@@ -57,7 +59,7 @@ fn visit(context: api.Context, node: api.Node, b: *api.Builder) !void {
     }
 }
 
-fn renderMethod(context: api.Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
+fn renderMethod(context: api.GoContext, writer: *std.Io.Writer, function: abi.AbiFn) !void {
     _ = (try context.facts.get(plugin, .function(function.origin.*))) orelse return error.MissingAnalysisFact;
     try writer.writeAll("\n// ContractAnalyzed\n");
     if (!try claims(context, .{ .function = function })) return;
@@ -81,7 +83,7 @@ fn renderMethod(context: api.Context, writer: *std.Io.Writer, function: abi.AbiF
     try writer.writeAll(")) }\n");
 }
 
-fn claims(context: api.Context, node: api.Node) !bool {
+fn claims(context: api.GoContext, node: api.Node) !bool {
     const config = try context.config(plugin);
     // Only a function node has a public method to take over; claiming any
     // other node is what the generator has to refuse, so the fixture can ask

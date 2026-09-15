@@ -19,10 +19,10 @@ pub const plugin: api.Plugin = .{
     .ResultOptions = Marker,
     .FieldOptions = Marker,
     .TagOptions = Marker,
-    .visit = visit,
+    .go = .{ .visit = visit },
 };
 
-fn visit(context: api.Context, node: api.Node, b: *api.Builder) !void {
+fn visit(context: api.GoContext, node: api.Node, b: *api.Builder) !void {
     switch (node) {
         .param => |parameter| {
             const options = try context.optionsOf(plugin, .param, node) orelse return;
@@ -51,7 +51,7 @@ fn visit(context: api.Context, node: api.Node, b: *api.Builder) !void {
 
 /// One exported constant per extended node, named after the node it came off
 /// so two nodes of one declaration cannot collide.
-fn renderMarker(context: api.Context, b: *api.Builder, parts: []const []const u8, value: []const u8) !void {
+fn renderMarker(context: api.GoContext, b: *api.Builder, parts: []const []const u8, value: []const u8) !void {
     const allocator = context.allocator;
     var name: std.ArrayList(u8) = .empty;
     for (parts) |part| {

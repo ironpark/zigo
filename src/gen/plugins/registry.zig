@@ -39,8 +39,10 @@ pub const configurations = @import("plugin_registry").configurations;
 /// Validation and emission share the same selection; built-ins always run.
 pub fn runs(comptime index: usize, selected: ?[]const []const u8, target: targets.Target) bool {
     // The output language gates first, and gates the built-ins too: a
-    // built-in that renders Go has nothing to contribute to another language.
-    if (!plugins[index].rendersFor(target)) return false;
+    // built-in that fills only the `go` render slot has nothing to contribute
+    // to another language. A plugin that fills neither slot is a plugin whose
+    // whole contribution is to the IR, and it runs for every target.
+    if (!plugins[index].runsFor(target)) return false;
     inline for (builtins) |entry| {
         if (@import("std").mem.eql(u8, entry.name, plugins[index].name)) return true;
     }

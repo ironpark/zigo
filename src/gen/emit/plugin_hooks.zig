@@ -34,7 +34,7 @@ const writers: plugin.Writers = .{
 };
 
 /// The context a `type` node, a `files` emitter or a validator sees.
-pub fn context(allocator: std.mem.Allocator, program: abi.Program, options: emit.Options) plugin.Context {
+pub fn context(allocator: std.mem.Allocator, program: abi.Program, options: emit.Options) plugin.GoContext {
     return .{ .allocator = allocator, .program = program, .options = options.view(), .facts = options.facts, .writers = &writers };
 }
 
@@ -46,7 +46,7 @@ pub fn methodContext(
     program: abi.Program,
     options: emit.Options,
     method: plugin.Method,
-) plugin.Context {
+) plugin.GoContext {
     var value = context(allocator, program, options);
     value.method = method;
     return value;
@@ -56,9 +56,9 @@ pub fn methodContext(
 /// registration order, and flushes what each built into `writer`. `options`
 /// is the emitter's own copy, which knows which added plugins are selected;
 /// the context only carries the view a hook may read.
-fn visitNode(options: emit.Options, value: plugin.Context, writer: *std.Io.Writer, node: plugin.Node) !void {
+fn visitNode(options: emit.Options, value: plugin.GoContext, writer: *std.Io.Writer, node: plugin.Node) !void {
     inline for (registry.plugins, 0..) |registered, index| {
-        if (registered.visit) |hook| {
+        if (comptime goSlot(registered).visit) |hook| {
             if (attaches(registered, node) and runs(index, options)) {
                 var builder = value.builder();
                 builder.out = writer;
@@ -66,6 +66,13 @@ fn visitNode(options: emit.Options, value: plugin.Context, writer: *std.Io.Write
             }
         }
     }
+}
+
+/// The plugin's Go render slot, or an empty one when it renders no Go. The
+/// walks below read the slot rather than branching on its presence, so a
+/// plugin that fills only the `rust` slot simply has nothing in every list.
+pub fn goSlot(comptime registered: plugin.Plugin) plugin.GoRender {
+    return registered.go orelse .{};
 }
 
 /// Whether `registered` declared the subject this node belongs to. A file or
@@ -77,7 +84,7 @@ fn attaches(comptime registered: plugin.Plugin, node: plugin.Node) bool {
 /// A public function or method: the function itself, then each of its
 /// parameters, then its result. The three share one insertion point -- the
 /// place the method's body ended -- so they are written in that order.
-pub fn visitFunction(options: emit.Options, value: plugin.Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
+pub fn visitFunction(options: emit.Options, value: plugin.GoContext, writer: *std.Io.Writer, function: abi.AbiFn) !void {
     try visitNode(options, value, writer, .{ .function = function });
     for (function.origin.params, 0..) |_, index|
         try visitNode(options, value, writer, .{ .param = .{ .function = function, .index = index } });
@@ -87,7 +94,7 @@ pub fn visitFunction(options: emit.Options, value: plugin.Context, writer: *std.
 /// A type declaration and the members inside it, after the generator wrote
 /// the type. A registered enum's members are tags; every other kind's are
 /// fields.
-pub fn visitType(options: emit.Options, value: plugin.Context, writer: *std.Io.Writer, declaration: semantic.TypeDecl) !void {
+pub fn visitType(options: emit.Options, value: plugin.GoContext, writer: *std.Io.Writer, declaration: semantic.TypeDecl) !void {
     try visitNode(options, value, writer, .{ .type = declaration });
     for (declaration.fields, 0..) |_, index| {
         const member: plugin.Node.Member = .{ .declaration = declaration, .index = index };
@@ -108,10 +115,10 @@ pub fn checkedNameAlloc(allocator: std.mem.Allocator, public_name: []const u8) !
 /// Whether a plugin claimed this declaration's public surface. Two claims on
 /// one declaration are refused in `analyze`, so the first answer is the only
 /// one.
-pub fn claimed(options: emit.Options, value: plugin.Context, function: abi.AbiFn) !bool {
+pub fn claimed(options: emit.Options, value: plugin.GoContext, function: abi.AbiFn) !bool {
     const node: plugin.Node = .{ .function = function };
     inline for (registry.plugins, 0..) |registered, index| {
-        if (registered.claims) |claims| {
+        if (comptime goSlot(registered).claims) |claims| {
             if (registered.supports(.function) and runs(index, options) and try claims(value, node)) return true;
         }
     }
@@ -129,7 +136,7 @@ pub fn runs(comptime index: usize, options: emit.Options) bool {
 /// writes it when the rendered body spells the qualifier.
 pub fn importPath(qualifier: []const u8) ?[]const u8 {
     inline for (registry.plugins) |registered| {
-        inline for (registered.imports) |entry| {
+        inline for (comptime goSlot(registered).imports) |entry| {
             if (std.mem.eql(u8, entry.qualifier, qualifier)) return entry.path;
         }
     }
@@ -141,28 +148,28 @@ pub fn importPath(qualifier: []const u8) ?[]const u8 {
 pub fn declaredImports() []const plugin.Import {
     comptime var all: []const plugin.Import = &.{};
     comptime {
-        for (registry.plugins) |registered| all = all ++ registered.imports;
+        for (registry.plugins) |registered| all = all ++ goSlot(registered).imports;
     }
     return all;
 }
 
-fn scopeOf(value: plugin.Context) public_writers.PublicScope {
+fn scopeOf(value: plugin.GoContext) public_writers.PublicScope {
     return .{ .program = value.program, .active_package = value.options.active_package };
 }
 
-fn writeTypeName(value: plugin.Context, writer: *std.Io.Writer, name: []const u8) anyerror!void {
+fn writeTypeName(value: plugin.GoContext, writer: *std.Io.Writer, name: []const u8) anyerror!void {
     return scopeOf(value).writeTypeName(writer, name);
 }
 
-fn writeGoType(value: plugin.Context, writer: *std.Io.Writer, node: semantic.TypeNode) anyerror!void {
+fn writeGoType(value: plugin.GoContext, writer: *std.Io.Writer, node: semantic.TypeNode) anyerror!void {
     return public_writers.writePublicGoType(scopeOf(value), writer, node);
 }
 
-fn receiverNameAlloc(value: plugin.Context, allocator: std.mem.Allocator, type_name: []const u8) anyerror![]u8 {
+fn receiverNameAlloc(value: plugin.GoContext, allocator: std.mem.Allocator, type_name: []const u8) anyerror![]u8 {
     return common.typeReceiverNameAlloc(allocator, value.program, type_name);
 }
 
-fn writeSignature(value: plugin.Context, writer: *std.Io.Writer, function: abi.AbiFn, options: plugin.SignatureOptions) anyerror!void {
+fn writeSignature(value: plugin.GoContext, writer: *std.Io.Writer, function: abi.AbiFn, options: plugin.SignatureOptions) anyerror!void {
     const allocated = if (options.parameter_names and value.method == null) try common.goParamNamesForAlloc(value.allocator, function.origin.params) else null;
     defer if (allocated) |names| naming.freeParamNames(value.allocator, names);
     const names = if (!options.parameter_names) null else if (value.method) |method| method.param_names else allocated;
@@ -172,7 +179,7 @@ fn writeSignature(value: plugin.Context, writer: *std.Io.Writer, function: abi.A
     _ = try writeResultType(value, writer, function, .{ .omit_error = options.omit_error });
 }
 
-fn writeParameters(value: plugin.Context, writer: *std.Io.Writer, function: abi.AbiFn) anyerror!void {
+fn writeParameters(value: plugin.GoContext, writer: *std.Io.Writer, function: abi.AbiFn) anyerror!void {
     const allocated = if (value.method == null) try common.goParamNamesForAlloc(value.allocator, function.origin.params) else null;
     defer if (allocated) |names| naming.freeParamNames(value.allocator, names);
     const names = if (value.method) |method| method.param_names else allocated.?;
@@ -181,17 +188,17 @@ fn writeParameters(value: plugin.Context, writer: *std.Io.Writer, function: abi.
     try writer.writeByte(')');
 }
 
-fn writeResultType(value: plugin.Context, writer: *std.Io.Writer, function: abi.AbiFn, options: plugin.ResultOptions) anyerror!usize {
+fn writeResultType(value: plugin.GoContext, writer: *std.Io.Writer, function: abi.AbiFn, options: plugin.ResultOptions) anyerror!usize {
     return public.writePublicResults(scopeOf(value), writer, function, common.constructorForInit(value.program, function.origin.*), options);
 }
 
-fn writeCallArguments(value: plugin.Context, writer: *std.Io.Writer, function: abi.AbiFn) anyerror!void {
+fn writeCallArguments(value: plugin.GoContext, writer: *std.Io.Writer, function: abi.AbiFn) anyerror!void {
     const allocated = if (value.method == null) try common.goParamNamesForAlloc(value.allocator, function.origin.params) else null;
     defer if (allocated) |names| naming.freeParamNames(value.allocator, names);
     return public.writePublicCallArguments(value.allocator, writer, function, if (value.method) |method| method.param_names else allocated.?);
 }
 
-fn writeValueType(value: plugin.Context, writer: *std.Io.Writer, function: abi.AbiFn) anyerror!void {
+fn writeValueType(value: plugin.GoContext, writer: *std.Io.Writer, function: abi.AbiFn) anyerror!void {
     const origin = function.origin.*;
     if (common.constructorForInit(value.program, origin)) |constructor| return writer.print("*{s}", .{constructor.type});
     const result = origin.@"return".errorPayload();
@@ -204,7 +211,7 @@ fn writeValueType(value: plugin.Context, writer: *std.Io.Writer, function: abi.A
     return public_writers.writePublicGoType(scopeOf(value), writer, node);
 }
 
-fn functionInfo(value: plugin.Context, function: abi.AbiFn) anyerror!plugin.FunctionInfo {
+fn functionInfo(value: plugin.GoContext, function: abi.AbiFn) anyerror!plugin.FunctionInfo {
     const origin = function.origin.*;
     const document: semantic.Semantic = .{ .constructors = value.program.constructors, .package = value.program.package, .prefix = value.program.prefix, .zig_version = "" };
     return .{
@@ -217,7 +224,10 @@ fn functionInfo(value: plugin.Context, function: abi.AbiFn) anyerror!plugin.Func
 pub fn analyze(allocator: std.mem.Allocator, program: abi.Program, options: emit.Options, facts: *plugin.Facts, diagnostics: *std.ArrayList(@import("diagnostic").Diagnostic)) !void {
     inline for (registry.plugins, 0..) |registered, index| {
         if (registered.analyze) |check| {
-            if (runs(index, options)) try check(.{ .render = context(allocator, program, options), .facts = facts, .diagnostics = diagnostics });
+            if (runs(index, options)) {
+                const value = context(allocator, program, options);
+                try check(.{ .render = value.base(), .go = value, .facts = facts, .diagnostics = diagnostics });
+            }
         }
     }
     // After the analyses, which is where a plugin decides what it claims.
@@ -240,7 +250,7 @@ fn checkClaims(
         var claimant: ?[]const u8 = null;
         const node: plugin.Node = .{ .function = function };
         inline for (registry.plugins, 0..) |registered, index| {
-            if (registered.claims) |claims| {
+            if (comptime goSlot(registered).claims) |claims| {
                 if (registered.supports(.function) and runs(index, options) and try claims(value, node)) {
                     if (claimant) |first| {
                         const path = try plugin.site.functionDeclarationAlloc(allocator, function.origin.*);
@@ -274,15 +284,15 @@ fn checkClaims(
 /// A claim on a node that has no public Go surface of its own.
 fn refuseClaim(
     allocator: std.mem.Allocator,
-    value: plugin.Context,
+    value: plugin.GoContext,
     options: emit.Options,
     diagnostics: *std.ArrayList(@import("diagnostic").Diagnostic),
     node: plugin.Node,
 ) !void {
     inline for (registry.plugins, 0..) |registered, index| {
-        if (registered.claims) |claims| {
+        if (comptime goSlot(registered).claims) |claims| {
             if (attaches(registered, node) and runs(index, options) and try claims(value, node)) {
-                const site = try node.site(value);
+                const site = try node.site(value.base());
                 try diagnostics.append(allocator, .{
                     .severity = .@"error",
                     .code = "ZIGO065",
@@ -469,19 +479,19 @@ test "plugin result and parameter writers avoid parsing checked signatures" {
 
 /// A public file's body boundaries, inside the package/import frame. A file
 /// the emitter gave no `FileInfo` has no boundary to offer.
-pub fn visitFileBegin(options: emit.Options, value: plugin.Context, writer: *std.Io.Writer) !void {
+pub fn visitFileBegin(options: emit.Options, value: plugin.GoContext, writer: *std.Io.Writer) !void {
     const file = value.options.file orelse return;
     return visitNode(options, value, writer, .{ .file_begin = file });
 }
 
-pub fn visitFileEnd(options: emit.Options, value: plugin.Context, writer: *std.Io.Writer) !void {
+pub fn visitFileEnd(options: emit.Options, value: plugin.GoContext, writer: *std.Io.Writer) !void {
     const file = value.options.file orelse return;
     return visitNode(options, value, writer, .{ .file_end = file });
 }
 
 /// The package's own plugin file, `zigo_plugins_gen.go`: both boundaries in
 /// one body, since nothing of the generator's sits between them.
-pub fn visitPackage(options: emit.Options, value: plugin.Context, writer: *std.Io.Writer) !void {
+pub fn visitPackage(options: emit.Options, value: plugin.GoContext, writer: *std.Io.Writer) !void {
     try visitNode(options, value, writer, .package_begin);
     try visitNode(options, value, writer, .package_end);
 }
