@@ -37,13 +37,17 @@ CLI는 입력한 `hello from Go`와 마지막 줄바꿈을 그대로 출력합�
 - [CLI](go/cmd/stream-copy/main.go) — 실제 stdin/stdout 사용
 - [Go 사용 예제](go/streams/example_test.go) — 메모리 스트림과 `io.ReadAll`
 - `go/streams/implements_test.go` — 생성 래퍼와 닫힌 핸들 검증
+- `go/streams/plugin_satisfies_test.go` — 플러그인이 쓴 assertion과 `Counter` interface 사용
 
 ## 동작과 주의사항
 
 `Tee`는 Go reader를 Zig가 읽어 Go writer로 전달합니다. `Source`와 `Sink`는 네이티브 객체를 Go I/O로
 사용하게 합니다. `Document`에는 `features.implements`가 `Read`, `Write`, `ReadFrom`, `WriteTo`를
-만들고 satisfies 플러그인이 `io.ReadWriteCloser` 컴파일 시점 assertion을 추가합니다. 마지막 줄의
-newline까지 보존해야 하는 복사에는 줄 단위인 `Document.Load` 대신 `Tee`를 사용하세요.
+만들고 satisfies 플러그인이 `io.ReadWriteCloser` 컴파일 시점 assertion을 추가합니다. 같은
+attachment가 바인딩이 선언한 `Counter` interface도 함께 claim합니다. 이쪽은 이름 문자열이 아니라
+`zigo.interface(...)` entry 참조여서, generator가 `Document`의 생성 메서드가 `Counter`의 method set을
+채우는지 검사한 뒤 assertion을 씁니다. 마지막 줄의 newline까지 보존해야 하는 복사에는 줄 단위인
+`Document.Load` 대신 `Tee`를 사용하세요.
 
 ## 관련 문서
 

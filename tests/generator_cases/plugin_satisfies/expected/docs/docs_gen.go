@@ -16,3 +16,19 @@ func NewDocument() (*Document, error) {
 	}
 	return zigoNewDocument(result), nil
 }
+
+// Count reports how many lines the document holds.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (d *Document) Count() (uint, error) {
+	ptr, err := zigoCheckedPointer("Document.Count receiver", d)
+	if err != nil {
+		return 0, err
+	}
+	defer d.zigoRelease()
+	result, code := raw.DocumentCount(ptr)
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Document.Count", code), d)
+	}
+	return result, nil
+}

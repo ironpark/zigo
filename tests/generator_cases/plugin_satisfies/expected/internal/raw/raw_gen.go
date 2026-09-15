@@ -29,3 +29,9 @@ func DocumentClose(self unsafe.Pointer) int32 {
 	code := int32(C.zg_document_close((*C.zg_document)(self)))
 	return code
 }
+// DocumentCount calls the generated C ABI wrapper for zg_document_count.
+func DocumentCount(self unsafe.Pointer) (uint, int32) {
+	var outResult C.size_t
+	code := int32(C.zg_document_count((*C.zg_document)(self), &outResult))
+	return uint(outResult), code
+}

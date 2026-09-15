@@ -4,6 +4,11 @@
       "deinit": "close",
       "init": "open",
       "type": "Document"
+    },
+    {
+      "deinit": "close",
+      "init": "open",
+      "type": "Sink"
     }
   ],
   "functions": [
@@ -36,29 +41,55 @@
       "symbol": "zg_document_close"
     },
     {
-      "doc": "count reports how many lines the document holds.",
+      "name": "open",
+      "namespace": "Sink",
+      "ownership": "caller",
+      "params": [],
+      "return": {
+        "kind": "error_union",
+        "error_set": [
+          "OutOfMemory"
+        ],
+        "payload": {
+          "kind": "opaque_ptr",
+          "const": false,
+          "nullable": false,
+          "ref": "Sink"
+        }
+      },
+      "symbol": "zg_sink_open"
+    },
+    {
+      "name": "close",
+      "params": [],
+      "receiver": "Sink",
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "zg_sink_close"
+    },
+    {
       "name": "count",
       "params": [],
-      "receiver": "Document",
+      "receiver": "Sink",
       "return": {
         "kind": "int",
         "bits": 64,
         "is_usize": true,
         "signed": false
       },
-      "symbol": "zg_document_count"
+      "symbol": "zg_sink_count"
     }
   ],
   "interfaces": [
     {
       "closer": false,
-      "doc": "Counter is anything that reports how many lines it holds.",
       "methods": [
         "count"
       ],
       "name": "Counter",
       "types": [
-        "Document"
+        "Sink"
       ]
     }
   ],
@@ -71,14 +102,15 @@
         "SATIS": {
           "generated": [
             "Counter"
-          ],
-          "interfaces": [
-            "io.Closer"
           ]
         }
       },
       "kind": "opaque",
       "name": "Document"
+    },
+    {
+      "kind": "opaque",
+      "name": "Sink"
     }
   ],
   "zig_version": "0.16.0"

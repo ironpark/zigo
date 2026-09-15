@@ -19,6 +19,7 @@ typedef struct zg_document zg_document;
 
 ZIGO_EXPORT int32_t zg_document_open(zg_document * * out_result);
 ZIGO_EXPORT int32_t zg_document_close(zg_document * self);
+ZIGO_EXPORT int32_t zg_document_count(zg_document * self, size_t * out_result);
 ZIGO_EXPORT const char *zg_last_error_message(void);
 ZIGO_EXPORT const char *zg_caught_panic_message(int32_t code);
 

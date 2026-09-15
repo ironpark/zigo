@@ -126,3 +126,6 @@ func (d *Document) zigoTakeLocked() (zigoDocumentCleanupState, bool) {
 
 // Document satisfies io.Closer; this assertion stops compiling the day it does not.
 var _ io.Closer = (*Document)(nil)
+
+// Document satisfies Counter; this assertion stops compiling the day it does not.
+var _ Counter = (*Document)(nil)

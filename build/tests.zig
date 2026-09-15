@@ -499,6 +499,26 @@ pub fn addRepositorySteps(
     multi_diagnostics.expectStdErrMatch("interface `NoPackage`");
     multi_diagnostics.expectStdErrMatch("interface `fmt.`");
     test_step.dependOn(&multi_diagnostics.step);
+    // The two checks `satisfies` makes before the assertion it writes: the
+    // claimed standard interface has to be one it knows, and a claimed
+    // declared interface has to be one the handle's methods cover.
+    const satisfies_cases = .{
+        .{ "plugin-satisfies-unknown", "SATIS003", "interface `io.Nope`" },
+        .{ "plugin-satisfies-missing-method", "SATIS004", "no method `Count() (uint, error)`" },
+    };
+    inline for (satisfies_cases) |case| {
+        const run = b.addRunArtifact(plugin_generator);
+        run.setName("satisfies reports " ++ case[1]);
+        run.addArgs(&.{ "generate", "--semantic" });
+        run.addFileArg(b.path("tests/fixtures/" ++ case[0] ++ ".json"));
+        run.addArg("--output");
+        _ = run.addOutputDirectoryArg(case[0] ++ "-output");
+        run.addArgs(&.{ "--package", "docs", "--go-module", "example.com/docs" });
+        run.expectExitCode(1);
+        run.expectStdErrMatch(case[1]);
+        run.expectStdErrMatch(case[2]);
+        test_step.dependOn(&run.step);
+    }
     const enumkit_tests = b.addTest(.{ .root_module = b.createModule(.{
         .root_source_file = b.path("plugins/enumkit/src/plugin.zig"),
         .target = target,

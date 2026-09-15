@@ -23,6 +23,16 @@
   | 이름 문자열을 플러그인이 직접 조회 | `context.resolveType` / `resolveFunction` / `resolveInterface` |
   | 해석 실패는 플러그인의 자체 진단 | core가 `<NAME>002`로 보고 |
   | 플러그인 자체 rule 번호는 `002`부터 | 참조 옵션을 선언하면 `003`부터 (`002`는 core 예약) |
+  | `satisfies`의 `interfaces`는 검사하지 않는 이름 문자열 | 표준 interface는 검사되는 이름, 선언한 interface는 `generated` 참조 |
+
+- `satisfies` 플러그인 옵션: `interfaces`는 이제 플러그인이 아는 Go 표준 라이브러리
+  interface 이름만 받고, 바인딩이 `zigo.interface(...)`로 선언한 interface는 새
+  `generated: []const plugin.ref.Interface` field에 참조로 적습니다. 두 claim 모두
+  assertion을 쓰기 전에 검사합니다: 모르는 표준 이름은 `SATIS003`, handle의 생성 메서드가
+  채우지 못하는 method set은 `SATIS004`입니다(`SATIS002`는 core의 참조 해석 실패 예약).
+  method set 검사는 handle에만 적용합니다. enum과 value 타입은 공개 패키지에서 메서드를
+  직접 쓸 수 있어 생성 메서드의 부재가 아무것도 증명하지 못하므로, 그 claim은 기존처럼
+  assertion이 검사합니다. `interfaces`의 wire 형태는 바뀌지 않았습니다.
 
 ### Added
 
@@ -31,6 +41,9 @@
 - `ContextBase.resolveType`/`resolveFunction`/`resolveInterface`와 같은 세 메서드의
   `GoContext`·`RustContext`·`AnalyzeContext`·`TransformContext`·`ValidateContext` 판.
   렌더링 쪽은 lowered program을, transform과 validation은 document를 봅니다.
+- 진단 `SATIS003`(플러그인이 모르는 표준 interface 이름)과 `SATIS004`(claim한 interface의
+  method를 handle이 같은 이름·시그니처로 갖고 있지 않음). `plugins/satisfies/README.md`에
+  아는 표준 interface 목록이 있습니다.
 - 진단 `<NAME>002`: 플러그인 옵션의 참조가 가리키는 선언이 없을 때. core 검증이 모든
   플러그인의 옵션을 옵션 타입을 따라 걸어 보고하므로, 플러그인은 field를 선언하는 것만으로
   검사를 얻습니다.

@@ -60,7 +60,7 @@ error입니다. 같은 플러그인을 한 entry에 두 번 붙이면 컴파일 
 | `plugins/buildinfo` | `go`, `rust` (+ `native`) | 네이티브 library의 빌드 정보 문자열 |
 | `plugins/enumkit` | `go`, `rust` | enum 값 목록과 알려진 tag 판별 |
 | `plugins/json` | `go` | value 타입의 `MarshalJSON`/`UnmarshalJSON` |
-| `plugins/satisfies` | `go` | 생성 타입이 지정한 interface를 만족하는지 컴파일 타임 단언 |
+| `plugins/satisfies` | `go` | 검사한 interface claim과 컴파일 타임 단언 (표준 interface와 선언한 interface 참조) |
 
 플러그인은 생성 코드만이 아니라 네이티브 쪽에도 기여할 수 있습니다. Zig 소스를 실어
 보내면 생성된 shim이 그것을 컴파일하고, 선언한 C 심볼마다 `export` wrapper를 씁니다.

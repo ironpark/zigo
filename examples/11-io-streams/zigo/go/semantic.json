@@ -754,6 +754,20 @@
       "symbol": "zg_free_codepoints"
     }
   ],
+  "interfaces": [
+    {
+      "closer": true,
+      "doc": "Counter is anything that reports how many bytes it holds.",
+      "methods": [
+        "count"
+      ],
+      "name": "Counter",
+      "types": [
+        "Document",
+        "Sink"
+      ]
+    }
+  ],
   "ir_version": 2,
   "package": "streams",
   "prefix": "zg",
@@ -765,6 +779,9 @@
           "form": "pointer",
           "interfaces": [
             "io.ReadWriteCloser"
+          ],
+          "generated": [
+            "Counter"
           ]
         }
       },

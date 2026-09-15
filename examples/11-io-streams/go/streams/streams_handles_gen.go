@@ -133,6 +133,9 @@ var _ io.Reader = (*Document)(nil)
 // Document satisfies io.ReadWriteCloser; this assertion stops compiling the day it does not.
 var _ io.ReadWriteCloser = (*Document)(nil)
 
+// Document satisfies Counter; this assertion stops compiling the day it does not.
+var _ Counter = (*Document)(nil)
+
 // Sink is a caller-owned native handle. Call Close when it is no longer needed.
 type Sink struct {
 	ptr     unsafe.Pointer

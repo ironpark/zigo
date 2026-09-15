@@ -94,3 +94,15 @@ ZIGO_EXPORT int32_t zg_document_close(zg_document * self) {
     zg_panic_active = 0;
     return result;
 }
+
+int32_t zg_document_count_impl(zg_document * self, size_t * out_result);
+ZIGO_EXPORT int32_t zg_document_count(zg_document * self, size_t * out_result) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        return zg_panic_publish();
+    }
+    int32_t result = zg_document_count_impl(self, out_result);
+    zg_panic_active = 0;
+    return result;
+}

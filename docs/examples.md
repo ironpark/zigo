@@ -58,6 +58,11 @@ Go에서는 `RoundingValues()`와 `IsKnown()`을, 여기서는 `Rounding::values
 스칼라·슬라이스·error union만 다루는 최소 구현이라 다른 열두 예제의 기능은 아직 Go
 전용입니다.
 
+`11-io-streams`에는 `satisfies` 플러그인이 붙어 있습니다. `Document`는 표준 interface
+`io.ReadWriteCloser`와 바인딩이 `zigo.interface(...)`로 선언한 `Counter`를 함께 claim하고,
+선언한 interface는 이름 문자열이 아니라 참조로 적습니다. 두 claim 모두 생성된 method set을
+기준으로 먼저 검사한 뒤 컴파일 시점 assertion으로 남습니다.
+
 ## purego 예제
 
 `03`, `04`, `07`, `08`, `11`, `12`는 별도 `go-purego` 모듈을 생성합니다.

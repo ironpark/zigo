@@ -34,6 +34,10 @@
       "kind": "go"
     },
     {
+      "path": "streams/streams_interfaces_gen.go",
+      "kind": "go"
+    },
+    {
       "path": "errors.lock.json",
       "kind": "native"
     }

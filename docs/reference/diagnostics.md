@@ -107,6 +107,7 @@ zigo는 생성 전에 소스 reflection, semantic 계약과 최종 출력을 검
 
 그 밖의 번호는 플러그인이 자기 검증에 쓰는 것입니다. 예를 들어 `ENUMKIT002`는 enumkit
 자체의 검증입니다(참조 타입 옵션이 없는 플러그인이라 core가 그 번호를 쓰지 않습니다).
-참조 타입 옵션을 선언하는 플러그인은 자기 rule을 `003`부터 매겨야 합니다. core `ZIGO...`
+참조 타입 옵션을 선언하는 플러그인은 자기 rule을 `003`부터 매겨야 합니다. `SATIS003`(모르는
+표준 interface 이름)과 `SATIS004`(claim한 method set을 handle이 채우지 못함)가 그 예입니다. core `ZIGO...`
 검증이 먼저 통과한 뒤 플러그인 진단이 실행됩니다. 해결 방법은 해당
 [플러그인 문서](../plugins/README.md)를 확인하세요.

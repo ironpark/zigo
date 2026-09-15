@@ -3,11 +3,23 @@ const library = @import("streams");
 const satisfies = @import("zigo_satisfies");
 
 const api = zigo.scope(library);
-const Document = api.handle("Document", .{}).use(satisfies.plugin, .{
-    .interfaces = &.{"io.ReadWriteCloser"},
-}).context();
+const document = api.handle("Document", .{});
 const Sink = api.handle("Sink", .{}).context();
 const Source = api.handle("Source", .{}).context();
+
+// A declared interface over the two handles that count bytes. The satisfies
+// plugin takes it as a reference, not as a name it cannot check: the claim
+// below is verified against the methods the generator writes for `Document`.
+const Counter = zigo.interface(.{
+    .name = "Counter",
+    .methods = &.{"count"},
+    .types = &.{ document.typeRef(), Sink.typeRef() },
+    .doc = "Counter is anything that reports how many bytes it holds.",
+});
+const Document = document.use(satisfies.plugin, .{
+    .interfaces = &.{"io.ReadWriteCloser"},
+    .generated = &.{.{ .entry = Counter }},
+}).context();
 
 // Members infer their Go receiver from the owning type and Zig signature. Indices
 // still refer to the original Zig signature, including that receiver.
@@ -57,5 +69,6 @@ pub const bindings = zigo.define(api, .{
         }),
         api.func("takeCodepoints", .{ .returns = zigo.result.releasedBy(api.ref("freeCodepoints")) }),
         api.func("freeCodepoints", .{}),
+        Counter,
     },
 });

@@ -20,3 +20,8 @@ export fn zg_document_close_impl(self: *target.Document) i32 {
     target.Document.close(self);
     return 0;
 }
+export fn zg_document_count_impl(self: *target.Document, out_result: *usize) i32 {
+    const result = target.Document.count(self);
+    out_result.* = result;
+    return 0;
+}

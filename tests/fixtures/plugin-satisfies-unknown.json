@@ -34,32 +34,6 @@
         "kind": "void"
       },
       "symbol": "zg_document_close"
-    },
-    {
-      "doc": "count reports how many lines the document holds.",
-      "name": "count",
-      "params": [],
-      "receiver": "Document",
-      "return": {
-        "kind": "int",
-        "bits": 64,
-        "is_usize": true,
-        "signed": false
-      },
-      "symbol": "zg_document_count"
-    }
-  ],
-  "interfaces": [
-    {
-      "closer": false,
-      "doc": "Counter is anything that reports how many lines it holds.",
-      "methods": [
-        "count"
-      ],
-      "name": "Counter",
-      "types": [
-        "Document"
-      ]
     }
   ],
   "ir_version": 1,
@@ -69,11 +43,8 @@
     {
       "ext": {
         "SATIS": {
-          "generated": [
-            "Counter"
-          ],
           "interfaces": [
-            "io.Closer"
+            "io.Nope"
           ]
         }
       },
