@@ -92,16 +92,9 @@ func (t *TelemetryHub) Reduce(ctx context.Context, rounds uint32) (float64, erro
 	defer zigoPinner.Unpin()
 	if ctx.Err() != nil {
 		atomic.StoreUint32(&zigoCancel, 1)
-	} else if zigoDone := ctx.Done(); zigoDone != nil {
-		zigoStop := make(chan struct{})
-		defer close(zigoStop)
-		go func() {
-			select {
-			case <-zigoDone:
-				atomic.StoreUint32(&zigoCancel, 1)
-			case <-zigoStop:
-			}
-		}()
+	} else {
+		zigoStop := context.AfterFunc(ctx, func() { atomic.StoreUint32(&zigoCancel, 1) })
+		defer zigoStop()
 	}
 	ptr, err := zigoCheckedPointer("TelemetryHub.Reduce receiver", t)
 	if err != nil {

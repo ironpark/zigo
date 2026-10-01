@@ -266,16 +266,9 @@ func ApplyUntilCancelled(ctx context.Context, limit uint32, callback Observer) (
 	var zigoCancel uint32
 	if ctx.Err() != nil {
 		atomic.StoreUint32(&zigoCancel, 1)
-	} else if zigoDone := ctx.Done(); zigoDone != nil {
-		zigoStop := make(chan struct{})
-		defer close(zigoStop)
-		go func() {
-			select {
-			case <-zigoDone:
-				atomic.StoreUint32(&zigoCancel, 1)
-			case <-zigoStop:
-			}
-		}()
+	} else {
+		zigoStop := context.AfterFunc(ctx, func() { atomic.StoreUint32(&zigoCancel, 1) })
+		defer zigoStop()
 	}
 	if callback == nil {
 		return 0, &CallbackError{Operation: "ApplyUntilCancelled", Callback: "callback", Err: ErrNilCallback}

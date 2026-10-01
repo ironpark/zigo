@@ -120,16 +120,9 @@ func (j *Job) Crunch(ctx context.Context, rounds uint32) (float64, error) {
 	defer zigoPinner.Unpin()
 	if ctx.Err() != nil {
 		atomic.StoreUint32(&zigoCancel, 1)
-	} else if zigoDone := ctx.Done(); zigoDone != nil {
-		zigoStop := make(chan struct{})
-		defer close(zigoStop)
-		go func() {
-			select {
-			case <-zigoDone:
-				atomic.StoreUint32(&zigoCancel, 1)
-			case <-zigoStop:
-			}
-		}()
+	} else {
+		zigoStop := context.AfterFunc(ctx, func() { atomic.StoreUint32(&zigoCancel, 1) })
+		defer zigoStop()
 	}
 	ptr, err := zigoCheckedPointer("Job.Crunch receiver", j)
 	if err != nil {

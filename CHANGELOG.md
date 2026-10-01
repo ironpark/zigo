@@ -4,6 +4,15 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Changed
+
+- `context.Context` cancel 매개변수의 Go 래퍼가 호출마다 goroutine과 채널을 만드는 대신
+  `context.AfterFunc`로 flag를 올립니다. 취소되지 않는 호출은 goroutine을 시작하지 않고,
+  이미 끝난 context는 이전처럼 호출 전에 동기적으로 flag를 올립니다. 공개 시그니처와 C ABI는
+  그대로입니다.
+
 ## [0.30.0] - 2026-09-15
 
 ### Changed

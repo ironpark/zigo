@@ -1606,15 +1606,17 @@ fn renderStreamErrorChecks(
     }
 }
 
-/// The cancellation flag and the goroutine that raises it. The word is Go's,
-/// declared on this frame, and the native call borrows its address for exactly
-/// as long as it runs -- which is what makes handing a Go pointer to C legal
-/// here: the word holds no Go pointers and nothing keeps it afterwards.
+/// The cancellation flag and the `context.AfterFunc` that raises it. The word
+/// is Go's, declared on this frame, and the native call borrows its address for
+/// exactly as long as it runs -- which is what makes handing a Go pointer to C
+/// legal here: the word holds no Go pointers and nothing keeps it afterwards.
 ///
-/// A context that can never be cancelled costs no goroutine at all, and one
-/// that already is raises the flag without starting one: the native call still
-/// happens, sees the flag at its first polling point, and returns having done
-/// nothing, which is the same answer by the same path.
+/// AfterFunc starts no goroutine until the context is done, so a call that is
+/// never cancelled pays for a registration and nothing more. A context that
+/// already is done raises the flag synchronously instead: AfterFunc would run
+/// its function on a goroutine of its own, racing the native call's first
+/// polling point. The native call still happens, sees the flag there, and
+/// returns having done nothing, which is the same answer by the same path.
 fn renderCancelSetup(writer: *std.Io.Writer, options: emit.Options) !void {
     try writer.writeAll("\tvar zigoCancel uint32\n");
     // cgo pins a Go pointer it passes to C for the duration of the call, so
@@ -1626,16 +1628,9 @@ fn renderCancelSetup(writer: *std.Io.Writer, options: emit.Options) !void {
     try writer.writeAll(
         "\tif ctx.Err() != nil {\n" ++
             "\t\tatomic.StoreUint32(&zigoCancel, 1)\n" ++
-            "\t} else if zigoDone := ctx.Done(); zigoDone != nil {\n" ++
-            "\t\tzigoStop := make(chan struct{})\n" ++
-            "\t\tdefer close(zigoStop)\n" ++
-            "\t\tgo func() {\n" ++
-            "\t\t\tselect {\n" ++
-            "\t\t\tcase <-zigoDone:\n" ++
-            "\t\t\t\tatomic.StoreUint32(&zigoCancel, 1)\n" ++
-            "\t\t\tcase <-zigoStop:\n" ++
-            "\t\t\t}\n" ++
-            "\t\t}()\n" ++
+            "\t} else {\n" ++
+            "\t\tzigoStop := context.AfterFunc(ctx, func() { atomic.StoreUint32(&zigoCancel, 1) })\n" ++
+            "\t\tdefer zigoStop()\n" ++
             "\t}\n",
     );
 }
