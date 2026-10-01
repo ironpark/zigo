@@ -146,6 +146,7 @@ Go 쪽 연결은 [00-quick-start](../../examples/00-quick-start/README.md), Rust
 |---|---|---|
 | `src/gen/plugins/iterator.zig` | uses `must_variant`, `implements_wrappers` | function node 방문, 옵션 검증, builder로 메서드 추가 |
 | `src/gen/plugins/implements.zig` | provides `implements_wrappers` | 한 플러그인이 function·type·file 경계를 모두 쓰는 법, `claims`로 공개 메서드 대체 |
+| `src/gen/plugins/panics.zig` | — | `claims`로 공개 메서드를 대체하고 함수·핸들 두 단위의 옵션을 읽는 법 |
 | `src/gen/plugins/must.zig` | provides `must_variant` | capability를 발행하고 `analyze`에서 fact를 남기는 법 |
 | `src/gen/plugins/interfaces.zig` | uses `must_variant` | 다른 플러그인의 capability를 `uses`로 읽는 법 |
 | `src/gen/plugins/session.zig` | — | 여러 선언을 묶어 새 Go 타입을 만드는 법 |

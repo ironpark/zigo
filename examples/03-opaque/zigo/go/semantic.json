@@ -528,6 +528,9 @@
     },
     {
       "exhaustive": true,
+      "ext": {
+        "PANICS": {}
+      },
       "fields": [],
       "kind": "opaque",
       "name": "ContextView",

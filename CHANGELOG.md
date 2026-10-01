@@ -18,6 +18,10 @@
 
 ### Added
 
+- `zigo.features.panics`: 잘못된 사용(nil·닫힌 핸들, 범위 밖 인자, 네이티브 panic)으로만 실패하는
+  메서드의 Go 시그니처에서 `error`를 빼고 그 typed error로 panic합니다. 함수 또는 핸들 단위로
+  붙이며, Zig 오류 집합·스트림·cancel·콜백 오류·인터페이스 메서드는 `error`를 유지합니다(함수에
+  직접 붙이면 `ZIGO069`). C ABI는 바뀌지 않습니다.
 - `ZIGO_DEBUG_LEAKS`: 설정하고 실행하면 `Close` 없이 GC가 회수한 핸들마다 생성 위치의 stack을
   표준 오류에 출력합니다. 꺼져 있을 때 생성자 비용은 분기 하나입니다.
 - 콜백과 스트림이 없는 cgo 바인딩의 raw package가 모든 C 함수에 `#cgo noescape`와

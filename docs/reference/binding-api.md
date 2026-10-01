@@ -306,6 +306,7 @@ zigo.session(.{
 | 연결 | 결과 |
 |---|---|
 | `.use(zigo.features.iterator, .{})` | `iter.Seq`/`Seq2` 래퍼. 이름은 `.name`, 기본은 `All`(메서드가 `Checked`로 끝나면 `AllChecked`) |
+| `.use(zigo.features.panics, .{})` | Go 시그니처에서 끝의 `error`를 빼고, 그 오류로 panic하는 메서드를 공개합니다. 함수에 붙이면 그 함수에, 핸들에 붙이면 그 핸들의 메서드 중 가능한 것 모두에 적용됩니다. 자세한 조건은 [생성 Go API](generated-go-api.md#panics-메서드)를 참고하세요 |
 | `.use(zigo.features.implements, .{ .kinds = &.{.reader} })` | 표준 I/O 메서드 래퍼. kind는 `.writer`, `.reader`, `.writer_to`, `.reader_from`, `.string_writer`이며 항상 목록으로 적습니다. `.string_writer`는 string semantic이 있으면 인자를 그대로, 없으면 string의 바이트를 빌려 넘깁니다. 래퍼만 공개되며 bound 메서드는 숨겨집니다. `.keep_original = true`면 원래 이름도 함께 내보냅니다 |
 
 열거형 text 인코딩은 feature가 아니라 `enumeration`의 `.text = true` 옵션입니다.

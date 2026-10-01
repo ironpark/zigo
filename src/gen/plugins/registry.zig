@@ -9,6 +9,7 @@ const implements = @import("builtin_plugins").implements;
 const interfaces = @import("builtin_plugins").interfaces;
 const iterator = @import("builtin_plugins").iterator;
 const must = @import("builtin_plugins").must;
+const panics = @import("builtin_plugins").panics;
 const session = @import("builtin_plugins").session;
 const plugin = @import("plugin");
 const targets = @import("targets");
@@ -17,6 +18,7 @@ const testing_plugin = @import("testing.zig");
 /// The features zigo ships with, migrated onto the plugin frame.
 pub const builtins: []const plugin.Plugin = &.{
     must.plugin,
+    panics.plugin,
     implements.plugin,
     iterator.plugin,
     interfaces.plugin,

@@ -150,6 +150,30 @@ goroutine 7 [running]:
 `.keep_original = true`를 줍니다. 오류 문자열의 operation은 여전히 원래 이름(`Document.Dump`)을
 씁니다.
 
+## `.panics` 메서드
+
+nil 또는 닫힌 핸들, 범위를 벗어난 인자, 네이티브 panic처럼 잘못된 사용으로만 실패하는 메서드는
+Go 관례대로 panic하는 편이 자연스럽습니다. `.use(zigo.features.panics, .{})`를 붙이면 그
+메서드의 Go 시그니처에서 끝의 `error`가 빠지고, 반환했을 typed error로 panic합니다.
+
+```go
+// 붙이기 전
+func (c *ContextView) Total() (int64, error)
+// 붙인 뒤
+func (c *ContextView) Total() int64
+```
+
+- 함수 entry에 붙이면 그 함수에, 핸들 entry에 붙이면 그 핸들의 메서드 중 아래 조건을 만족하는
+  것 모두에 적용됩니다. 핸들 단위 요청은 기본값이므로 조건에 맞지 않는 메서드는 조용히 `error`를
+  유지합니다. 함수에 직접 붙였는데 조건에 맞지 않으면 `ZIGO069`입니다.
+- `error`를 유지해야 하는 메서드: Zig 오류 집합을 반환, 스트림 매개변수, cancel(`ctx`), 오류를
+  반환하는 Go 콜백에 닿음, `.iterator`·`.implements`가 붙음, 선언한 인터페이스의 메서드.
+- 원래 본문은 비공개 `zigoChecked<Name>`으로 쓰이고 공개 메서드가 그것을 불러 오류가 있으면
+  panic합니다. panic 값은 `*HandleError`, `*RangeError`, `*NativePanicError` 등 원래 반환했을
+  값이므로 `recover()` 후 `errors.As`/`errors.Is`로 분류할 수 있습니다.
+- MUST 플러그인은 이 메서드에 `Must*`를 만들지 않습니다.
+- C 심볼과 shim은 바뀌지 않습니다. Go 표면만 바뀝니다.
+
 ## functional options
 
 구조체 매개변수를 `zigo.param.options`로 선언하면 생성자 인자가 Go의 functional options

@@ -2020,3 +2020,55 @@ test "materialized release identity survives package filtering and declaration o
         }
     }
 }
+
+test "panics drops the error of misuse-only methods and refuses the rest by name" {
+    const i64_type =
+        \\{"bits":64,"kind":"int","signed":true}
+    ;
+    const fixture =
+        \\{"functions":[
+        \\{"name":"level","params":[],"receiver":"Gauge","return":
+    ++ i64_type ++
+        \\,"symbol":"zg_gauge_level"},
+        \\{"name":"raise","params":[{"name":"by","type":
+    ++ i64_type ++
+        \\}],"receiver":"Gauge","return":{"kind":"error_union","error_set":["Overflow"],"payload":
+    ++ i64_type ++
+        \\},"symbol":"zg_gauge_raise"}],
+        \\"package":"gauge","prefix":"zg","types":[{"kind":"opaque","name":"Gauge","ext":{"PANICS":{}}}],"zig_version":"0.16.0"}
+    ;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var temporary = std.testing.tmpDir(.{ .iterate = true });
+    defer temporary.cleanup();
+    // The handle-wide request covers `level` and quietly leaves `raise`, whose
+    // Zig error set is part of its API. MUST writes no companion for the
+    // method that already panics.
+    try generate(arena.allocator(), std.testing.io, fixture, temporary.dir, .{
+        .package = "gauge",
+        .prefix = "zg",
+        .go_module = "example.com/gauge",
+        .configurations = &.{.{ .name = "MUST", .json = "{\"enabled\":true}" }},
+    });
+    const public = try temporary.dir.readFileAlloc(std.testing.io, "gauge/gauge_gen.go", arena.allocator(), .limited(64 * 1024));
+    try std.testing.expect(std.mem.indexOf(u8, public, "func (g *Gauge) Level() int64 {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, public, "func (g *Gauge) zigoCheckedLevel() (int64, error) {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, public, "func (g *Gauge) Raise(by int64) (int64, error) {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, public, "MustLevel") == null);
+    try std.testing.expect(std.mem.indexOf(u8, public, "func (g *Gauge) MustRaise(by int64) int64") != null);
+
+    // Asked for by the function itself, the same refusal is a diagnostic.
+    const refused = try std.mem.replaceOwned(u8, arena.allocator(), fixture, "\"name\":\"raise\"", "\"ext\":{\"PANICS\":{}},\"name\":\"raise\"");
+    var issues: std.ArrayList(diagnostic.Diagnostic) = .empty;
+    var other = std.testing.tmpDir(.{ .iterate = true });
+    defer other.cleanup();
+    try std.testing.expectError(error.InvalidSemantic, generate(arena.allocator(), std.testing.io, refused, other.dir, .{
+        .package = "gauge",
+        .prefix = "zg",
+        .go_module = "example.com/gauge",
+        .diagnostics = &issues,
+    }));
+    try std.testing.expectEqual(@as(usize, 1), issues.items.len);
+    try std.testing.expectEqualStrings("ZIGO069", issues.items[0].code);
+    try std.testing.expect(std.mem.indexOf(u8, issues.items[0].message, "returns a Zig error set") != null);
+}

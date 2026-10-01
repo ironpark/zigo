@@ -6,7 +6,10 @@ const library = @import("opaque");
 
 const api = zigo.scope(library);
 const Context = api.handle("Context", .{}).context();
-const ContextView = api.handle("ContextView", .{}).context();
+// A borrowed view only fails by being used after its parent closed, which is a
+// bug in the caller rather than a condition to handle: `.panics` drops the
+// `error` from its methods and panics with the *HandleError instead.
+const ContextView = api.handle("ContextView", .{}).use(zigo.features.panics, .{}).context();
 
 pub const bindings = zigo.define(api, .{
     .declarations = &.{

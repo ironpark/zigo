@@ -233,9 +233,8 @@ func (co *Context) CrashInfallible() (int64, error) {
 	return result, nil
 }
 
-// Total calls the Zig function ContextView.total.
-// A native panic is returned as *NativePanicError.
-func (c *ContextView) Total() (int64, error) {
+// zigoCheckedTotal is the checked form of Total, which a plugin replaced.
+func (c *ContextView) zigoCheckedTotal() (int64, error) {
 	ptr, err := zigoCheckedPointer("ContextView.Total receiver", c)
 	if err != nil {
 		return 0, err
@@ -246,6 +245,12 @@ func (c *ContextView) Total() (int64, error) {
 		return 0, zigoPoisonAfterPanic(zigoErrorForCode("ContextView.Total", code), c)
 	}
 	return result, nil
+}
+
+// Total calls the Zig function ContextView.total.
+// It panics with the typed error it would otherwise return.
+func (c *ContextView) Total() int64 {
+	return zigoMust(c.zigoCheckedTotal())
 }
 
 // CrashFatal: A free function with no handle and no promoted integer has no `error` in

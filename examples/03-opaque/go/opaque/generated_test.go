@@ -103,15 +103,23 @@ func TestBorrowedContextViewIsInvalidatedByParentClose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, err := view.Total(); err != nil || got != 19 {
-		t.Fatalf("view.Total() = (%d, %v), want (19, nil)", got, err)
+	if got := view.Total(); got != 19 {
+		t.Fatalf("view.Total() = %d, want 19", got)
 	}
 	if err := context.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := view.Total(); !errors.Is(err, ErrInvalidHandle) {
-		t.Fatalf("view.Total() after parent Close = %v, want ErrInvalidHandle", err)
-	}
+	// `.panics` dropped the error: using the view after its parent closed is
+	// a bug, so Total panics with the *HandleError it would have returned.
+	defer func() {
+		err, _ := recover().(error)
+		var handle *HandleError
+		if !errors.As(err, &handle) || !errors.Is(err, ErrInvalidHandle) {
+			t.Fatalf("view.Total() after parent Close panicked with %v, want *HandleError", err)
+		}
+	}()
+	view.Total()
+	t.Fatal("view.Total() after parent Close did not panic")
 }
 
 func TestNamesAndUTF8(t *testing.T) {

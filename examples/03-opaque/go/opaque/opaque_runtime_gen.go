@@ -33,6 +33,20 @@ func zigoPoisonAfterPanic(err error, handles ...zigoHandle) error {
 	return err
 }
 
+func zigoMust[T any](value T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+	return value
+}
+
+func zigoMustMatch[T any](value T, matched bool, err error) (T, bool) {
+	if err != nil {
+		panic(err)
+	}
+	return value, matched
+}
+
 func zigoBoolToUint8(value bool) uint8 {
 	if value {
 		return 1

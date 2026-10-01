@@ -13,3 +13,8 @@ pub const iterator = plugin.builtins.iterator.plugin;
 /// Standard Go I/O methods next to a bound method. A method can satisfy more
 /// than one interface, so the list is the only spelling; it must not be empty.
 pub const implements = plugin.builtins.implements.plugin;
+
+/// The Go signature drops its trailing `error` and the method panics with it
+/// instead. On a function, for that function; on a handle, for each of its
+/// methods whose only failures are misuse.
+pub const panics = plugin.builtins.panics.plugin;

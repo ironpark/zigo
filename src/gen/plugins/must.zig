@@ -4,6 +4,7 @@ const abi = @import("abi");
 const semantic = @import("semantic");
 const plugin_api = @import("plugin");
 const naming = @import("naming");
+const panics = @import("panics.zig");
 
 pub const Config = struct { enabled: bool = false };
 /// The capability this plugin publishes: the companion a method also gets.
@@ -38,7 +39,9 @@ fn analyze(context: plugin_api.AnalyzeContext) !void {
         // mirror -- `if err := m(); err != nil { panic(err) }` is the caller's
         // own line. A method `.implements` hid has no exported form to mirror.
         const returns_value = function.origin.@"return".errorPayload() != .void;
-        const hidden = try plugin_api.builtins.implements.hidesOriginal(allocator, function.origin.ext);
+        // A method `.panics` rewrote already is the companion.
+        const hidden = try plugin_api.builtins.implements.hidesOriginal(allocator, function.origin.ext) or
+            try panics.replaces(render, function);
         const enabled = entry.is_public and entry.has_error and returns_value and !std.mem.eql(u8, entry.public_name, "Close") and !hidden;
         if (!enabled) continue;
         const must_name = try std.fmt.allocPrint(allocator, "Must{s}", .{entry.public_name});

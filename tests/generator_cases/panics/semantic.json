@@ -1,0 +1,108 @@
+{
+  "functions": [
+    {
+      "doc": "Reads the current level.",
+      "name": "level",
+      "params": [],
+      "receiver": "Gauge",
+      "return": {
+        "bits": 64,
+        "is_usize": false,
+        "kind": "int",
+        "signed": true
+      },
+      "symbol": "zg_gauge_level"
+    },
+    {
+      "name": "reset",
+      "params": [],
+      "receiver": "Gauge",
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "zg_gauge_reset"
+    },
+    {
+      "doc": "Returns the peak, if one was recorded.",
+      "name": "peak",
+      "params": [],
+      "receiver": "Gauge",
+      "return": {
+        "kind": "optional",
+        "child": {
+          "bits": 64,
+          "is_usize": false,
+          "kind": "int",
+          "signed": true
+        }
+      },
+      "symbol": "zg_gauge_peak"
+    },
+    {
+      "doc": "Raises the level, failing past the limit.",
+      "name": "raise",
+      "params": [
+        {
+          "name": "by",
+          "type": {
+            "bits": 64,
+            "is_usize": false,
+            "kind": "int",
+            "signed": true
+          }
+        }
+      ],
+      "receiver": "Gauge",
+      "return": {
+        "kind": "error_union",
+        "error_set": [
+          "Overflow"
+        ],
+        "payload": {
+          "bits": 64,
+          "is_usize": false,
+          "kind": "int",
+          "signed": true
+        }
+      },
+      "symbol": "zg_gauge_raise"
+    },
+    {
+      "doc": "Scales a percentage into the stored range.",
+      "ext": {
+        "PANICS": {}
+      },
+      "name": "scale",
+      "params": [
+        {
+          "name": "percent",
+          "type": {
+            "bits": 7,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "return": {
+        "bits": 8,
+        "is_usize": false,
+        "kind": "int",
+        "signed": false
+      },
+      "symbol": "zg_scale"
+    }
+  ],
+  "package": "gauge",
+  "prefix": "zg",
+  "types": [
+    {
+      "kind": "opaque",
+      "name": "Gauge",
+      "ext": {
+        "PANICS": {}
+      }
+    }
+  ],
+  "zig_version": "0.16.0"
+}
