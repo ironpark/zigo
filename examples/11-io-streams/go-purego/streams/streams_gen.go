@@ -5,6 +5,12 @@
 // A library that reads and writes through `std.Io` streams rather than
 // through buffers it owns. Everything here takes a `*std.Io.Writer` or a
 // `*std.Io.Reader` and never learns where the bytes came from or went.
+//
+// Zig errors are returned as *Error; classify them with errors.Is against the
+// Err sentinels.
+// A function that takes a handle returns *HandleError when it is nil or closed.
+// A panic in a Go callback is rethrown as *CallbackPanicError once the native
+// call that ran the callback returns.
 package streams
 
 import (
@@ -29,7 +35,6 @@ var DefaultLibraryName = raw.DefaultLibraryName
 
 // NewDocument creates a caller-owned Document.
 // The caller must call Close on the returned handle.
-// Native failures are returned as generated error values.
 func NewDocument() (*Document, error) {
 	result, code := raw.DocumentCreate()
 	if code != 0 {
@@ -75,8 +80,6 @@ func (d *Document) WriteString(s string) (int, error) {
 // AppendString: The string-shaped twin of `append`. The binding gives its parameter a
 // string semantic, so the Go surface takes a `string` rather than bytes.
 // `WriteString` comes from `append` instead, which takes both interfaces.
-// It returns *HandleError if a required handle is nil or closed.
-// Native failures are returned as generated error values.
 func (d *Document) AppendString(text string) error {
 	ptr, err := zigoCheckedPointer("Document.AppendString receiver", d)
 	if err != nil {
@@ -91,7 +94,6 @@ func (d *Document) AppendString(text string) error {
 }
 
 // Count calls the Zig function Document.count.
-// It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (d *Document) Count() (uint, error) {
 	ptr, err := zigoCheckedPointer("Document.Count receiver", d)
@@ -207,7 +209,6 @@ func (d *Document) Read(p []byte) (int, error) {
 
 // NewSink creates a caller-owned Sink.
 // The caller must call Close on the returned handle.
-// Native failures are returned as generated error values.
 func NewSink() (*Sink, error) {
 	result, code := raw.SinkCreate()
 	if code != 0 {
@@ -218,8 +219,6 @@ func NewSink() (*Sink, error) {
 
 // Write writes to the stream Sink.writer() hands out, satisfying io.Writer.
 // The stream is fetched from the receiver on every call and never stored.
-// It returns *HandleError if a required handle is nil or closed.
-// Native failures are returned as generated error values.
 func (s *Sink) Write(bytes []byte) (int, error) {
 	ptr, err := zigoCheckedPointer("Sink.Write receiver", s)
 	if err != nil {
@@ -235,8 +234,6 @@ func (s *Sink) Write(bytes []byte) (int, error) {
 
 // Flush flushes the stream Sink.writer() hands out, satisfying io.Writer.
 // The stream is fetched from the receiver on every call and never stored.
-// It returns *HandleError if a required handle is nil or closed.
-// Native failures are returned as generated error values.
 func (s *Sink) Flush() error {
 	ptr, err := zigoCheckedPointer("Sink.Flush receiver", s)
 	if err != nil {
@@ -251,7 +248,6 @@ func (s *Sink) Flush() error {
 }
 
 // Count calls the Zig function Sink.count.
-// It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (s *Sink) Count() (uint, error) {
 	ptr, err := zigoCheckedPointer("Sink.Count receiver", s)
@@ -293,7 +289,6 @@ func (s *Sink) WriteString(str string) (int, error) {
 
 // NewSource creates a caller-owned Source.
 // The caller must call Close on the returned handle.
-// Native failures are returned as generated error values.
 func NewSource(bytes []byte) (*Source, error) {
 	result, code := raw.SourceCreate(bytes)
 	if code != 0 {
@@ -305,8 +300,6 @@ func NewSource(bytes []byte) (*Source, error) {
 // Read reads from the stream Source.reader() hands out, satisfying io.Reader.
 // The stream is fetched from the receiver on every call and never stored.
 // The end of the stream is reported as io.EOF.
-// It returns *HandleError if a required handle is nil or closed.
-// Native failures are returned as generated error values.
 func (s *Source) Read(buffer []byte) (int, error) {
 	ptr, err := zigoCheckedPointer("Source.Read receiver", s)
 	if err != nil {
@@ -325,8 +318,6 @@ func (s *Source) Read(buffer []byte) (int, error) {
 
 // Banner: A free function taking a stream, so the example covers the shape that has
 // no receiver and no error union of its own.
-// Native failures are returned as generated error values.
-// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func Banner(w io.Writer, width uint32) error {
 	if w == nil {
 		return &StreamError{Operation: "Banner", Parameter: "w", Err: ErrNilStream}
@@ -348,8 +339,6 @@ func Banner(w io.Writer, width uint32) error {
 
 // Tee: Copies a reader into a writer, so one call exercises both directions at
 // once and the byte count comes back through the return value.
-// Native failures are returned as generated error values.
-// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func Tee(r io.Reader, w io.Writer) (uint, error) {
 	if r == nil {
 		return 0, &StreamError{Operation: "Tee", Parameter: "r", Err: ErrNilStream}

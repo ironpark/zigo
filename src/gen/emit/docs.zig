@@ -5,12 +5,56 @@ const semantic = @import("semantic");
 const emit = @import("emit.zig");
 const lower = @import("lower");
 
+/// The error contracts every function of a package shares. They are stated
+/// once, in the package doc, instead of on each function they apply to: a
+/// sentence repeated on every method says nothing about that method.
+pub const PackageConventions = struct {
+    /// Some function returns a Zig error set.
+    native_errors: bool = false,
+    /// Some function takes a handle, as receiver or parameter.
+    handles: bool = false,
+    /// Some function can run a Go callback while it is inside native code.
+    callback_panics: bool = false,
+    /// Some function reports the error a Go callback returned.
+    callback_errors: bool = false,
+
+    pub fn add(self: *PackageConventions, function: semantic.SemanticFn, reaches_callbacks: bool, reaches_callback_errors: bool) void {
+        if (function.@"return" == .error_union and function.@"return".error_union.error_set.len != 0) self.native_errors = true;
+        if (function.receiverIsHandle() or lower.hasOpaqueParameter(function)) self.handles = true;
+        if (reaches_callbacks) self.callback_panics = true;
+        if (reaches_callback_errors) self.callback_errors = true;
+    }
+
+    fn any(self: PackageConventions) bool {
+        return self.native_errors or self.handles or self.callback_panics or self.callback_errors;
+    }
+};
+
 /// Every generated Go package gets exactly one `// Package ...` doc, on the
 /// file that carries the package's own API. The body comes from
 /// `go_package_doc`, then from the `//!` container doc reflection picked --
 /// the bindings file's, or the library root module's when the bindings file
 /// has none -- and finally from a plain statement of what the package is.
-pub fn writePublicPackageDoc(writer: *std.Io.Writer, package: []const u8, program: abi.Program, options: emit.Options) !void {
+/// The shared error contracts follow as a paragraph of their own.
+pub fn writePublicPackageDoc(writer: *std.Io.Writer, package: []const u8, program: abi.Program, options: emit.Options, conventions: PackageConventions) !void {
+    try writePackageDocBody(writer, package, program, options);
+    try writePackageConventions(writer, conventions);
+}
+
+fn writePackageConventions(writer: *std.Io.Writer, conventions: PackageConventions) !void {
+    if (!conventions.any()) return;
+    try writer.writeAll("//\n");
+    if (conventions.native_errors)
+        try writer.writeAll("// Zig errors are returned as *Error; classify them with errors.Is against the\n// Err sentinels.\n");
+    if (conventions.handles)
+        try writer.writeAll("// A function that takes a handle returns *HandleError when it is nil or closed.\n");
+    if (conventions.callback_panics)
+        try writer.writeAll("// A panic in a Go callback is rethrown as *CallbackPanicError once the native\n// call that ran the callback returns.\n");
+    if (conventions.callback_errors)
+        try writer.writeAll("// An error a Go callback returns is returned as *CallbackError by the native\n// call that ran the callback.\n");
+}
+
+fn writePackageDocBody(writer: *std.Io.Writer, package: []const u8, program: abi.Program, options: emit.Options) !void {
     const body = if (options.go_package_doc.len != 0)
         options.go_package_doc
     else if (program.doc) |doc| doc else "";
@@ -141,7 +185,7 @@ pub fn writeOptionalContractDoc(writer: *std.Io.Writer, function: semantic.Seman
         try writer.print("// The {s} result reports whether a value was present; the value before it is zero when it was not.\n", .{optional_output_presence_type});
 }
 
-pub fn writePublicFunctionDoc(writer: *std.Io.Writer, function: semantic.SemanticFn, go_name: []const u8, owned_type: ?[]const u8, reaches_callbacks: bool, reaches_callback_errors: bool, go_names: ?[]const []const u8) !void {
+pub fn writePublicFunctionDoc(writer: *std.Io.Writer, function: semantic.SemanticFn, go_name: []const u8, owned_type: ?[]const u8, go_names: ?[]const []const u8) !void {
     if (function.field_access) |field_access| {
         if (function.doc) |doc| {
             if (field_access.setter) {
@@ -195,20 +239,11 @@ pub fn writePublicFunctionDoc(writer: *std.Io.Writer, function: semantic.Semanti
         try writer.writeAll("// The caller must call Close on the returned handle.\n");
     if (returnsBorrowedOpaque(function))
         try writer.writeAll("// The returned reference remains valid only while its parent handle remains open.\n");
-    if (function.receiverIsHandle() or lower.hasOpaqueParameter(function))
-        try writer.writeAll("// It returns *HandleError if a required handle is nil or closed.\n");
-    if (function.@"return" == .error_union) {
-        if (function.@"return".error_union.error_set.len == 0)
-            // A checked infallible function: nothing in Zig returns an error,
-            // but a panic still has to reach the caller.
-            try writer.writeAll("// A native panic is returned as *NativePanicError.\n")
-        else
-            try writer.writeAll("// Native failures are returned as generated error values.\n");
-    }
-    if (reaches_callbacks)
-        try writer.writeAll("// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.\n");
-    if (reaches_callback_errors)
-        try writer.writeAll("// An error a Go callback returned is returned as *CallbackError once the native call returns.\n");
+    // A checked infallible function: nothing in Zig returns an error, so the
+    // error result needs saying why it is there. The contracts every function
+    // shares are in the package doc; see PackageConventions.
+    if (function.@"return" == .error_union and function.@"return".error_union.error_set.len == 0)
+        try writer.writeAll("// A native panic is returned as *NativePanicError.\n");
     if (function.cancel != null)
         try writer.print(
             "// Cancelling ctx stops the native call at its next polling point; the call\n" ++

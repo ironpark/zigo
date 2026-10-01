@@ -58,6 +58,10 @@
   `GoName: 원문` 형태로 잇습니다. `go doc`이 첫 문장을 요약으로 보여 주기 때문입니다.
 - 바인딩이 멤버 문서를 직접 쓰려면 [binding API](binding-api.md)의 `.doc`을 씁니다.
   바인딩이 쓴 것이 소스의 `///`보다 우선합니다.
+- 모든 함수가 공유하는 오류 계약(`*Error`와 `Err*` sentinel, `*HandleError`,
+  `*CallbackPanicError`, `*CallbackError`)은 함수마다 반복하지 않고 패키지 doc의 별도 문단에
+  한 번 적습니다. 그 패키지에 해당하는 함수가 있는 계약만 실립니다. 함수 doc에는 그 함수에만
+  해당하는 계약(소유권, borrowed 수명, cancel, optional, 콜백 계약)이 남습니다.
 
 ## 함수 반환값
 

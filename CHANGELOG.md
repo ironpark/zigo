@@ -12,6 +12,9 @@
   `context.AfterFunc`로 flag를 올립니다. 취소되지 않는 호출은 goroutine을 시작하지 않고,
   이미 끝난 context는 이전처럼 호출 전에 동기적으로 flag를 올립니다. 공개 시그니처와 C ABI는
   그대로입니다.
+- 생성 함수 doc이 모든 함수에 같은 문장(`It returns *HandleError ...`, `Native failures are
+  returned ...`, callback panic 재전파)을 반복하지 않습니다. 이 공통 오류 계약은 패키지 doc의 한
+  문단으로 옮겼고, 함수 doc에는 그 함수만의 계약이 남습니다.
 
 ## [0.30.0] - 2026-09-15
 

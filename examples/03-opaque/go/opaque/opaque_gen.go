@@ -5,6 +5,10 @@
 // Handles that live in Zig and travel through Go as opaque pointers.
 // This block sits in the bindings file, which zigo reads before the library's
 // root module: it is the one file the binding's author owns.
+//
+// Zig errors are returned as *Error; classify them with errors.Is against the
+// Err sentinels.
+// A function that takes a handle returns *HandleError when it is nil or closed.
 package opaque
 
 import (
@@ -15,7 +19,6 @@ import (
 
 // NewContext creates a caller-owned Context.
 // The caller must call Close on the returned handle.
-// Native failures are returned as generated error values.
 func NewContext() (*Context, error) {
 	result, code := raw.ContextCreate()
 	if code != 0 {
@@ -25,7 +28,6 @@ func NewContext() (*Context, error) {
 }
 
 // Add calls the Zig function Context.add.
-// It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (co *Context) Add(value int64) (int64, error) {
 	ptr, err := zigoCheckedPointer("Context.Add receiver", co)
@@ -42,7 +44,6 @@ func (co *Context) Add(value int64) (int64, error) {
 
 // MaybeTotal calls the Zig function Context.maybeTotal.
 // The bool result reports whether a value was present; the value before it is zero when it was not.
-// It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (co *Context) MaybeTotal(present bool) (int64, bool, error) {
 	ptr, err := zigoCheckedPointer("Context.MaybeTotal receiver", co)
@@ -58,7 +59,6 @@ func (co *Context) MaybeTotal(present bool) (int64, bool, error) {
 }
 
 // SetTotal calls the Zig function Context.setTotal.
-// It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (co *Context) SetTotal(c int64) error {
 	ptr, err := zigoCheckedPointer("Context.SetTotal receiver", co)
@@ -76,7 +76,6 @@ func (co *Context) SetTotal(c int64) error {
 // Next counts from 1 up to the total, then reports the end with null.
 // Bound with `.iterator`, so Go ranges over it as `All()`.
 // The bool result reports whether a value was present; the value before it is zero when it was not.
-// It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (co *Context) Next() (int64, bool, error) {
 	ptr, err := zigoCheckedPointer("Context.Next receiver", co)
@@ -112,8 +111,6 @@ func (co *Context) All() iter.Seq2[int64, error] {
 // NextChecked is `next` with a failure path: a negative total is an
 // error the sequence surfaces, rather than an empty sequence.
 // The bool result reports whether a value was present; the value before it is zero when it was not.
-// It returns *HandleError if a required handle is nil or closed.
-// Native failures are returned as generated error values.
 func (co *Context) NextChecked() (int64, bool, error) {
 	ptr, err := zigoCheckedPointer("Context.NextChecked receiver", co)
 	if err != nil {
@@ -146,7 +143,6 @@ func (co *Context) AllChecked() iter.Seq2[int64, error] {
 }
 
 // Rewind calls the Zig function Context.rewind.
-// It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (co *Context) Rewind() error {
 	ptr, err := zigoCheckedPointer("Context.Rewind receiver", co)
@@ -163,7 +159,6 @@ func (co *Context) Rewind() error {
 
 // AddCopy receives a copy of the handle's value. Its mutation is visible
 // to this call but cannot change the storage owned by the Go handle.
-// It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (co *Context) AddCopy(value int64) (int64, error) {
 	ptr, err := zigoCheckedPointer("Context.AddCopy receiver", co)
@@ -180,7 +175,6 @@ func (co *Context) AddCopy(value int64) (int64, error) {
 
 // BorrowView calls the Zig function Context.borrowView.
 // The returned reference remains valid only while its parent handle remains open.
-// It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (co *Context) BorrowView() (*ContextView, error) {
 	ptr, err := zigoCheckedPointer("Context.BorrowView receiver", co)
@@ -196,8 +190,6 @@ func (co *Context) BorrowView() (*ContextView, error) {
 }
 
 // Crash panics inside a method: what leaves a handle poisoned.
-// It returns *HandleError if a required handle is nil or closed.
-// Native failures are returned as generated error values.
 func (co *Context) Crash() error {
 	ptr, err := zigoCheckedPointer("Context.Crash receiver", co)
 	if err != nil {
@@ -214,7 +206,6 @@ func (co *Context) Crash() error {
 // CrashInfallible panics from a method that returns no error union.
 // Its Go signature still carries an `error` -- the handle check has to
 // be reportable -- so the panic reaches the caller through that.
-// It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (co *Context) CrashInfallible() (int64, error) {
 	ptr, err := zigoCheckedPointer("Context.CrashInfallible receiver", co)
@@ -230,7 +221,6 @@ func (co *Context) CrashInfallible() (int64, error) {
 }
 
 // Total calls the Zig function ContextView.total.
-// It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (c *ContextView) Total() (int64, error) {
 	ptr, err := zigoCheckedPointer("ContextView.Total receiver", c)
@@ -259,7 +249,6 @@ func LiveBytes() uint {
 }
 
 // SumCopies calls the Zig function sumCopies.
-// It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func SumCopies(bias int64, left *Context, right *Context) (int64, error) {
 	leftPtr, err := zigoCheckedPointer("SumCopies parameter left", left)
