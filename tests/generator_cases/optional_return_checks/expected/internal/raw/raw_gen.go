@@ -7,6 +7,12 @@ package raw
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/liboptional_return_checks_zigo.a
+#cgo noescape zg_terminal_password
+#cgo nocallback zg_terminal_password
+#cgo noescape zg_checked_level
+#cgo nocallback zg_checked_level
+#cgo noescape zg_terminal_value
+#cgo nocallback zg_terminal_value
 #include "zigo_optional_return_checks.h"
 */
 import "C"

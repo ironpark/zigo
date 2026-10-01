@@ -11,6 +11,8 @@ package raw
 #cgo windows,amd64 LDFLAGS: ${SRCDIR}/../../../zig-out/lib/windows_amd64/libscalar_zigo.a
 #cgo linux LDFLAGS: -ldl
 #cgo darwin,arm64 LDFLAGS: -framework Metal
+#cgo noescape zg_add
+#cgo nocallback zg_add
 #include "zigo_scalar.h"
 */
 import "C"

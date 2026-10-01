@@ -7,6 +7,16 @@ package raw
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libstore_zigo.a
+#cgo noescape zg_store_open
+#cgo nocallback zg_store_open
+#cgo noescape zg_store_flush
+#cgo nocallback zg_store_flush
+#cgo noescape zg_store_deinit
+#cgo nocallback zg_store_deinit
+#cgo noescape zg_cursor_init
+#cgo nocallback zg_cursor_init
+#cgo noescape zg_cursor_deinit
+#cgo nocallback zg_cursor_deinit
 #include "zigo_store.h"
 */
 import "C"

@@ -7,6 +7,12 @@ package raw
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libnested_namespace_zigo.a
+#cgo noescape zg_unicode_codepoint_width
+#cgo nocallback zg_unicode_codepoint_width
+#cgo noescape zg_unicode_grapheme_breaks
+#cgo nocallback zg_unicode_grapheme_breaks
+#cgo noescape zg_osc_parser_state_parse
+#cgo nocallback zg_osc_parser_state_parse
 #include "zigo_nested_namespace.h"
 */
 import "C"

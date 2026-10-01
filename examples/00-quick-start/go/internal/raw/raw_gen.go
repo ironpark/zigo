@@ -8,6 +8,10 @@ package raw
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libcalculator_zigo.a
 #include <stdlib.h>
+#cgo noescape zg_add
+#cgo nocallback zg_add
+#cgo noescape zg_buildinfo_build_info
+#cgo nocallback zg_buildinfo_build_info
 #include "zigo_calculator.h"
 */
 import "C"

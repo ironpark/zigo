@@ -7,6 +7,16 @@ package raw
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libinput_zigo.a
+#cgo noescape zg_key_printable
+#cgo nocallback zg_key_printable
+#cgo noescape zg_key_codepoint
+#cgo nocallback zg_key_codepoint
+#cgo noescape zg_key_combine
+#cgo nocallback zg_key_combine
+#cgo noescape zg_mode_enabled
+#cgo nocallback zg_mode_enabled
+#cgo noescape zg_from_ascii
+#cgo nocallback zg_from_ascii
 #include "zigo_input.h"
 */
 import "C"

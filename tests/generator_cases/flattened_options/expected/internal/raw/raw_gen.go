@@ -7,6 +7,8 @@ package raw
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libflattened_options_zigo.a
+#cgo noescape zg_configure
+#cgo nocallback zg_configure
 #include "zigo_flattened_options.h"
 */
 import "C"

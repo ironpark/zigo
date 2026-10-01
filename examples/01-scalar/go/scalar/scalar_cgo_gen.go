@@ -4,6 +4,8 @@ package scalar
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../zig-out/include
+#cgo noescape zg_add
+#cgo nocallback zg_add
 #include "zigo_scalar.h"
 */
 import "C"

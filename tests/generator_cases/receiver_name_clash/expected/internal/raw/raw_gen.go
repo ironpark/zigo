@@ -7,6 +7,12 @@ package raw
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libreceiver_name_clash_zigo.a
+#cgo noescape zg_terminal_set_title
+#cgo nocallback zg_terminal_set_title
+#cgo noescape zg_terminal_collide_all
+#cgo nocallback zg_terminal_collide_all
+#cgo noescape zg_terminal_clear
+#cgo nocallback zg_terminal_clear
 #include "zigo_receiver_name_clash.h"
 */
 import "C"

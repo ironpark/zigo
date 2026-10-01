@@ -7,6 +7,8 @@ package raw
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libscalar_zigo.a
+#cgo noescape zg_add
+#cgo nocallback zg_add
 #include "zigo_scalar.h"
 */
 import "C"

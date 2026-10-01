@@ -208,6 +208,25 @@ fn writeTrailingLdflags(writer: *std.Io.Writer, options: emit.Options) !void {
     if (options.system_ldflags.len != 0) try writer.print(" {s}", .{options.system_ldflags});
 }
 
+/// Without these, cgo assumes every Go pointer passed to C escapes, so even an
+/// out-parameter the call writes one scalar through is a heap allocation per
+/// call. `noescape` lets it stay on the stack; that is only sound when the C
+/// function cannot call back into Go, since a callback can grow the goroutine
+/// stack and move what the C side is pointing at. `nocallback` states that
+/// and makes the runtime enforce it.
+///
+/// A binding with no callback and no stream has no Go entry point a native
+/// call could reach, so the pair holds for all of its functions. One with
+/// either is left as it is: a native call can reach a callback through state
+/// the generator does not see -- a child handle calling its parent's retained
+/// observer -- and an annotation that is wrong there is a crash.
+fn writeNoCallbackAnnotations(writer: *std.Io.Writer, program: abi.Program) !void {
+    if (common.programHasCallbacks(program)) return;
+    for (program.functions) |function| {
+        try writer.print("\n#cgo noescape {0s}\n#cgo nocallback {0s}", .{function.symbol});
+    }
+}
+
 pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: emit.Options) !void {
     if (options.backend == .purego) return purego.renderPuregoRaw(allocator, writer, program, options);
     const package = try naming.snakeAlloc(allocator, program.package);
@@ -230,6 +249,7 @@ pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
     for (options.target_ldflags) |entry| try writer.print("\n#cgo {s} LDFLAGS: {s}", .{ entry.constraint, entry.flags });
     if (options.framework_ldflags.len != 0) try writer.print("\n#cgo darwin LDFLAGS: {s}", .{options.framework_ldflags});
     if (common.programHasCString(program)) try writer.writeAll("\n#include <stdlib.h>");
+    try writeNoCallbackAnnotations(writer, program);
     if (options.header_name.len != 0)
         try writer.print("\n#include \"{s}\"\n*/\nimport \"C\"\n", .{options.header_name})
     else

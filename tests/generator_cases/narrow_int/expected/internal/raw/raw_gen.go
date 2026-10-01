@@ -7,6 +7,20 @@ package raw
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libnarrow_int_zigo.a
+#cgo noescape zg_codepoint_width
+#cgo nocallback zg_codepoint_width
+#cgo noescape zg_clamp_offset
+#cgo nocallback zg_clamp_offset
+#cgo noescape zg_decode
+#cgo nocallback zg_decode
+#cgo noescape zg_sum_codepoints
+#cgo nocallback zg_sum_codepoints
+#cgo noescape zg_fill_codepoints
+#cgo nocallback zg_fill_codepoints
+#cgo noescape zg_take_codepoints
+#cgo nocallback zg_take_codepoints
+#cgo noescape zg_free_codepoints
+#cgo nocallback zg_free_codepoints
 #include "zigo_narrow_int.h"
 */
 import "C"

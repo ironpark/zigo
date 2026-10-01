@@ -7,6 +7,18 @@ package raw
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libatomic_value_zigo.a
+#cgo noescape zg_handle_counter
+#cgo nocallback zg_handle_counter
+#cgo noescape zg_handle_set_counter
+#cgo nocallback zg_handle_set_counter
+#cgo noescape zg_round_trip
+#cgo nocallback zg_round_trip
+#cgo noescape zg_configure
+#cgo nocallback zg_configure
+#cgo noescape zg_echo_record
+#cgo nocallback zg_echo_record
+#cgo noescape zg_echo_event
+#cgo nocallback zg_echo_event
 #include "zigo_atomic_value.h"
 */
 import "C"

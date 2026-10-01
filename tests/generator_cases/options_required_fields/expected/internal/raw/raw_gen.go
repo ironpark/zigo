@@ -7,6 +7,12 @@ package raw
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/liboptions_required_fields_zigo.a
+#cgo noescape zg_terminal_init
+#cgo nocallback zg_terminal_init
+#cgo noescape zg_configure
+#cgo nocallback zg_configure
+#cgo noescape zg_terminal_free_terminal
+#cgo nocallback zg_terminal_free_terminal
 #include "zigo_options_required_fields.h"
 */
 import "C"

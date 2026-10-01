@@ -7,6 +7,24 @@ package raw
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libfieldaccess_zigo.a
+#cgo noescape zg_terminal_cursor_x
+#cgo nocallback zg_terminal_cursor_x
+#cgo noescape zg_terminal_cursor_visible
+#cgo nocallback zg_terminal_cursor_visible
+#cgo noescape zg_terminal_set_cursor_style
+#cgo nocallback zg_terminal_set_cursor_style
+#cgo noescape zg_terminal_set_cursor_x
+#cgo nocallback zg_terminal_set_cursor_x
+#cgo noescape zg_terminal_charset_single_shift
+#cgo nocallback zg_terminal_charset_single_shift
+#cgo noescape zg_terminal_scrollback
+#cgo nocallback zg_terminal_scrollback
+#cgo noescape zg_terminal_set_scrollback
+#cgo nocallback zg_terminal_set_scrollback
+#cgo noescape zg_terminal_title
+#cgo nocallback zg_terminal_title
+#cgo noescape zg_terminal_palette
+#cgo nocallback zg_terminal_palette
 #include "zigo_fieldaccess.h"
 */
 import "C"

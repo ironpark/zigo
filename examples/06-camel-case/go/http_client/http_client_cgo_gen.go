@@ -5,6 +5,8 @@ package http_client
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../zig-out/lib/libhttp_client_zigo.a
+#cgo noescape zg_status_code
+#cgo nocallback zg_status_code
 #include "zigo_http_client.h"
 */
 import "C"

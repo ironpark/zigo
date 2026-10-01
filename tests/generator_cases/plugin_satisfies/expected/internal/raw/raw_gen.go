@@ -7,6 +7,12 @@ package raw
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libdocs_zigo.a
+#cgo noescape zg_document_open
+#cgo nocallback zg_document_open
+#cgo noescape zg_document_close
+#cgo nocallback zg_document_close
+#cgo noescape zg_document_count
+#cgo nocallback zg_document_count
 #include "zigo_docs.h"
 */
 import "C"

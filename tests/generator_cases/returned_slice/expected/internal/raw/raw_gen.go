@@ -7,6 +7,10 @@ package raw
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libattrs_zigo.a
+#cgo noescape zg_print_attributes
+#cgo nocallback zg_print_attributes
+#cgo noescape zg_copy_digits
+#cgo nocallback zg_copy_digits
 #include "zigo_attrs.h"
 */
 import "C"

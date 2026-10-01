@@ -7,6 +7,8 @@ package raw
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libdisplay_zigo.a
+#cgo noescape zg_screen_select_all
+#cgo nocallback zg_screen_select_all
 #include "zigo_display.h"
 */
 import "C"

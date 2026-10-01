@@ -7,6 +7,16 @@ package raw
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libtree_zigo.a
+#cgo noescape zg_snapshot
+#cgo nocallback zg_snapshot
+#cgo noescape zg_many
+#cgo nocallback zg_many
+#cgo noescape zg_release
+#cgo nocallback zg_release
+#cgo noescape zg_fill
+#cgo nocallback zg_fill
+#cgo noescape zg_fill_checked
+#cgo nocallback zg_fill_checked
 #include "zigo_tree.h"
 */
 import "C"

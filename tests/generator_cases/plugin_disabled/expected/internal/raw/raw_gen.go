@@ -7,6 +7,8 @@ package raw
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libmeter_zigo.a
+#cgo noescape zg_ping
+#cgo nocallback zg_ping
 #include "zigo_meter.h"
 */
 import "C"

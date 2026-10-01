@@ -7,6 +7,22 @@ package raw
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libterminal_zigo.a
+#cgo noescape zg_new_terminal
+#cgo nocallback zg_new_terminal
+#cgo noescape zg_terminal_free_terminal
+#cgo nocallback zg_terminal_free_terminal
+#cgo noescape zg_terminal_resize
+#cgo nocallback zg_terminal_resize
+#cgo noescape zg_terminal_render
+#cgo nocallback zg_terminal_render
+#cgo noescape zg_free_string
+#cgo nocallback zg_free_string
+#cgo noescape zg_new_snapshot
+#cgo nocallback zg_new_snapshot
+#cgo noescape zg_snapshot_free_snapshot
+#cgo nocallback zg_snapshot_free_snapshot
+#cgo noescape zg_snapshot_terminal
+#cgo nocallback zg_snapshot_terminal
 #include "zigo_terminal.h"
 */
 import "C"

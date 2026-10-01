@@ -44,6 +44,24 @@ owner lifecycle도 acquire하여 owner가 먼저 파괴되지 않게 합니다.
 panic이 native frame을 비정상적으로 끝내면 참여 handle을 poison합니다. 이후 호출은 실패하고
 안전하지 않은 destructor는 건너뛸 수 있습니다.
 
+acquire와 release는 handle의 `mu`를 한 번씩 잡습니다. 한 goroutine에서의 비용은 수십 ns이고,
+여러 goroutine이 한 handle을 동시에 부르면 경합이 raw 호출보다 커질 수 있습니다. atomic
+counter로 바꿔도 cache line 경합이 남아 이득이 작으므로(측정상 약 1.5배) 현재 구조를
+유지합니다. 측정은 `examples/03-opaque/go/opaque/call_overhead_bench_test.go`로 합니다.
+
+```bash
+cd examples/03-opaque/go && go test -run '^$' -bench . ./opaque
+```
+
+## cgo 호출 annotation
+
+콜백과 스트림이 하나도 없는 바인딩의 raw package는 모든 C 함수에 `#cgo noescape`와
+`#cgo nocallback`을 붙입니다. 그러면 out-parameter와 call-scoped 입력이 stack에 남아 호출당
+heap 할당이 없어집니다. `noescape`는 C가 Go로 돌아오지 않을 때만 안전하므로(callback이
+goroutine stack을 키우면 C가 가리키는 주소가 옮겨질 수 있습니다) `nocallback`과 짝으로만
+씁니다. 콜백이나 스트림이 있는 바인딩은 자식 handle이 부모의 retained callback을 부르는 것처럼
+generator가 볼 수 없는 경로가 있으므로 annotation을 붙이지 않습니다.
+
 ## callback registry
 
 borrowed callback token은 call 종료 후 해제합니다. retained callback token은 이를 소유한 handle

@@ -7,6 +7,30 @@ package raw
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libinterfaces_zigo.a
+#cgo noescape zg_int_batch_create
+#cgo nocallback zg_int_batch_create
+#cgo noescape zg_int_batch_len
+#cgo nocallback zg_int_batch_len
+#cgo noescape zg_int_batch_clear
+#cgo nocallback zg_int_batch_clear
+#cgo noescape zg_int_batch_push
+#cgo nocallback zg_int_batch_push
+#cgo noescape zg_int_batch_deinit
+#cgo nocallback zg_int_batch_deinit
+#cgo noescape zg_float_batch_create
+#cgo nocallback zg_float_batch_create
+#cgo noescape zg_float_batch_len
+#cgo nocallback zg_float_batch_len
+#cgo noescape zg_float_batch_clear
+#cgo nocallback zg_float_batch_clear
+#cgo noescape zg_float_batch_push
+#cgo nocallback zg_float_batch_push
+#cgo noescape zg_float_batch_deinit
+#cgo nocallback zg_float_batch_deinit
+#cgo noescape zg_window_size
+#cgo nocallback zg_window_size
+#cgo noescape zg_int_batch_window
+#cgo nocallback zg_int_batch_window
 #include "zigo_interfaces.h"
 */
 import "C"

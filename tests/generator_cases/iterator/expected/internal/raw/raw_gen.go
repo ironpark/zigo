@@ -7,6 +7,12 @@ package raw
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libcursor_zigo.a
+#cgo noescape zg_cursor_next
+#cgo nocallback zg_cursor_next
+#cgo noescape zg_cursor_next_checked
+#cgo nocallback zg_cursor_next_checked
+#cgo noescape zg_cursor_reset
+#cgo nocallback zg_cursor_reset
 #include "zigo_cursor.h"
 */
 import "C"

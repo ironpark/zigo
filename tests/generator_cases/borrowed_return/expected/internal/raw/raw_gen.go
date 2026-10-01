@@ -7,6 +7,18 @@ package raw
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libborrowed_return_zigo.a
+#cgo noescape zg_new_parent
+#cgo nocallback zg_new_parent
+#cgo noescape zg_parent_free_parent
+#cgo nocallback zg_parent_free_parent
+#cgo noescape zg_parent_view
+#cgo nocallback zg_parent_view
+#cgo noescape zg_parent_maybe_view
+#cgo nocallback zg_parent_maybe_view
+#cgo noescape zg_parent_checked_view
+#cgo nocallback zg_parent_checked_view
+#cgo noescape zg_view_touch
+#cgo nocallback zg_view_touch
 #include "zigo_borrowed_return.h"
 */
 import "C"

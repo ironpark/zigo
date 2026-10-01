@@ -7,6 +7,42 @@ package raw
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libopaque_zigo.a
+#cgo noescape zg_context_create
+#cgo nocallback zg_context_create
+#cgo noescape zg_context_add
+#cgo nocallback zg_context_add
+#cgo noescape zg_context_maybe_total
+#cgo nocallback zg_context_maybe_total
+#cgo noescape zg_context_set_total
+#cgo nocallback zg_context_set_total
+#cgo noescape zg_context_next
+#cgo nocallback zg_context_next
+#cgo noescape zg_context_next_checked
+#cgo nocallback zg_context_next_checked
+#cgo noescape zg_context_rewind
+#cgo nocallback zg_context_rewind
+#cgo noescape zg_context_add_copy
+#cgo nocallback zg_context_add_copy
+#cgo noescape zg_context_borrow_view
+#cgo nocallback zg_context_borrow_view
+#cgo noescape zg_context_crash
+#cgo nocallback zg_context_crash
+#cgo noescape zg_context_crash_infallible
+#cgo nocallback zg_context_crash_infallible
+#cgo noescape zg_context_deinit
+#cgo nocallback zg_context_deinit
+#cgo noescape zg_context_view_total
+#cgo nocallback zg_context_view_total
+#cgo noescape zg_crash_fatal
+#cgo nocallback zg_crash_fatal
+#cgo noescape zg_live_bytes
+#cgo nocallback zg_live_bytes
+#cgo noescape zg_sum_copies
+#cgo nocallback zg_sum_copies
+#cgo noescape zg_echo
+#cgo nocallback zg_echo
+#cgo noescape zg_fallback
+#cgo nocallback zg_fallback
 #include "zigo_opaque.h"
 */
 import "C"

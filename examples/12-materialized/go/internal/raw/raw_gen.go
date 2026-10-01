@@ -7,6 +7,46 @@ package raw
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libmaterialized_zigo.a
+#cgo noescape zg_legacy_leaf_value
+#cgo nocallback zg_legacy_leaf_value
+#cgo noescape zg_legacy_probe_create
+#cgo nocallback zg_legacy_probe_create
+#cgo noescape zg_legacy_probe_id
+#cgo nocallback zg_legacy_probe_id
+#cgo noescape zg_legacy_probe_active
+#cgo nocallback zg_legacy_probe_active
+#cgo noescape zg_legacy_probe_child
+#cgo nocallback zg_legacy_probe_child
+#cgo noescape zg_legacy_probe_deinit
+#cgo nocallback zg_legacy_probe_deinit
+#cgo noescape zg_cursor_create
+#cgo nocallback zg_cursor_create
+#cgo noescape zg_cursor_next
+#cgo nocallback zg_cursor_next
+#cgo noescape zg_cursor_next_checked
+#cgo nocallback zg_cursor_next_checked
+#cgo noescape zg_cursor_count
+#cgo nocallback zg_cursor_count
+#cgo noescape zg_cursor_deinit
+#cgo nocallback zg_cursor_deinit
+#cgo noescape zg_optional_snapshot
+#cgo nocallback zg_optional_snapshot
+#cgo noescape zg_optional_batch
+#cgo nocallback zg_optional_batch
+#cgo noescape zg_optional_batch_checked
+#cgo nocallback zg_optional_batch_checked
+#cgo noescape zg_released_buffers
+#cgo nocallback zg_released_buffers
+#cgo noescape zg_snapshot
+#cgo nocallback zg_snapshot
+#cgo noescape zg_probe_many
+#cgo nocallback zg_probe_many
+#cgo noescape zg_fill
+#cgo nocallback zg_fill
+#cgo noescape zg_wire_version
+#cgo nocallback zg_wire_version
+#cgo noescape zg_release
+#cgo nocallback zg_release
 #include "zigo_materialized.h"
 */
 import "C"

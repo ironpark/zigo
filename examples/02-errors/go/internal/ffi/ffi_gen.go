@@ -7,6 +7,14 @@ package ffi
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/liberrors_zigo.a
+#cgo noescape zg_divide
+#cgo nocallback zg_divide
+#cgo noescape zg_sum
+#cgo nocallback zg_sum
+#cgo noescape zg_normalize_format
+#cgo nocallback zg_normalize_format
+#cgo noescape zg_codepoint_width
+#cgo nocallback zg_codepoint_width
 #include "zigo_errors.h"
 */
 import "C"

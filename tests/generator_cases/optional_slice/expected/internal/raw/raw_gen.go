@@ -8,6 +8,26 @@ package raw
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/liboptslice_zigo.a
 #include <stdlib.h>
+#cgo noescape zg_measure
+#cgo nocallback zg_measure
+#cgo noescape zg_label
+#cgo nocallback zg_label
+#cgo noescape zg_total
+#cgo nocallback zg_total
+#cgo noescape zg_digits
+#cgo nocallback zg_digits
+#cgo noescape zg_name
+#cgo nocallback zg_name
+#cgo noescape zg_checked_digits
+#cgo nocallback zg_checked_digits
+#cgo noescape zg_take_owned
+#cgo nocallback zg_take_owned
+#cgo noescape zg_free_owned
+#cgo nocallback zg_free_owned
+#cgo noescape zg_take_owned_c_string
+#cgo nocallback zg_take_owned_c_string
+#cgo noescape zg_free_owned_c_string
+#cgo nocallback zg_free_owned_c_string
 #include "zigo_optslice.h"
 */
 import "C"

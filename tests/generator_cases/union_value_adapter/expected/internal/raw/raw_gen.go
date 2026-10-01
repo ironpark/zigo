@@ -7,6 +7,12 @@ package raw
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libviewport_zigo.a
+#cgo noescape zg_apply
+#cgo nocallback zg_apply
+#cgo noescape zg_current
+#cgo nocallback zg_current
+#cgo noescape zg_parse
+#cgo nocallback zg_parse
 #include "zigo_viewport.h"
 */
 import "C"

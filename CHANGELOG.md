@@ -20,6 +20,9 @@
 
 - `ZIGO_DEBUG_LEAKS`: 설정하고 실행하면 `Close` 없이 GC가 회수한 핸들마다 생성 위치의 stack을
   표준 오류에 출력합니다. 꺼져 있을 때 생성자 비용은 분기 하나입니다.
+- 콜백과 스트림이 없는 cgo 바인딩의 raw package가 모든 C 함수에 `#cgo noescape`와
+  `#cgo nocallback`을 선언합니다. out-parameter가 stack에 남아 호출당 heap 할당이 사라집니다.
+  콜백이나 스트림이 있는 바인딩의 생성 결과는 그대로입니다.
 
 ## [0.30.0] - 2026-09-15
 

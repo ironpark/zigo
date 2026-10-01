@@ -7,6 +7,12 @@ package raw
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libopenenum_zigo.a
+#cgo noescape zg_echo
+#cgo nocallback zg_echo
+#cgo noescape zg_configure
+#cgo nocallback zg_configure
+#cgo noescape zg_accept_values
+#cgo nocallback zg_accept_values
 #include "zigo_openenum.h"
 */
 import "C"

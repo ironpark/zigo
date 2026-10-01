@@ -7,6 +7,24 @@ package raw
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libgeometry_zigo.a
+#cgo noescape zg_translate
+#cgo nocallback zg_translate
+#cgo noescape zg_shift
+#cgo nocallback zg_shift
+#cgo noescape zg_accept_points
+#cgo nocallback zg_accept_points
+#cgo noescape zg_corners
+#cgo nocallback zg_corners
+#cgo noescape zg_bounds
+#cgo nocallback zg_bounds
+#cgo noescape zg_set_speed
+#cgo nocallback zg_set_speed
+#cgo noescape zg_speeds
+#cgo nocallback zg_speeds
+#cgo noescape zg_elapsed
+#cgo nocallback zg_elapsed
+#cgo noescape zg_checked_elapsed
+#cgo nocallback zg_checked_elapsed
 #include "zigo_geometry.h"
 */
 import "C"

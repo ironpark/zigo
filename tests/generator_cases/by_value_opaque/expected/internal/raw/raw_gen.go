@@ -7,6 +7,10 @@ package raw
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libopaque_value_zigo.a
+#cgo noescape zg_screen_is_bottom
+#cgo nocallback zg_screen_is_bottom
+#cgo noescape zg_same
+#cgo nocallback zg_same
 #include "zigo_opaque_value.h"
 */
 import "C"

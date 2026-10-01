@@ -7,6 +7,10 @@ package raw
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libjob_zigo.a
+#cgo noescape zg_job_crunch
+#cgo nocallback zg_job_crunch
+#cgo noescape zg_job_total
+#cgo nocallback zg_job_total
 #include "zigo_job.h"
 */
 import "C"

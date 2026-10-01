@@ -7,6 +7,22 @@ package raw
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/liblookup_zigo.a
+#cgo noescape zg_echo_dense
+#cgo nocallback zg_echo_dense
+#cgo noescape zg_echo_holes
+#cgo nocallback zg_echo_holes
+#cgo noescape zg_echo_min64
+#cgo nocallback zg_echo_min64
+#cgo noescape zg_echo_max64
+#cgo nocallback zg_echo_max64
+#cgo noescape zg_echo_max8
+#cgo nocallback zg_echo_max8
+#cgo noescape zg_echo_sparse
+#cgo nocallback zg_echo_sparse
+#cgo noescape zg_echo_single
+#cgo nocallback zg_echo_single
+#cgo noescape zg_echo_large
+#cgo nocallback zg_echo_large
 #include "zigo_lookup.h"
 */
 import "C"

@@ -7,6 +7,22 @@ package raw
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libsession_zigo.a
+#cgo noescape zg_queue_create
+#cgo nocallback zg_queue_create
+#cgo noescape zg_queue_deinit
+#cgo nocallback zg_queue_deinit
+#cgo noescape zg_queue_new_stream
+#cgo nocallback zg_queue_new_stream
+#cgo noescape zg_stream_free_stream
+#cgo nocallback zg_stream_free_stream
+#cgo noescape zg_queue_new_ticker
+#cgo nocallback zg_queue_new_ticker
+#cgo noescape zg_ticker_free_ticker
+#cgo nocallback zg_ticker_free_ticker
+#cgo noescape zg_queue_new_search
+#cgo nocallback zg_queue_new_search
+#cgo noescape zg_search_free_search
+#cgo nocallback zg_search_free_search
 #include "zigo_session.h"
 */
 import "C"

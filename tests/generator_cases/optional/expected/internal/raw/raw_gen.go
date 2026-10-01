@@ -7,6 +7,18 @@ package raw
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/liboptional_zigo.a
+#cgo noescape zg_double
+#cgo nocallback zg_double
+#cgo noescape zg_flag
+#cgo nocallback zg_flag
+#cgo noescape zg_pick_mode
+#cgo nocallback zg_pick_mode
+#cgo noescape zg_checked_double
+#cgo nocallback zg_checked_double
+#cgo noescape zg_shift_point
+#cgo nocallback zg_shift_point
+#cgo noescape zg_checked_point
+#cgo nocallback zg_checked_point
 #include "zigo_optional.h"
 */
 import "C"

@@ -7,6 +7,16 @@ package raw
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libsignal_zigo.a
+#cgo noescape zg_signal_create
+#cgo nocallback zg_signal_create
+#cgo noescape zg_signal_deinit
+#cgo nocallback zg_signal_deinit
+#cgo noescape zg_signal_set_ticks
+#cgo nocallback zg_signal_set_ticks
+#cgo noescape zg_signal_set_mode
+#cgo nocallback zg_signal_set_mode
+#cgo noescape zg_signal_set_active
+#cgo nocallback zg_signal_set_active
 #include "zigo_signal.h"
 */
 import "C"

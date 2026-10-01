@@ -7,6 +7,8 @@ package raw
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libpalette_zigo.a
+#cgo noescape zg_echo_color
+#cgo nocallback zg_echo_color
 #include "zigo_palette.h"
 */
 import "C"

@@ -7,6 +7,18 @@ package raw
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libdependent_handle_zigo.a
+#cgo noescape zg_new_parent
+#cgo nocallback zg_new_parent
+#cgo noescape zg_parent_free_parent
+#cgo nocallback zg_parent_free_parent
+#cgo noescape zg_parent_view
+#cgo nocallback zg_parent_view
+#cgo noescape zg_view_new_child
+#cgo nocallback zg_view_new_child
+#cgo noescape zg_child_free_child
+#cgo nocallback zg_child_free_child
+#cgo noescape zg_child_touch
+#cgo nocallback zg_child_touch
 #include "zigo_dependent_handle.h"
 */
 import "C"

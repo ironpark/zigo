@@ -7,6 +7,30 @@ package raw
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libconfig_zigo.a
+#cgo noescape zg_configure
+#cgo nocallback zg_configure
+#cgo noescape zg_default_config
+#cgo nocallback zg_default_config
+#cgo noescape zg_translate
+#cgo nocallback zg_translate
+#cgo noescape zg_load
+#cgo nocallback zg_load
+#cgo noescape zg_accept_points
+#cgo nocallback zg_accept_points
+#cgo noescape zg_fill_points
+#cgo nocallback zg_fill_points
+#cgo noescape zg_fill_all_points
+#cgo nocallback zg_fill_all_points
+#cgo noescape zg_accept_configs
+#cgo nocallback zg_accept_configs
+#cgo noescape zg_fill_configs
+#cgo nocallback zg_fill_configs
+#cgo noescape zg_configs
+#cgo nocallback zg_configs
+#cgo noescape zg_points
+#cgo nocallback zg_points
+#cgo noescape zg_points_checked
+#cgo nocallback zg_points_checked
 #include "zigo_config.h"
 */
 import "C"
