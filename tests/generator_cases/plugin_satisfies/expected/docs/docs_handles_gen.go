@@ -4,6 +4,7 @@ package docs
 
 import (
 	"io"
+	"os"
 	"runtime"
 	"sync"
 	"unsafe"
@@ -67,17 +68,19 @@ func (d *Document) zigoPoison(cause *NativePanicError) {
 }
 
 type zigoDocumentCleanupState struct {
-	ptr unsafe.Pointer
+	ptr  unsafe.Pointer
+	site []byte
 }
 
 func zigoNewDocument(ptr unsafe.Pointer) *Document {
 	value := &Document{ptr: ptr}
-	state := zigoDocumentCleanupState{ptr: ptr}
+	state := zigoDocumentCleanupState{ptr: ptr, site: zigoLeakSite()}
 	value.cleanup = runtime.AddCleanup(value, zigoCleanupDocument, state)
 	return value
 }
 
 func zigoCleanupDocument(state zigoDocumentCleanupState) {
+	zigoReportLeak("Document", state.site)
 	if state.ptr != nil {
 		raw.DocumentClose(state.ptr)
 	}
@@ -129,3 +132,27 @@ var _ io.Closer = (*Document)(nil)
 
 // Document satisfies Counter; this assertion stops compiling the day it does not.
 var _ Counter = (*Document)(nil)
+
+// zigoLeakTracking is set from ZIGO_DEBUG_LEAKS once, when the package is
+// initialised. While it is set, a handle the garbage collector reclaims
+// without Close reports on standard error where it was created.
+var zigoLeakTracking = os.Getenv("ZIGO_DEBUG_LEAKS") != ""
+
+// zigoLeakSite records the creating goroutine's stack, or nothing while leak
+// tracking is off.
+func zigoLeakSite() []byte {
+	if !zigoLeakTracking {
+		return nil
+	}
+	buffer := make([]byte, 4096)
+	return buffer[:runtime.Stack(buffer, false)]
+}
+
+// zigoReportLeak runs only from a garbage-collector cleanup; Close hands the
+// cleanup a state without a site, so a closed handle is never reported.
+func zigoReportLeak(typeName string, site []byte) {
+	if site == nil {
+		return
+	}
+	os.Stderr.WriteString("zigo: " + typeName + " was garbage-collected without Close; created at:\n" + string(site) + "\n")
+}

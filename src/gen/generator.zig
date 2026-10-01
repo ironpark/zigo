@@ -1374,6 +1374,7 @@ test "opt-in cleanup isolates state stops explicitly and keeps owners alive" {
         "type zigoContextCleanupState struct {\n" ++
             "\tptr             unsafe.Pointer\n" ++
             "\tcallbackHandles []zigoCallbackHandle\n" ++
+            "\tsite            []byte\n" ++
             "}\n",
     ));
     try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "callbackHandles []zigoCallbackHandle"));

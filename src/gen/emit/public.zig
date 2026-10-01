@@ -1062,6 +1062,7 @@ const public_std_imports = [_]struct { qualifier: []const u8, path: []const u8 }
     .{ .qualifier = "binary", .path = "encoding/binary" },
     .{ .qualifier = "io", .path = "io" },
     .{ .qualifier = "math", .path = "math" },
+    .{ .qualifier = "os", .path = "os" },
     .{ .qualifier = "runtime", .path = "runtime" },
     .{ .qualifier = "cgo", .path = "runtime/cgo" },
     .{ .qualifier = "strconv", .path = "strconv" },

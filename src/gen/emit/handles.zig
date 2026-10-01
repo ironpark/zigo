@@ -17,6 +17,7 @@ const public_writers = @import("public_writers.zig");
 /// `cleanup` is the safety net for a handle the caller drops without closing.
 pub fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: emit.Options) !void {
     const names: LifecycleNames = .of(options);
+    var any_cleanup = false;
     for (program.types) |declaration| {
         if (!emit.packageMatches(declaration.package, options.active_package)) continue;
         if (!declaration.isHandle()) continue;
@@ -228,10 +229,15 @@ pub fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
             // reach the handle itself, or the handle stays reachable and the
             // cleanup never runs.
             try writer.print("type zigo{s}CleanupState struct {{\n", .{declaration.name});
-            const state_width = fieldNameWidth(&.{ "ptr", if (dependent_parent != null) "parent" else "", if (owns_callbacks) "callbackHandles" else "" });
+            any_cleanup = true;
+            const state_width = fieldNameWidth(&.{ "ptr", if (dependent_parent != null) "parent" else "", if (owns_callbacks) "callbackHandles" else "", "site" });
             try writeStructField(writer, "ptr", state_width, "unsafe.Pointer");
             if (dependent_parent != null) try writeStructField(writer, "parent", state_width, "zigoChildHandle");
             if (owns_callbacks) try writeStructField(writer, "callbackHandles", state_width, "[]zigoCallbackHandle");
+            // Only the copy the garbage collector holds carries the site: the
+            // state Close hands to the cleanup leaves it nil, so a closed
+            // handle never reports itself.
+            try writeStructField(writer, "site", state_width, "[]byte");
             try writer.writeAll("}\n\n");
             try writer.print("func zigoNew{s}(ptr unsafe.Pointer", .{declaration.name});
             if (dependent_parent != null) try writer.writeAll(", parent zigoChildHandle");
@@ -242,8 +248,8 @@ pub fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
             try writer.print("}}\n\tstate := zigo{s}CleanupState{{ptr: ptr", .{declaration.name});
             if (dependent_parent != null) try writer.writeAll(", parent: parent");
             if (owns_callbacks) try writer.writeAll(", callbackHandles: callbackHandles");
-            try writer.print("}}\n\tvalue.cleanup = runtime.AddCleanup(value, zigoCleanup{s}, state)\n\treturn value\n}}\n\n", .{declaration.name});
-            try writer.print("func zigoCleanup{s}(state zigo{s}CleanupState) {{\n\tif state.ptr != nil {{\n\t\t", .{ declaration.name, declaration.name });
+            try writer.print(", site: zigoLeakSite()}}\n\tvalue.cleanup = runtime.AddCleanup(value, zigoCleanup{s}, state)\n\treturn value\n}}\n\n", .{declaration.name});
+            try writer.print("func zigoCleanup{0s}(state zigo{0s}CleanupState) {{\n\tzigoReportLeak(\"{0s}\", state.site)\n\tif state.ptr != nil {{\n\t\t", .{declaration.name});
             try public_writers.writeRawReferencePrefix(writer, options);
             try writer.print("{s}(state.ptr)\n\t}}\n", .{raw_deinit});
             if (owns_callbacks) try writer.writeAll("\tfor _, handle := range state.callbackHandles {\n\t\tzigoDeleteCallbackHandle(handle)\n\t}\n");
@@ -313,6 +319,34 @@ pub fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
         }
         try plugin_hooks.visitType(options, plugin_hooks.context(allocator, program, options), writer, declaration);
     }
+    if (any_cleanup) try renderLeakTracking(writer);
+}
+
+/// The opt-in report for a handle the garbage collector reclaimed without
+/// Close. `ZIGO_DEBUG_LEAKS` is read once, at package initialisation; while it
+/// is unset a constructor records nothing and the cleanup reports nothing, so
+/// the cost is one branch per handle. When it is set every constructor pays
+/// for a stack capture, which is why it is a debugging switch.
+fn renderLeakTracking(writer: *std.Io.Writer) !void {
+    try writer.writeAll(
+        "// zigoLeakTracking is set from ZIGO_DEBUG_LEAKS once, when the package is\n" ++
+            "// initialised. While it is set, a handle the garbage collector reclaims\n" ++
+            "// without Close reports on standard error where it was created.\n" ++
+            "var zigoLeakTracking = os.Getenv(\"ZIGO_DEBUG_LEAKS\") != \"\"\n\n" ++
+            "// zigoLeakSite records the creating goroutine's stack, or nothing while leak\n" ++
+            "// tracking is off.\n" ++
+            "func zigoLeakSite() []byte {\n" ++
+            "\tif !zigoLeakTracking {\n\t\treturn nil\n\t}\n" ++
+            "\tbuffer := make([]byte, 4096)\n" ++
+            "\treturn buffer[:runtime.Stack(buffer, false)]\n" ++
+            "}\n\n" ++
+            "// zigoReportLeak runs only from a garbage-collector cleanup; Close hands the\n" ++
+            "// cleanup a state without a site, so a closed handle is never reported.\n" ++
+            "func zigoReportLeak(typeName string, site []byte) {\n" ++
+            "\tif site == nil {\n\t\treturn\n\t}\n" ++
+            "\tos.Stderr.WriteString(\"zigo: \" + typeName + \" was garbage-collected without Close; created at:\\n\" + string(site) + \"\\n\")\n" ++
+            "}\n",
+    );
 }
 
 /// How a handle reaches the lifecycle of another handle it holds through an

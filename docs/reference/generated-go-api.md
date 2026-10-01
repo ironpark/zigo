@@ -117,6 +117,24 @@ defer resource.Close()
 않습니다. borrowed 객체는 `Ref` 타입처럼 별도 표현을 사용할 수 있고 부모보다 오래 사용할
 수 없습니다.
 
+### `Close` 누락 찾기
+
+환경 변수 `ZIGO_DEBUG_LEAKS`를 비어 있지 않은 값으로 두고 프로그램이나 테스트를 실행하면,
+`Close` 없이 GC가 회수한 핸들마다 표준 오류에 그 핸들을 만든 goroutine stack을 출력합니다.
+
+```text
+zigo: Context was garbage-collected without Close; created at:
+goroutine 7 [running]:
+...
+```
+
+- 값은 패키지 초기화 때 한 번 읽습니다. 실행 중에 바꿔도 반영되지 않습니다.
+- 켜져 있으면 생성자마다 stack을 캡처하므로 디버깅 용도입니다. 꺼져 있을 때의 비용은 생성자의
+  분기 하나입니다.
+- `Close`한 핸들과 panic으로 poison된 핸들은 보고하지 않습니다.
+- 보고는 GC와 cleanup이 실제로 실행된 핸들만 대상으로 하므로, 프로세스가 먼저 끝나면 나오지
+  않을 수 있습니다.
+
 `Close`가 있는 모든 핸들의 파일에는 `var _ io.Closer = (*T)(nil)` 단언이 있습니다.
 `.implements`로 만족하는 인터페이스(`io.Writer`, `io.Reader`, `io.StringWriter`, `io.WriterTo`,
 `io.ReaderFrom`)마다 같은 단언이 핸들 뒤에 붙어, 래퍼가 인터페이스와 어긋나면 소비자가 아니라

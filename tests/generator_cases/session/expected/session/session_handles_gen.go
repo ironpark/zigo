@@ -4,6 +4,7 @@ package session
 
 import (
 	"io"
+	"os"
 	"runtime"
 	"sync"
 	"unsafe"
@@ -95,17 +96,19 @@ func (q *Queue) zigoDropChild() {
 }
 
 type zigoQueueCleanupState struct {
-	ptr unsafe.Pointer
+	ptr  unsafe.Pointer
+	site []byte
 }
 
 func zigoNewQueue(ptr unsafe.Pointer) *Queue {
 	value := &Queue{ptr: ptr}
-	state := zigoQueueCleanupState{ptr: ptr}
+	state := zigoQueueCleanupState{ptr: ptr, site: zigoLeakSite()}
 	value.cleanup = runtime.AddCleanup(value, zigoCleanupQueue, state)
 	return value
 }
 
 func zigoCleanupQueue(state zigoQueueCleanupState) {
+	zigoReportLeak("Queue", state.site)
 	if state.ptr != nil {
 		raw.QueueDeinit(state.ptr)
 	}
@@ -240,16 +243,18 @@ func (s *Stream) zigoPoison(cause *NativePanicError) {
 type zigoStreamCleanupState struct {
 	ptr    unsafe.Pointer
 	parent zigoChildHandle
+	site   []byte
 }
 
 func zigoNewStream(ptr unsafe.Pointer, parent zigoChildHandle) *Stream {
 	value := &Stream{ptr: ptr, parent: parent}
-	state := zigoStreamCleanupState{ptr: ptr, parent: parent}
+	state := zigoStreamCleanupState{ptr: ptr, parent: parent, site: zigoLeakSite()}
 	value.cleanup = runtime.AddCleanup(value, zigoCleanupStream, state)
 	return value
 }
 
 func zigoCleanupStream(state zigoStreamCleanupState) {
+	zigoReportLeak("Stream", state.site)
 	if state.ptr != nil {
 		raw.StreamFreeStream(state.ptr)
 	}
@@ -383,16 +388,18 @@ func (t *Ticker) zigoPoison(cause *NativePanicError) {
 type zigoTickerCleanupState struct {
 	ptr    unsafe.Pointer
 	parent zigoChildHandle
+	site   []byte
 }
 
 func zigoNewTicker(ptr unsafe.Pointer, parent zigoChildHandle) *Ticker {
 	value := &Ticker{ptr: ptr, parent: parent}
-	state := zigoTickerCleanupState{ptr: ptr, parent: parent}
+	state := zigoTickerCleanupState{ptr: ptr, parent: parent, site: zigoLeakSite()}
 	value.cleanup = runtime.AddCleanup(value, zigoCleanupTicker, state)
 	return value
 }
 
 func zigoCleanupTicker(state zigoTickerCleanupState) {
+	zigoReportLeak("Ticker", state.site)
 	if state.ptr != nil {
 		raw.TickerFreeTicker(state.ptr)
 	}
@@ -526,16 +533,18 @@ func (s *Search) zigoPoison(cause *NativePanicError) {
 type zigoSearchCleanupState struct {
 	ptr    unsafe.Pointer
 	parent zigoChildHandle
+	site   []byte
 }
 
 func zigoNewSearch(ptr unsafe.Pointer, parent zigoChildHandle) *Search {
 	value := &Search{ptr: ptr, parent: parent}
-	state := zigoSearchCleanupState{ptr: ptr, parent: parent}
+	state := zigoSearchCleanupState{ptr: ptr, parent: parent, site: zigoLeakSite()}
 	value.cleanup = runtime.AddCleanup(value, zigoCleanupSearch, state)
 	return value
 }
 
 func zigoCleanupSearch(state zigoSearchCleanupState) {
+	zigoReportLeak("Search", state.site)
 	if state.ptr != nil {
 		raw.SearchFreeSearch(state.ptr)
 	}
@@ -584,4 +593,28 @@ func (s *Search) zigoTakeLocked() (zigoSearchCleanupState, bool) {
 		state.ptr = nil
 	}
 	return state, true
+}
+
+// zigoLeakTracking is set from ZIGO_DEBUG_LEAKS once, when the package is
+// initialised. While it is set, a handle the garbage collector reclaims
+// without Close reports on standard error where it was created.
+var zigoLeakTracking = os.Getenv("ZIGO_DEBUG_LEAKS") != ""
+
+// zigoLeakSite records the creating goroutine's stack, or nothing while leak
+// tracking is off.
+func zigoLeakSite() []byte {
+	if !zigoLeakTracking {
+		return nil
+	}
+	buffer := make([]byte, 4096)
+	return buffer[:runtime.Stack(buffer, false)]
+}
+
+// zigoReportLeak runs only from a garbage-collector cleanup; Close hands the
+// cleanup a state without a site, so a closed handle is never reported.
+func zigoReportLeak(typeName string, site []byte) {
+	if site == nil {
+		return
+	}
+	os.Stderr.WriteString("zigo: " + typeName + " was garbage-collected without Close; created at:\n" + string(site) + "\n")
 }

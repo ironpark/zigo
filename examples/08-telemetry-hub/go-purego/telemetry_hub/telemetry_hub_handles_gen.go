@@ -4,6 +4,7 @@ package telemetry_hub
 
 import (
 	"io"
+	"os"
 	"runtime"
 	"sync"
 	"unsafe"
@@ -86,16 +87,18 @@ func (t *TelemetryHub) zigoPoison(cause *NativePanicError) {
 type zigoTelemetryHubCleanupState struct {
 	ptr             unsafe.Pointer
 	callbackHandles []zigoCallbackHandle
+	site            []byte
 }
 
 func zigoNewTelemetryHub(ptr unsafe.Pointer, callbackHandles []zigoCallbackHandle) *TelemetryHub {
 	value := &TelemetryHub{ptr: ptr, callbackHandles: callbackHandles}
-	state := zigoTelemetryHubCleanupState{ptr: ptr, callbackHandles: callbackHandles}
+	state := zigoTelemetryHubCleanupState{ptr: ptr, callbackHandles: callbackHandles, site: zigoLeakSite()}
 	value.cleanup = runtime.AddCleanup(value, zigoCleanupTelemetryHub, state)
 	return value
 }
 
 func zigoCleanupTelemetryHub(state zigoTelemetryHubCleanupState) {
+	zigoReportLeak("TelemetryHub", state.site)
 	if state.ptr != nil {
 		raw.TelemetryHubDeinit(state.ptr)
 	}
@@ -144,4 +147,28 @@ func (t *TelemetryHub) zigoTakeLocked() (zigoTelemetryHubCleanupState, bool) {
 		state.ptr = nil
 	}
 	return state, true
+}
+
+// zigoLeakTracking is set from ZIGO_DEBUG_LEAKS once, when the package is
+// initialised. While it is set, a handle the garbage collector reclaims
+// without Close reports on standard error where it was created.
+var zigoLeakTracking = os.Getenv("ZIGO_DEBUG_LEAKS") != ""
+
+// zigoLeakSite records the creating goroutine's stack, or nothing while leak
+// tracking is off.
+func zigoLeakSite() []byte {
+	if !zigoLeakTracking {
+		return nil
+	}
+	buffer := make([]byte, 4096)
+	return buffer[:runtime.Stack(buffer, false)]
+}
+
+// zigoReportLeak runs only from a garbage-collector cleanup; Close hands the
+// cleanup a state without a site, so a closed handle is never reported.
+func zigoReportLeak(typeName string, site []byte) {
+	if site == nil {
+		return
+	}
+	os.Stderr.WriteString("zigo: " + typeName + " was garbage-collected without Close; created at:\n" + string(site) + "\n")
 }

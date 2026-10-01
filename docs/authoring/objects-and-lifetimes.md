@@ -193,7 +193,8 @@ open := session.Streams()       // 자식 접근자는 복수형이다
 
 `Close`는 여러 번 호출해도 안전한 종료 경로를 제공하지만, 이미 닫혔거나 사용 중인 핸들의
 오류는 `errors.Is`로 분류해야 합니다. 자동 정리는 누락을 줄이는 안전망이지 명시적
-`Close`를 대신하지 않습니다.
+`Close`를 대신하지 않습니다. 누락된 `Close`는 `ZIGO_DEBUG_LEAKS=1`로 실행해 찾을 수 있습니다
+([생성 Go API](../reference/generated-go-api.md#close-누락-찾기)).
 
 Zig panic이 네이티브 호출 프레임을 비정상적으로 끝내면 객체는 안전하게 해제할 수 없다고 판단되어
 poison 상태가 될 수 있습니다. 이후 사용과 해제가 제한되고 네이티브 할당이 의도적으로

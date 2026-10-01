@@ -4,6 +4,7 @@ package type_relations
 
 import (
 	"io"
+	"os"
 	"runtime"
 	"sync"
 	"unsafe"
@@ -67,17 +68,19 @@ func (c *Counter) zigoPoison(cause *NativePanicError) {
 }
 
 type zigoCounterCleanupState struct {
-	ptr unsafe.Pointer
+	ptr  unsafe.Pointer
+	site []byte
 }
 
 func zigoNewCounter(ptr unsafe.Pointer) *Counter {
 	value := &Counter{ptr: ptr}
-	state := zigoCounterCleanupState{ptr: ptr}
+	state := zigoCounterCleanupState{ptr: ptr, site: zigoLeakSite()}
 	value.cleanup = runtime.AddCleanup(value, zigoCleanupCounter, state)
 	return value
 }
 
 func zigoCleanupCounter(state zigoCounterCleanupState) {
+	zigoReportLeak("Counter", state.site)
 	if state.ptr != nil {
 		raw.CounterDeinit(state.ptr)
 	}
@@ -180,17 +183,19 @@ func (a *Accumulator) zigoPoison(cause *NativePanicError) {
 }
 
 type zigoAccumulatorCleanupState struct {
-	ptr unsafe.Pointer
+	ptr  unsafe.Pointer
+	site []byte
 }
 
 func zigoNewAccumulator(ptr unsafe.Pointer) *Accumulator {
 	value := &Accumulator{ptr: ptr}
-	state := zigoAccumulatorCleanupState{ptr: ptr}
+	state := zigoAccumulatorCleanupState{ptr: ptr, site: zigoLeakSite()}
 	value.cleanup = runtime.AddCleanup(value, zigoCleanupAccumulator, state)
 	return value
 }
 
 func zigoCleanupAccumulator(state zigoAccumulatorCleanupState) {
+	zigoReportLeak("Accumulator", state.site)
 	if state.ptr != nil {
 		raw.AccumulatorDeinit(state.ptr)
 	}
@@ -235,4 +240,28 @@ func (a *Accumulator) zigoTakeLocked() (zigoAccumulatorCleanupState, bool) {
 		state.ptr = nil
 	}
 	return state, true
+}
+
+// zigoLeakTracking is set from ZIGO_DEBUG_LEAKS once, when the package is
+// initialised. While it is set, a handle the garbage collector reclaims
+// without Close reports on standard error where it was created.
+var zigoLeakTracking = os.Getenv("ZIGO_DEBUG_LEAKS") != ""
+
+// zigoLeakSite records the creating goroutine's stack, or nothing while leak
+// tracking is off.
+func zigoLeakSite() []byte {
+	if !zigoLeakTracking {
+		return nil
+	}
+	buffer := make([]byte, 4096)
+	return buffer[:runtime.Stack(buffer, false)]
+}
+
+// zigoReportLeak runs only from a garbage-collector cleanup; Close hands the
+// cleanup a state without a site, so a closed handle is never reported.
+func zigoReportLeak(typeName string, site []byte) {
+	if site == nil {
+		return
+	}
+	os.Stderr.WriteString("zigo: " + typeName + " was garbage-collected without Close; created at:\n" + string(site) + "\n")
 }

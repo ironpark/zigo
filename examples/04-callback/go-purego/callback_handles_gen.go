@@ -4,6 +4,7 @@ package callback
 
 import (
 	"io"
+	"os"
 	"runtime"
 	"sync"
 	"unsafe"
@@ -117,16 +118,18 @@ func (c *CallbackContext) zigoPoison(cause *NativePanicError) {
 type zigoCallbackContextCleanupState struct {
 	ptr             unsafe.Pointer
 	callbackHandles []zigoCallbackHandle
+	site            []byte
 }
 
 func zigoNewCallbackContext(ptr unsafe.Pointer, callbackHandles []zigoCallbackHandle) *CallbackContext {
 	value := &CallbackContext{ptr: ptr, callbackHandles: callbackHandles}
-	state := zigoCallbackContextCleanupState{ptr: ptr, callbackHandles: callbackHandles}
+	state := zigoCallbackContextCleanupState{ptr: ptr, callbackHandles: callbackHandles, site: zigoLeakSite()}
 	value.cleanup = runtime.AddCleanup(value, zigoCleanupCallbackContext, state)
 	return value
 }
 
 func zigoCleanupCallbackContext(state zigoCallbackContextCleanupState) {
+	zigoReportLeak("CallbackContext", state.site)
 	if state.ptr != nil {
 		raw.CallbackContextDeinit(state.ptr)
 	}
@@ -245,17 +248,19 @@ func (f *FloatBuffer) zigoPoison(cause *NativePanicError) {
 }
 
 type zigoFloatBufferCleanupState struct {
-	ptr unsafe.Pointer
+	ptr  unsafe.Pointer
+	site []byte
 }
 
 func zigoNewFloatBuffer(ptr unsafe.Pointer) *FloatBuffer {
 	value := &FloatBuffer{ptr: ptr}
-	state := zigoFloatBufferCleanupState{ptr: ptr}
+	state := zigoFloatBufferCleanupState{ptr: ptr, site: zigoLeakSite()}
 	value.cleanup = runtime.AddCleanup(value, zigoCleanupFloatBuffer, state)
 	return value
 }
 
 func zigoCleanupFloatBuffer(state zigoFloatBufferCleanupState) {
+	zigoReportLeak("FloatBuffer", state.site)
 	if state.ptr != nil {
 		raw.FloatBufferDeinit(state.ptr)
 	}
@@ -358,17 +363,19 @@ func (i *IntBuffer) zigoPoison(cause *NativePanicError) {
 }
 
 type zigoIntBufferCleanupState struct {
-	ptr unsafe.Pointer
+	ptr  unsafe.Pointer
+	site []byte
 }
 
 func zigoNewIntBuffer(ptr unsafe.Pointer) *IntBuffer {
 	value := &IntBuffer{ptr: ptr}
-	state := zigoIntBufferCleanupState{ptr: ptr}
+	state := zigoIntBufferCleanupState{ptr: ptr, site: zigoLeakSite()}
 	value.cleanup = runtime.AddCleanup(value, zigoCleanupIntBuffer, state)
 	return value
 }
 
 func zigoCleanupIntBuffer(state zigoIntBufferCleanupState) {
+	zigoReportLeak("IntBuffer", state.site)
 	if state.ptr != nil {
 		raw.IntBufferDeinit(state.ptr)
 	}
@@ -413,4 +420,28 @@ func (i *IntBuffer) zigoTakeLocked() (zigoIntBufferCleanupState, bool) {
 		state.ptr = nil
 	}
 	return state, true
+}
+
+// zigoLeakTracking is set from ZIGO_DEBUG_LEAKS once, when the package is
+// initialised. While it is set, a handle the garbage collector reclaims
+// without Close reports on standard error where it was created.
+var zigoLeakTracking = os.Getenv("ZIGO_DEBUG_LEAKS") != ""
+
+// zigoLeakSite records the creating goroutine's stack, or nothing while leak
+// tracking is off.
+func zigoLeakSite() []byte {
+	if !zigoLeakTracking {
+		return nil
+	}
+	buffer := make([]byte, 4096)
+	return buffer[:runtime.Stack(buffer, false)]
+}
+
+// zigoReportLeak runs only from a garbage-collector cleanup; Close hands the
+// cleanup a state without a site, so a closed handle is never reported.
+func zigoReportLeak(typeName string, site []byte) {
+	if site == nil {
+		return
+	}
+	os.Stderr.WriteString("zigo: " + typeName + " was garbage-collected without Close; created at:\n" + string(site) + "\n")
 }
