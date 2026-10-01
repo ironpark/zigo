@@ -77,6 +77,7 @@ const Rewriter = struct {
             .opaque_ptr => |*ref| ref.ref = self.name(ref.ref),
             .materialized => |*ref| ref.ref = self.name(ref.ref),
             .slice => |*value| value.element = try self.pointer(value.element),
+            .array => |*value| value.element = try self.pointer(value.element),
             .optional => |*value| value.child = try self.pointer(value.child),
             .atomic_ptr => |*value| value.child = try self.pointer(value.child),
             .error_union => |*value| value.payload = try self.pointer(value.payload),

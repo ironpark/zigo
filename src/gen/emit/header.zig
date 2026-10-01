@@ -69,7 +69,10 @@ fn renderValueStructTypes(writer: *std.Io.Writer, program: abi.Program) !void {
         for (record.fields) |field| {
             try writer.writeAll("    ");
             try writeCMemberType(writer, program, field.node, field.scalar);
-            try writer.print(" {s};\n", .{field.name});
+            if (field.node == .array)
+                try writer.print(" {s}[{d}];\n", .{ field.name, field.node.array.len })
+            else
+                try writer.print(" {s};\n", .{field.name});
         }
         try writer.print("}} {s};\n\n", .{record.c_name});
     }

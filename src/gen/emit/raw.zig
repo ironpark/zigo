@@ -51,6 +51,8 @@ fn writeRawStructFieldType(allocator: std.mem.Allocator, writer: *std.Io.Writer,
         defer allocator.free(nested_name);
         return writer.writeAll(nested_name);
     }
+    // An array field lowered as its element: the mirror repeats it in place.
+    if (field.node == .array) try writer.print("[{d}]", .{field.node.array.len});
     try type_spelling.writeGoScalar(writer, field.scalar);
 }
 
@@ -133,6 +135,14 @@ fn writeCgoStructConversionIndented(
             try writer.print("{s}{s}.{s} = {s}\n", .{ indent, c_name, field.name, nested_c });
             continue;
         }
+        if (field.node == .array) {
+            // `[N]C.int32_t` and `[N]int32` are different array types to Go,
+            // so the elements are converted one by one.
+            try writer.print("{0s}for zigoIndex := range {1s}.{2s} {{\n{0s}\t{3s}.{4s}[zigoIndex] = C.", .{ indent, go_name, member, c_name, field.name });
+            try type_spelling.writeCgoType(writer, field.scalar);
+            try writer.print("({1s}.{2s}[zigoIndex])\n{0s}}}\n", .{ indent, go_name, member });
+            continue;
+        }
         try writer.print("{s}{s}.{s} = C.", .{ indent, c_name, field.name });
         try type_spelling.writeCgoType(writer, field.scalar);
         try writer.print("({s}.{s})\n", .{ go_name, member });
@@ -155,6 +165,14 @@ fn writeCgoStructRead(allocator: std.mem.Allocator, writer: *std.Io.Writer, prog
             const nested_indent = try std.fmt.allocPrint(allocator, "{s}\t", .{indent});
             defer allocator.free(nested_indent);
             try writeCgoStructRead(allocator, writer, program, nested, nested_indent, nested_c);
+        } else if (field.node == .array) {
+            // The element-wise copy of the conversion above, as an expression.
+            try writer.print("func() (out [{d}]", .{field.node.array.len});
+            try type_spelling.writeGoScalar(writer, field.scalar);
+            try writer.writeAll(") {\n");
+            try writer.print("{0s}\t\tfor zigoIndex := range out {{\n{0s}\t\t\tout[zigoIndex] = ", .{indent});
+            try type_spelling.writeGoScalar(writer, field.scalar);
+            try writer.print("({1s}.{2s}[zigoIndex])\n{0s}\t\t}}\n{0s}\t\treturn\n{0s}\t}}()", .{ indent, c_name, field.name });
         } else {
             try type_spelling.writeGoScalar(writer, field.scalar);
             try writer.print("({s}.{s})", .{ c_name, field.name });

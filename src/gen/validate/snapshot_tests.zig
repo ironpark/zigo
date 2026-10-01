@@ -221,7 +221,7 @@ test "implemented diagnostic snapshots are stable" {
                 .name = "Config",
             }},
             .zig_version = "0.16.0",
-        }, .snapshot = "error[ZIGO012]: extern struct cannot cross the C ABI\n  --> semantic.json (label)\n  hint: give every field a bool, integer, float, registered enum, or nested `extern struct` type; an empty struct has no C representation\n" },
+        }, .snapshot = "error[ZIGO012]: extern struct cannot cross the C ABI\n  --> semantic.json (label)\n  hint: give every field a bool, integer, float, registered enum, nested `extern struct`, or fixed-length array of integers or floats; an empty struct has no C representation\n" },
         .{ .document = .{
             .functions = &.{.{
                 .name = "visitAll",

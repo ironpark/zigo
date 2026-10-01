@@ -33,6 +33,10 @@ pub const Stats = extern struct {
     policy: Policy,
     /// Whether the queue was at capacity the last time it was pushed to.
     saturated: bool,
+    /// The values of the newest queued events, oldest first; slots past the
+    /// queue's length stay zero. A fixed-length array is laid out inline, so
+    /// C sees `int32_t recent[4]` and Go a `[4]int32`.
+    recent: [4]i32 = @splat(0),
 };
 
 /// Capacity and policy applied together, so the queue is never briefly
@@ -470,7 +474,16 @@ pub const EventQueue = struct {
             .processed = @intCast(self.processed_count),
             .policy = self.policy_value,
             .saturated = self.items.items.len >= self.capacity_value,
+            .recent = self.recentValues(),
         };
+    }
+
+    fn recentValues(self: *EventQueue) [4]i32 {
+        var values: [4]i32 = @splat(0);
+        const items = self.items.items;
+        const newest = items[items.len - @min(items.len, values.len) ..];
+        for (newest, 0..) |event, index| values[index] = event.value;
+        return values;
     }
 
     pub fn applyLimits(self: *EventQueue, updated: Limits) CreateError!void {

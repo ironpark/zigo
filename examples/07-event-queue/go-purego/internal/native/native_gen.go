@@ -762,6 +762,7 @@ type StatsData struct {
 	Policy    uint32
 	Saturated uint8
 	_         [3]byte
+	Recent    [4]int32
 }
 
 // LimitsData mirrors the zg_limits layout, padding included.

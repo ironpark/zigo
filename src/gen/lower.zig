@@ -1011,7 +1011,9 @@ fn lowerValueStructs(allocator: std.mem.Allocator, document: semantic.Semantic, 
         var alignment: usize = 1;
         for (declaration.fields, 0..) |field, index| {
             const node = field.type.?;
-            const scalar = try lowerValue(allocator, document, prefix, node);
+            // An array field lowers as its element; `node` keeps the length,
+            // and every writer of a field spells the `[len]` from there.
+            const scalar = try lowerValue(allocator, document, prefix, if (node == .array) node.array.element.* else node);
             const member = memberLayout(structs.items, node, scalar);
             const bytes = member.bytes;
             offset += padding(offset, member.alignment);
@@ -1171,6 +1173,10 @@ fn appendStructInDependencyOrder(
 /// A nested struct is lowered before the struct that embeds it, so its final
 /// size and alignment are already recorded and never recomputed here.
 fn memberLayout(lowered: []const abi.AbiStruct, node: semantic.TypeNode, scalar: abi.AbiScalar) struct { bytes: usize, alignment: usize } {
+    if (node == .array) {
+        const bytes = scalarBytes(scalar);
+        return .{ .bytes = bytes * node.array.len, .alignment = bytes };
+    }
     if (node != .value_struct or scalar != .value_struct) {
         const bytes = scalarBytes(scalar);
         return .{ .bytes = bytes, .alignment = bytes };

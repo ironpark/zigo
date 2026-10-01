@@ -949,6 +949,7 @@ fn declaredTypeEqual(lhs: semantic.TypeNode, rhs: semantic.TypeNode) bool {
     if (std.meta.activeTag(lhs) != std.meta.activeTag(rhs)) return false;
     return switch (lhs) {
         .void, .bool, .cancel_flag => true,
+        .array => |a| a.len == rhs.array.len and declaredTypeEqual(a.element.*, rhs.array.element.*),
         .atomic_ptr => |a| a.@"const" == rhs.atomic_ptr.@"const" and declaredTypeEqual(a.child.*, rhs.atomic_ptr.child.*),
         .int => |a| a.bits == rhs.int.bits and a.signed == rhs.int.signed and a.is_usize == rhs.int.is_usize,
         .float => |a| a.bits == rhs.float.bits,

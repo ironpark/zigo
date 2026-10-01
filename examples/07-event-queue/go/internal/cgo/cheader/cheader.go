@@ -15,6 +15,7 @@ enum {
     offsetof_stats_processed = offsetof(zg_stats, processed),
     offsetof_stats_policy = offsetof(zg_stats, policy),
     offsetof_stats_saturated = offsetof(zg_stats, saturated),
+    offsetof_stats_recent = offsetof(zg_stats, recent),
     offsetof_limits_capacity = offsetof(zg_limits, capacity),
     offsetof_limits_policy = offsetof(zg_limits, policy),
 };
@@ -34,6 +35,7 @@ var StatsOffsets = map[string]uintptr{
 	"processed": uintptr(C.offsetof_stats_processed),
 	"policy":    uintptr(C.offsetof_stats_policy),
 	"saturated": uintptr(C.offsetof_stats_saturated),
+	"recent":    uintptr(C.offsetof_stats_recent),
 }
 
 // LimitsSize is sizeof(zg_limits).

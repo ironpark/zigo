@@ -22,7 +22,7 @@ const targets = @import("targets");
 
 /// Major versions are incompatible; minor versions add capabilities.
 pub const ContractVersion = struct { major: u16, minor: u16 };
-pub const contract_version: ContractVersion = .{ .major = 7, .minor = 0 };
+pub const contract_version: ContractVersion = .{ .major = 7, .minor = 1 };
 
 /// Serialized build configuration; decoded as the registered plugin's Config.
 pub const Configuration = struct { name: []const u8, json: []const u8 };

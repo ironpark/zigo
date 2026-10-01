@@ -600,6 +600,10 @@ pub fn writeRawGoType(writer: *std.Io.Writer, program: abi.Program, node: semant
             try writer.writeAll("[]");
             try writeRawGoType(writer, program, value.element.*);
         },
+        .array => |value| {
+            try writer.print("[{d}]", .{value.len});
+            try writeRawGoType(writer, program, value.element.*);
+        },
         .@"enum" => try writer.writeAll(type_spelling.rawGoTypeName(program, node)),
         .opaque_ptr => try writer.writeAll("unsafe.Pointer"),
         .materialized => try writer.writeAll("[]byte"),
@@ -691,6 +695,10 @@ pub fn writePublicGoType(scope: PublicScope, writer: *std.Io.Writer, node: seman
             try scope.writeTypeName(writer, value.ref);
         },
         .value_struct => |value| try scope.writeTypeName(writer, value.ref),
+        .array => |value| {
+            try writer.print("[{d}]", .{value.len});
+            try writePublicGoType(scope, writer, value.element.*);
+        },
         // `?T` is spelled `*T` in public Go too: nil stands for absent, a
         // non-nil pointer carries the value, for both scalar and extern
         // struct children. The spelling is `docs.zig`'s, beside the sentence

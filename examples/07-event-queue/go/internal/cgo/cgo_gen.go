@@ -390,6 +390,9 @@ func EventQueueAcceptStats(self unsafe.Pointer, values []StatsData) (uint, int32
 			cvalues.processed = C.uint32_t(values[i].Processed)
 			cvalues.policy = C.uint32_t(values[i].Policy)
 			cvalues.saturated = C.uint8_t(values[i].Saturated)
+			for zigoIndex := range values[i].Recent {
+				cvalues.recent[zigoIndex] = C.int32_t(values[i].Recent[zigoIndex])
+			}
 			valuesValues[i] = cvalues
 		}
 	}
@@ -432,6 +435,12 @@ func EventQueueEstimate(self unsafe.Pointer, output []StatsData) (uint, int32) {
 			Processed: uint32(outputValues[i].processed),
 			Policy:    uint32(outputValues[i].policy),
 			Saturated: uint8(outputValues[i].saturated),
+			Recent: func() (out [4]int32) {
+				for zigoIndex := range out {
+					out[zigoIndex] = int32(outputValues[i].recent[zigoIndex])
+				}
+				return
+			}(),
 		}
 	}
 	return uint(outResult), code
@@ -515,6 +524,12 @@ func EventQueueStats(self unsafe.Pointer) (StatsData, int32) {
 		Processed: uint32(outResult.processed),
 		Policy:    uint32(outResult.policy),
 		Saturated: uint8(outResult.saturated),
+		Recent: func() (out [4]int32) {
+			for zigoIndex := range out {
+				out[zigoIndex] = int32(outResult.recent[zigoIndex])
+			}
+			return
+		}(),
 	}, code
 }
 
@@ -759,6 +774,7 @@ type StatsData struct {
 	Policy    uint32
 	Saturated uint8
 	_         [3]byte
+	Recent    [4]int32
 }
 
 // LimitsData mirrors the zg_limits layout, padding included.
@@ -781,6 +797,7 @@ var _ = [1]struct{}{}[unsafe.Offsetof(StatsData{}.Dropped)-unsafe.Offsetof(C.zg_
 var _ = [1]struct{}{}[unsafe.Offsetof(StatsData{}.Processed)-unsafe.Offsetof(C.zg_stats{}.processed)]
 var _ = [1]struct{}{}[unsafe.Offsetof(StatsData{}.Policy)-unsafe.Offsetof(C.zg_stats{}.policy)]
 var _ = [1]struct{}{}[unsafe.Offsetof(StatsData{}.Saturated)-unsafe.Offsetof(C.zg_stats{}.saturated)]
+var _ = [1]struct{}{}[unsafe.Offsetof(StatsData{}.Recent)-unsafe.Offsetof(C.zg_stats{}.recent)]
 
 // LimitsData slices are copied from C memory as one run, so it must match zg_limits byte for byte.
 var _ = [1]struct{}{}[unsafe.Sizeof(LimitsData{})-unsafe.Sizeof(C.zg_limits{})]

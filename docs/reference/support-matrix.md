@@ -34,6 +34,7 @@ Go race detector는 cgo가 필요하므로 `CGO_ENABLED=0` purego 테스트에�
 - `anyerror` 대신 명시적 오류 집합을 사용합니다.
 - 제네릭 함수는 구체적인 타입으로 특수화한 래퍼를 공개합니다.
 - value 구조체는 적격 `extern struct` 또는 integer-backed `packed struct`입니다.
+  `extern struct`의 필드는 정수·float 원소의 고정 길이 배열일 수 있습니다.
 - functional options의 대상 필드는 `.flatten`과 같은 집합(bool, 정수, float, 등록 enum,
   optional 스칼라)이고 모두 Zig 기본값을 가져야 합니다.
 - 중첩된 포인터·슬라이스 결과 tree는 materialized 또는 핸들로 표현합니다.

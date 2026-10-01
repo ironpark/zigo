@@ -1,0 +1,5 @@
+{
+  "package": "pixels",
+  "prefix": "zg",
+  "go_module": "example.com/zigo/pixels"
+}

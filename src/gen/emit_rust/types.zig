@@ -30,6 +30,7 @@ pub fn unsupportedNode(node: semantic.TypeNode) ?[]const u8 {
         .io_stream => "a std.Io stream parameter",
         .cancel_flag => "a cancellable call",
         .atomic_ptr => "a shared atomic parameter",
+        .array => "a fixed-length array",
     };
 }
 

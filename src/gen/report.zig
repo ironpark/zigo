@@ -149,6 +149,7 @@ fn semanticIdentityAlloc(allocator: std.mem.Allocator, function: semantic.Semant
 
 fn typeName(node: semantic.TypeNode) []const u8 {
     return switch (node) {
+        .array => "array",
         .atomic_ptr => "atomic_ptr",
         .@"enum" => "enum",
         .opaque_ptr => "opaque_ptr",

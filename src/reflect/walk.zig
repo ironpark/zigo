@@ -2708,7 +2708,7 @@ fn appendValueStruct(
             .type = if (info.layout == .@"packed")
                 try packedFieldTypeNode(allocator, declaration, field.type, types, "`" ++ comptime shortTypeName(@typeName(T)) ++ "` field `" ++ field.name ++ "`")
             else
-                try typeNode(
+                try externFieldTypeNode(
                     allocator,
                     declaration,
                     field.type,
@@ -2718,6 +2718,26 @@ fn appendValueStruct(
         };
     }
     types.items[index].fields = fields;
+}
+
+/// An extern struct field is any parameter type, or a fixed-length array of
+/// one: C lays `[N]T` out inline, so a field is the one place an array has an
+/// ABI. Validation decides which elements it carries.
+fn externFieldTypeNode(
+    allocator: std.mem.Allocator,
+    comptime declaration: zigo.Binding,
+    comptime T: type,
+    types: *std.ArrayList(semantic.TypeDecl),
+    comptime context: []const u8,
+) !semantic.TypeNode {
+    if (@typeInfo(T) == .array) {
+        const array = @typeInfo(T).array;
+        if (array.sentinel_ptr != null) @compileError("zigo cannot represent the sentinel-terminated array " ++ context);
+        const element = try allocator.create(semantic.TypeNode);
+        element.* = try externFieldTypeNode(allocator, declaration, array.child, types, context ++ " (array element)");
+        return .{ .array = .{ .len = array.len, .element = element } };
+    }
+    return typeNode(allocator, declaration, T, types, context);
 }
 
 /// Packed value declarations deliberately reach semantic validation even when

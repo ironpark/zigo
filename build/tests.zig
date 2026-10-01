@@ -231,6 +231,7 @@ pub fn addRepositorySteps(
         "tests/generator_cases/sub_packages_purego/expected",
         "tests/generator_cases/union_snapshot/expected",
         "tests/generator_cases/value_struct/expected",
+        "tests/generator_cases/value_struct_array/expected",
         "examples/01-scalar/go",
         "examples/02-errors/go",
         "examples/03-opaque/go",

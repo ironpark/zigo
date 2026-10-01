@@ -142,7 +142,7 @@ pub fn typeIssue(allocator: std.mem.Allocator, document: semantic.Semantic, targ
                 .code = "ZIGO012",
                 .message = "extern struct cannot cross the C ABI",
                 .site = .{ .path = "semantic.json", .declaration = problem_site },
-                .hint = "give every field a bool, integer, float, registered enum, or nested `extern struct` type; an empty struct has no C representation",
+                .hint = "give every field a bool, integer, float, registered enum, nested `extern struct`, or fixed-length array of integers or floats; an empty struct has no C representation",
             };
         }
         if (declaration.kind == .value_struct and declaration.layout == .@"packed") {
@@ -242,7 +242,9 @@ const Offense = struct {
 fn typeOffense(allocator: std.mem.Allocator, node: semantic.TypeNode, promotable: bool) error{OutOfMemory}!?Offense {
     switch (node) {
         .void, .bool, .@"enum", .materialized, .opaque_ptr, .value_struct, .io_stream, .cancel_flag => return null,
-        .atomic_ptr => return Offense{ .node = node },
+        // C passes no array by value; an array is only ever a struct field,
+        // which `externStructFieldEligible` checks.
+        .atomic_ptr, .array => return Offense{ .node = node },
         .int => |value| {
             if (integerSupported(value)) return null;
             if (promotable and promotableInteger(value)) return null;
@@ -492,11 +494,28 @@ fn taggedUnionValuePayloadSupported(document: semantic.Semantic, node: semantic.
             break :blk switch (declaration.layout orelse return false) {
                 .@"packed" => declaration.backing_type != null and declaration.backing_type.? == .int and
                     promotableInteger(declaration.backing_type.?.int),
-                .@"extern" => externStructProblem(document, declaration, 0) == null,
+                // A union value flattens its payload struct into scalar
+                // members, and an array is no scalar.
+                .@"extern" => externStructProblem(document, declaration, 0) == null and !externStructHasArray(document, declaration, 0),
             };
         },
         else => false,
     };
+}
+
+/// Whether an `extern struct`, or one nested in it, has a fixed-length array
+/// field: the positions that take a struct apart member by member cannot carry
+/// one.
+pub fn externStructHasArray(document: semantic.Semantic, declaration: semantic.TypeDecl, depth: usize) bool {
+    if (depth >= 16) return false;
+    for (declaration.fields) |field| {
+        const node = field.type orelse continue;
+        if (node == .array) return true;
+        if (node != .value_struct) continue;
+        const nested = semantic.typeDecl(document.types, node.value_struct.ref) orelse continue;
+        if (nested.layout == .@"extern" and externStructHasArray(document, nested, depth + 1)) return true;
+    }
+    return false;
 }
 
 fn taggedUnionAccessorsSupported(document: semantic.Semantic, declaration: semantic.TypeDecl) bool {
@@ -608,6 +627,17 @@ fn externStructFieldEligible(document: semantic.Semantic, node: semantic.TypeNod
                 externStructProblem(document, nested, depth + 1) == null) or
                 (nested.layout == .@"packed" and packedStructProblem(document, nested, depth + 1) == null));
         } else false,
+        // An array of C-nameable numbers is mirrored element for element in
+        // both C and Go. Anything wider in meaning -- bools, enums, structs,
+        // arrays of arrays -- would need a conversion per element that the
+        // field-by-field copy does not make.
+        .array => |array| array.len != 0 and switch (array.element.*) {
+            // `usize` is left out: the public field spells it `uint` and the
+            // mirror `uintptr`, and an array cannot be converted between the two.
+            .int => |value| !value.is_usize and integerSupported(value),
+            .float => |value| floatSupported(value),
+            else => false,
+        },
         else => scalarPayloadSupported(document, node),
     };
 }
@@ -1272,6 +1302,51 @@ test "an extern struct of scalars enums and nested structs passes validation" {
     };
     try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try validate.findIssue(std.testing.allocator, document));
     try validate.semanticDocument(std.testing.allocator, document);
+}
+
+test "an extern struct array field carries integers and floats and nothing else" {
+    var int32: semantic.TypeNode = .{ .int = .{ .bits = 32, .signed = true } };
+    var float32: semantic.TypeNode = .{ .float = .{ .bits = 32 } };
+    var flag: semantic.TypeNode = .{ .bool = {} };
+    var size: semantic.TypeNode = .{ .int = .{ .bits = 64, .signed = false, .is_usize = true } };
+    var narrow: semantic.TypeNode = .{ .int = .{ .bits = 7, .signed = false } };
+    const Case = struct { element: *semantic.TypeNode, len: usize, valid: bool };
+    const cases = [_]Case{
+        .{ .element = &int32, .len = 4, .valid = true },
+        .{ .element = &float32, .len = 3, .valid = true },
+        .{ .element = &flag, .len = 2, .valid = false },
+        .{ .element = &size, .len = 2, .valid = false },
+        .{ .element = &narrow, .len = 2, .valid = false },
+        .{ .element = &int32, .len = 0, .valid = false },
+    };
+    var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer scratch.deinit();
+    for (cases) |case| {
+        const fields = [_]semantic.TypeField{.{ .name = "values", .type = .{ .array = .{ .len = case.len, .element = case.element } } }};
+        const types = [_]semantic.TypeDecl{.{ .fields = &fields, .kind = .value_struct, .layout = .@"extern", .name = "Row" }};
+        const document: semantic.Semantic = .{
+            .functions = &.{.{ .name = "current", .params = &.{}, .@"return" = .{ .value_struct = .{ .ref = "Row" } }, .symbol = "ignored" }},
+            .package = "rows",
+            .prefix = "zg",
+            .types = &types,
+            .zig_version = "0.16.0",
+        };
+        const issue = try validate.findIssue(scratch.allocator(), document);
+        if (case.valid) {
+            try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), issue);
+        } else {
+            try std.testing.expectEqualStrings("ZIGO012", issue.?.code);
+        }
+    }
+
+    // C has no array argument: outside a struct field an array is refused.
+    const document: semantic.Semantic = .{
+        .functions = &.{.{ .name = "take", .params = &.{.{ .name = "values", .type = .{ .array = .{ .len = 4, .element = &int32 } } }}, .@"return" = .{ .void = {} }, .symbol = "ignored" }},
+        .package = "rows",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    try std.testing.expect(try validate.findIssue(scratch.allocator(), document) != null);
 }
 
 test "a supported packed struct passes and unsupported packed and extern fields are diagnosed" {

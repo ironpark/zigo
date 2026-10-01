@@ -1,0 +1,115 @@
+{
+  "functions": [
+    {
+      "doc": "Returns the default swatch.",
+      "name": "defaultSwatch",
+      "params": [],
+      "return": {
+        "kind": "value_struct",
+        "ref": "Swatch"
+      },
+      "symbol": "zg_default_swatch"
+    },
+    {
+      "doc": "Blends a palette into one swatch.",
+      "name": "blend",
+      "params": [
+        {
+          "name": "palette",
+          "type": {
+            "kind": "slice",
+            "const": true,
+            "element": {
+              "kind": "value_struct",
+              "ref": "Swatch"
+            }
+          }
+        },
+        {
+          "name": "labeled",
+          "type": {
+            "kind": "value_struct",
+            "ref": "Labeled"
+          }
+        }
+      ],
+      "return": {
+        "kind": "value_struct",
+        "ref": "Swatch"
+      },
+      "symbol": "zg_blend"
+    }
+  ],
+  "package": "pixels",
+  "prefix": "zg",
+  "types": [
+    {
+      "kind": "value_struct",
+      "layout": "extern",
+      "name": "Swatch",
+      "fields": [
+        {
+          "name": "rgba",
+          "type": {
+            "kind": "array",
+            "len": 4,
+            "element": {
+              "bits": 8,
+              "is_usize": false,
+              "kind": "int",
+              "signed": false
+            }
+          },
+          "doc": "Red, green, blue and alpha."
+        },
+        {
+          "name": "weights",
+          "type": {
+            "kind": "array",
+            "len": 3,
+            "element": {
+              "bits": 32,
+              "kind": "float"
+            }
+          }
+        },
+        {
+          "name": "id",
+          "type": {
+            "bits": 16,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ]
+    },
+    {
+      "kind": "value_struct",
+      "layout": "extern",
+      "name": "Labeled",
+      "fields": [
+        {
+          "name": "visible",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "code",
+          "type": {
+            "kind": "array",
+            "len": 2,
+            "element": {
+              "bits": 32,
+              "is_usize": false,
+              "kind": "int",
+              "signed": true
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "zig_version": "0.16.0"
+}

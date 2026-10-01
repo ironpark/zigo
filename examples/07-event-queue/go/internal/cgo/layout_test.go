@@ -23,6 +23,7 @@ func TestStructMirrorsMatchTheCHeader(t *testing.T) {
 		"processed": unsafe.Offsetof(cgo.StatsData{}.Processed),
 		"policy":    unsafe.Offsetof(cgo.StatsData{}.Policy),
 		"saturated": unsafe.Offsetof(cgo.StatsData{}.Saturated),
+		"recent":    unsafe.Offsetof(cgo.StatsData{}.Recent),
 	}
 	for name, want := range cheader.StatsOffsets {
 		if got := statsOffsets[name]; got != want {

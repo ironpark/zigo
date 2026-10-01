@@ -24,6 +24,10 @@ type Stats struct {
 	Policy Policy
 	// Saturated: Whether the queue was at capacity the last time it was pushed to.
 	Saturated bool
+	// Recent: The values of the newest queued events, oldest first; slots past the
+	// queue's length stay zero. A fixed-length array is laid out inline, so
+	// C sees `int32_t recent[4]` and Go a `[4]int32`.
+	Recent [4]int32
 }
 
 // Limits mirrors the Zig `extern struct` of the same name.
@@ -48,6 +52,7 @@ func zigoStatsToRaw(value Stats) raw.StatsData {
 		Processed: value.Processed,
 		Policy:    uint32(value.Policy),
 		Saturated: zigoBoolToUint8(value.Saturated),
+		Recent:    value.Recent,
 	}
 }
 
@@ -59,6 +64,7 @@ func zigoStatsFromRaw(value raw.StatsData) Stats {
 		Processed: value.Processed,
 		Policy:    Policy(value.Policy),
 		Saturated: value.Saturated != 0,
+		Recent:    value.Recent,
 	}
 }
 

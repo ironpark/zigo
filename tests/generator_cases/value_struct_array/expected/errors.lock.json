@@ -1,0 +1,12 @@
+{
+  "codes": {},
+  "ir_version": 1,
+  "next_code": 1,
+  "reserved": {
+    "-1": "Unknown",
+    "-2": "PanicCaught",
+    "-3": "CallbackPanic",
+    "-4": "InvalidHandle",
+    "0": "OK"
+  }
+}

@@ -90,6 +90,21 @@ api.value("Codepoint", .{ .fields = &.{
 } })
 ```
 
+`extern struct`의 필드는 고정 길이 배열일 수 있습니다. 원소는 8·16·32·64 bit 정수(`usize`·
+`isize` 제외) 또는 `f32`·`f64`이고, C에는 `int32_t recent[4]`처럼 inline으로, Go에는
+`[4]int32`로 나타납니다.
+
+```zig
+pub const Stats = extern struct {
+    len: u32,
+    recent: [4]i32 = @splat(0),
+};
+```
+
+배열 필드가 있는 구조체는 일반 매개변수·결과·슬라이스 원소로 전달할 수 있지만, tagged union의
+값 페이로드와 materialized tree 안에는 넣을 수 없습니다. 함수 매개변수나 결과 자체가 배열인
+경우는 C ABI가 값 전달을 지원하지 않으므로 거절됩니다.
+
 일반 Zig 구조체는 임의로 값 ABI에 넣지 않습니다. `extern struct`나 지원되는 `packed struct`
 조건을 만족하지 않으면 핸들 또는 materialized 결과를 선택하세요.
 

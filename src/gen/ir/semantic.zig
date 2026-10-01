@@ -39,6 +39,11 @@ pub const Slice = struct {
     sentinel_many: bool = false,
 };
 pub const Optional = struct { child: *TypeNode };
+/// A fixed-length array, `[len]element`. It exists only as a field of an
+/// extern value struct, where C lays it out inline as `element name[len]` and
+/// Go spells it `[len]T`; validation refuses it anywhere else, since C has no
+/// array argument or result to carry it by value.
+pub const Array = struct { len: usize, element: *TypeNode };
 /// Which direction a `*std.Io.Writer` / `*std.Io.Reader` parameter streams.
 /// The two lower to different fixed callback signatures, so the direction is
 /// the whole of the type: neither side carries a payload type.
@@ -177,6 +182,7 @@ pub fn nativeSlots(node: TypeNode) usize {
 }
 
 pub const TypeNode = union(enum) {
+    array: Array,
     atomic_ptr: AtomicPtr,
     bool: void,
     callback: Callback,
@@ -206,6 +212,13 @@ pub const TypeNode = union(enum) {
     pub fn jsonStringify(self: TypeNode, jw: anytype) !void {
         try jw.beginObject();
         switch (self) {
+            .array => |value| {
+                try jw.objectField("element");
+                try jw.write(value.element.*);
+                try writeKind(jw, "array");
+                try jw.objectField("len");
+                try jw.write(value.len);
+            },
             .atomic_ptr => |value| {
                 try jw.objectField("child");
                 try jw.write(value.child.*);
@@ -346,6 +359,10 @@ pub const TypeNode = union(enum) {
         if (std.mem.eql(u8, kind, "atomic_ptr")) return .{ .atomic_ptr = .{
             .child = try parseTypePointer(allocator, object, "child", options),
             .@"const" = try parseField(bool, allocator, object, "const", options),
+        } };
+        if (std.mem.eql(u8, kind, "array")) return .{ .array = .{
+            .len = try parseField(usize, allocator, object, "len", options),
+            .element = try parseTypePointer(allocator, object, "element", options),
         } };
         if (std.mem.eql(u8, kind, "bool")) return .{ .bool = {} };
         if (std.mem.eql(u8, kind, "cancel_flag")) return .{ .cancel_flag = {} };

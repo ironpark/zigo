@@ -109,7 +109,12 @@ fn materializedNodeProblemAlloc(
         // no layout to store, so it must be registered as a tree of its own.
         .value_struct => |value| {
             const declaration = semantic.typeDecl(document.types, value.ref);
-            if (declaration != null and declaration.?.kind == .value_struct and declaration.?.layout != null) return null;
+            if (declaration != null and declaration.?.kind == .value_struct and declaration.?.layout != null) {
+                // The tree's encoder writes an inline struct field by field
+                // and has no array element to write.
+                if (types.externStructHasArray(document, declaration.?, 0)) return .{ .path = try allocator.dupe(u8, path), .reason = "an `extern struct` with a fixed-length array field cannot be stored inline in a materialized tree; pass it as a value instead" };
+                return null;
+            }
             return .{ .path = try allocator.dupe(u8, path), .reason = "register a plain struct with `.materialized`; only `extern struct` and packed values are stored inline" };
         },
         // Presence rides in the field's own storage, so only leaves that fit

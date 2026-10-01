@@ -44,10 +44,14 @@ nullable 핸들 포인터는 별도 포인터 표현으로 콜백에 전달할 �
 
 | Zig 형태 | 등록 | 주요 조건 |
 |---|---|---|
-| `extern struct` | `api.val` | 스칼라, 등록 열거형, 적격 중첩된 extern 구조체 필드 |
-| integer-backed `packed struct` | `api.val` | bool, 정수, 등록 열거형·packed 필드 |
+| `extern struct` | `api.value` | 스칼라, 등록 열거형, 적격 중첩된 extern 구조체, 정수·float 고정 길이 배열 필드 |
+| integer-backed `packed struct` | `api.value` | bool, 정수, 등록 열거형·packed 필드 |
 | 일반 stateful 구조체 | `api.handle` | 포인터로 사용하고 생성자/소멸자 필요 |
 | 일반 결과 tree | `api.materialized` | 지원되는 필드 tree와 caller-owned 해제 필요 |
+
+extern 구조체의 `[N]T` 필드는 Go `[N]T`가 됩니다. `T`는 8·16·32·64 bit 정수(`usize`·`isize`
+제외) 또는 `f32`·`f64`입니다. 배열 필드가 있는 구조체는 tagged union 값 페이로드나 materialized
+tree에 넣을 수 없고, 배열 자체를 함수 매개변수·결과로 전달하지 않습니다.
 
 빈 extern 구조체, 포인터를 포함한 값 구조체와 C 배치를 보장하지 않는 일반 구조체는 값으로
 전달하지 않습니다.

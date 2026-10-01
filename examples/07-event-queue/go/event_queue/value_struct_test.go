@@ -283,3 +283,42 @@ func TestCastableStructSliceReturnKeepsItsValues(t *testing.T) {
 		t.Fatalf("ExtractLimits() aliased released memory: second[0] = %+v", second[0])
 	}
 }
+
+// A fixed-length array field crosses inline: C sees `int32_t recent[4]`, Go a
+// `[4]int32`, and the values arrive in place, oldest first, zero past the
+// queue's length.
+func TestValueStructArrayField(t *testing.T) {
+	queue, err := NewEventQueue("array-field", 8, PolicyReject, func(uint64, int32) int32 { return 0 })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer queue.Close()
+
+	if got := must(queue.Stats()).Recent; got != [4]int32{} {
+		t.Fatalf("empty Stats().Recent = %v, want all zero", got)
+	}
+	for value := int32(1); value <= 2; value++ {
+		if err := queue.Enqueue(uint64(value), value*10); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got, want := must(queue.Stats()).Recent, [4]int32{10, 20, 0, 0}; got != want {
+		t.Fatalf("Stats().Recent after two = %v, want %v", got, want)
+	}
+	for value := int32(3); value <= 5; value++ {
+		if err := queue.Enqueue(uint64(value), value*10); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got, want := must(queue.Stats()).Recent, [4]int32{20, 30, 40, 50}; got != want {
+		t.Fatalf("Stats().Recent after five = %v, want %v", got, want)
+	}
+	// The slice paths copy the array with the rest of each element.
+	if got, want := must(queue.SampleStats())[1].Recent, [4]int32{20, 30, 40, 50}; got != want {
+		t.Fatalf("SampleStats()[1].Recent = %v, want %v", got, want)
+	}
+	input := []Stats{{Len: 1, Recent: [4]int32{1, 2, 3, 4}}}
+	if got := must(queue.AcceptStats(input)); got != 1 {
+		t.Fatalf("AcceptStats() = %d, want 1", got)
+	}
+}

@@ -18,6 +18,12 @@
 
 ### Added
 
+- `extern struct` value 타입의 필드로 고정 길이 배열 `[N]T`를 지원합니다(`T`는 8·16·32·64 bit
+  정수 또는 `f32`·`f64`). C 헤더는 `int32_t name[N]`, Go는 `[N]int32`로 쓰며 정수·float만
+  담은 구조체는 기존처럼 복사 없이 재해석됩니다. 배열 필드가 있는 구조체는 tagged union 값
+  페이로드와 materialized tree에서 `ZIGO006`·`ZIGO048`로 거절됩니다. `semantic.json`의
+  `TypeNode`에 `array` kind가 추가되었고 플러그인 계약은 7.1이 됩니다. `TypeNode`를 빠짐없이
+  switch하는 외부 플러그인은 `.array` 갈래를 추가해야 합니다.
 - `zigo.features.panics`: 잘못된 사용(nil·닫힌 핸들, 범위 밖 인자, 네이티브 panic)으로만 실패하는
   메서드의 Go 시그니처에서 `error`를 빼고 그 typed error로 panic합니다. 함수 또는 핸들 단위로
   붙이며, Zig 오류 집합·스트림·cancel·콜백 오류·인터페이스 메서드는 `error`를 유지합니다(함수에
