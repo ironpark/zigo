@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-10-24T12:17:36Z"
 depends_on:
 - "207-zig-0-17-migration#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Each example and plugin builds and its tests pass on 0.17.0.
 > NEXT: none

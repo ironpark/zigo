@@ -4,6 +4,28 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Changed
+
+- Zig 0.17.0이 필요합니다(`minimum_zig_version = "0.17.0"`). Zig 0.16은 더 이상 지원하지
+  않습니다.
+- Zig 0.17의 빌드 시스템은 `build.zig`를 configure 프로세스에서 실행하고 make 단계를 별도
+  빌드 러너가 맡기 때문에 사용자 지정 `makeFn` 단계가 없습니다. 생성 tree 게시와 prune,
+  machine-local cgo 링크 파일, pkg-config 이름 해석은 이제 `zigo-gen publish`,
+  `cgo-link-flags`, `pkg-config` 하위 명령을 `Step.Run`으로 실행합니다.
+- install 접두사(`-p`)는 빌드 러너만 알기 때문에 `#cgo` 줄의 `${SRCDIR}` 상대 경로와 purego
+  기본 검색 경로를 생성기가 make 단계에서 계산합니다. 생성되는 Go와 Rust 바이트는 같습니다.
+- `GoBindings.library_path`, `GoBindings.NativeLibrary.library_path`,
+  `RustBindings.library_path`가 문자열 대신 `std.Build.LazyPath`입니다. 사용자 지정 단계에는
+  `addFileArg` 같은 lazy path 인자로 넘기세요.
+- 생성 shim이 enum 변환을 Zig 0.17의 `@backingInt`와 `@fromBackingInt(@intCast(..))`로
+  씁니다. C ABI는 그대로입니다.
+- `semantic.json`의 `zig_version`이 `0.17.0`이 됩니다. buildinfo 플러그인의 최적화 모드
+  표기는 Zig 0.17의 enum 이름을 따라 소문자(`debug`)입니다.
+- consumer 빌드는 zigo 자신의 저장소 테스트 단계를 등록하지 않습니다. configure 단계가
+  이 단계의 파일 의존성까지 기록하지 않아도 됩니다.
+
 ## [0.31.0] - 2026-10-08
 
 ### Changed

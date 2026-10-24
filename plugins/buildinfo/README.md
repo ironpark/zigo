@@ -35,7 +35,7 @@ pub fn build_info() -> &'static str
 ```
 
 ```text
-zig 0.16.0; Debug; aarch64-macos-none
+zig 0.17.0; debug; aarch64-macos-none
 ```
 
 문자열은 `src/native.zig`가 `@import("builtin")`에서 comptime에 조립합니다. 세 조각은 Zig

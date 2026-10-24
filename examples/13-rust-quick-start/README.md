@@ -28,7 +28,7 @@ tagged union을 payload 없는 tag 정수로 넘기는 것은 컴파일은 되�
 
 ## 전제 조건
 
-저장소 전체를 받은 뒤 이 예제 디렉터리에서 실행합니다. Zig 0.16.0과 Rust
+저장소 전체를 받은 뒤 이 예제 디렉터리에서 실행합니다. Zig 0.17.0과 Rust
 툴체인(`cargo`, `rustc`, `rustfmt`)이 필요합니다. Go는 필요하지 않습니다.
 
 ## 실행
@@ -44,7 +44,7 @@ zig build rust
 데모가 다음을 출력하고 `cargo test`가 통과합니다.
 
 ```
-zig 0.16.0; Debug; aarch64-macos-none
+zig 0.17.0; debug; aarch64-macos-none
 2 + 3 = 5
 sum([1, 2, 3]) = 6
 7 / 2 = 3

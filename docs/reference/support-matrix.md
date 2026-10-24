@@ -6,7 +6,7 @@
 
 | 항목 | 지원 범위 |
 |---|---|
-| Zig | 0.16.0 |
+| Zig | 0.17.0 |
 | Go | 1.24 이상 |
 | cgo 검증 플랫폼 | macOS·Linux amd64/arm64, Windows amd64 GNU ABI |
 | purego | macOS·Linux·Windows amd64/arm64 |
@@ -14,7 +14,7 @@
 | purego 모듈 | `github.com/ebitengine/purego v0.10.2` |
 | 미지원 | MSVC ABI, 32 bit 대상, mobile |
 
-현재 저장소의 [CI 설정](../../.github/workflows/ci.yml)은 Zig 0.16.0과 Go 1.26.x를 사용합니다.
+현재 저장소의 [CI 설정](../../.github/workflows/ci.yml)은 Zig 0.17.0과 Go 1.26.x를 사용합니다.
 Go 1.24는 생성 코드의 최소 요구 버전이며, CI가 모든 Go 버전을 실행 검증한다는 뜻은 아닙니다.
 
 Go race detector는 cgo가 필요하므로 `CGO_ENABLED=0` purego 테스트에서는 사용할 수 없습니다.

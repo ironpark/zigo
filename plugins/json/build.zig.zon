@@ -2,7 +2,7 @@
     .name = .zigo_json,
     .version = "0.0.0",
     .fingerprint = 0xb938bd2d43228d9,
-    .minimum_zig_version = "0.16.0",
+    .minimum_zig_version = "0.17.0",
     .dependencies = .{
         .zigo = .{ .path = "../.." },
     },

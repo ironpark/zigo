@@ -121,7 +121,7 @@ const buildinfo: zigo.PluginModule = .{
 ```
 
 ```go
-fmt.Println(calculator.BuildInfo()) // zig 0.16.0; Debug; aarch64-macos-none
+fmt.Println(calculator.BuildInfo()) // zig 0.17.0; debug; aarch64-macos-none
 ```
 
 ```rust

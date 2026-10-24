@@ -35,7 +35,7 @@ zig build go
 
 ```text
 2 + 3 = 5
-zig 0.16.0; Debug; aarch64-macos-none
+zig 0.17.0; debug; aarch64-macos-none
 ```
 
 자신의 Zig 프로젝트에 연결하려면 [시작 가이드](docs/getting-started.md)를 따라가세요.
@@ -53,7 +53,7 @@ zig 0.16.0; Debug; aarch64-macos-none
 
 ## 지원 환경
 
-- Zig 0.16.0
+- Zig 0.17.0
 - Go 1.24 이상
 - cgo: macOS와 Linux, Windows amd64 GNU ABI
 - purego: macOS, Linux와 Windows의 amd64·arm64

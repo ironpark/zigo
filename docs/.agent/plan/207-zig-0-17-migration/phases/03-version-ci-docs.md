@@ -2,7 +2,7 @@
 depends_on:
 - "207-zig-0-17-migration#2"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: No 0.16 toolchain reference remains outside history and fixtures.
 > NEXT: none
