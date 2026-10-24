@@ -168,7 +168,7 @@ install 의존성만 끄며 명시적 `go-lib`는 유지합니다.
 - `lib`: primary 대상의 컴파일 단계
 - `install_library`: primary install 단계
 - `library_filename`: 대상별 실제 basename
-- `library_path`: primary 라이브러리의 전체 install 경로
+- `library_path`: primary 라이브러리의 install 경로(`LazyPath`). install 접두사는 빌드 러너만 알기 때문에 문자열이 아닌 lazy path입니다
 - `native_libraries`: 대상과 추가 대상별 compile/install/path
 - `semantic_json`: 생성 semantic document 경로
 - `coverage_json`: coverage 보고서의 JSON 형태
@@ -229,7 +229,7 @@ _ = zigo.addRustBindings(b, .{
 - `coverage`: 공개 Zig API 바인딩 coverage 보고 단계. Zig 선언을 읽으므로 Go와 같은 실행입니다
 - `lib`: crate가 링크하는 네이티브 라이브러리의 컴파일 단계
 - `install_library`: install 단계
-- `library_path`: 라이브러리의 전체 install 경로
+- `library_path`: 라이브러리의 install 경로(`LazyPath`)
 - `semantic_json`: 생성 semantic document 경로
 - `standard_steps`: `standard_steps` 옵션이 등록한 단계, `null`로 두었으면 `null`
 

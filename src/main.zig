@@ -4,6 +4,7 @@ const cli = @import("gen/cli.zig");
 const diagnostic = @import("diagnostic");
 const doctor = @import("gen/doctor.zig");
 const generator = @import("gen/generator.zig");
+const link_inputs = @import("gen/link_inputs.zig");
 const binding_report = @import("gen/report.zig");
 const semantic = @import("semantic");
 const stream_return = @import("stream_return");
@@ -35,6 +36,9 @@ pub fn main(init: std.process.Init) !void {
         .abi_diff => |options| try runAbiDiff(allocator, init.io, options),
         .report => |options| try runReport(allocator, init.io, options),
         .doctor => |options| try runDoctor(allocator, init.io, options),
+        .publish => |options| try sync_check.publish.publish(allocator, init.io, options.generated_path, options.source_path),
+        .cgo_link_flags => |options| try runCgoLinkFlags(allocator, init.io, options),
+        .pkg_config => |options| try runPkgConfig(allocator, init.io, init.environ_map, options),
     }
 }
 
@@ -111,11 +115,17 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
         .ldflags_override = if (options.ldflags.len == 0) null else options.ldflags,
         .extra_ldflags = options.extra_ldflags,
         .ldflags_external = options.ldflags_external,
-        .system_ldflags = options.system_ldflags,
+        .system_ldflags = try link_inputs.systemLdflags(allocator, options.system_library_dirs, options.system_ldflags),
         .pkg_config_libs = pkg_config_libs,
         .framework_ldflags = options.framework_ldflags,
-        .include_dir = options.include_dir,
-        .library_dir = options.library_dir,
+        .include_dir = if (options.include_dir_between) |between|
+            try link_inputs.cgoRelativePath(allocator, between.from, between.to)
+        else
+            options.include_dir,
+        .library_dir = if (options.library_dir_between) |between|
+            try link_inputs.cgoRelativePath(allocator, between.from, between.to)
+        else
+            options.library_dir,
         .header_name = options.header_name,
         .raw_package_path = options.raw_package_path,
         .raw_package_name = options.raw_package_name,
@@ -138,7 +148,7 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
         .cgo_targets = cgo_targets,
         .target_ldflags = target_ldflags,
         .library_stem = options.library_stem,
-        .library_search_paths = options.library_search_paths,
+        .library_search_paths = try librarySearchPaths(allocator, options.library_search_paths, options.library_search_between),
         .library_env_vars = options.library_env_vars,
         .library_automatic = options.library_automatic,
         .library_exported_api = options.library_exported_api,
@@ -321,13 +331,59 @@ fn runReport(allocator: std.mem.Allocator, io: std.Io, options: cli.Report) !voi
         },
         .go_package = options.go_package,
         .go_package_path = options.go_package_path,
-        .library_search_paths = options.library_search_paths,
+        .library_search_paths = try librarySearchPaths(allocator, options.library_search_paths, options.library_search_between),
         .library_env_vars = options.library_env_vars,
         .library_automatic = options.library_automatic,
         .library_exported_api = options.library_exported_api,
         .library_platform_dirs = options.library_platform_dirs,
     });
     try stdout.interface.flush();
+}
+
+/// An explicit search path wins; otherwise the build's default, which is the
+/// install directory as seen from the public package.
+fn librarySearchPaths(allocator: std.mem.Allocator, explicit: []const u8, between: ?cli.RelativeDir) ![]const u8 {
+    if (explicit.len != 0) return explicit;
+    const value = between orelse return explicit;
+    return link_inputs.relativeSlashPath(allocator, value.from, value.to);
+}
+
+fn runCgoLinkFlags(allocator: std.mem.Allocator, io: std.Io, options: cli.CgoLinkFlags) !void {
+    const link_targets = try allocator.alloc(link_inputs.LinkTarget, options.targets.len);
+    for (options.targets, link_targets) |source, *target| target.* = .{
+        .constraint = source.constraint,
+        .library_dir = source.library_dir,
+        .archives = source.archives,
+    };
+    var output: std.Io.Writer.Allocating = .init(allocator);
+    try link_inputs.writeLinkFlags(allocator, &output.writer, .{
+        .package = options.package,
+        .source_dir = options.source_dir,
+        .targets = link_targets,
+        .extra_ldflags = options.extra_ldflags,
+        .system_ldflags = try link_inputs.systemLdflags(allocator, options.system_library_dirs, options.system_ldflags),
+    });
+    try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = options.output_path, .data = output.written() });
+}
+
+/// `PKG_CONFIG` names the executable, as it does for every build tool.
+fn runPkgConfig(allocator: std.mem.Allocator, io: std.Io, environ_map: *std.process.Environ.Map, options: cli.PkgConfig) !void {
+    const executable = environ_map.get("PKG_CONFIG") orelse "pkg-config";
+    const inputs = try allocator.alloc(link_inputs.PkgConfigInput, options.libraries.len);
+    for (options.libraries, inputs) |library, *input| input.* = .{ .name = library.name, .module = library.module };
+    var stdout_buffer: [1024]u8 = undefined;
+    var stdout = std.Io.File.Writer.init(.stdout(), io, &stdout_buffer);
+    var stderr_buffer: [1024]u8 = undefined;
+    var stderr = std.Io.File.Writer.init(.stderr(), io, &stderr_buffer);
+    link_inputs.resolvePkgConfig(allocator, io, executable, inputs, &stdout.interface, &stderr.interface) catch |err| switch (err) {
+        error.PkgConfigUnresolved => {
+            try stderr.interface.flush();
+            std.process.exit(1);
+        },
+        else => return err,
+    };
+    try stdout.interface.flush();
+    try stderr.interface.flush();
 }
 
 fn runDoctor(allocator: std.mem.Allocator, io: std.Io, options: cli.Doctor) !void {

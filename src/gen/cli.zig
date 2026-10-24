@@ -24,6 +24,11 @@ pub const Link = enum {
 pub const CgoTarget = struct { goos: []const u8, goarch: []const u8 };
 /// One `--target-ldflags <goos>[,<goarch>]=<flags>` value.
 pub const TargetLdflags = struct { constraint: []const u8, flags: []const u8 };
+/// A `<flag> <from> <to>` pair: the directory `to`, spelled relative to `from`.
+/// The build integration only knows install and source directories once the
+/// build runner resolves them, so it hands both over and lets the generator
+/// spell the relation.
+pub const RelativeDir = struct { from: []const u8, to: []const u8 };
 
 pub const ParseError = error{
     DuplicateArgument,
@@ -64,12 +69,20 @@ pub const Generate = struct {
     go_module: ?[]const u8 = null,
     include_dir: []const u8 = "${SRCDIR}/../../../zig-out/include",
     library_dir: []const u8 = "${SRCDIR}/../../../zig-out/lib",
+    /// `--include-dir-between`: replaces `include_dir` with `${SRCDIR}/` and
+    /// the relative path between the two directories.
+    include_dir_between: ?RelativeDir = null,
+    /// `--library-dir-between`, the same for `library_dir`.
+    library_dir_between: ?RelativeDir = null,
     header_name: []const u8 = "",
     cflags: []const u8 = "",
     ldflags: []const u8 = "",
     extra_ldflags: []const u8 = "",
     ldflags_external: bool = false,
     system_ldflags: []const u8 = "",
+    /// `--system-library-dir`, in order; each becomes a `-L` ahead of
+    /// `system_ldflags`.
+    system_library_dirs: []const []const u8 = &.{},
     /// A file holding the build-time-resolved `#cgo pkg-config:` names.
     pkg_config_libs_path: ?[]const u8 = null,
     framework_ldflags: []const u8 = "",
@@ -88,6 +101,9 @@ pub const Generate = struct {
     library_stem: []const u8 = "",
     /// Colon-separated candidate locations, in the order they are tried.
     library_search_paths: []const u8 = "",
+    /// `--library-search-between`: the search path used when
+    /// `library_search_paths` is empty.
+    library_search_between: ?RelativeDir = null,
     /// Comma-separated environment variable names. `null` selects the defaults.
     library_env_vars: ?[]const u8 = null,
     library_automatic: bool = false,
@@ -139,6 +155,7 @@ pub const Report = struct {
     go_package: []const u8 = "",
     go_package_path: []const u8 = "",
     library_search_paths: []const u8 = "",
+    library_search_between: ?RelativeDir = null,
     library_env_vars: ?[]const u8 = null,
     library_automatic: bool = false,
     library_exported_api: bool = true,
@@ -154,12 +171,48 @@ pub const Doctor = struct {
     go_mod_path: ?[]const u8 = null,
 };
 
+/// `publish`: copies a generated tree into the source tree and prunes what a
+/// previous generation left behind.
+pub const Publish = struct {
+    generated_path: []const u8,
+    source_path: []const u8,
+};
+
+/// One `--target <constraint>` group of `cgo-link-flags`.
+pub const LinkTarget = struct {
+    constraint: []const u8,
+    library_dir: []const u8,
+    archives: []const []const u8,
+};
+
+/// `cgo-link-flags`: writes the machine-local cgo file naming static inputs.
+pub const CgoLinkFlags = struct {
+    output_path: []const u8,
+    package: []const u8,
+    source_dir: []const u8,
+    targets: []const LinkTarget,
+    extra_ldflags: []const u8 = "",
+    system_ldflags: []const u8 = "",
+    system_library_dirs: []const []const u8 = &.{},
+};
+
+/// One `--library <name> <module>` of `pkg-config`.
+pub const PkgConfigLibrary = struct { name: []const u8, module: []const u8 };
+
+/// `pkg-config`: prints the resolved pkg-config name of every library.
+pub const PkgConfig = struct {
+    libraries: []const PkgConfigLibrary,
+};
+
 pub const Command = union(enum) {
     generate: Generate,
     check: Check,
     abi_diff: AbiDiff,
     report: Report,
     doctor: Doctor,
+    publish: Publish,
+    cgo_link_flags: CgoLinkFlags,
+    pkg_config: PkgConfig,
 };
 
 pub fn isHelp(args: []const []const u8) bool {
@@ -186,6 +239,11 @@ pub fn writeUsage(writer: *std.Io.Writer) std.Io.Writer.Error!void {
         \\            [--library-automatic] [--library-internal-api] [--library-platform-dirs]
         \\  doctor    [--go <path>] [--gofmt <path>] [--target native|cross]
         \\            [--link cgo-static|cgo-dynamic|purego] [--library <path>] [--go-mod <path>]
+        \\  publish   --generated <dir> --source <dir>
+        \\  cgo-link-flags --output <file> --package <name> --source-dir <dir>
+        \\            (--target <constraint> --library-dir <dir> --archive <name>...)...
+        \\            [--extra-ldflags <flags>] [--system-ldflags <flags>] [--system-library-dir <dir>]...
+        \\  pkg-config [--library <name> <module>]...
         \\
     );
 }
@@ -195,7 +253,10 @@ fn isHelpFlag(argument: []const u8) bool {
 }
 
 fn isKnownCommand(argument: []const u8) bool {
-    return std.mem.eql(u8, argument, "generate") or std.mem.eql(u8, argument, "check") or std.mem.eql(u8, argument, "abi-diff") or std.mem.eql(u8, argument, "report") or std.mem.eql(u8, argument, "doctor");
+    for ([_][]const u8{ "generate", "check", "abi-diff", "report", "doctor", "publish", "cgo-link-flags", "pkg-config" }) |command| {
+        if (std.mem.eql(u8, argument, command)) return true;
+    }
+    return false;
 }
 
 pub fn writeParseError(writer: *std.Io.Writer, err: ParseError) std.Io.Writer.Error!void {
@@ -218,12 +279,16 @@ pub fn parse(args: []const []const u8) ParseError!Command {
     if (std.mem.eql(u8, args[0], "abi-diff")) return .{ .abi_diff = try parseAbiDiff(args[1..]) };
     if (std.mem.eql(u8, args[0], "report")) return .{ .report = try parseReport(args[1..]) };
     if (std.mem.eql(u8, args[0], "doctor")) return .{ .doctor = try parseDoctor(args[1..]) };
+    if (std.mem.eql(u8, args[0], "publish")) return .{ .publish = try parsePublish(args[1..]) };
+    if (std.mem.eql(u8, args[0], "cgo-link-flags")) return .{ .cgo_link_flags = try parseCgoLinkFlags(args[1..]) };
+    if (std.mem.eql(u8, args[0], "pkg-config")) return .{ .pkg_config = try parsePkgConfig(args[1..]) };
     return error.UnknownCommand;
 }
 
 /// The `--library-*` run-time loading policy, shared by `generate` and `report`.
 const LibraryLoadingArgs = struct {
     search_paths: ?[]const u8 = null,
+    search_between: ?RelativeDir = null,
     env_vars: ?[]const u8 = null,
     automatic: bool = false,
     exported_api: bool = true,
@@ -233,6 +298,8 @@ const LibraryLoadingArgs = struct {
     fn parseFlag(self: *LibraryLoadingArgs, flag: []const u8, args: []const []const u8, index: *usize) ParseError!bool {
         if (std.mem.eql(u8, flag, "--library-search-paths")) {
             try set(&self.search_paths, try takeValue(args, index));
+        } else if (std.mem.eql(u8, flag, "--library-search-between")) {
+            try setRelative(&self.search_between, args, index);
         } else if (std.mem.eql(u8, flag, "--library-platform-dirs")) {
             if (self.platform_dirs) return error.DuplicateArgument;
             self.platform_dirs = true;
@@ -260,6 +327,9 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
     var go_module: ?[]const u8 = null;
     var include_dir: ?[]const u8 = null;
     var library_dir: ?[]const u8 = null;
+    var include_dir_between: ?RelativeDir = null;
+    var library_dir_between: ?RelativeDir = null;
+    var system_library_dirs: std.ArrayList([]const u8) = .empty;
     var header_name: ?[]const u8 = null;
     var cflags: ?[]const u8 = null;
     var ldflags: ?[]const u8 = null;
@@ -304,6 +374,12 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
             try set(&include_dir, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--library-dir")) {
             try set(&library_dir, try takeValue(args, &index));
+        } else if (std.mem.eql(u8, flag, "--include-dir-between")) {
+            try setRelative(&include_dir_between, args, &index);
+        } else if (std.mem.eql(u8, flag, "--library-dir-between")) {
+            try setRelative(&library_dir_between, args, &index);
+        } else if (std.mem.eql(u8, flag, "--system-library-dir")) {
+            system_library_dirs.append(std.heap.page_allocator, try takeValue(args, &index)) catch @panic("OOM");
         } else if (std.mem.eql(u8, flag, "--header-name")) {
             try set(&header_name, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--cflags")) {
@@ -376,6 +452,9 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
         .go_module = go_module,
         .include_dir = include_dir orelse "${SRCDIR}/../../../zig-out/include",
         .library_dir = library_dir orelse "${SRCDIR}/../../../zig-out/lib",
+        .include_dir_between = include_dir_between,
+        .library_dir_between = library_dir_between,
+        .system_library_dirs = system_library_dirs.items,
         .header_name = header_name orelse "",
         .cflags = cflags orelse "",
         .ldflags = ldflags orelse "",
@@ -396,6 +475,7 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
         .target_ldflags = target_ldflags.items,
         .library_stem = library_stem orelse "",
         .library_search_paths = loading.search_paths orelse "",
+        .library_search_between = loading.search_between,
         .library_env_vars = loading.env_vars,
         .library_automatic = loading.automatic,
         .library_exported_api = loading.exported_api,
@@ -535,6 +615,7 @@ fn parseReport(args: []const []const u8) ParseError!Report {
         .go_package = go_package orelse "",
         .go_package_path = go_package_path orelse go_package orelse "",
         .library_search_paths = loading.search_paths orelse "",
+        .library_search_between = loading.search_between,
         .library_env_vars = loading.env_vars,
         .library_automatic = loading.automatic,
         .library_exported_api = loading.exported_api,
@@ -590,6 +671,111 @@ fn parseDoctor(args: []const []const u8) ParseError!Doctor {
     };
 }
 
+fn parsePublish(args: []const []const u8) ParseError!Publish {
+    var generated_path: ?[]const u8 = null;
+    var source_path: ?[]const u8 = null;
+    var index: usize = 0;
+    while (index < args.len) {
+        const flag = args[index];
+        index += 1;
+        if (std.mem.eql(u8, flag, "--generated")) {
+            try set(&generated_path, try takeValue(args, &index));
+        } else if (std.mem.eql(u8, flag, "--source")) {
+            try set(&source_path, try takeValue(args, &index));
+        } else {
+            return error.UnknownArgument;
+        }
+    }
+    return .{
+        .generated_path = generated_path orelse return error.MissingRequiredArgument,
+        .source_path = source_path orelse return error.MissingRequiredArgument,
+    };
+}
+
+/// `--library-dir` and `--archive` belong to the `--target` before them, so
+/// a target's archives can never be attributed to another one.
+fn parseCgoLinkFlags(args: []const []const u8) ParseError!CgoLinkFlags {
+    const allocator = std.heap.page_allocator;
+    var output_path: ?[]const u8 = null;
+    var package: ?[]const u8 = null;
+    var source_dir: ?[]const u8 = null;
+    var extra_ldflags: ?[]const u8 = null;
+    var system_ldflags: ?[]const u8 = null;
+    var system_library_dirs: std.ArrayList([]const u8) = .empty;
+    var targets: std.ArrayList(LinkTarget) = .empty;
+    var archives: std.ArrayList([]const u8) = .empty;
+    var current: ?struct { constraint: []const u8, library_dir: ?[]const u8 = null } = null;
+    var index: usize = 0;
+    while (index < args.len) {
+        const flag = args[index];
+        index += 1;
+        if (std.mem.eql(u8, flag, "--target")) {
+            if (current) |value| {
+                targets.append(allocator, .{
+                    .constraint = value.constraint,
+                    .library_dir = value.library_dir orelse return error.MissingRequiredArgument,
+                    .archives = archives.toOwnedSlice(allocator) catch @panic("OOM"),
+                }) catch @panic("OOM");
+            }
+            current = .{ .constraint = try takeValue(args, &index) };
+        } else if (std.mem.eql(u8, flag, "--library-dir")) {
+            const target = if (current) |*value| value else return error.MissingRequiredArgument;
+            try set(&target.library_dir, try takeValue(args, &index));
+        } else if (std.mem.eql(u8, flag, "--archive")) {
+            if (current == null) return error.MissingRequiredArgument;
+            archives.append(allocator, try takeValue(args, &index)) catch @panic("OOM");
+        } else if (std.mem.eql(u8, flag, "--output")) {
+            try set(&output_path, try takeValue(args, &index));
+        } else if (std.mem.eql(u8, flag, "--package")) {
+            try set(&package, try takeValue(args, &index));
+        } else if (std.mem.eql(u8, flag, "--source-dir")) {
+            try set(&source_dir, try takeValue(args, &index));
+        } else if (std.mem.eql(u8, flag, "--extra-ldflags")) {
+            try set(&extra_ldflags, try takeValue(args, &index));
+        } else if (std.mem.eql(u8, flag, "--system-ldflags")) {
+            try set(&system_ldflags, try takeValue(args, &index));
+        } else if (std.mem.eql(u8, flag, "--system-library-dir")) {
+            system_library_dirs.append(allocator, try takeValue(args, &index)) catch @panic("OOM");
+        } else {
+            return error.UnknownArgument;
+        }
+    }
+    if (current) |value| {
+        targets.append(allocator, .{
+            .constraint = value.constraint,
+            .library_dir = value.library_dir orelse return error.MissingRequiredArgument,
+            .archives = archives.toOwnedSlice(allocator) catch @panic("OOM"),
+        }) catch @panic("OOM");
+    }
+    if (targets.items.len == 0) return error.MissingRequiredArgument;
+    return .{
+        .output_path = output_path orelse return error.MissingRequiredArgument,
+        .package = package orelse return error.MissingRequiredArgument,
+        .source_dir = source_dir orelse return error.MissingRequiredArgument,
+        .targets = targets.items,
+        .extra_ldflags = extra_ldflags orelse "",
+        .system_ldflags = system_ldflags orelse "",
+        .system_library_dirs = system_library_dirs.items,
+    };
+}
+
+fn parsePkgConfig(args: []const []const u8) ParseError!PkgConfig {
+    var libraries: std.ArrayList(PkgConfigLibrary) = .empty;
+    var index: usize = 0;
+    while (index < args.len) {
+        const flag = args[index];
+        index += 1;
+        if (std.mem.eql(u8, flag, "--library")) {
+            const name = try takeValue(args, &index);
+            const module = try takeValue(args, &index);
+            libraries.append(std.heap.page_allocator, .{ .name = name, .module = module }) catch @panic("OOM");
+        } else {
+            return error.UnknownArgument;
+        }
+    }
+    return .{ .libraries = libraries.items };
+}
+
 fn parseLink(value: []const u8) ?Link {
     if (std.mem.eql(u8, value, "cgo-static")) return .cgo_static;
     if (std.mem.eql(u8, value, "cgo-dynamic")) return .cgo_dynamic;
@@ -641,6 +827,12 @@ fn takeValue(args: []const []const u8, index: *usize) ParseError![]const u8 {
 fn set(slot: *?[]const u8, value: []const u8) ParseError!void {
     if (slot.* != null) return error.DuplicateArgument;
     slot.* = value;
+}
+
+fn setRelative(slot: *?RelativeDir, args: []const []const u8, index: *usize) ParseError!void {
+    if (slot.* != null) return error.DuplicateArgument;
+    const from = try takeValue(args, index);
+    slot.* = .{ .from = from, .to = try takeValue(args, index) };
 }
 
 test "generate command parses named arguments" {
@@ -864,4 +1056,39 @@ test "help and parse errors render actionable usage" {
     try writeParseError(&rendered.writer, error.MissingRequiredArgument);
     try std.testing.expect(std.mem.indexOf(u8, rendered.written(), "required argument is missing") != null);
     try std.testing.expect(std.mem.indexOf(u8, rendered.written(), "generate  --semantic") != null);
+}
+
+test "make-time path arguments carry both directories" {
+    const options = (try parse(&.{
+        "generate",               "--semantic",  "s.json", "--output", "out", "--package", "scalar", "--go-module", "m",
+        "--include-dir-between",  "/go/raw",     "/out/include",
+        "--library-dir-between",  "/go/raw",     "/out/lib",
+        "--system-library-dir",   "/deps/a",
+        "--system-library-dir",   "/deps/b",
+        "--library-search-between", "/go", "/out/lib",
+    })).generate;
+    try std.testing.expectEqualStrings("/out/include", options.include_dir_between.?.to);
+    try std.testing.expectEqualStrings("/go/raw", options.library_dir_between.?.from);
+    try std.testing.expectEqual(@as(usize, 2), options.system_library_dirs.len);
+    try std.testing.expectEqualStrings("/go", options.library_search_between.?.from);
+    try std.testing.expectError(error.MissingValue, parse(&.{ "generate", "--include-dir-between", "/only" }));
+}
+
+test "build-runner commands parse their arguments" {
+    const publish = (try parse(&.{ "publish", "--generated", "gen", "--source", "go" })).publish;
+    try std.testing.expectEqualStrings("go", publish.source_path);
+
+    const flags = (try parse(&.{
+        "cgo-link-flags", "--output",      "out.go", "--package", "raw", "--source-dir", "/go/raw",
+        "--target",       "darwin,arm64",  "--library-dir", "/lib/a", "--archive", "liba.a", "--archive", "libdep.a",
+        "--target",       "linux,amd64",   "--library-dir", "/lib/b", "--archive", "liba.a",
+        "--system-library-dir", "/deps",
+    })).cgo_link_flags;
+    try std.testing.expectEqual(@as(usize, 2), flags.targets.len);
+    try std.testing.expectEqual(@as(usize, 2), flags.targets[0].archives.len);
+    try std.testing.expectEqualStrings("/lib/b", flags.targets[1].library_dir);
+    try std.testing.expectError(error.MissingRequiredArgument, parse(&.{ "cgo-link-flags", "--output", "o", "--package", "p", "--source-dir", "s", "--archive", "a" }));
+
+    const pkg_config = (try parse(&.{ "pkg-config", "--library", "avformat", "src/dep.zig" })).pkg_config;
+    try std.testing.expectEqualStrings("src/dep.zig", pkg_config.libraries[0].module);
 }

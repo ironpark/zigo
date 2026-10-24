@@ -1,6 +1,8 @@
 const std = @import("std");
 const go_walk = @import("go_walk.zig");
 const output_manifest = @import("output_manifest");
+/// The build-runner half of `check`: publishing the tree `check` compares.
+pub const publish = @import("publish.zig");
 
 pub const DifferenceKind = enum { missing, content, obsolete };
 pub const Difference = struct { kind: DifferenceKind, path: []const u8 };

@@ -1,223 +1,100 @@
-//! The custom build steps `addGoBindings` wires: link input collection,
-//! pkg-config resolution, host reflection clones and the publish steps.
+//! The build steps `addGoBindings` wires: link input collection, pkg-config
+//! resolution, host reflection clones and the publish steps. Zig 0.17 has no
+//! custom steps, so the work that needs real paths runs as `zigo-gen`
+//! subcommands in the build runner.
 const std = @import("std");
-const go_walk = @import("../src/gen/go_walk.zig");
-const output_manifest = @import("../src/gen/output_manifest.zig");
 
 pub const volatile_cgo_link_file = "zigo_link_inputs_gen.go";
+
+/// One install directory as a lazy path. Zig 0.17 resolves the install
+/// prefix only in the build runner, so everything that has to spell an
+/// installed location -- the cgo line, the purego search path, the doctor's
+/// library -- receives one of these and lets the generator do the spelling.
+pub fn installDirPath(b: *std.Build, dir: std.Build.InstallDir, sub_path: []const u8) std.Build.LazyPath {
+    return switch (dir) {
+        .prefix => .{ .relative = .{ .base = .install_prefix, .sub_path = sub_path } },
+        .lib => .{ .relative = .{ .base = .install_lib, .sub_path = sub_path } },
+        .bin => .{ .relative = .{ .base = .install_bin, .sub_path = sub_path } },
+        .header => .{ .relative = .{ .base = .install_include, .sub_path = sub_path } },
+        .custom => |custom| .{ .relative = .{
+            .base = .install_prefix,
+            .sub_path = if (sub_path.len == 0) custom else b.pathJoin(&.{ custom, sub_path }),
+        } },
+    };
+}
+
+/// A directory argument the generator sees as an absolute path. Two such
+/// paths always share a root, so the relative path between them is the one
+/// the committed files are written with.
+pub fn addAbsoluteDirectoryArg(run: *std.Build.Step.Run, path: std.Build.LazyPath) void {
+    run.addDirectoryArg2(path, .{ .make_absolute = true });
+}
+
+/// The link line of one native target.
+pub const TargetFlags = struct {
+    /// Build constraint spelled before `LDFLAGS`, such as `darwin,arm64`.
+    /// Empty writes the unqualified line a single-target tree links with.
+    constraint: []const u8,
+    /// Where this target's archives install.
+    library_dir: std.Build.InstallDir,
+    /// `lib<name>.a` file names, the binding archive first.
+    archives: []const []const u8,
+    /// The install steps that put the static inputs in place.
+    archive_installs: []const *std.Build.Step,
+};
+
+pub const CgoLinkFlagsOptions = struct {
+    /// Destination relative to the package root.
+    output_path: []const u8,
+    package: []const u8,
+    /// The directory the file lives in.
+    source_dir: std.Build.LazyPath,
+    targets: []const TargetFlags,
+    extra_ldflags: []const u8,
+    system_ldflags: []const u8,
+    link_inputs: *const LinkInputCollector,
+};
 
 /// Publishes the cgo directive that names static archive inputs. It lives
 /// outside the checked generator tree: the archives exist only after a build,
 /// and the directive is only present when a module has such inputs, so a
 /// checkout that has not built yet has nothing stale to compare against.
-pub const PublishCgoLinkFlags = struct {
-    step: std.Build.Step,
-    config: PublishOptions,
-
-    /// The link line of one native target.
-    pub const TargetFlags = struct {
-        /// Build constraint spelled before `LDFLAGS`, such as `darwin,arm64`.
-        /// Empty writes the unqualified line a single-target tree links with.
-        constraint: []const u8,
-        binding_archive: []const u8,
-        /// Install-relative `lib<name>.a` paths, already spelled for the cgo line.
-        static_archives: []const []const u8,
-        /// The install steps that put those archives in place.
-        archive_installs: []const *std.Build.Step,
-    };
-
-    const PublishOptions = struct {
-        output_path: []const u8,
-        package: []const u8,
-        targets: []const TargetFlags,
-        extra_ldflags: []const u8,
-        system_ldflags: []const u8,
-    };
-
-    pub fn create(b: *std.Build, options: PublishOptions) *PublishCgoLinkFlags {
-        const self = b.allocator.create(PublishCgoLinkFlags) catch @panic("OOM");
-        self.* = .{
-            .step = std.Build.Step.init(.{
-                .id = .custom,
-                .name = "PublishCgoLinkFlags",
-                .owner = b,
-                .makeFn = make,
-            }),
-            .config = options,
-        };
-        for (options.targets) |target| {
-            for (target.archive_installs) |install| self.step.dependOn(install);
-        }
-        return self;
+pub fn addCgoLinkFlags(b: *std.Build, generator: *std.Build.Step.Compile, options: CgoLinkFlagsOptions) *std.Build.Step.UpdateSourceFiles {
+    const run = b.addRunArtifact(generator);
+    run.addArgs(&.{ "cgo-link-flags", "--output" });
+    const output = run.addOutputFileArg(volatile_cgo_link_file);
+    run.addArgs(&.{ "--package", options.package, "--source-dir" });
+    addAbsoluteDirectoryArg(run, options.source_dir);
+    for (options.targets) |target| {
+        run.addArgs(&.{ "--target", target.constraint, "--library-dir" });
+        addAbsoluteDirectoryArg(run, installDirPath(b, target.library_dir, ""));
+        for (target.archives) |archive| run.addArgs(&.{ "--archive", archive });
     }
+    run.addArgs(&.{ "--extra-ldflags", options.extra_ldflags, "--system-ldflags", options.system_ldflags });
+    addSystemLibraryDirArgs(run, options.link_inputs);
+    const update = b.addUpdateSourceFiles();
+    update.addCopyFileToSource(output, options.output_path);
+    return update;
+}
 
-    fn make(step: *std.Build.Step, options: std.Build.Step.MakeOptions) !void {
-        _ = options;
-        const b = step.owner;
-        const io = b.graph.io;
-        const self: *PublishCgoLinkFlags = @fieldParentPtr("step", step);
-        var output: std.Io.Writer.Allocating = .init(b.allocator);
-        try output.writer.print(
-            "// Code generated by zigo. DO NOT EDIT.\n" ++
-                "// This machine-local file is intentionally excluded from go-check.\n\n" ++
-                "package {s}\n\n/*",
-            .{self.config.package},
-        );
-        for (self.config.targets) |target| {
-            try output.writer.writeAll("\n#cgo ");
-            if (target.constraint.len != 0) try output.writer.print("{s} ", .{target.constraint});
-            try output.writer.print("LDFLAGS: {s}", .{target.binding_archive});
-            for (target.static_archives) |archive| try output.writer.print(" {s}", .{archive});
-            if (self.config.extra_ldflags.len != 0) try output.writer.print(" {s}", .{self.config.extra_ldflags});
-            if (self.config.system_ldflags.len != 0) try output.writer.print(" {s}", .{self.config.system_ldflags});
-        }
-        try output.writer.writeAll("\n*/\nimport \"C\"\n");
-        const contents = try output.toOwnedSlice();
-
-        if (std.fs.path.dirname(self.config.output_path)) |dirname| {
-            b.build_root.handle.createDirPath(io, dirname) catch |err| {
-                return step.fail("unable to make path '{f}{s}': {t}", .{ b.build_root, dirname, err });
-            };
-        }
-        const existing = b.build_root.handle.readFileAlloc(io, self.config.output_path, b.allocator, .limited(16 * 1024 * 1024)) catch null;
-        if (existing) |bytes| {
-            if (std.mem.eql(u8, bytes, contents)) {
-                step.result_cached = true;
-                return;
-            }
-        }
-        b.build_root.handle.writeFile(io, .{ .sub_path = self.config.output_path, .data = contents }) catch |err| {
-            return step.fail("unable to write file '{f}{s}': {t}", .{ b.build_root, self.config.output_path, err });
-        };
-        step.result_cached = false;
-    }
-};
-
-/// Copies the generated Go tree into the package's Go directory and removes the
-/// generated files a previous run left behind.
-///
-/// `UpdateSourceFiles` copies a named list of files, which this cannot be: how
-/// many Go files a binding produces depends on what the binding declares, and
-/// only the generator knows that. Pruning is part of the same job — a file left
-/// over from a binding that no longer produces it is exactly what `zigo check`
-/// reports as obsolete, so a publish that did not prune would leave the tree
-/// failing its own check.
-pub const PublishGenerated = struct {
-    step: std.Build.Step,
+/// Copies the generated tree into the package's source directory and removes
+/// the generated files a previous run left behind; see `src/gen/publish.zig`.
+/// It writes into the source tree, so it runs every time.
+pub fn addPublishGenerated(
+    b: *std.Build,
+    generator: *std.Build.Step.Compile,
     generated: std.Build.LazyPath,
-    /// The Go directory, relative to the package root.
-    source_dir: []const u8,
-
-    const generated_marker = "// Code generated by zigo. DO NOT EDIT.";
-
-    pub fn create(b: *std.Build, generated: std.Build.LazyPath, source_dir: []const u8) *PublishGenerated {
-        const self = b.allocator.create(PublishGenerated) catch @panic("OOM");
-        self.* = .{
-            .step = std.Build.Step.init(.{
-                .id = .custom,
-                .name = "PublishGenerated",
-                .owner = b,
-                .makeFn = make,
-            }),
-            .generated = generated,
-            .source_dir = source_dir,
-        };
-        generated.addStepDependencies(&self.step);
-        return self;
-    }
-
-    fn make(step: *std.Build.Step, options: std.Build.Step.MakeOptions) !void {
-        _ = options;
-        const b = step.owner;
-        const io = b.graph.io;
-        const self: *PublishGenerated = @fieldParentPtr("step", step);
-        if (!step.inputs.populated()) try step.addWatchInput(self.generated);
-
-        const generated_path = self.generated.getPath2(b, step);
-        var generated_dir = std.Io.Dir.cwd().openDir(io, generated_path, .{ .iterate = true }) catch |err| {
-            return step.fail("unable to open generated directory '{s}': {t}", .{ generated_path, err });
-        };
-        defer generated_dir.close(io);
-        b.build_root.handle.createDirPath(io, self.source_dir) catch |err| {
-            return step.fail("unable to make path '{f}{s}': {t}", .{ b.build_root, self.source_dir, err });
-        };
-        var source = b.build_root.handle.openDir(io, self.source_dir, .{ .iterate = true }) catch |err| {
-            return step.fail("unable to open the generated source directory '{f}{s}': {t}", .{ b.build_root, self.source_dir, err });
-        };
-        defer source.close(io);
-
-        const current = try output_manifest.read(b.allocator, io, generated_dir);
-        defer if (current) |value| value.deinit();
-        const previous = try output_manifest.read(b.allocator, io, source);
-        defer if (previous) |value| value.deinit();
-        var published: std.ArrayList([]const u8) = .empty;
-        defer published.deinit(b.allocator);
-        var any_miss = false;
-        if (current) |manifest| {
-            for (manifest.value.files) |file| {
-                if (file.publishable()) try published.append(b.allocator, file.path);
-            }
-        } else {
-            var walker = try go_walk.walk(generated_dir, b.allocator);
-            defer walker.deinit();
-            while (try walker.next(io)) |entry| {
-                if (entry.kind == .file and std.mem.endsWith(u8, entry.path, ".go"))
-                    try published.append(b.allocator, try b.allocator.dupe(u8, entry.path));
-            }
-        }
-        for (published.items) |sub_path| {
-            if (std.fs.path.dirname(sub_path)) |dirname| {
-                source.createDirPath(io, dirname) catch |err| {
-                    return step.fail("unable to make path '{f}{s}/{s}': {t}", .{ b.build_root, self.source_dir, dirname, err });
-                };
-            }
-            const status = std.Io.Dir.updateFile(generated_dir, io, sub_path, source, sub_path, .{}) catch |err| {
-                return step.fail("unable to update file '{f}{s}/{s}': {t}", .{ b.build_root, self.source_dir, sub_path, err });
-            };
-            any_miss = any_miss or status == .stale;
-        }
-
-        // Exact artifacts do not carry a marker; their previous manifest is
-        // the ownership record. Only obsolete publishable entries are pruned.
-        if (previous) |manifest| for (manifest.value.files) |file| {
-            if (!file.publishable()) continue;
-            for (published.items) |path| {
-                if (go_walk.eqlPath(file.path, path)) break;
-            } else {
-                source.deleteFile(io, file.path) catch |err| switch (err) {
-                    error.FileNotFound => continue,
-                    else => return err,
-                };
-                any_miss = true;
-            }
-        };
-        var stale_walker = try go_walk.walk(source, b.allocator);
-        defer stale_walker.deinit();
-        while (try stale_walker.next(io)) |entry| {
-            if (entry.kind != .file or !std.mem.endsWith(u8, entry.path, ".go")) continue;
-            for (published.items) |sub_path| {
-                if (go_walk.eqlPath(sub_path, entry.path)) break;
-            } else {
-                if (std.mem.eql(u8, std.fs.path.basename(entry.path), volatile_cgo_link_file)) continue;
-                // Only zigo's own output is removed; anything the user wrote in
-                // the same directory carries no marker and is left alone.
-                const contents = source.readFileAlloc(io, entry.path, b.allocator, .limited(64 * 1024 * 1024)) catch continue;
-                defer b.allocator.free(contents);
-                if (!std.mem.startsWith(u8, contents, generated_marker)) continue;
-                source.deleteFile(io, entry.path) catch |err| {
-                    return step.fail("unable to remove obsolete file '{f}{s}/{s}': {t}", .{ b.build_root, self.source_dir, entry.path, err });
-                };
-                any_miss = true;
-            }
-        }
-
-        if (current != null) {
-            const status = try generated_dir.updateFile(io, output_manifest.filename, source, output_manifest.filename, .{});
-            if (status != .fresh) any_miss = true;
-        }
-        step.result_cached = !any_miss;
-    }
-};
+    source_dir: std.Build.LazyPath,
+) *std.Build.Step.Run {
+    const run = b.addRunArtifact(generator);
+    run.setName("publish generated bindings");
+    run.has_side_effects = true;
+    run.addArgs(&.{ "publish", "--generated" });
+    run.addDirectoryArg(generated);
+    run.addArg("--source");
+    run.addDirectoryArg(source_dir);
+    return run;
+}
 
 pub const StaticLinkInputs = struct {
     paths: []const std.Build.LazyPath,
@@ -426,9 +303,8 @@ pub const LinkInputCollector = struct {
         for (module.import_table.values()) |import| self.collect(b, import);
 
         for (module.lib_paths.items) |path| {
-            const candidate = path.getPath(b);
             for (self.library_paths.items) |existing| {
-                if (std.mem.eql(u8, existing.getPath(b), candidate)) break;
+                if (lazyPathEql(existing, path)) break;
             } else {
                 self.library_paths.append(b.allocator, path) catch @panic("OOM");
             }
@@ -489,20 +365,41 @@ fn archiveStem(file_name: []const u8) []const u8 {
     return stem;
 }
 
-/// `-l` flags for the system libraries cgo has to name directly, plus a `-L`
-/// for every search path on the module. Only `.force` libraries move to the
-/// pkg-config line: `.yes` means "try pkg-config, otherwise `-lfoo`", and a
-/// `#cgo pkg-config:` entry has no such fallback.
+/// `-l` flags for the system libraries cgo has to name directly. Only
+/// `.force` libraries move to the pkg-config line: `.yes` means "try
+/// pkg-config, otherwise `-lfoo`", and a `#cgo pkg-config:` entry has no such
+/// fallback. The module's search paths become `-L` flags in the generator,
+/// which is the first place they are real paths; see `addSystemLibraryDirArgs`.
 pub fn systemLibraryFlags(b: *std.Build, inputs: *const LinkInputCollector) []const u8 {
     var flags: std.ArrayList([]const u8) = .empty;
-    for (inputs.library_paths.items) |path| {
-        flags.append(b.allocator, b.fmt("-L{s}", .{path.getPath(b)})) catch @panic("OOM");
-    }
     for (inputs.system_libraries.items) |input| {
         if (input.library.use_pkg_config == .force) continue;
         flags.append(b.allocator, b.fmt("-l{s}", .{input.library.name})) catch @panic("OOM");
     }
     return joinFlags(b, flags.items);
+}
+
+/// A `--system-library-dir` for every search path on the module graph, in
+/// collection order. The generator puts each one as `-L` ahead of the
+/// `--system-ldflags` libraries.
+pub fn addSystemLibraryDirArgs(run: *std.Build.Step.Run, inputs: *const LinkInputCollector) void {
+    for (inputs.library_paths.items) |path| {
+        run.addArg("--system-library-dir");
+        addAbsoluteDirectoryArg(run, path);
+    }
+}
+
+/// Whether two lazy paths name the same location, as far as the configure
+/// phase can tell without resolving them.
+fn lazyPathEql(a: std.Build.LazyPath, b: std.Build.LazyPath) bool {
+    if (std.meta.activeTag(a) != std.meta.activeTag(b)) return false;
+    return switch (a) {
+        .src_path => |left| left.owner == b.src_path.owner and std.mem.eql(u8, left.sub_path, b.src_path.sub_path),
+        .generated => |left| left.index == b.generated.index and left.up == b.generated.up and std.mem.eql(u8, left.sub_path, b.generated.sub_path),
+        .cwd_relative => |left| std.mem.eql(u8, left, b.cwd_relative),
+        .dependency => |left| left.dependency == b.dependency.dependency and std.mem.eql(u8, left.sub_path, b.dependency.sub_path),
+        .relative => |left| left.eql(b.relative),
+    };
 }
 
 pub fn frameworkFlags(b: *std.Build, inputs: *const LinkInputCollector) []const u8 {
@@ -514,112 +411,29 @@ pub fn frameworkFlags(b: *std.Build, inputs: *const LinkInputCollector) []const 
     return joinFlags(b, flags.items);
 }
 
-pub const ResolvePkgConfigLibraries = struct {
-    step: std.Build.Step,
-    inputs: []const Input,
-    executable: []const u8,
-    output_file: std.Build.GeneratedFile,
-    output_sub_path: []const u8,
-
-    const Input = struct {
-        name: []const u8,
-        module: []const u8,
-    };
-
-    const Probe = enum { found, not_found, missing_executable };
-
-    pub fn create(
-        b: *std.Build,
-        artifact_package: []const u8,
-        system_libraries: []const SystemLibraryInput,
-    ) ?*ResolvePkgConfigLibraries {
-        var inputs: std.ArrayList(Input) = .empty;
-        var hash = std.hash.Wyhash.init(0);
-        hash.update(artifact_package);
-        const configured_executable = b.graph.environ_map.get("PKG_CONFIG") orelse "pkg-config";
-        const executable = b.findProgram(&.{configured_executable}, &.{}) catch configured_executable;
-        hash.update(executable);
-        for (system_libraries) |input| {
-            if (input.library.use_pkg_config != .force) continue;
-            const module = moduleDisplayName(input.module);
-            inputs.append(b.allocator, .{ .name = input.library.name, .module = module }) catch @panic("OOM");
-            hash.update(input.library.name);
-            hash.update(module);
-        }
-        if (inputs.items.len == 0) return null;
-
-        const self = b.allocator.create(ResolvePkgConfigLibraries) catch @panic("OOM");
-        self.* = .{
-            .step = std.Build.Step.init(.{
-                .id = .custom,
-                .name = b.fmt("resolve pkg-config libraries for {s}", .{artifact_package}),
-                .owner = b,
-                .makeFn = make,
-            }),
-            .inputs = inputs.toOwnedSlice(b.allocator) catch @panic("OOM"),
-            .executable = executable,
-            .output_file = .{ .step = &self.step },
-            .output_sub_path = b.fmt("zigo/pkg-config/{x}.txt", .{hash.final()}),
-        };
-        return self;
+/// The `#cgo pkg-config:` names for every library a module forces through
+/// pkg-config, resolved by `zigo-gen pkg-config` in the build runner, or null
+/// when no module forces one. It runs every time: what pkg-config answers
+/// depends on the machine, not on anything the build cache sees.
+pub fn addResolvePkgConfig(
+    b: *std.Build,
+    generator: *std.Build.Step.Compile,
+    artifact_package: []const u8,
+    system_libraries: []const SystemLibraryInput,
+) ?*std.Build.Step.Run {
+    var any = false;
+    for (system_libraries) |input| any = any or input.library.use_pkg_config == .force;
+    if (!any) return null;
+    const run = b.addRunArtifact(generator);
+    run.setName(b.fmt("resolve pkg-config libraries for {s}", .{artifact_package}));
+    run.has_side_effects = true;
+    run.addArg("pkg-config");
+    for (system_libraries) |input| {
+        if (input.library.use_pkg_config != .force) continue;
+        run.addArgs(&.{ "--library", input.library.name, moduleDisplayName(input.module) });
     }
-
-    pub fn output(self: *ResolvePkgConfigLibraries) std.Build.LazyPath {
-        return .{ .generated = .{ .file = &self.output_file } };
-    }
-
-    fn make(step: *std.Build.Step, options: std.Build.Step.MakeOptions) !void {
-        _ = options;
-        const self: *ResolvePkgConfigLibraries = @fieldParentPtr("step", step);
-        const b = step.owner;
-        const io = b.graph.io;
-        var names: std.ArrayList([]const u8) = .empty;
-
-        for (self.inputs) |input| {
-            const prefixed = b.fmt("lib{s}", .{input.name});
-            const resolved = blk: {
-                for ([_][]const u8{ input.name, prefixed }) |candidate| switch (try probe(step, self.executable, candidate)) {
-                    .found => break :blk candidate,
-                    .missing_executable => {
-                        std.log.warn("pkg-config is unavailable; keeping original package name '{s}' declared by module '{s}'", .{ input.name, input.module });
-                        break :blk input.name;
-                    },
-                    .not_found => {},
-                };
-                return step.fail(
-                    "pkg-config could not resolve library '{s}' declared by module '{s}' (tried '{s}' and '{s}')",
-                    .{ input.name, input.module, input.name, prefixed },
-                );
-            };
-            names.append(b.allocator, resolved) catch @panic("OOM");
-        }
-
-        const contents = joinFlags(b, names.items);
-        if (std.fs.path.dirname(self.output_sub_path)) |dirname|
-            try b.cache_root.handle.createDirPath(io, dirname);
-        try b.cache_root.handle.writeFile(io, .{ .sub_path = self.output_sub_path, .data = contents });
-        self.output_file.path = try b.cache_root.join(b.allocator, &.{self.output_sub_path});
-        step.result_cached = false;
-    }
-
-    fn probe(step: *std.Build.Step, executable: []const u8, package: []const u8) !Probe {
-        const b = step.owner;
-        const result = std.process.run(b.allocator, b.graph.io, .{
-            .argv = &.{ executable, "--exists", package },
-            .stdout_limit = .limited(64 * 1024),
-            .stderr_limit = .limited(64 * 1024),
-        }) catch |err| switch (err) {
-            error.FileNotFound, error.InvalidName => return .missing_executable,
-            else => return step.fail("unable to run pkg-config for library '{s}': {t}", .{ package, err }),
-        };
-        defer b.allocator.free(result.stdout);
-        defer b.allocator.free(result.stderr);
-        return switch (result.term) {
-            .exited => |code| if (code == 0) .found else .not_found,
-            else => step.fail("pkg-config terminated unexpectedly while probing library '{s}'", .{package}),
-        };
-    }
-};
+    return run;
+}
 
 fn moduleDisplayName(module: *std.Build.Module) []const u8 {
     return if (module.root_source_file) |root| root.getDisplayName() else "<module without a source root>";

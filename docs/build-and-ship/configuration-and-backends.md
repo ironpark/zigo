@@ -72,8 +72,9 @@ _ = zigo.addGoBindings(b, .{
 ```
 
 디렉터리는 Zig install 접두사 기준입니다. `library_name`에는 `lib` 접두사와 확장자를 넣지
-않습니다. 실제 결과 경로가 필요한 사용자 지정 빌드 단계는 `bindings.library_path`와
-`bindings.library_filename`을 사용하세요.
+않습니다. 실제 결과 경로가 필요한 사용자 지정 빌드 단계는 `bindings.library_path`(`LazyPath`)와
+`bindings.library_filename`을 사용하세요. Zig 0.17부터 install 접두사는 빌드 러너에서만
+정해지므로 `library_path`는 `addFileArg` 같은 lazy path 인자로 넘깁니다.
 
 ## 여러 대상을 한 Go tree에 넣기
 

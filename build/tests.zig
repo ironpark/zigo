@@ -164,6 +164,12 @@ pub fn addRepositorySteps(
         .optimize = optimize,
     }), .filters = test_filters });
     const run_cli_tests = b.addRunArtifact(cli_tests);
+    const link_inputs_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("src/gen/link_inputs.zig"),
+        .target = target,
+        .optimize = optimize,
+    }), .filters = test_filters });
+    const run_link_inputs_tests = b.addRunArtifact(link_inputs_tests);
     const build_options_tests = b.addTest(.{ .root_module = generator_modules.build_options, .filters = test_filters });
     const run_build_options_tests = b.addRunArtifact(build_options_tests);
     const emit_tests = b.addTest(.{ .root_module = emit_module, .filters = test_filters });
@@ -347,6 +353,7 @@ pub fn addRepositorySteps(
     test_step.dependOn(&run_diagnostic_tests.step);
     test_step.dependOn(&run_sync_check_tests.step);
     test_step.dependOn(&run_cli_tests.step);
+    test_step.dependOn(&run_link_inputs_tests.step);
     test_step.dependOn(&run_build_options_tests.step);
     test_step.dependOn(&run_emit_tests.step);
     test_step.dependOn(&run_validate_tests.step);
@@ -653,6 +660,7 @@ pub fn addRepositorySteps(
     check_step.dependOn(&diagnostic_tests.step);
     check_step.dependOn(&sync_check_tests.step);
     check_step.dependOn(&cli_tests.step);
+    check_step.dependOn(&link_inputs_tests.step);
     check_step.dependOn(&build_options_tests.step);
     check_step.dependOn(&emit_tests.step);
     check_step.dependOn(&validate_tests.step);
@@ -672,7 +680,7 @@ pub fn addRepositorySteps(
         }),
     });
     const run_snapshot = b.addRunArtifact(snapshot_exe);
-    if (b.args) |args| run_snapshot.addArgs(args);
+    run_snapshot.addPassthruArgs();
     const snapshot_step = b.step("snapshot", "Compare or update a snapshot directory tree");
     snapshot_step.dependOn(&run_snapshot.step);
 
@@ -690,7 +698,7 @@ pub fn addRepositorySteps(
     check_step.dependOn(&shared_smoke.step);
     const run_shared_smoke = b.addRunArtifact(shared_smoke);
     run_shared_smoke.has_side_effects = true;
-    if (b.args) |args| run_shared_smoke.addArgs(args);
+    run_shared_smoke.addPassthruArgs();
     const shared_smoke_step = b.step("shared-library-smoke", "Load an installed shared library and check its exported symbols");
     shared_smoke_step.dependOn(&run_shared_smoke.step);
 }
@@ -980,7 +988,7 @@ fn addPkgConfigContractTests(b: *std.Build, test_step: *std.Build.Step) void {
 
     const unavailable = b.addSystemCommand(&.{ b.graph.zig_exe, "build", "--build-file", fixture, "resolve" });
     unavailable.setName("missing pkg-config keeps the original name");
-    unavailable.setEnvironmentVariable("PKG_CONFIG", b.pathFromRoot("tests/fixtures/pkg-config/does-not-exist"));
+    unavailable.setEnvironmentVariable("PKG_CONFIG", b.root.joinString(b.allocator, "tests/fixtures/pkg-config/does-not-exist") catch @panic("OOM"));
     unavailable.expectExitCode(0);
     unavailable.expectStdOutEqual("avformat");
     unavailable.expectStdErrMatch("pkg-config is unavailable; keeping original package name 'avformat'");
@@ -989,7 +997,8 @@ fn addPkgConfigContractTests(b: *std.Build, test_step: *std.Build.Step) void {
 
 fn prependTestPath(b: *std.Build, run: *std.Build.Step.Run, directory: []const u8) void {
     const current = b.graph.environ_map.get("PATH") orelse "";
-    run.setEnvironmentVariable("PATH", b.fmt("{s}{c}{s}", .{ b.pathFromRoot(directory), std.fs.path.delimiter, current }));
+    const absolute = b.root.joinString(b.allocator, directory) catch @panic("OOM");
+    run.setEnvironmentVariable("PATH", b.fmt("{s}{c}{s}", .{ absolute, std.fs.path.delimiter, current }));
 }
 
 /// Build-graph regression test: a dependency reached through both sides of a
@@ -1016,7 +1025,7 @@ fn testTransitiveLinkInputCollection(
     inputs.collect(b, root);
     const system_flags = steps.systemLibraryFlags(b, &inputs);
     const framework_flags = steps.frameworkFlags(b, &inputs);
-    std.debug.assert(std.mem.count(u8, system_flags, "-L") == 1);
+    std.debug.assert(inputs.library_paths.items.len == 1);
     std.debug.assert(std.mem.count(u8, system_flags, "-lzigo_transitive_test") == 1);
     std.debug.assert(std.mem.count(u8, framework_flags, "-framework ZigoTransitiveTest") == 1);
 }
@@ -1082,8 +1091,8 @@ fn addGeneratorCases(
     runner: *std.Build.Step.Compile,
     test_filters: []const []const u8,
 ) void {
-    const cases_path = b.pathFromRoot("tests/generator_cases");
-    var directory = std.Io.Dir.cwd().openDir(b.graph.io, cases_path, .{ .iterate = true }) catch |err| switch (err) {
+    const cases_path = "tests/generator_cases";
+    var directory = b.root.openDir(b.graph.io, cases_path, .{ .iterate = true }) catch |err| switch (err) {
         // A consumer's copy of this package carries only what `.paths`
         // lists -- build.zig, build.zig.zon and src -- so the cases are not
         // there, and the consumer never runs this test step. Register
@@ -1092,6 +1101,8 @@ fn addGeneratorCases(
         else => std.debug.panic("unable to open generator cases at '{s}': {}", .{ cases_path, err }),
     };
     defer directory.close(b.graph.io);
+    // The configure phase is cached; adding or removing a case re-runs it.
+    b.dependOnDirectoryContents(b.path(cases_path));
 
     var names: std.ArrayList([]const u8) = .empty;
     defer names.deinit(b.allocator);
@@ -1137,9 +1148,13 @@ fn caseFiles(b: *std.Build, cases: std.Io.Dir, name: []const u8) []const []const
     var files: std.ArrayList([]const u8) = .empty;
     var walker = case.walk(b.allocator) catch @panic("OOM");
     defer walker.deinit();
+    // Not recursive, so every directory the walk enters is recorded.
+    b.dependOnDirectoryContents(b.path(b.pathJoin(&.{ "tests/generator_cases", name })));
     while (walker.next(b.graph.io) catch |err|
         std.debug.panic("unable to enumerate generator case '{s}': {}", .{ name, err })) |entry|
     {
+        if (entry.kind == .directory)
+            b.dependOnDirectoryContents(b.path(b.pathJoin(&.{ "tests/generator_cases", name, entry.path })));
         if (entry.kind != .file) continue;
         files.append(b.allocator, b.pathJoin(&.{ name, entry.path })) catch @panic("OOM");
     }
