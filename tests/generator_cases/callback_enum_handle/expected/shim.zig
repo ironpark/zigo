@@ -11,11 +11,11 @@ pub const std_options: std.Options = if (@hasDecl(target, "std_options")) target
 
 extern fn zg_on_location_go_callback_callback(p0: i32, p1: usize) callconv(.c) void;
 fn zg_on_location_callback_packed_thunk(p0: target.Location, p1: usize) callconv(.c) void {
-    zg_on_location_go_callback_callback(@intFromEnum(p0), p1);
+    zg_on_location_go_callback_callback(@backingInt(p0), p1);
 }
 extern fn zg_on_stream_go_callback_callback(p0: *target.Stream, p1: i32, p2: usize) callconv(.c) void;
 fn zg_on_stream_callback_packed_thunk(p0: *target.Stream, p1: target.Location, p2: usize) callconv(.c) void {
-    zg_on_stream_go_callback_callback(p0, @intFromEnum(p1), p2);
+    zg_on_stream_go_callback_callback(p0, @backingInt(p1), p2);
 }
 extern fn zg_on_view_go_callback_callback(p0: ?*const target.Stream, p1: usize) callconv(.c) u8;
 fn zg_on_view_callback_packed_thunk(p0: ?*const target.Stream, p1: usize) callconv(.c) bool {
@@ -23,7 +23,7 @@ fn zg_on_view_callback_packed_thunk(p0: ?*const target.Stream, p1: usize) callco
 }
 extern fn zg_pick_location_go_callback_callback(p0: i32, p1: usize) callconv(.c) i32;
 fn zg_pick_location_callback_packed_thunk(p0: i32, p1: usize) callconv(.c) target.Location {
-    return @enumFromInt(zg_pick_location_go_callback_callback(p0, p1));
+    return @fromBackingInt(@intCast(zg_pick_location_go_callback_callback(p0, p1)));
 }
 
 export fn zg_on_location_impl(userdata: usize) void {

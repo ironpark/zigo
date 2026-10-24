@@ -179,20 +179,20 @@ fn collectSourceFunctions(
 ) !void {
     @setEvalBranchQuota(100_000);
     inline for (comptime std.meta.declarations(Container)) |candidate| {
-        const value = @field(Container, candidate.name);
+        const value = @field(Container, candidate);
         if (@typeInfo(@TypeOf(value)) != .@"fn") continue;
-        const identity = @typeName(Container) ++ "." ++ candidate.name;
+        const identity = @typeName(Container) ++ "." ++ candidate;
         if (!contains(seen.items, identity)) {
             try seen.append(allocator, identity);
             const info = @typeInfo(@TypeOf(value)).@"fn";
-            const params = try allocator.alloc(semantic.Parameter, info.params.len);
+            const params = try allocator.alloc(semantic.Parameter, info.param_types.len);
             for (params, 0..) |*parameter, index| parameter.* = .{
                 .name = try std.fmt.allocPrint(allocator, "p{d}", .{index}),
                 .name_source = .fallback,
                 .type = .{ .void = {} },
             };
             try functions.append(allocator, .{
-                .name = candidate.name,
+                .name = candidate,
                 .namespace = owner,
                 .params = params,
                 .@"return" = .{ .void = {} },
@@ -201,14 +201,14 @@ fn collectSourceFunctions(
         }
     }
     inline for (comptime std.meta.declarations(Container)) |candidate| {
-        const value = @field(Container, candidate.name);
+        const value = @field(Container, candidate);
         if (@TypeOf(value) != type or comptime !walk.isNestedContainer(Container, value)) continue;
         try collectSourceFunctions(
             allocator,
             functions,
             seen,
             value,
-            comptime if (owner) |parent| parent ++ "." ++ candidate.name else candidate.name,
+            comptime if (owner) |parent| parent ++ "." ++ candidate else candidate,
         );
     }
 }
@@ -234,21 +234,21 @@ fn collectContainer(
 ) !void {
     @setEvalBranchQuota(100_000);
     inline for (comptime std.meta.declarations(Container)) |candidate| {
-        const value = @field(Container, candidate.name);
+        const value = @field(Container, candidate);
         if (@TypeOf(value) == type and comptime walk.isContainer(value)) {
             if (publicTypeNamed(public_types.items, @typeName(value)) == null) try public_types.append(allocator, .{
                 .type_name = @typeName(value),
                 .path = if (owner == null and std.mem.eql(u8, path_prefix, "root") or std.mem.startsWith(u8, path_prefix, "root."))
-                    displayPath(owner, candidate.name)
+                    displayPath(owner, candidate)
                 else
                     null,
             });
         }
         if (@typeInfo(@TypeOf(value)) != .@"fn") continue;
-        const identity = @typeName(Container) ++ "." ++ candidate.name;
+        const identity = @typeName(Container) ++ "." ++ candidate;
         if (!contains(seen_functions.items, identity)) {
             try seen_functions.append(allocator, identity);
-            const path = path_prefix ++ "." ++ candidate.name;
+            const path = path_prefix ++ "." ++ candidate;
             const status: Status = if (selectors.excluded.contains(path))
                 .excluded
             else if (discovered or selectors.listed.contains(path))
@@ -257,14 +257,14 @@ fn collectContainer(
                 .unbound;
             try collectFunctionTypes(allocator, referenced_types, @TypeOf(value));
             try declarations.append(allocator, .{
-                .path = displayPath(owner, candidate.name),
+                .path = displayPath(owner, candidate),
                 .status = status,
-                .reason = if (status == .unbound) try signatureReason(allocator, binding, document, source_functions, owner, candidate.name, @TypeOf(value)) else null,
+                .reason = if (status == .unbound) try signatureReason(allocator, binding, document, source_functions, owner, candidate, @TypeOf(value)) else null,
             });
         }
     }
     inline for (comptime std.meta.declarations(Container)) |candidate| {
-        const value = @field(Container, candidate.name);
+        const value = @field(Container, candidate);
         if (@TypeOf(value) != type or comptime !walk.isNestedContainer(Container, value)) continue;
         try collectContainer(
             allocator,
@@ -277,8 +277,8 @@ fn collectContainer(
             document,
             source_functions,
             value,
-            comptime if (owner) |parent| parent ++ "." ++ candidate.name else candidate.name,
-            path_prefix ++ "." ++ candidate.name,
+            comptime if (owner) |parent| parent ++ "." ++ candidate else candidate,
+            path_prefix ++ "." ++ candidate,
             comptime discovered and (binding.discovery.?.mode == .recursive),
         );
     }
@@ -317,7 +317,7 @@ fn displayPath(comptime owner: ?[]const u8, comptime name: []const u8) []const u
 fn collectFunctionTypes(allocator: std.mem.Allocator, types: *std.ArrayList([]const u8), comptime F: type) !void {
     @setEvalBranchQuota(100_000);
     const info = @typeInfo(F).@"fn";
-    inline for (info.params) |parameter| if (parameter.type) |T| try collectType(allocator, types, T);
+    inline for (info.param_types) |parameter_type| if (parameter_type) |T| try collectType(allocator, types, T);
     if (info.return_type) |T| try collectType(allocator, types, T);
 }
 
@@ -349,15 +349,15 @@ fn signatureReason(
     const info = @typeInfo(F).@"fn";
     var output: std.Io.Writer.Allocating = .init(allocator);
     var wrote = false;
-    inline for (info.params, 0..) |parameter, index| {
-        const reason: ?[]const u8 = if (parameter.is_generic or parameter.type == null)
+    inline for (info.param_types, 0..) |parameter_type, index| {
+        const reason: ?[]const u8 = if (parameter_type == null)
             "comptime parameter"
-        else if (parameter.type.? == std.mem.Allocator)
+        else if (parameter_type.? == std.mem.Allocator)
             if (binding.allocator == null) "allocator, no metadata" else null
-        else if (parameter.type.? == std.Io)
+        else if (parameter_type.? == std.Io)
             if (binding.io == null) "io, no metadata" else null
         else
-            try typeReason(allocator, binding, document, parameter.type.?, true);
+            try typeReason(allocator, binding, document, parameter_type.?, true);
         if (reason) |detail| {
             if (wrote) try output.writer.writeAll("; ");
             try output.writer.writeAll("param ");
@@ -417,7 +417,7 @@ fn typeReason(
         .pointer => |info| switch (info.size) {
             .slice => try typeReason(allocator, binding, document, info.child, false),
             .one => if (@typeInfo(info.child) == .@"fn") try callbackReason(allocator, binding, document, info.child) else if (isBuiltinSpecial(info.child) or typeKnownToDocument(document, @typeName(info.child))) null else try unregisteredReason(allocator, binding, info.child),
-            .many => if (info.child == u8 and info.is_const and info.sentinel() != null) null else "no C representation",
+            .many => if (info.child == u8 and info.attrs.@"const" and info.sentinel() != null) null else "no C representation",
             else => "no C representation",
         },
         .optional => |info| switch (@typeInfo(info.child)) {
@@ -440,9 +440,10 @@ fn typeReason(
 
 fn plainStructReason(allocator: std.mem.Allocator, comptime binding: zigo.Binding, document: semantic.Semantic, comptime T: type) ![]const u8 {
     @setEvalBranchQuota(100_000);
-    inline for (@typeInfo(T).@"struct".fields) |field| {
-        if (try typeReason(allocator, binding, document, field.type, false)) |reason|
-            return std.fmt.allocPrint(allocator, "plain struct (field {s}: {s})", .{ field.name, reason });
+    const info = @typeInfo(T).@"struct";
+    inline for (info.field_names, info.field_types) |field_name, field_type| {
+        if (try typeReason(allocator, binding, document, field_type, false)) |reason|
+            return std.fmt.allocPrint(allocator, "plain struct (field {s}: {s})", .{ field_name, reason });
     }
     return "plain struct";
 }
@@ -454,9 +455,9 @@ fn unregisteredReason(allocator: std.mem.Allocator, comptime binding: zigo.Bindi
 fn callbackReason(allocator: std.mem.Allocator, comptime binding: zigo.Binding, document: semantic.Semantic, comptime F: type) !?[]const u8 {
     @setEvalBranchQuota(100_000);
     const info = @typeInfo(F).@"fn";
-    if (!std.meta.eql(info.calling_convention, std.builtin.CallingConvention.c)) return "non-C callback";
-    inline for (info.params) |parameter| {
-        const T = parameter.type orelse return "comptime parameters";
+    if (!std.meta.eql(info.attrs.@"callconv", std.builtin.CallingConvention.c)) return "non-C callback";
+    inline for (info.param_types) |parameter_type| {
+        const T = parameter_type orelse return "comptime parameters";
         if (try typeReason(allocator, binding, document, T, false)) |reason| return reason;
     }
     if (info.return_type) |T| return try typeReason(allocator, binding, document, T, false);

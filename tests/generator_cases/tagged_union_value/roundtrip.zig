@@ -19,7 +19,7 @@ test "a fallible union result reports its variant on success" {
     var out: Snapshot = undefined;
     try std.testing.expectEqual(@as(i32, 0), zg_parse_impl("smooth", 6, &out));
     try std.testing.expectEqual(@as(u8, 5), out.tag);
-    try std.testing.expectEqual(@as(u8, @intFromEnum(@import("zigo_target").Mode.smooth)), out.mode);
+    try std.testing.expectEqual(@as(u8, @backingInt(@import("zigo_target").Mode.smooth)), out.mode);
 }
 
 test "the Zig error and the omitted variant stay distinguishable" {

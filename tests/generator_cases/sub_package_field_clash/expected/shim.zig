@@ -10,7 +10,7 @@ pub const panic = std.debug.FullPanic(panicHandler);
 pub const std_options: std.Options = if (@hasDecl(target, "std_options")) target.std_options else .{};
 
 export fn zg_use_mode_impl(mode: u8) void {
-    target.useMode(@enumFromInt(mode));
+    target.useMode(@fromBackingInt(@intCast(mode)));
 }
 export fn zg_inspect_config_impl(config: *const target.Config, out_result: *target.Config) void {
     out_result.* = target.inspectConfig(config.*);

@@ -18,7 +18,7 @@ pub fn build(b: *std.Build) void {
         .module = module,
         .layout = .{ .go_module = "example.com/zigo/pkg-config-fixture" },
         .target = target,
-        .optimize = .Debug,
+        .optimize = .debug,
     });
 
     const resolved = b.addSystemCommand(&.{"cat"});

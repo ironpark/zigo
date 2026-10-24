@@ -12,7 +12,7 @@ pub fn build(b: *std.Build) void {
         .module = module,
         .layout = .{ .go_module = "example.com/zigo/plugin-path" },
         .target = target,
-        .optimize = .Debug,
+        .optimize = .debug,
         .plugins = &.{.{
             .name = "wrappers",
             .root_source_file = b.dependency("zigo", .{}).path("tests/plugins/wrappers.zig"),

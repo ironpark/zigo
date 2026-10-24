@@ -12,7 +12,7 @@ pub fn build(b: *std.Build) void {
         .module = module,
         .layout = .{ .go_module = "example.com/zigo/invalid" },
         .target = target,
-        .optimize = .Debug,
+        .optimize = .debug,
         .abi_base = null,
         // This fixture names its own `go` step.
         .standard_steps = null,

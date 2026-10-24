@@ -12,7 +12,7 @@ pub fn build(b: *std.Build) void {
         .module = module,
         .layout = .{ .go_module = "example.com/zigo/divergence" },
         .target = target,
-        .optimize = .Debug,
+        .optimize = .debug,
         .link = .{ .purego = .{} },
     });
     // The guards live in the shim, so compiling the library is what proves

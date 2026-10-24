@@ -10,7 +10,7 @@ pub const panic = std.debug.FullPanic(panicHandler);
 pub const std_options: std.Options = if (@hasDecl(target, "std_options")) target.std_options else .{};
 
 export fn zg_echo_color_impl(value: *const target.Color, mode: u8, out_result: *target.Color) void {
-    out_result.* = target.echoColor(value.*, @enumFromInt(mode));
+    out_result.* = target.echoColor(value.*, @fromBackingInt(@intCast(mode)));
 }
 
 /// Fails this compile when a layout zigo reflected on the build host does

@@ -10,17 +10,17 @@ pub const panic = std.debug.FullPanic(panicHandler);
 pub const std_options: std.Options = if (@hasDecl(target, "std_options")) target.std_options else .{};
 
 export fn zg_key_printable_impl(self: u8) u8 {
-    return @intFromBool(target.Key.printable(@enumFromInt(self)));
+    return @intFromBool(target.Key.printable(@fromBackingInt(@intCast(self))));
 }
 export fn zg_key_codepoint_impl(self: u8) u32 {
-    return @intCast(target.Key.codepoint(@enumFromInt(self)));
+    return @intCast(target.Key.codepoint(@fromBackingInt(@intCast(self))));
 }
 export fn zg_key_combine_impl(self: u8, other: u8) u8 {
-    return @intFromEnum(target.Key.combine(@enumFromInt(self), @enumFromInt(other)));
+    return @backingInt(target.Key.combine(@fromBackingInt(@intCast(self)), @fromBackingInt(@intCast(other))));
 }
 export fn zg_mode_enabled_impl(self: i32) u8 {
-    return @intFromBool(target.Mode.enabled(@enumFromInt(self)));
+    return @intFromBool(target.Mode.enabled(@fromBackingInt(@intCast(self))));
 }
 export fn zg_from_ascii_impl(ch: u8) u8 {
-    return @intFromEnum(target.keyFromASCII(ch));
+    return @backingInt(target.keyFromASCII(ch));
 }

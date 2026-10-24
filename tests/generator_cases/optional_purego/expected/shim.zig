@@ -20,10 +20,10 @@ export fn zg_flag_impl(value: ?*const u8) u8 {
     return @intFromBool(target.flag(if (value) |zigo_value| zigo_value.* != 0 else null));
 }
 export fn zg_pick_mode_impl(value: ?*const u8, out_result: *u8) u8 {
-    const result = target.pickMode(if (value) |zigo_value| @enumFromInt(zigo_value.*) else null) orelse {
+    const result = target.pickMode(if (value) |zigo_value| @fromBackingInt(@intCast(zigo_value.*)) else null) orelse {
         return 0;
     };
-    out_result.* = @intFromEnum(result);
+    out_result.* = @backingInt(result);
     return 1;
 }
 export fn zg_checked_double_impl(value: ?*const i32, out_result_has: *u8, out_result: *i32) i32 {

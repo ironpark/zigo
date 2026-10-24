@@ -361,7 +361,7 @@ fn fieldPathOffendingType(comptime Current: type, comptime path: []const u8) ?ty
 fn fieldPathConstPointerType(comptime Current: type, comptime path: []const u8) ?type {
     const Container = switch (@typeInfo(Current)) {
         .pointer => |pointer| if (pointer.size == .one and @typeInfo(pointer.child) == .@"struct") blk: {
-            if (pointer.is_const) return Current;
+            if (pointer.attrs.@"const") return Current;
             break :blk pointer.child;
         } else return Current,
         .@"struct" => Current,
@@ -376,7 +376,7 @@ fn fieldPathConstPointerType(comptime Current: type, comptime path: []const u8) 
 
 fn fieldPathWritable(comptime Current: type, comptime path: []const u8) bool {
     const Container = switch (@typeInfo(Current)) {
-        .pointer => |pointer| if (pointer.size == .one and !pointer.is_const and @typeInfo(pointer.child) == .@"struct") pointer.child else return false,
+        .pointer => |pointer| if (pointer.size == .one and !pointer.attrs.@"const" and @typeInfo(pointer.child) == .@"struct") pointer.child else return false,
         .@"struct" => Current,
         else => return false,
     };
@@ -944,12 +944,12 @@ fn appendFunction(
         ));
     }
     const params = try allocator.alloc(semantic.Parameter, comptime concreteParamCount(info, receiver_index));
-    inline for (info.params, 0..) |param, param_index| {
+    inline for (info.param_types, 0..) |param_type, param_index| {
         if (receiver_index != null and param_index == receiver_index.?) continue;
         if (info.is_generic) continue;
-        if (param.is_generic or param.type == null) continue;
+        if (param_type == null) continue;
         const output_index = comptime concreteParamIndex(info, receiver_index, param_index);
-        const injection = comptime injectionFor(param.type.?);
+        const injection = comptime injectionFor(param_type.?);
         // Where this parameter falls in `.params`, which counts only the
         // parameters Go is given.
         const sidecar_index = comptime exposedParamIndex(info, receiver_index, param_index);
@@ -981,7 +981,7 @@ fn appendFunction(
         // unregistered struct pointer and reporting the wrong thing.
         const names_cancel = comptime named_by_sidecar and metadata.cancel != null and
             std.mem.eql(u8, metadata.cancel.?.param, spec.name.?);
-        const is_cancel_flag = comptime names_cancel and isCancelFlag(param.type.?);
+        const is_cancel_flag = comptime names_cancel and isCancelFlag(param_type.?);
         // An injected parameter never reaches C, so it is not walked as a
         // type: `std.mem.Allocator` is a struct with a vtable pointer, and
         // reflecting it would fail long before validation could explain why.
@@ -994,7 +994,7 @@ fn appendFunction(
         const flattened_fields: ?[]const semantic.FlattenedField = if (flatten_names) |names| try reflectFlattenedFields(
             allocator,
             declaration,
-            param.type.?,
+            param_type.?,
             types,
             names,
             owner_label ++ function_label,
@@ -1005,8 +1005,8 @@ fn appendFunction(
         } else if (comptime flatten_names != null)
             // Decided at comptime: the plain walk below must not even be
             // analysed for a flattened struct, or its `@compileError` fires.
-            try flattenedStructNode(allocator, param.type.?, types, flattened_fields.?)
-        else if (comptime registeredOpaqueName(declaration, param.type.?)) |name|
+            try flattenedStructNode(allocator, param_type.?, types, flattened_fields.?)
+        else if (comptime registeredOpaqueName(declaration, param_type.?)) |name|
             semantic.TypeNode{ .opaque_ptr = .{
                 .by_value = true,
                 .@"const" = true,
@@ -1014,12 +1014,12 @@ fn appendFunction(
                 .ref = name,
             } }
         else
-            try typeNode(allocator, declaration, param.type.?, types, comptime std.fmt.comptimePrint(
+            try typeNode(allocator, declaration, param_type.?, types, comptime std.fmt.comptimePrint(
                 "`{s}{s}` parameter `{s}`",
                 .{ owner_label, function_label, parameter_label },
             ));
         var reflected: semantic.Parameter = .{
-            .atomic = if (comptime atomicScalar(param.type.?) != null) true else null,
+            .atomic = if (comptime atomicScalar(param_type.?) != null) true else null,
             .ext = if (comptime has_spec and spec.ext.len != 0) try extensionsAlloc(allocator, spec.ext) else null,
             .cancel = if (names_cancel) true else null,
             .injected = injection,
@@ -1032,7 +1032,7 @@ fn appendFunction(
         // it once and every parameter of that type inherits it. The
         // matching `Param` entry below still assigns field by field, which is what
         // makes a call site able to override one field and inherit the rest.
-        const contract = comptime callbackEntryContract(declaration, param.type.?);
+        const contract = comptime callbackEntryContract(declaration, param_type.?);
         if (comptime contract.retention) |value| reflected.retention = value;
         if (comptime contract.reentrancy) |value| reflected.reentrancy = value;
         if (comptime contract.thread) |value| reflected.thread = value;
@@ -1063,11 +1063,11 @@ fn appendFunction(
         if (is_cancel_flag) reflected.type = .{ .cancel_flag = {} };
         // The sentinel is part of the Zig type, so it remains a C string even
         // when a declaration sidecar omits a semantic hint.
-        if (!names_cancel and isSentinelBytePointer(param.type.?)) reflected.semantic = .c_string;
+        if (!names_cancel and isSentinelBytePointer(param_type.?)) reflected.semantic = .c_string;
         // A collection of sentinel strings is still a string collection even
         // without sidecar metadata. The unsentinel `[][]const u8` spelling is
         // intentionally opt-in through `.semantic = .utf8_string`.
-        if (isSentinelStringSlice(param.type.?)) reflected.semantic = .utf8_string;
+        if (isSentinelStringSlice(param_type.?)) reflected.semantic = .utf8_string;
         reflected.semantic = resolveCodepointHint(declaration, reflected.semantic, reflected.type);
         reflected.semantic = resolveStringHint(declaration, reflected.semantic, reflected.type, .parameter);
         params[output_index] = reflected;
@@ -1112,7 +1112,7 @@ fn appendFunction(
     // enrichment may take a prototype from an anonymous container.
     const owner_generic = comptime blk: {
         if (receiver_index) |index| {
-            const T = info.params[index].type.?;
+            const T = info.param_types[index].?;
             const Base = switch (@typeInfo(T)) {
                 .pointer => |pointer| pointer.child,
                 else => T,
@@ -1133,7 +1133,7 @@ fn appendFunction(
         .params = params,
         .receiver = receiver,
         .receiver_by_value = comptime if (enum_receiver != null) null else if (receiver_index) |index|
-            if (@typeInfo(info.params[index].type.?) == .pointer) null else true
+            if (@typeInfo(info.param_types[index].?) == .pointer) null else true
         else
             null,
         .receiver_kind = comptime if (enum_receiver != null) .value else null,
@@ -1289,29 +1289,30 @@ fn reflectFlattenedFields(
     inline for (selected, 0..) |field_name, selected_index| {
         inline for (selected, 0..) |earlier, earlier_index| if (earlier_index < selected_index and std.mem.eql(u8, earlier, field_name))
             return flattenIssue(allocator, "`{s}` parameter `{s}` names field `{s}` more than once", .{ function_label, parameter_label, field_name });
-        const maybe_field: ?std.builtin.Type.StructField = comptime blk: {
-            for (info.fields) |candidate| if (std.mem.eql(u8, candidate.name, field_name)) break :blk candidate;
+        const maybe_field_index: ?usize = comptime blk: {
+            for (info.field_names, 0..) |candidate, index| if (std.mem.eql(u8, candidate, field_name)) break :blk index;
             break :blk null;
         };
-        const field = maybe_field orelse return flattenIssue(allocator, "`{s}` parameter `{s}` has no field `{s}`", .{ function_label, parameter_label, field_name });
-        const leaf = comptime if (@typeInfo(field.type) == .optional) @typeInfo(field.type).optional.child else field.type;
+        const field_index = maybe_field_index orelse return flattenIssue(allocator, "`{s}` parameter `{s}` has no field `{s}`", .{ function_label, parameter_label, field_name });
+        const field_type = info.field_types[field_index];
+        const leaf = comptime if (@typeInfo(field_type) == .optional) @typeInfo(field_type).optional.child else field_type;
         const scalar_leaf = comptime atomicScalar(leaf) orelse leaf;
         const allowed = comptime supportedFieldLeaf(declaration, scalar_leaf);
         if (!allowed) return flattenIssue(allocator, "`{s}` parameter `{s}` field `{s}` is not a supported scalar, registered enum, or registered packed value", .{ function_label, parameter_label, field_name });
         result[selected_index] = .{
             .atomic = if (comptime atomicScalar(leaf) != null) true else null,
-            .default = comptime reflectDefault(field.type, field.default_value_ptr),
+            .default = comptime reflectDefault(field_type, info.field_attrs[field_index].default_value_ptr),
             .name = field_name,
-            .type = try typeNode(allocator, declaration, field.type, types, "flattened field `" ++ field_name ++ "`"),
+            .type = try typeNode(allocator, declaration, field_type, types, "flattened field `" ++ field_name ++ "`"),
         };
     }
-    inline for (info.fields) |field| {
+    inline for (info.field_names, info.field_attrs) |declared_name, declared_attrs| {
         const listed = comptime blk: {
-            for (selected) |field_name| if (std.mem.eql(u8, field.name, field_name)) break :blk true;
+            for (selected) |field_name| if (std.mem.eql(u8, declared_name, field_name)) break :blk true;
             break :blk false;
         };
-        if (!listed and field.default_value_ptr == null)
-            return flattenIssue(allocator, "`{s}` parameter `{s}` leaves required field `{s}` unlisted", .{ function_label, parameter_label, field.name });
+        if (!listed and declared_attrs.default_value_ptr == null)
+            return flattenIssue(allocator, "`{s}` parameter `{s}` leaves required field `{s}` unlisted", .{ function_label, parameter_label, declared_name });
     }
     return result;
 }
@@ -1514,9 +1515,9 @@ fn boxedErrorNames(comptime info: std.builtin.Type.Fn) []const []const u8 {
         .error_union => |value| value,
         else => return &.{},
     };
-    const errors = @typeInfo(error_union.error_set).error_set orelse return &.{};
+    const errors = @typeInfo(error_union.error_set).error_set.error_names orelse return &.{};
     comptime var names: [errors.len][]const u8 = undefined;
-    inline for (errors, 0..) |entry, index| names[index] = entry.name;
+    inline for (errors, 0..) |error_name, index| names[index] = error_name;
     const frozen = names;
     return &frozen;
 }
@@ -1537,19 +1538,19 @@ fn discoverContainer(
     comptime path_prefix: []const u8,
 ) !void {
     inline for (comptime std.meta.declarations(Container)) |candidate| {
-        const value = @field(Container, candidate.name);
+        const value = @field(Container, candidate);
         if (@typeInfo(@TypeOf(value)) != .@"fn") continue;
-        const path = path_prefix ++ "." ++ candidate.name;
+        const path = path_prefix ++ "." ++ candidate;
         // A listed path was reflected through its entry before discovery
         // ran; an excluded one is left out. Either way this is one hash
         // lookup at runtime, not a comptime scan of the binding.
         if (!declared.claims(path)) {
-            try appendFunction(allocator, functions, types, pairings, declaration, prefix, candidate.name, value, .{ .path = path }, owner, null);
+            try appendFunction(allocator, functions, types, pairings, declaration, prefix, candidate, value, .{ .path = path }, owner, null);
         }
     }
     if (declaration.discovery.?.mode != .recursive) return;
     inline for (comptime std.meta.declarations(Container)) |candidate| {
-        const value = @field(Container, candidate.name);
+        const value = @field(Container, candidate);
         if (@TypeOf(value) != type or comptime !isNestedContainer(Container, value)) continue;
         try discoverContainer(
             allocator,
@@ -1560,8 +1561,8 @@ fn discoverContainer(
             prefix,
             declared,
             value,
-            comptime if (owner) |parent| parent ++ "." ++ candidate.name else candidate.name,
-            path_prefix ++ "." ++ candidate.name,
+            comptime if (owner) |parent| parent ++ "." ++ candidate else candidate,
+            path_prefix ++ "." ++ candidate,
         );
     }
 }
@@ -1866,7 +1867,7 @@ fn enumReceiverName(comptime declaration: zigo.Binding, comptime info: std.built
     const name = owner orelse return null;
     const Enum = enumEntryNamed(declaration, name) orelse return null;
     const index = firstNonInjectedIndex(info) orelse return null;
-    const T = info.params[index].type orelse return null;
+    const T = info.param_types[index] orelse return null;
     return if (T == Enum) name else null;
 }
 
@@ -1938,7 +1939,7 @@ fn typeNode(
                 const element = try allocator.create(semantic.TypeNode);
                 element.* = try typeNode(allocator, declaration, info.child, types, context ++ " (slice element)");
                 break :blk .{ .slice = .{
-                    .@"const" = info.is_const,
+                    .@"const" = info.attrs.@"const",
                     .element = element,
                     .sentinel = if (info.child == u8) info.sentinel() else null,
                 } };
@@ -1954,16 +1955,16 @@ fn typeNode(
                 if (comptime atomicScalar(info.child)) |Scalar| {
                     const child = try allocator.create(semantic.TypeNode);
                     child.* = try typeNode(allocator, declaration, Scalar, types, context ++ " (atomic scalar)");
-                    break :blk .{ .atomic_ptr = .{ .child = child, .@"const" = info.is_const } };
+                    break :blk .{ .atomic_ptr = .{ .child = child, .@"const" = info.attrs.@"const" } };
                 }
                 if (@typeInfo(info.child) == .@"fn") {
                     const function_info = @typeInfo(info.child).@"fn";
-                    const native_count = function_info.params.len;
+                    const native_count = function_info.param_types.len;
                     // The userdata slot: where the registered entry points, or
                     // the trailing `usize`. A declared slot is taken as is so
                     // validation can name a wrong type against the binding.
                     const userdata_native: ?usize = comptime callbackEntryUserdata(declaration, T, native_count) orelse
-                        (if (native_count != 0 and function_info.params[native_count - 1].type == usize) native_count - 1 else null);
+                        (if (native_count != 0 and function_info.param_types[native_count - 1] == usize) native_count - 1 else null);
                     const has_userdata = userdata_native != null;
                     // `params` is in Go order: values as declared, userdata
                     // last. Native order is remembered as `userdata_at`. A
@@ -1972,8 +1973,8 @@ fn typeNode(
                     // single `params` entry.
                     const layout = comptime callbackLayout(function_info, userdata_native);
                     const callback_params = try allocator.alloc(semantic.TypeNode, layout.go_count);
-                    inline for (function_info.params, 0..) |parameter, index| {
-                        const parameter_type = parameter.type orelse
+                    inline for (function_info.param_types, 0..) |maybe_parameter_type, index| {
+                        const parameter_type = maybe_parameter_type orelse
                             @compileError("zigo cannot reflect a generic callback parameter, at " ++ context);
                         switch (layout.kinds[index]) {
                             .pair_length => {},
@@ -2006,7 +2007,7 @@ fn typeNode(
                         if (slot.* != null) any_hint = true;
                     }
                     break :blk .{ .callback = .{
-                        .c_callconv = std.meta.eql(function_info.calling_convention, std.builtin.CallingConvention.c),
+                        .c_callconv = std.meta.eql(function_info.attrs.@"callconv", std.builtin.CallingConvention.c),
                         .has_userdata = has_userdata,
                         .userdata_at = if (userdata_native) |at| (if (at == native_count - 1) null else at) else null,
                         .params = callback_params,
@@ -2021,7 +2022,7 @@ fn typeNode(
                 const name = registeredTypeName(declaration, info.child, .handle) orelse opaqueNameForPath(types.items, @typeName(info.child)) orelse
                     return missingOpaqueType(@typeName(info.child), context);
                 break :blk .{ .opaque_ptr = .{
-                    .@"const" = info.is_const,
+                    .@"const" = info.attrs.@"const",
                     .nullable = false,
                     .ref = name,
                 } };
@@ -2030,7 +2031,7 @@ fn typeNode(
                 const sentinel = info.sentinel() orelse @compileError(
                     "zigo supports slices, pointers to declared opaque types, and `[*:0]const u8` sentinel strings; mutable or non-zero-sentinel many pointers are unsupported, at " ++ context,
                 );
-                if (info.child != u8 or !info.is_const or sentinel != 0) @compileError(
+                if (info.child != u8 or !info.attrs.@"const" or sentinel != 0) @compileError(
                     "zigo supports slices, pointers to declared opaque types, and `[*:0]const u8` sentinel strings; mutable or non-zero-sentinel many pointers are unsupported, at " ++ context,
                 );
                 const element = try allocator.create(semantic.TypeNode);
@@ -2074,7 +2075,7 @@ fn typeNode(
                 const name = registeredTypeName(declaration, child.pointer.child, .handle) orelse opaqueNameForPath(types.items, @typeName(child.pointer.child)) orelse
                     return missingOpaqueType(@typeName(child.pointer.child), context);
                 break :blk .{ .opaque_ptr = .{
-                    .@"const" = child.pointer.is_const,
+                    .@"const" = child.pointer.attrs.@"const",
                     .nullable = true,
                     .ref = name,
                 } };
@@ -2089,7 +2090,7 @@ fn typeNode(
                 // absent one stay different. A sentinel many pointer reflects
                 // to the same `slice` node and works the same way.
                 .pointer => |value| value.size == .slice or
-                    (value.size == .many and value.is_const and value.sentinel() != null),
+                    (value.size == .many and value.attrs.@"const" and value.sentinel() != null),
                 else => false,
             };
             if (!allowed) @compileError(
@@ -2102,10 +2103,10 @@ fn typeNode(
         .error_union => |info| blk: {
             const payload = try allocator.create(semantic.TypeNode);
             payload.* = try typeNode(allocator, declaration, info.payload, types, context ++ " (error payload)");
-            const reflected_errors = @typeInfo(info.error_set).error_set;
+            const reflected_errors = @typeInfo(info.error_set).error_set.error_names;
             const names = if (reflected_errors) |errors| names: {
                 const result = try allocator.alloc([]const u8, errors.len);
-                inline for (errors, 0..) |entry, index| result[index] = entry.name;
+                inline for (errors, 0..) |error_name, index| result[index] = error_name;
                 break :names result;
             } else &.{};
             break :blk .{ .error_union = .{
@@ -2186,10 +2187,10 @@ fn returnTypeNode(
                 .nullable = false,
                 .ref = name,
             } };
-            const reflected_errors = @typeInfo(info.error_set).error_set;
+            const reflected_errors = @typeInfo(info.error_set).error_set.error_names;
             const names = if (reflected_errors) |errors| names: {
                 const result = try allocator.alloc([]const u8, errors.len);
-                inline for (errors, 0..) |entry, index| result[index] = entry.name;
+                inline for (errors, 0..) |error_name, index| result[index] = error_name;
                 break :names result;
             } else &.{};
             return .{ .error_union = .{
@@ -2232,10 +2233,10 @@ fn paramSlot(
 ) usize {
     if (info.is_generic and target_index == null) return 0;
     var count: usize = 0;
-    inline for (info.params, 0..) |parameter, index| {
+    inline for (info.param_types, 0..) |parameter_type, index| {
         if (target_index) |target| if (index == target) return count;
-        if (receiver_index == index or parameter.is_generic or parameter.type == null) continue;
-        if (filter == .exposed and injectionFor(parameter.type.?) != null) continue;
+        if (receiver_index == index or parameter_type == null) continue;
+        if (filter == .exposed and injectionFor(parameter_type.?) != null) continue;
         count += 1;
     }
     if (target_index != null) unreachable;
@@ -2283,8 +2284,8 @@ fn paramNameCountMismatch(comptime message: []const u8) error{ParamNameCount} {
 /// injected argument, when it is a pointer to a registered handle or a
 /// registered opaque type by value.
 fn receiverIndex(comptime info: std.builtin.Type.Fn, comptime declaration: zigo.Binding) ?usize {
-    inline for (info.params, 0..) |parameter, index| {
-        const T = parameter.type orelse return null;
+    inline for (info.param_types, 0..) |parameter_type, index| {
+        const T = parameter_type orelse return null;
         if (injectionFor(T) != null) continue;
         return if (receiverNameAt(info, declaration, index) != null) index else null;
     }
@@ -2292,15 +2293,15 @@ fn receiverIndex(comptime info: std.builtin.Type.Fn, comptime declaration: zigo.
 }
 
 fn firstNonInjectedIndex(comptime info: std.builtin.Type.Fn) ?usize {
-    inline for (info.params, 0..) |parameter, index| {
-        const T = parameter.type orelse return null;
+    inline for (info.param_types, 0..) |parameter_type, index| {
+        const T = parameter_type orelse return null;
         if (injectionFor(T) == null) return index;
     }
     return null;
 }
 
 fn receiverNameAt(comptime info: std.builtin.Type.Fn, comptime declaration: zigo.Binding, comptime index: usize) ?[]const u8 {
-    const T = info.params[index].type orelse return null;
+    const T = info.param_types[index] orelse return null;
     switch (@typeInfo(T)) {
         .pointer => |pointer| {
             if (pointer.size != .one) return null;
@@ -2485,12 +2486,12 @@ fn appendMaterializedStruct(
         .name = name,
         .zig_path = zig_path,
     });
-    const fields = try allocator.alloc(semantic.TypeField, info.fields.len);
-    inline for (info.fields, 0..) |field, field_index| {
+    const fields = try allocator.alloc(semantic.TypeField, info.field_names.len);
+    inline for (info.field_names, info.field_types, 0..) |field_name, field_type, field_index| {
         fields[field_index] = .{
-            .name = field.name,
-            .semantic = comptime fieldSemantic(field_meta, field.name),
-            .type = try materializedFieldNode(allocator, declaration, field.type, types, "`" ++ comptime shortTypeName(@typeName(T)) ++ "` field `" ++ field.name ++ "`"),
+            .name = field_name,
+            .semantic = comptime fieldSemantic(field_meta, field_name),
+            .type = try materializedFieldNode(allocator, declaration, field_type, types, "`" ++ comptime shortTypeName(@typeName(T)) ++ "` field `" ++ field_name ++ "`"),
         };
     }
     types.items[index].fields = fields;
@@ -2515,7 +2516,7 @@ fn materializedFieldNode(
         .pointer => |pointer| if (pointer.size == .slice) {
             const element = try allocator.create(semantic.TypeNode);
             element.* = try materializedFieldNode(allocator, declaration, pointer.child, types, context ++ " (slice element)");
-            return .{ .slice = .{ .@"const" = pointer.is_const, .element = element } };
+            return .{ .slice = .{ .@"const" = pointer.attrs.@"const", .element = element } };
         },
         .optional => |optional| {
             const inner = @typeInfo(optional.child);
@@ -2594,17 +2595,17 @@ fn appendEnum(
 ) !void {
     const info = @typeInfo(T).@"enum";
     comptime validateEnumFieldMeta(T, field_meta);
-    const fields = try allocator.alloc(semantic.TypeField, info.fields.len);
-    inline for (info.fields, 0..) |field, index| fields[index] = .{
-        .doc = comptime memberDoc(zigo.EnumField, field_meta, field.name),
-        .ext = try memberExtensions(allocator, zigo.EnumField, field_meta, field.name),
-        .name = field.name,
-        .value = @intCast(field.value),
+    const fields = try allocator.alloc(semantic.TypeField, info.field_names.len);
+    inline for (info.field_names, info.field_values, 0..) |field_name, field_value, index| fields[index] = .{
+        .doc = comptime memberDoc(zigo.EnumField, field_meta, field_name),
+        .ext = try memberExtensions(allocator, zigo.EnumField, field_meta, field_name),
+        .name = field_name,
+        .value = @intCast(field_value),
     };
     const tag_type = try typeNode(allocator, declaration, info.tag_type, types, "the tag type of enum `" ++ @typeName(T) ++ "`");
     try types.append(allocator, .{
         .doc = doc,
-        .exhaustive = info.is_exhaustive,
+        .exhaustive = (info.mode == .exhaustive),
         .fields = fields,
         .go = semantic.TypeGo.withAdapter(go_adapter),
         .kind = .@"enum",
@@ -2697,23 +2698,23 @@ fn appendValueStruct(
     });
     // Reflecting a field can append further types, so the declaration is
     // updated by index rather than through a held pointer.
-    const fields = try allocator.alloc(semantic.TypeField, info.fields.len);
-    inline for (info.fields, 0..) |field, field_index| {
+    const fields = try allocator.alloc(semantic.TypeField, info.field_names.len);
+    inline for (info.field_names, info.field_types, 0..) |field_name, field_type, field_index| {
         fields[field_index] = .{
-            .atomic = if (comptime atomicScalar(field.type) != null) true else null,
-            .doc = comptime memberDoc(zigo.ValueField, field_meta, field.name),
-            .ext = try memberExtensions(allocator, zigo.ValueField, field_meta, field.name),
-            .name = field.name,
-            .semantic = comptime fieldSemantic(field_meta, field.name),
+            .atomic = if (comptime atomicScalar(field_type) != null) true else null,
+            .doc = comptime memberDoc(zigo.ValueField, field_meta, field_name),
+            .ext = try memberExtensions(allocator, zigo.ValueField, field_meta, field_name),
+            .name = field_name,
+            .semantic = comptime fieldSemantic(field_meta, field_name),
             .type = if (info.layout == .@"packed")
-                try packedFieldTypeNode(allocator, declaration, field.type, types, "`" ++ comptime shortTypeName(@typeName(T)) ++ "` field `" ++ field.name ++ "`")
+                try packedFieldTypeNode(allocator, declaration, field_type, types, "`" ++ comptime shortTypeName(@typeName(T)) ++ "` field `" ++ field_name ++ "`")
             else
                 try externFieldTypeNode(
                     allocator,
                     declaration,
-                    field.type,
+                    field_type,
                     types,
-                    "`" ++ comptime shortTypeName(@typeName(T)) ++ "` field `" ++ field.name ++ "`",
+                    "`" ++ comptime shortTypeName(@typeName(T)) ++ "` field `" ++ field_name ++ "`",
                 ),
         };
     }
@@ -2790,31 +2791,31 @@ fn appendTaggedUnion(
         .zig_path = zig_path,
     });
 
-    const fields = try allocator.alloc(semantic.TypeField, info.fields.len);
-    inline for (info.fields, 0..) |field, index| {
+    const fields = try allocator.alloc(semantic.TypeField, info.field_names.len);
+    inline for (info.field_names, info.field_types, 0..) |field_name, field_type, index| {
         fields[index] = .{
-            .atomic = if (comptime atomicScalar(field.type) != null) true else null,
-            .name = field.name,
+            .atomic = if (comptime atomicScalar(field_type) != null) true else null,
+            .name = field_name,
             .type = try typeNode(
                 allocator,
                 declaration,
-                field.type,
+                field_type,
                 types,
-                "`" ++ comptime shortTypeName(@typeName(T)) ++ "` variant `" ++ field.name ++ "`",
+                "`" ++ comptime shortTypeName(@typeName(T)) ++ "` variant `" ++ field_name ++ "`",
             ),
-            .value = @intCast(@intFromEnum(@field(Tag, field.name))),
+            .value = @intCast(@backingInt(@field(Tag, field_name))),
         };
     }
     types.items[union_index].fields = fields;
     types.items[union_index].tag_type = .{ .@"enum" = .{ .ref = tag_name } };
 
-    const tag_fields = try allocator.alloc(semantic.TypeField, tag_info.fields.len);
-    inline for (tag_info.fields, 0..) |field, index| {
-        tag_fields[index] = .{ .name = field.name, .value = @intCast(field.value) };
+    const tag_fields = try allocator.alloc(semantic.TypeField, tag_info.field_names.len);
+    inline for (tag_info.field_names, tag_info.field_values, 0..) |field_name, field_value, index| {
+        tag_fields[index] = .{ .name = field_name, .value = @intCast(field_value) };
     }
     const integer_tag = try typeNode(allocator, declaration, tag_info.tag_type, types, "`" ++ comptime shortTypeName(@typeName(Tag)) ++ "` tag type");
     try types.append(allocator, .{
-        .exhaustive = tag_info.is_exhaustive,
+        .exhaustive = (tag_info.mode == .exhaustive),
         .fields = tag_fields,
         .kind = .@"enum",
         .name = tag_name,
@@ -2865,8 +2866,8 @@ fn atomicScalar(comptime T: type) ?type {
         .@"struct" => |value| value,
         else => return null,
     };
-    if (info.fields.len != 1 or !std.mem.eql(u8, info.fields[0].name, "raw")) return null;
-    const Scalar = info.fields[0].type;
+    if (info.field_names.len != 1 or !std.mem.eql(u8, info.field_names[0], "raw")) return null;
+    const Scalar = info.field_types[0];
     return if (T == std.atomic.Value(Scalar)) Scalar else null;
 }
 
@@ -2883,7 +2884,7 @@ fn isSentinelBytePointer(comptime T: type) bool {
         .pointer => |value| value,
         else => return false,
     };
-    if (info.size != .many or info.child != u8 or !info.is_const) return false;
+    if (info.size != .many or info.child != u8 or !info.attrs.@"const") return false;
     return (info.sentinel() orelse return false) == 0;
 }
 
@@ -2892,12 +2893,12 @@ fn isSentinelStringSlice(comptime T: type) bool {
         .pointer => |value| value,
         else => return false,
     };
-    if (outer.size != .slice or !outer.is_const) return false;
+    if (outer.size != .slice or !outer.attrs.@"const") return false;
     const inner = switch (@typeInfo(outer.child)) {
         .pointer => |value| value,
         else => return false,
     };
-    if (!inner.is_const or inner.child != u8) return false;
+    if (!inner.attrs.@"const" or inner.child != u8) return false;
     const sentinel = inner.sentinel() orelse return false;
     return sentinel == 0;
 }
@@ -2967,7 +2968,7 @@ test "scalar reflection matches the semantic JSON golden" {
         \\  "package": "scalar",
         \\  "prefix": "zg",
         \\  "types": [],
-        \\  "zig_version": "0.16.0"
+        \\  "zig_version": "0.17.0"
         \\}
         \\
     ;

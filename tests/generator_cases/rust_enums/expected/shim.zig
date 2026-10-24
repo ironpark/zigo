@@ -10,36 +10,36 @@ pub const panic = std.debug.FullPanic(panicHandler);
 pub const std_options: std.Options = if (@hasDecl(target, "std_options")) target.std_options else .{};
 
 export fn zg_echo_impl(value: u8) u8 {
-    return @intFromEnum(target.echo(@enumFromInt(value)));
+    return @backingInt(target.echo(@fromBackingInt(@intCast(value))));
 }
 export fn zg_pick_impl(value: i32) i32 {
-    return @intFromEnum(target.pick(@enumFromInt(value)));
+    return @backingInt(target.pick(@fromBackingInt(@intCast(value))));
 }
 export fn zg_echo_level_impl(value: u8) u8 {
-    return @intFromEnum(target.echoLevel(@enumFromInt(value)));
+    return @backingInt(target.echoLevel(@fromBackingInt(@intCast(value))));
 }
 export fn zg_fallible_impl(value: i32, fail: u8, out_result: *i32) i32 {
-    const result = target.fallible(@enumFromInt(value), fail != 0) catch |err| return switch (err) {
+    const result = target.fallible(@fromBackingInt(@intCast(value)), fail != 0) catch |err| return switch (err) {
         error.Rejected => 1,
     };
-    out_result.* = @intFromEnum(result);
+    out_result.* = @backingInt(result);
     return 0;
 }
 export fn zg_checked_impl(value: u8, out_result: *u8) i32 {
     if (value > std.math.maxInt(u3)) @panic("zigo: argument `value` is out of range for u3");
     const result = target.checked(@intCast(value));
-    out_result.* = @intFromEnum(result);
+    out_result.* = @backingInt(result);
     return 0;
 }
 export fn zg_invalid_impl() u8 {
-    return @intFromEnum(target.invalid());
+    return @backingInt(target.invalid());
 }
 export fn zg_get_hidden_impl() u8 {
-    return @intFromEnum(target.get_hidden());
+    return @backingInt(target.get_hidden());
 }
 export fn zg_wire_impl(value: u16) u16 {
-    return @intFromEnum(target.wire(@enumFromInt(value)));
+    return @backingInt(target.wire(@fromBackingInt(@intCast(value))));
 }
 export fn zg_get_tiny_impl(value: u8) u8 {
-    return @intFromEnum(target.get_tiny(@enumFromInt(value)));
+    return @backingInt(target.get_tiny(@fromBackingInt(@intCast(value))));
 }

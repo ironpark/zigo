@@ -21,7 +21,7 @@ export fn zg_context_deinit_impl(self: *target.Context) i32 {
     return 0;
 }
 export fn zg_context_choose_impl(self: *target.Context, mode: u8, out_result: *u8) i32 {
-    const result = target.Context.choose(self, @enumFromInt(mode));
-    out_result.* = @intFromEnum(result);
+    const result = target.Context.choose(self, @fromBackingInt(@intCast(mode)));
+    out_result.* = @backingInt(result);
     return 0;
 }

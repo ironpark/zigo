@@ -25,7 +25,7 @@ export fn zg_cursor_next_checked_impl(self: *target.Cursor, out_result_has: *u8,
     };
     if (result) |zigo_value| {
         out_result_has.* = 1;
-        out_result.* = @intFromEnum(zigo_value);
+        out_result.* = @backingInt(zigo_value);
     } else {
         out_result_has.* = 0;
     }

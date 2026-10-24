@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-10-24T11:52:06Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `zig build --help` configures without errors on 0.17.0.
 > NEXT: none

@@ -16,7 +16,7 @@ export fn zg_counter_bump_impl(self: *target.Counter, by: i32, out_result: *targ
 }
 export fn zg_counter_mode_impl(self: *target.Counter, out_result: *u8) i32 {
     const result = target.Counter.mode(self);
-    out_result.* = @intFromEnum(result);
+    out_result.* = @backingInt(result);
     return 0;
 }
 

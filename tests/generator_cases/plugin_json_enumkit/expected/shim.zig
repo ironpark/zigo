@@ -10,8 +10,8 @@ pub const panic = std.debug.FullPanic(panicHandler);
 pub const std_options: std.Options = if (@hasDecl(target, "std_options")) target.std_options else .{};
 
 export fn zg_echo_mode_impl(mode: u8, channel: u8) u8 {
-    return @intFromEnum(target.echoMode(@enumFromInt(mode), @enumFromInt(channel)));
+    return @backingInt(target.echoMode(@fromBackingInt(@intCast(mode)), @fromBackingInt(@intCast(channel))));
 }
 export fn zg_echo_tone_impl(tone: u8, shade: u8) u8 {
-    return @intFromEnum(target.echoTone(@enumFromInt(tone), @enumFromInt(shade)));
+    return @backingInt(target.echoTone(@fromBackingInt(@intCast(tone)), @fromBackingInt(@intCast(shade))));
 }

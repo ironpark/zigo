@@ -10,26 +10,26 @@ pub const panic = std.debug.FullPanic(panicHandler);
 pub const std_options: std.Options = if (@hasDecl(target, "std_options")) target.std_options else .{};
 
 export fn zg_echo_dense_impl(value: i8) i8 {
-    return @intFromEnum(target.echoDense(@enumFromInt(value)));
+    return @backingInt(target.echoDense(@fromBackingInt(@intCast(value))));
 }
 export fn zg_echo_holes_impl(value: i8) i8 {
-    return @intFromEnum(target.echoHoles(@enumFromInt(value)));
+    return @backingInt(target.echoHoles(@fromBackingInt(@intCast(value))));
 }
 export fn zg_echo_min64_impl(value: i64) i64 {
-    return @intFromEnum(target.echoMin64(@enumFromInt(value)));
+    return @backingInt(target.echoMin64(@fromBackingInt(@intCast(value))));
 }
 export fn zg_echo_max64_impl(value: u64) u64 {
-    return @intFromEnum(target.echoMax64(@enumFromInt(value)));
+    return @backingInt(target.echoMax64(@fromBackingInt(@intCast(value))));
 }
 export fn zg_echo_max8_impl(value: u8) u8 {
-    return @intFromEnum(target.echoMax8(@enumFromInt(value)));
+    return @backingInt(target.echoMax8(@fromBackingInt(@intCast(value))));
 }
 export fn zg_echo_sparse_impl(value: i64) i64 {
-    return @intFromEnum(target.echoSparse(@enumFromInt(value)));
+    return @backingInt(target.echoSparse(@fromBackingInt(@intCast(value))));
 }
 export fn zg_echo_single_impl(value: i8) i8 {
-    return @intFromEnum(target.echoSingle(@enumFromInt(value)));
+    return @backingInt(target.echoSingle(@fromBackingInt(@intCast(value))));
 }
 export fn zg_echo_large_impl(value: u8) u8 {
-    return @intFromEnum(target.echoLarge(@enumFromInt(value)));
+    return @backingInt(target.echoLarge(@fromBackingInt(@intCast(value))));
 }

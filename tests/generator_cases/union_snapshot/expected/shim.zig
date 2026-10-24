@@ -25,7 +25,7 @@ export fn zg_signal_set_ticks_impl(self: *target.Signal, ticks: u32) i32 {
     return 0;
 }
 export fn zg_signal_set_mode_impl(self: *target.Signal, mode: u8) i32 {
-    target.Signal.setMode(self, @enumFromInt(mode));
+    target.Signal.setMode(self, @fromBackingInt(@intCast(mode)));
     return 0;
 }
 export fn zg_signal_set_active_impl(self: *target.Signal, active: u8) i32 {
@@ -33,7 +33,7 @@ export fn zg_signal_set_active_impl(self: *target.Signal, active: u8) i32 {
     return 0;
 }
 export fn zg_signal_project_tag_impl(self: *const target.Signal, out_value: *u8) i32 {
-    out_value.* = @intFromEnum(std.meta.activeTag(self.*));
+    out_value.* = @backingInt(std.meta.activeTag(self.*));
     return 1;
 }
 export fn zg_signal_project_ticks_impl(self: *const target.Signal, out_value: *u32) i32 {
@@ -53,7 +53,7 @@ export fn zg_signal_project_offset_impl(self: *const target.Signal, out_value: *
 }
 export fn zg_signal_project_mode_impl(self: *const target.Signal, out_value: *u8) i32 {
     if (std.meta.activeTag(self.*) != .mode) return 0;
-    out_value.* = @intFromEnum(self.mode);
+    out_value.* = @backingInt(self.mode);
     return 1;
 }
 export fn zg_signal_project_active_impl(self: *const target.Signal, out_value: *u8) i32 {
@@ -77,13 +77,13 @@ comptime {
 }
 export fn zg_signal_snapshot_impl(self: *const target.Signal, out_snapshot: *zg_signal_snapshot_t) i32 {
     out_snapshot.* = std.mem.zeroes(zg_signal_snapshot_t);
-    out_snapshot.tag = @intFromEnum(std.meta.activeTag(self.*));
+    out_snapshot.tag = @backingInt(std.meta.activeTag(self.*));
     switch (self.*) {
         .idle => {},
         .ticks => |value| out_snapshot.ticks = value,
         .level => |value| out_snapshot.level = value,
         .offset => |value| out_snapshot.offset = value,
-        .mode => |value| out_snapshot.mode = @intFromEnum(value),
+        .mode => |value| out_snapshot.mode = @backingInt(value),
         .active => |value| out_snapshot.active = @intFromBool(value),
     }
     return 1;

@@ -128,7 +128,7 @@ pub const Facts = struct {
     const Value = struct { type_name: []const u8, data: *const anyopaque };
     const KeyContext = struct {
         pub fn hash(_: @This(), key: Key) u64 {
-            var hasher = std.hash.Wyhash.init(@intFromEnum(key.id.kind));
+            var hasher = std.hash.Wyhash.init(@backingInt(key.id.kind));
             hasher.update(key.owner);
             hasher.update(&.{0});
             hasher.update(key.id.name);
@@ -1408,7 +1408,7 @@ pub fn ordered(comptime entries: []const Plugin) [entries.len]Plugin {
             }
         }
         var result: [entries.len]Plugin = undefined;
-        var used = [_]bool{false} ** entries.len;
+        var used: [entries.len]bool = @splat(false);
         for (0..entries.len) |slot| {
             var found = false;
             for (entries, 0..) |entry, index| {

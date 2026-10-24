@@ -10,7 +10,7 @@ pub const panic = std.debug.FullPanic(panicHandler);
 pub const std_options: std.Options = if (@hasDecl(target, "std_options")) target.std_options else .{};
 
 export fn zg_echo_impl(value: u8) u8 {
-    return @intFromEnum(target.echo(@enumFromInt(value)));
+    return @backingInt(target.echo(@fromBackingInt(@intCast(value))));
 }
 export fn zg_configure_impl(config: *const target.Config) void {
     target.configure(config.*);

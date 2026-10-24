@@ -134,7 +134,7 @@ fn contentDifferenceAlloc(allocator: std.mem.Allocator, expected: []const u8, ac
 fn lessThan(_: void, lhs: Difference, rhs: Difference) bool {
     const order = std.mem.order(u8, lhs.path, rhs.path);
     if (order != .eq) return order == .lt;
-    return @intFromEnum(lhs.kind) < @intFromEnum(rhs.kind);
+    return @backingInt(lhs.kind) < @backingInt(rhs.kind);
 }
 
 test "reports a corrupted golden tree by file name" {

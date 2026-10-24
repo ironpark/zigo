@@ -2050,9 +2050,9 @@ test "tagged union lowering records tag scalar slice and handle projections" {
     try std.testing.expectEqual(abi.AbiParam.Role.payload_out, tag.params[1].role);
     try std.testing.expectEqual(@as(u16, 8), tag.params[1].scalar.pointer.child.unsigned_int);
     try std.testing.expect(tag.ret == .signed_int and tag.ret.signed_int == 32);
-    try std.testing.expectEqual(@as(i32, 0), @intFromEnum(abi.AbiProjection.Status.mismatch));
-    try std.testing.expectEqual(@as(i32, 1), @intFromEnum(abi.AbiProjection.Status.success));
-    try std.testing.expectEqual(@as(i32, 2), @intFromEnum(abi.AbiProjection.Status.invalid_handle));
+    try std.testing.expectEqual(@as(i32, 0), @backingInt(abi.AbiProjection.Status.mismatch));
+    try std.testing.expectEqual(@as(i32, 1), @backingInt(abi.AbiProjection.Status.success));
+    try std.testing.expectEqual(@as(i32, 2), @backingInt(abi.AbiProjection.Status.invalid_handle));
 
     const number = program.projections[1];
     try std.testing.expectEqual(abi.AbiProjection.Kind.payload, number.kind);

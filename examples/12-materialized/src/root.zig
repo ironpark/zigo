@@ -62,7 +62,7 @@ const probe = Probe{
 const row_a = [_]i32{ 1, 2 };
 const row_b = [_]i32{3};
 const matrix = [_][]const i32{ &row_a, &row_b };
-const corpus = [_]Probe{probe} ** 128;
+const corpus: [128]Probe = @splat(probe);
 
 pub fn snapshot() Probe {
     return probe;

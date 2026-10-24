@@ -12,12 +12,12 @@ pub const std_options: std.Options = if (@hasDecl(target, "std_options")) target
 var zg_on_location_purego_v2_bits_target_callback: std.atomic.Value(?*const fn (i32, usize) callconv(.c) void) = .init(null);
 fn zg_on_location_purego_v2_bits_thunk_callback(p0: target.Location, p1: usize) callconv(.c) void {
     const dispatch = zg_on_location_purego_v2_bits_target_callback.load(.acquire) orelse @panic("zigo: callback invoked before it was installed");
-    dispatch(@intFromEnum(p0), p1);
+    dispatch(@backingInt(p0), p1);
 }
 var zg_on_stream_purego_v2_bits_target_callback: std.atomic.Value(?*const fn (*target.Stream, i32, usize) callconv(.c) void) = .init(null);
 fn zg_on_stream_purego_v2_bits_thunk_callback(p0: *target.Stream, p1: target.Location, p2: usize) callconv(.c) void {
     const dispatch = zg_on_stream_purego_v2_bits_target_callback.load(.acquire) orelse @panic("zigo: callback invoked before it was installed");
-    dispatch(p0, @intFromEnum(p1), p2);
+    dispatch(p0, @backingInt(p1), p2);
 }
 var zg_on_view_purego_v2_bits_target_callback: std.atomic.Value(?*const fn (?*const target.Stream, usize) callconv(.c) u8) = .init(null);
 fn zg_on_view_purego_v2_bits_thunk_callback(p0: ?*const target.Stream, p1: usize) callconv(.c) bool {

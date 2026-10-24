@@ -1060,12 +1060,9 @@ test "help and parse errors render actionable usage" {
 
 test "make-time path arguments carry both directories" {
     const options = (try parse(&.{
-        "generate",               "--semantic",  "s.json", "--output", "out", "--package", "scalar", "--go-module", "m",
-        "--include-dir-between",  "/go/raw",     "/out/include",
-        "--library-dir-between",  "/go/raw",     "/out/lib",
-        "--system-library-dir",   "/deps/a",
-        "--system-library-dir",   "/deps/b",
-        "--library-search-between", "/go", "/out/lib",
+        "generate",              "--semantic",               "s.json",       "--output",              "out",     "--package", "scalar",               "--go-module", "m",
+        "--include-dir-between", "/go/raw",                  "/out/include", "--library-dir-between", "/go/raw", "/out/lib",  "--system-library-dir", "/deps/a",     "--system-library-dir",
+        "/deps/b",               "--library-search-between", "/go",          "/out/lib",
     })).generate;
     try std.testing.expectEqualStrings("/out/include", options.include_dir_between.?.to);
     try std.testing.expectEqualStrings("/go/raw", options.library_dir_between.?.from);
@@ -1079,9 +1076,9 @@ test "build-runner commands parse their arguments" {
     try std.testing.expectEqualStrings("go", publish.source_path);
 
     const flags = (try parse(&.{
-        "cgo-link-flags", "--output",      "out.go", "--package", "raw", "--source-dir", "/go/raw",
-        "--target",       "darwin,arm64",  "--library-dir", "/lib/a", "--archive", "liba.a", "--archive", "libdep.a",
-        "--target",       "linux,amd64",   "--library-dir", "/lib/b", "--archive", "liba.a",
+        "cgo-link-flags",       "--output",     "out.go",        "--package",     "raw",       "--source-dir", "/go/raw",
+        "--target",             "darwin,arm64", "--library-dir", "/lib/a",        "--archive", "liba.a",       "--archive",
+        "libdep.a",             "--target",     "linux,amd64",   "--library-dir", "/lib/b",    "--archive",    "liba.a",
         "--system-library-dir", "/deps",
     })).cgo_link_flags;
     try std.testing.expectEqual(@as(usize, 2), flags.targets.len);

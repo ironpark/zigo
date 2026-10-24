@@ -221,7 +221,7 @@ test "generic specializations and callback context" {
     const inspector = struct {
         fn call(ctx: ?*CallbackContext, level: Level, strict: bool, _: usize) callconv(.c) i32 {
             const target = ctx orelse return -1;
-            return @as(i32, @intCast(target.stats.runs.load(.seq_cst))) + @intFromEnum(level) + @intFromBool(strict);
+            return @as(i32, @intCast(target.stats.runs.load(.seq_cst))) + @backingInt(level) + @intFromBool(strict);
         }
     }.call;
     try std.testing.expectEqual(@as(i32, 3), inspect(context, .warn, true, &inspector, 0));

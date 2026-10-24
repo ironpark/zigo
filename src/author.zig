@@ -66,24 +66,21 @@ fn AuthoredStruct(comptime Options: type) type {
     const info = @typeInfo(Options).@"struct";
     if (info.layout != .auto) return Options;
     comptime var mapped = false;
-    comptime var names: [info.fields.len][:0]const u8 = undefined;
-    comptime var types: [info.fields.len]type = undefined;
-    comptime var attributes: [info.fields.len]std.builtin.Type.StructField.Attributes = undefined;
-    inline for (info.fields, 0..) |field, index| {
-        const Mapped = Authored(field.type);
-        names[index] = field.name;
+    comptime var types: [info.field_names.len]type = undefined;
+    comptime var attributes: [info.field_names.len]std.builtin.Type.Struct.FieldAttributes = undefined;
+    inline for (info.field_types, info.field_attrs, 0..) |field_type, field_attrs, index| {
+        const Mapped = Authored(field_type);
         types[index] = Mapped;
-        attributes[index] = if (Mapped == field.type)
-            .{ .default_value_ptr = field.default_value_ptr }
+        attributes[index] = if (Mapped == field_type)
+            .{ .default_value_ptr = field_attrs.default_value_ptr }
         else
             .{ .default_value_ptr = authoredDefault(Mapped) };
-        if (Mapped != field.type) mapped = true;
+        if (Mapped != field_type) mapped = true;
     }
     if (!mapped) return Options;
-    const frozen_names = names;
     const frozen_types = types;
     const frozen_attributes = attributes;
-    return @Struct(.auto, null, &frozen_names, &frozen_types, &frozen_attributes);
+    return @Struct(.auto, null, info.field_names, &frozen_types, &frozen_attributes);
 }
 
 /// What a mapped field defaults to: nothing to reference, or no default at
@@ -140,8 +137,8 @@ fn authoredOptions(comptime Options: type, comptime value: Authored(Options), co
         },
         .@"struct" => |info| blk: {
             var result: Options = undefined;
-            inline for (info.fields) |field| {
-                @field(result, field.name) = authoredOptions(field.type, @field(value, field.name), root, named);
+            inline for (info.field_names, info.field_types) |field_name, field_type| {
+                @field(result, field_name) = authoredOptions(field_type, @field(value, field_name), root, named);
             }
             break :blk result;
         },
@@ -599,9 +596,9 @@ fn checkPluginSubject(comptime P: plugin.Plugin, comptime entry: Entry) void {
 fn replace(comptime original: anytype, comptime values: anytype) @TypeOf(original) {
     if (@typeInfo(@TypeOf(values)) != .@"struct") @compileError("zigo with expects named option fields");
     var result = original;
-    inline for (std.meta.fields(@TypeOf(values))) |field| {
-        if (!@hasField(@TypeOf(original), field.name)) @compileError("zigo unknown option: " ++ field.name);
-        @field(result, field.name) = @field(values, field.name);
+    inline for (@typeInfo(@TypeOf(values)).@"struct".field_names) |field_name| {
+        if (!@hasField(@TypeOf(original), field_name)) @compileError("zigo unknown option: " ++ field_name);
+        @field(result, field_name) = @field(values, field_name);
     }
     return result;
 }
@@ -680,14 +677,14 @@ fn Scope(comptime Root: type, comptime Container: type, comptime path: []const u
                         if (!std.mem.startsWith(u8, name, selection.prefix)) @compileError("zigo excluded function is outside the selected prefix: " ++ name);
                         inline for (selection.exclude[0..i]) |prior| if (std.mem.eql(u8, prior, name)) @compileError("zigo duplicate function exclusion: " ++ name);
                     }
-                    inline for (std.meta.declarations(Container)) |d| {
-                        if (@typeInfo(@TypeOf(@field(Container, d.name))) != .@"fn") continue;
-                        if (!std.mem.startsWith(u8, d.name, selection.prefix)) continue;
+                    inline for (std.meta.declarations(Container)) |decl_name| {
+                        if (@typeInfo(@TypeOf(@field(Container, decl_name))) != .@"fn") continue;
+                        if (!std.mem.startsWith(u8, decl_name, selection.prefix)) continue;
                         comptime var excluded = false;
-                        inline for (selection.exclude) |name| if (std.mem.eql(u8, d.name, name)) {
+                        inline for (selection.exclude) |name| if (std.mem.eql(u8, decl_name, name)) {
                             excluded = true;
                         };
-                        if (!excluded) entries = entries ++ [_]Entry{func(d.name, .{})};
+                        if (!excluded) entries = entries ++ [_]Entry{func(decl_name, .{})};
                     }
                 },
             }

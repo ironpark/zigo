@@ -7,7 +7,7 @@ registered_at: "2026-10-24T11:40:10Z"
 
 # Phases
 
-- [ ] [Phase 00: Build script on the 0.17 configure model](phases/00-build-configure-model.md)
+- [x] [Phase 00: Build script on the 0.17 configure model](phases/00-build-configure-model.md)
 - [ ] [Phase 01: Language and std changes in src and tests](phases/01-language-and-std.md)
 - [ ] [Phase 02: Examples, plugins and fixtures](phases/02-examples-plugins.md)
 - [ ] [Phase 03: Version bump, CI and docs](phases/03-version-ci-docs.md)

@@ -256,7 +256,7 @@ test "a failed empty drain is reported without re-entering the callback" {
 }
 
 test "reader and writer adapters stream across repeated full buffers" {
-    const payload = "0123456789" ** 10;
+    const payload = repeated("0123456789", 10);
     var source: Sink = .{ .source = payload };
     defer source.deinit(std.testing.allocator);
     var sink: Sink = .{};
@@ -292,7 +292,7 @@ test "a payload larger than the buffer costs one crossing per buffer" {
     defer sink.deinit(std.testing.allocator);
     var buffer: [16]u8 = undefined;
     var adapter: ZigoWriterAdapter = .init(&buffer, Sink.write, @intFromPtr(&sink));
-    const payload = "0123456789" ** 10;
+    const payload = repeated("0123456789", 10);
     try adapter.interface.writeAll(payload);
     try adapter.interface.flush();
 
@@ -346,4 +346,12 @@ test "a failed read fails the reader and is never retried" {
     try std.testing.expectError(error.ReadFailed, adapter.interface.streamRemaining(&collected.writer));
     try std.testing.expect(!sink.reentered);
     try std.testing.expectEqual(@as(usize, 1), sink.read_calls);
+}
+
+/// `bytes` written `count` times, the test payload `**` used to spell.
+fn repeated(comptime bytes: []const u8, comptime count: usize) *const [bytes.len * count]u8 {
+    comptime var result: [bytes.len * count]u8 = undefined;
+    inline for (0..count) |index| @memcpy(result[index * bytes.len ..][0..bytes.len], bytes);
+    const final = result;
+    return &final;
 }

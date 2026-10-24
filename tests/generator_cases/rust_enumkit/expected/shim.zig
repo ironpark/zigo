@@ -10,14 +10,14 @@ pub const panic = std.debug.FullPanic(panicHandler);
 pub const std_options: std.Options = if (@hasDecl(target, "std_options")) target.std_options else .{};
 
 export fn zg_echo_impl(mode: i8) i8 {
-    return @intFromEnum(target.echo(@enumFromInt(mode)));
+    return @backingInt(target.echo(@fromBackingInt(@intCast(mode))));
 }
 export fn zg_pick_level_impl(value: i8) i8 {
-    return @intFromEnum(target.pickLevel(@enumFromInt(value)));
+    return @backingInt(target.pickLevel(@fromBackingInt(@intCast(value))));
 }
 export fn zg_pick_signal_impl(value: u8) u8 {
-    return @intFromEnum(target.pickSignal(@enumFromInt(value)));
+    return @backingInt(target.pickSignal(@fromBackingInt(@intCast(value))));
 }
 export fn zg_pick_plain_impl(value: u8) u8 {
-    return @intFromEnum(target.pickPlain(@enumFromInt(value)));
+    return @backingInt(target.pickPlain(@fromBackingInt(@intCast(value))));
 }

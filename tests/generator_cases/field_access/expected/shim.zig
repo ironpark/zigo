@@ -18,7 +18,7 @@ export fn zg_terminal_cursor_visible_impl(self: *const target.Terminal, out_resu
     return 0;
 }
 export fn zg_terminal_set_cursor_style_impl(self: *target.Terminal, v: u8) i32 {
-    self.screen.cursor.style = @enumFromInt(v);
+    self.screen.cursor.style = @fromBackingInt(@intCast(v));
     return 0;
 }
 export fn zg_terminal_set_cursor_x_impl(self: *target.Terminal, v: u16) i32 {
@@ -29,7 +29,7 @@ export fn zg_terminal_set_cursor_x_impl(self: *target.Terminal, v: u16) i32 {
 export fn zg_terminal_charset_single_shift_impl(self: *const target.Terminal, out_result_has: *u8, out_result: *u8) i32 {
     if (self.screen.charset.single_shift) |zigo_value| {
         out_result_has.* = 1;
-        out_result.* = @intFromEnum(zigo_value);
+        out_result.* = @backingInt(zigo_value);
     } else {
         out_result_has.* = 0;
     }

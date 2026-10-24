@@ -162,8 +162,8 @@ pub fn unresolvedIn(comptime T: type, value: T, document: semantic.Semantic) ?Un
             return null;
         },
         .@"struct" => |info| {
-            inline for (info.fields) |field| {
-                if (unresolvedIn(field.type, @field(value, field.name), document)) |missing| return missing;
+            inline for (info.field_names, info.field_types) |field_name, field_type| {
+                if (unresolvedIn(field_type, @field(value, field_name), document)) |missing| return missing;
             }
             return null;
         },
@@ -179,7 +179,7 @@ pub fn mentionsRef(comptime T: type) bool {
         .optional => |optional| mentionsRef(optional.child),
         .pointer => |pointer| pointer.size == .slice and pointer.child != u8 and mentionsRef(pointer.child),
         .@"struct" => |info| blk: {
-            inline for (info.fields) |field| if (mentionsRef(field.type)) break :blk true;
+            inline for (info.field_types) |field_type| if (mentionsRef(field_type)) break :blk true;
             break :blk false;
         },
         else => false,

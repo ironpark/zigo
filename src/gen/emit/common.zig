@@ -692,7 +692,7 @@ test "tagged union emitters generate checked pointer-only projections" {
     const shim_text = try emit.renderForTest(shim.renderShim, program);
     defer std.testing.allocator.free(shim_text);
     try std.testing.expect(std.mem.indexOf(u8, shim_text, "export fn zg_value_project_tag_impl(self: *const target.Value, out_value: *u8) i32") != null);
-    try std.testing.expect(std.mem.indexOf(u8, shim_text, "out_value.* = @intFromEnum(std.meta.activeTag(self.*));") != null);
+    try std.testing.expect(std.mem.indexOf(u8, shim_text, "out_value.* = @backingInt(std.meta.activeTag(self.*));") != null);
     try std.testing.expect(std.mem.indexOf(u8, shim_text, "if (std.meta.activeTag(self.*) != .integer) return 0;") != null);
     try std.testing.expect(std.mem.indexOf(u8, shim_text, "out_value.* = @intFromBool(self.flag);") != null);
     try std.testing.expect(std.mem.indexOf(u8, shim_text, "out_value_ptr.* = self.samples.ptr;") != null);

@@ -16,9 +16,9 @@ export fn zg_apply_impl(behavior_tag: u8, behavior_delta: isize, behavior_page: 
         2 => target.ScrollViewport{ .page = behavior_page },
         3 => target.ScrollViewport{ .ratio = behavior_ratio },
         4 => target.ScrollViewport{ .animated = behavior_animated != 0 },
-        5 => target.ScrollViewport{ .mode = @enumFromInt(behavior_mode) },
+        5 => target.ScrollViewport{ .mode = @fromBackingInt(@intCast(behavior_mode)) },
         6 => target.ScrollViewport{ .rgb = target.RGB{ .r = behavior_rgb_r, .g = behavior_rgb_g, .b = behavior_rgb_b } },
-        7 => target.ScrollViewport{ .region = target.Region{ .x = behavior_region_x, .enabled = behavior_region_enabled != 0, .color = target.RGB{ .r = behavior_region_color_r, .g = behavior_region_color_g, .b = behavior_region_color_b }, .mode = @enumFromInt(behavior_region_mode) } },
+        7 => target.ScrollViewport{ .region = target.Region{ .x = behavior_region_x, .enabled = behavior_region_enabled != 0, .color = target.RGB{ .r = behavior_region_color_r, .g = behavior_region_color_g, .b = behavior_region_color_b }, .mode = @fromBackingInt(@intCast(behavior_region_mode)) } },
         else => @panic("zigo: invalid tag for argument `behavior`"),
     });
 }
@@ -45,7 +45,7 @@ export fn zg_current_impl(out_result: *zg_scroll_viewport_snapshot_t) i32 {
         },
         .mode => |value| {
             out_result.tag = 5;
-            out_result.mode = @intFromEnum(value);
+            out_result.mode = @backingInt(value);
         },
         .rgb => |value| {
             out_result.tag = 6;
@@ -60,7 +60,7 @@ export fn zg_current_impl(out_result: *zg_scroll_viewport_snapshot_t) i32 {
             out_result.region_color_r = value.color.r;
             out_result.region_color_g = value.color.g;
             out_result.region_color_b = value.color.b;
-            out_result.region_mode = @intFromEnum(value.mode);
+            out_result.region_mode = @backingInt(value.mode);
         },
         .unknown => return -3,
     }
@@ -91,7 +91,7 @@ export fn zg_parse_impl(text_ptr: [*c]const u8, text_len: usize, out_result: *zg
         },
         .mode => |value| {
             out_result.tag = 5;
-            out_result.mode = @intFromEnum(value);
+            out_result.mode = @backingInt(value);
         },
         .rgb => |value| {
             out_result.tag = 6;
@@ -106,7 +106,7 @@ export fn zg_parse_impl(text_ptr: [*c]const u8, text_len: usize, out_result: *zg
             out_result.region_color_r = value.color.r;
             out_result.region_color_g = value.color.g;
             out_result.region_color_b = value.color.b;
-            out_result.region_mode = @intFromEnum(value.mode);
+            out_result.region_mode = @backingInt(value.mode);
         },
         .unknown => return -3,
     }

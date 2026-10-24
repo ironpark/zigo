@@ -36,7 +36,7 @@ export fn zg_bounds_impl(out_result: *target.Rect) void {
     out_result.* = target.bounds();
 }
 export fn zg_set_speed_impl(speed: u8) u8 {
-    return @intFromEnum(target.setSpeed(@enumFromInt(speed)));
+    return @backingInt(target.setSpeed(@fromBackingInt(@intCast(speed))));
 }
 export fn zg_speeds_impl(values_ptr: [*c]const u8, values_len: usize, out_result_ptr: *[*c]const u8, out_result_len: *usize) void {
     const result = target.speeds(if (values_len == 0) &.{} else values_ptr[0..values_len]);

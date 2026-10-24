@@ -20,7 +20,7 @@ comptime {
 }
 
 export fn zg_use_mode_impl(mode: u8) i32 {
-    target.useMode(@enumFromInt(mode)) catch |err| return switch (err) {
+    target.useMode(@fromBackingInt(@intCast(mode))) catch |err| return switch (err) {
         error.Failure => 1,
     };
     return 0;
@@ -51,7 +51,7 @@ export fn zg_maybe_point_impl(out_result_has: *u8, out_result: *target.Point) i3
     return 0;
 }
 export fn zg_configure_impl(enabled: u8, options_rows: u16, scale: f32, mode: u8, limit: ?*const u32, rows: u32) i32 {
-    target.configure(target.Terminal.Options{ .enabled = enabled != 0, .rows = options_rows, .scale = scale, .mode = @enumFromInt(mode), .limit = if (limit) |zigo_limit| zigo_limit.* else null }, rows) catch |err| return switch (err) {
+    target.configure(target.Terminal.Options{ .enabled = enabled != 0, .rows = options_rows, .scale = scale, .mode = @fromBackingInt(@intCast(mode)), .limit = if (limit) |zigo_limit| zigo_limit.* else null }, rows) catch |err| return switch (err) {
         error.Failure => 1,
     };
     return 0;

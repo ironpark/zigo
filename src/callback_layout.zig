@@ -12,9 +12,9 @@ pub fn Layout(comptime count: usize) type {
     };
 }
 
-pub fn describe(comptime function_info: std.builtin.Type.Fn, comptime userdata_native: ?usize) Layout(function_info.params.len) {
+pub fn describe(comptime function_info: std.builtin.Type.Fn, comptime userdata_native: ?usize) Layout(function_info.param_types.len) {
     comptime {
-        const count = function_info.params.len;
+        const count = function_info.param_types.len;
         var layout: Layout(count) = undefined;
         var go_count: usize = 0;
         var native: usize = 0;
@@ -24,14 +24,14 @@ pub fn describe(comptime function_info: std.builtin.Type.Fn, comptime userdata_n
                 layout.go_index[native] = 0;
                 continue;
             }
-            const T = function_info.params[native].type orelse {
+            const T = function_info.param_types[native] orelse {
                 layout.kinds[native] = .value;
                 layout.go_index[native] = go_count;
                 go_count += 1;
                 continue;
             };
             const paired = isBytePairPointer(T) and native + 1 < count and
-                function_info.params[native + 1].type == usize and
+                function_info.param_types[native + 1] == usize and
                 (userdata_native == null or native + 1 != userdata_native.?);
             if (paired) {
                 layout.kinds[native] = .pair_pointer;
@@ -58,5 +58,5 @@ fn isBytePairPointer(comptime T: type) bool {
         .pointer => |value| value,
         else => return false,
     };
-    return info.size == .many and info.child == u8 and info.is_const and info.sentinel() == null;
+    return info.size == .many and info.child == u8 and info.attrs.@"const" and info.sentinel() == null;
 }

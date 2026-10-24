@@ -137,7 +137,7 @@ test "external semantic customization rewrites IR, conversions, names and preser
                 // Both wrappers call the same original declaration, in native order.
                 try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, contents, "target.combine(left, right)"));
                 try std.testing.expect(std.mem.indexOf(u8, contents, "target.derived(") == null);
-                try std.testing.expect(std.mem.indexOf(u8, contents, "target.state(@enumFromInt(value))") != null);
+                try std.testing.expect(std.mem.indexOf(u8, contents, "target.state(@fromBackingInt(@intCast(value)))") != null);
             }
             if (std.mem.indexOf(u8, contents, "type HTTPState ") != null) type_seen = true;
         }
@@ -287,7 +287,7 @@ test "parameter reordering composes and preserves injected arguments around a re
             const text = try output.dir.readFileAlloc(std.testing.io, entry.path, allocator, .limited(4 * 1024 * 1024));
             if (std.mem.indexOf(u8, text, "target.State.combine(")) |_| {
                 seen = true;
-                try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, text, "target.State.combine(std.heap.page_allocator, @enumFromInt(self), value)"));
+                try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, text, "target.State.combine(std.heap.page_allocator, @fromBackingInt(@intCast(self)), value)"));
                 try std.testing.expect(std.mem.indexOf(u8, text, "target.HTTPState") == null);
             }
         }

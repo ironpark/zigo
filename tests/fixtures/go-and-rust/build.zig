@@ -15,13 +15,13 @@ pub fn build(b: *std.Build) void {
         .module = library,
         .layout = .{ .go_module = "example.com/zigo/go-and-rust" },
         .target = target,
-        .optimize = .Debug,
+        .optimize = .debug,
     });
     _ = zigo.addRustBindings(b, .{
         .name = "calculator",
         .module = library,
         .rust_dir = b.path("rust"),
         .target = target,
-        .optimize = .Debug,
+        .optimize = .debug,
     });
 }

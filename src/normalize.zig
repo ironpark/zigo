@@ -72,7 +72,7 @@ fn members(comptime Out: type, comptime fields: anytype, comptime root: type) []
         inline for (field.refs) |ref| if (ref.root != root)
             @compileError("zigo plugin option references a type outside this binding: " ++ ref.path);
         var member: Out = undefined;
-        inline for (std.meta.fields(Out)) |f| @field(member, f.name) = @field(field, f.name);
+        inline for (@typeInfo(Out).@"struct".field_names) |name| @field(member, name) = @field(field, name);
         out = out ++ [_]Out{member};
     }
     return out;
@@ -214,7 +214,7 @@ fn normalizeFunction(comptime f: a.Function, comptime state: State, comptime par
         else => {},
     };
     const info = f.ref.signature();
-    if (info.is_generic or info.is_var_args) @compileError("zigo function requires a concrete non-variadic wrapper: " ++ f.ref.path);
+    if (info.is_generic or info.attrs.varargs) @compileError("zigo function requires a concrete non-variadic wrapper: " ++ f.ref.path);
     var receiver: ?a.TypeRef = null;
     switch (f.options.role) {
         .free => result.force_free = true,
@@ -223,7 +223,7 @@ fn normalizeFunction(comptime f: a.Function, comptime state: State, comptime par
                 if (firstVisible(info)) |index| {
                     for (state.types) |registered| {
                         if (registered.zigType() != p.type) continue;
-                        if (automaticReceiver(info.params[index].type.?, registered) or (registered == .enumeration and info.params[index].type.? == p.type)) receiver = p;
+                        if (automaticReceiver(info.param_types[index].?, registered) or (registered == .enumeration and info.param_types[index].? == p.type)) receiver = p;
                     }
                 }
             }
@@ -258,11 +258,11 @@ fn normalizeFunction(comptime f: a.Function, comptime state: State, comptime par
     const first = firstVisible(info);
     var receiver_index: ?usize = null;
     if (receiver) |r| {
-        if (first == null or !isReceiver(info.params[first.?].type.?, r.type)) @compileError("zigo receiver does not match the first non-injected Zig argument: " ++ f.ref.path);
+        if (first == null or !isReceiver(info.param_types[first.?].?, r.type)) @compileError("zigo receiver does not match the first non-injected Zig argument: " ++ f.ref.path);
         receiver_index = first;
     } else if (if (result.force_free) null else first) |index| {
         // Match the reflector's automatic handle and owner-enum receiver inference.
-        const T = info.params[index].type.?;
+        const T = info.param_types[index].?;
         for (state.types) |t| {
             if (automaticReceiver(T, t)) {
                 if (parent) |p| {
@@ -293,15 +293,15 @@ fn normalizeFunction(comptime f: a.Function, comptime state: State, comptime par
     for (f.options.covers) |ref| covers = covers ++ [_][]const u8{functionPath(ref, state)};
     result.covers = covers;
     for (f.options.params, 0..) |p, i| {
-        if (p.index >= info.params.len) @compileError("zigo parameter index is outside the Zig signature: " ++ f.ref.path);
-        if (p.index == receiver_index or injected(info.params[p.index].type.?)) @compileError("zigo cannot annotate a receiver or injected parameter: " ++ f.ref.path);
-        validateContract(p, info.params[p.index].type.?, f.ref.path);
+        if (p.index >= info.param_types.len) @compileError("zigo parameter index is outside the Zig signature: " ++ f.ref.path);
+        if (p.index == receiver_index or injected(info.param_types[p.index].?)) @compileError("zigo cannot annotate a receiver or injected parameter: " ++ f.ref.path);
+        validateContract(p, info.param_types[p.index].?, f.ref.path);
         for (f.options.params[0..i]) |previous| if (previous.index == p.index) @compileError("zigo duplicate parameter index: " ++ f.ref.path);
     }
     if (f.options.params.len != 0) {
         var params: []const ir.Param = &.{};
-        for (info.params, 0..) |parameter, index| {
-            if (index == receiver_index or injected(parameter.type.?)) continue;
+        for (info.param_types, 0..) |parameter_type, index| {
+            if (index == receiver_index or injected(parameter_type.?)) continue;
             var out: ir.Param = .{};
             for (f.options.params) |p| if (p.index == index) {
                 out.name = p.go_name;
@@ -331,14 +331,14 @@ fn normalizeFunction(comptime f: a.Function, comptime state: State, comptime par
                     .callback => |c| {
                         // The call site wins field by field; what it leaves
                         // null it inherits from the registered callback type.
-                        const inherited = callbackTypeContract(info.params[index].type.?, state);
+                        const inherited = callbackTypeContract(info.param_types[index].?, state);
                         out.retention = c.contract.retention orelse inherited.retention;
                         out.reentrancy = c.contract.reentrancy orelse inherited.reentrancy;
                         out.thread = c.contract.thread orelse inherited.thread;
                         out.go_error = c.go_error;
                         out.on_failure = c.contract.on_failure;
                         if (c.userdata) |at| {
-                            if (at >= info.params.len or at == receiver_index or injected(info.params[at].type.?)) @compileError("zigo invalid callback userdata index: " ++ f.ref.path);
+                            if (at >= info.param_types.len or at == receiver_index or injected(info.param_types[at].?)) @compileError("zigo invalid callback userdata index: " ++ f.ref.path);
                             out.userdata = .{ .param = paramName(f, at, info, receiver_index) };
                         }
                     },
@@ -392,15 +392,15 @@ fn paramName(comptime f: a.Function, comptime at: usize, comptime info: std.buil
         if (p.go_name) |name| return name;
     };
     var index: usize = 0;
-    for (info.params, 0..) |_, i| {
+    for (info.param_types, 0..) |_, i| {
         if (i == at) break;
         if (i != receiver) index += 1;
     }
     return std.fmt.comptimePrint("p{d}", .{index});
 }
 fn firstVisible(comptime info: std.builtin.Type.Fn) ?usize {
-    for (info.params, 0..) |p, i| {
-        if (!injected(p.type.?)) return i;
+    for (info.param_types, 0..) |param_type, i| {
+        if (!injected(param_type.?)) return i;
     }
     return null;
 }
@@ -547,17 +547,17 @@ fn callbackParams(comptime T: type, comptime options: a.CallbackOptions, comptim
     if (pointer != .pointer or @typeInfo(pointer.pointer.child) != .@"fn")
         @compileError("zigo callback requires a function pointer: " ++ path);
     const info = @typeInfo(pointer.pointer.child).@"fn";
-    const count = info.params.len;
-    if (info.is_generic or info.is_var_args)
+    const count = info.param_types.len;
+    if (info.is_generic or info.attrs.varargs)
         @compileError("zigo callback requires a concrete non-variadic signature: " ++ path);
     const userdata: ?usize = if (options.userdata) |spec| switch (spec) {
         .first => 0,
         .last => if (count == 0) 0 else count - 1,
         .index => |index| index,
-    } else if (count != 0 and info.params[count - 1].type == usize) count - 1 else null;
+    } else if (count != 0 and info.param_types[count - 1] == usize) count - 1 else null;
     if (userdata) |index| {
         if (index >= count) @compileError("zigo callback userdata index is outside the Zig signature: " ++ path);
-        if (info.params[index].type != usize) @compileError("zigo callback userdata must be usize: " ++ path);
+        if (info.param_types[index] != usize) @compileError("zigo callback userdata must be usize: " ++ path);
     }
     const layout = ir.callback_layout.describe(info, userdata);
     var params: [layout.go_count - @intFromBool(userdata != null)]ir.CallbackParam = @splat(.{});

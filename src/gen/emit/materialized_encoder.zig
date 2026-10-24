@@ -36,7 +36,7 @@ pub fn renderMaterializedWalker(allocator: std.mem.Allocator, writer: *std.Io.Wr
             "        std.mem.writeInt(u64, self.bytes.items[offset..][0..8], value, .little);\n" ++
             "    }}\n" ++
             "    fn writeWord(self: *ZigoMaterializedBuilder, offset: usize, comptime width: u8, value: u64) void {{\n" ++
-            "        const Word = std.meta.Int(.unsigned, width * 8);\n" ++
+            "        const Word = @Int(.unsigned, width * 8);\n" ++
             "        std.mem.writeInt(Word, self.bytes.items[offset..][0..width], @intCast(value), .little);\n" ++
             "    }}\n" ++
             "    fn appendBytes(self: *ZigoMaterializedBuilder, value: []const u8) !u64 {{\n" ++
@@ -56,9 +56,9 @@ pub fn renderMaterializedWalker(allocator: std.mem.Allocator, writer: *std.Io.Wr
             "    const T = @TypeOf(value);\n" ++
             "    return switch (@typeInfo(T)) {{\n" ++
             "        .bool => @intFromBool(value),\n" ++
-            "        .int => @intCast(@as(std.meta.Int(.unsigned, @bitSizeOf(T)), @bitCast(value))),\n" ++
-            "        .float => @intCast(@as(std.meta.Int(.unsigned, @bitSizeOf(T)), @bitCast(value))),\n" ++
-            "        .@\"enum\" => zigoMaterializedScalar(@intFromEnum(value)),\n" ++
+            "        .int => @intCast(@as(@Int(.unsigned, @bitSizeOf(T)), @bitCast(value))),\n" ++
+            "        .float => @intCast(@as(@Int(.unsigned, @bitSizeOf(T)), @bitCast(value))),\n" ++
+            "        .@\"enum\" => zigoMaterializedScalar(@backingInt(value)),\n" ++
             "        .@\"struct\" => |info| zigoMaterializedScalar(@as(info.backing_integer.?, @bitCast(value))),\n" ++
             "        else => unreachable,\n" ++
             "    }};\n" ++

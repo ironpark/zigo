@@ -536,9 +536,9 @@ fn scanSourceWithTypes(allocator: std.mem.Allocator, source: []const u8, functio
 }
 
 fn scanSourceWithAliases(allocator: std.mem.Allocator, source: []const u8, functions: []semantic.SemanticFn, types: []semantic.TypeDecl, path: ?[]const u8, aliases: *Aliases) !usize {
-    const terminated = try allocator.dupeZ(u8, source);
+    const terminated = try allocator.dupeSentinel(u8, source, 0);
     defer allocator.free(terminated);
-    var tree = try std.zig.Ast.parse(allocator, terminated, .zig);
+    var tree = try std.zig.Ast.parse(allocator, terminated, .{});
     defer tree.deinit(allocator);
     if (tree.errors.len != 0) return tree.errors.len;
 
@@ -567,7 +567,7 @@ fn scanSourceWithAliases(allocator: std.mem.Allocator, source: []const u8, funct
     // than a named source-level owner. Give those remaining declarations a
     // signature-based fallback after all owner-qualified matches are fixed.
     for (0..tree.nodes.len) |raw_index| {
-        const node: std.zig.Ast.Node.Index = @enumFromInt(raw_index);
+        const node: std.zig.Ast.Node.Index = @fromBackingInt(@intCast(raw_index));
         if (visited[raw_index]) continue;
         var buffer: [1]std.zig.Ast.Node.Index = undefined;
         const proto = tree.fullFnProto(&buffer, node) orelse continue;
@@ -635,7 +635,7 @@ fn scanMembers(
     for (members) |node| {
         var fn_buffer: [1]std.zig.Ast.Node.Index = undefined;
         if (tree.fullFnProto(&fn_buffer, node)) |proto| {
-            visited[@intFromEnum(node)] = true;
+            visited[@backingInt(node)] = true;
             const first_token = proto.firstToken();
             const own_doc = try declDocAlloc(allocator, tree, first_token);
             const adjacent = if (group_end) |end|
@@ -651,7 +651,7 @@ fn scanMembers(
             }
             // A root `fn` is its own node plus a prototype node; both are
             // this declaration, so neither may reach the anonymous fallback.
-            visited[@intFromEnum(proto.ast.proto_node)] = true;
+            visited[@backingInt(proto.ast.proto_node)] = true;
             try enrichMatches(allocator, tree, proto, owner, functions, matched, if (owner == null) .root else .named, group_doc, path, &.{}, aliases);
             group_end = declarationEnd(tree, node);
             continue;

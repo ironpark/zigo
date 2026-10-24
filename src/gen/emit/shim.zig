@@ -526,7 +526,7 @@ fn renderTaggedUnionSnapshotShim(writer: *std.Io.Writer, program: abi.Program) !
         try writer.writeAll(") ");
         try type_spelling.writeZigType(writer, program, snapshot.ret);
         try writer.print(
-            " {{\n    out_snapshot.* = std.mem.zeroes({s});\n    out_snapshot.tag = @intFromEnum(std.meta.activeTag(self.*));\n    switch (self.*) {{\n",
+            " {{\n    out_snapshot.* = std.mem.zeroes({s});\n    out_snapshot.tag = @backingInt(std.meta.activeTag(self.*));\n    switch (self.*) {{\n",
             .{snapshot.type_name},
         );
         for (snapshot.owner.fields) |field| {
@@ -539,7 +539,7 @@ fn renderTaggedUnionSnapshotShim(writer: *std.Io.Writer, program: abi.Program) !
             try writer.print("        .{s} => |value| out_snapshot.{s} = ", .{ field.name, member.name });
             const expression = if (field.atomic orelse false) "value.load(.seq_cst)" else "value";
             switch (payload) {
-                .@"enum" => try writer.print("@intFromEnum({s})", .{expression}),
+                .@"enum" => try writer.print("@backingInt({s})", .{expression}),
                 .bool => try writer.print("@intFromBool({s})", .{expression}),
                 else => try writer.writeAll(expression),
             }
@@ -568,7 +568,7 @@ fn renderTaggedUnionShim(writer: *std.Io.Writer, program: abi.Program) !void {
         try writer.writeAll(") ");
         try type_spelling.writeZigType(writer, program, projection.ret);
         switch (projection.kind) {
-            .tag => try writer.writeAll(" {\n    out_value.* = @intFromEnum(std.meta.activeTag(self.*));\n    return 1;\n}\n"),
+            .tag => try writer.writeAll(" {\n    out_value.* = @backingInt(std.meta.activeTag(self.*));\n    return 1;\n}\n"),
             .payload => {
                 const field = projection.field.?;
                 const payload = field.type.?;
@@ -580,7 +580,7 @@ fn renderTaggedUnionShim(writer: *std.Io.Writer, program: abi.Program) !void {
                     const suffix = if (field.atomic orelse false) ".load(.seq_cst)" else "";
                     switch (payload) {
                         .bool => try writer.print("@intFromBool(self.{s}{s})", .{ field.name, suffix }),
-                        .@"enum" => try writer.print("@intFromEnum(self.{s}{s})", .{ field.name, suffix }),
+                        .@"enum" => try writer.print("@backingInt(self.{s}{s})", .{ field.name, suffix }),
                         else => try writer.print("self.{s}{s}", .{ field.name, suffix }),
                     }
                     try writer.writeAll(";\n");
@@ -847,7 +847,7 @@ pub fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
     const bool_return = function.origin.@"return" == .bool;
     const enum_return = function.origin.@"return" == .@"enum";
     if (bool_return) try writer.writeAll("@intFromBool(");
-    if (enum_return) try writer.writeAll("@intFromEnum(");
+    if (enum_return) try writer.writeAll("@backingInt(");
     if (function.origin.return_atomic orelse false) try writer.writeByte('(');
     if (function.origin.stream_accessor != null) {
         const helper = try streamAccessorHelperNameAlloc(allocator, function);
@@ -930,7 +930,7 @@ pub fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
             .cancel_flag => try writer.print("@ptrCast({s})", .{parameter.name}),
             .atomic_ptr => try writer.print("@ptrCast({s})", .{parameter.name}),
             .bool => try writer.print("{s} != 0", .{parameter.name}),
-            .@"enum" => try writer.print("@enumFromInt({s})", .{parameter.name}),
+            .@"enum" => try writer.print("@fromBackingInt(@intCast({s}))", .{parameter.name}),
             .opaque_ptr => |pointer| try writer.print("{s}{s}", .{ parameter.name, if (pointer.by_value) ".*" else "" }),
             .slice => if (function.materializesParam(index))
                 try writer.print("zigo_{s}_slice", .{parameter.name})
@@ -979,7 +979,7 @@ pub fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
 fn writeShimReceiverArgument(writer: *std.Io.Writer, function: semantic.SemanticFn) !void {
     if (function.receiverIsValue()) {
         // The receiver crossed as the enum's backing integer.
-        try writer.writeAll("@enumFromInt(self)");
+        try writer.writeAll("@fromBackingInt(@intCast(self))");
         return;
     }
     try writer.writeAll(if (function.receiverByValue()) "self.*" else "self");
@@ -991,7 +991,7 @@ fn writeShimInboundValue(writer: *std.Io.Writer, program: abi.Program, name: []c
     if (atomic) try writer.writeAll(".init(");
     switch (node) {
         .bool => try writer.print("{s} != 0", .{name}),
-        .@"enum" => try writer.print("@enumFromInt({s})", .{name}),
+        .@"enum" => try writer.print("@fromBackingInt(@intCast({s}))", .{name}),
         .value_struct => if (type_spelling.isPackedValue(program, node)) try type_spelling.writePackedZigFromBacking(writer, program, node, name) else try writer.writeAll(name),
         else => if (abi.narrowInt(node) != null)
             try writer.print("@intCast({s})", .{name})
@@ -1194,7 +1194,7 @@ fn writeHandlePointerType(writer: *std.Io.Writer, program: abi.Program, pointer:
 fn writeCallbackThunkCall(writer: *std.Io.Writer, program: abi.Program, callback: semantic.Callback, callee: []const u8, floats_as_bits: bool) !void {
     const result = callback.@"return".*;
     if (result != .void) try writer.writeAll("return ");
-    if (result == .@"enum") try writer.writeAll("@enumFromInt(");
+    if (result == .@"enum") try writer.writeAll("@fromBackingInt(@intCast(");
     try writer.print("{s}(", .{callee});
     for (callback.params, 0..) |callback_parameter, index| {
         if (index != 0) try writer.writeAll(", ");
@@ -1205,7 +1205,7 @@ fn writeCallbackThunkCall(writer: *std.Io.Writer, program: abi.Program, callback
         else if (callback_parameter == .bool)
             try writer.print("@intFromBool(p{d})", .{index})
         else if (callback_parameter == .@"enum")
-            try writer.print("@intFromEnum(p{d})", .{index})
+            try writer.print("@backingInt(p{d})", .{index})
         else if (type_spelling.isPackedValue(program, callback_parameter)) {
             try type_spelling.writePackedZigToBackingPrefix(writer, program, callback_parameter);
             try writer.print("p{d})))", .{index});
@@ -1213,7 +1213,7 @@ fn writeCallbackThunkCall(writer: *std.Io.Writer, program: abi.Program, callback
     }
     try writer.writeAll(switch (result) {
         .bool => ") != 0;\n}\n",
-        .@"enum" => "));\n}\n",
+        .@"enum" => ")));\n}\n",
         else => ");\n}\n",
     });
 }
@@ -1258,7 +1258,7 @@ fn writeZigReturnConversion(
     const suffix = if (atomic) ".raw" else "";
     switch (node) {
         .bool => try writer.print("@intFromBool({s}{s})", .{ expression, suffix }),
-        .@"enum" => try writer.print("@intFromEnum({s}{s})", .{ expression, suffix }),
+        .@"enum" => try writer.print("@backingInt({s}{s})", .{ expression, suffix }),
         .value_struct => if (type_spelling.isPackedValue(program, node)) {
             try type_spelling.writePackedZigToBackingPrefix(writer, program, node);
             try writer.print("{s}{s})))", .{ expression, suffix });
@@ -1281,7 +1281,7 @@ fn writeShimOptionalArgument(allocator: std.mem.Allocator, writer: *std.Io.Write
     try writer.print("if ({0s}) |zigo_{0s}| ", .{name});
     switch (child) {
         .bool => try writer.print("zigo_{s}.* != 0", .{name}),
-        .@"enum" => try writer.print("@enumFromInt(zigo_{s}.*)", .{name}),
+        .@"enum" => try writer.print("@fromBackingInt(@intCast(zigo_{s}.*))", .{name}),
         .value_struct => if (type_spelling.isPackedValue(program, child)) {
             const dereferenced = try std.fmt.allocPrint(allocator, "zigo_{s}.*", .{name});
             defer allocator.free(dereferenced);

@@ -469,7 +469,7 @@ pub fn build(b: *std.Build) void {
     const generator = modules.addGeneratorWithModules(b, b.path("src/main.zig"), target, optimize, generator_modules);
     b.installArtifact(generator);
 
-    tests.addRepositorySteps(b, target, optimize, test_filters, zigo, generator_modules, generator);
+    if (b.isRoot()) tests.addRepositorySteps(b, target, optimize, test_filters, zigo, generator_modules, generator);
 }
 
 /// Adds the Go-binding pipeline to a consuming build graph.
@@ -597,7 +597,7 @@ fn addReflection(b: *std.Build, options: ReflectionOptions) Reflection {
     const zigo_dependency = b.dependencyFromBuildZig(@This(), .{});
     const plugin_sources = b.allocator.alloc(modules.PluginSource, options.plugins.len) catch @panic("OOM");
     for (options.plugins, plugin_sources) |entry, *source| source.* = .{ .path = entry.root_source_file, .name = entry.name, .config = entry.config };
-    const generator = modules.addGenerator(b, zigo_dependency.path("src/main.zig"), b.graph.host, .Debug, plugin_sources);
+    const generator = modules.addGenerator(b, zigo_dependency.path("src/main.zig"), b.graph.host, .debug, plugin_sources);
     // Reflection runs the bindings module as an executable on the host, so the
     // whole reflection pipeline builds for `b.graph.host` even when the library
     // targets another platform. The generated Go tree is platform-independent;
@@ -667,7 +667,7 @@ fn addReflection(b: *std.Build, options: ReflectionOptions) Reflection {
         .root_module = b.createModule(.{
             .root_source_file = zigo_dependency.path("src/reflect/main.zig"),
             .target = b.graph.host,
-            .optimize = .Debug,
+            .optimize = .debug,
             .imports = &.{
                 .{ .name = "bindings", .module = bindings_module },
                 .{ .name = "naming", .module = naming_module },
@@ -1453,6 +1453,12 @@ fn readSourceFile(b: *std.Build, sub_path: []const u8, limit: usize) ?[]const u8
         std.debug.panic("unable to read '{s}': {t}", .{ sub_path, err });
 }
 
+/// Records the entries of the nearest existing directory above `sub_path`.
+/// The package root itself cannot be recorded -- Zig 0.17 fails the whole
+/// configuration with `FileSystemFailure` when the build root is not the
+/// working directory -- so a path with no existing directory below the root
+/// (a first generation, before `zigo/` exists) leaves the configuration
+/// uncached instead.
 fn dependOnNearestDirectory(b: *std.Build, sub_path: []const u8) void {
     var directory = std.fs.path.dirname(sub_path);
     while (directory) |candidate| : (directory = std.fs.path.dirname(candidate)) {
@@ -1461,5 +1467,5 @@ fn dependOnNearestDirectory(b: *std.Build, sub_path: []const u8) void {
             return;
         } else |_| {}
     }
-    b.dependOnDirectoryContents(b.path("."));
+    b.graph.poisonCache();
 }

@@ -50,7 +50,7 @@ fn read(buffer: []const u8, offset: usize) u64 {
 fn serializeWithFailures(allocator: std.mem.Allocator, is_slice: bool) !void {
     const value = target.snapshot();
     const buffer = if (is_slice)
-        try shim.zigoMaterialize_rootBuffer(allocator, &[_]target.Root{value} ** 32, true)
+        try shim.zigoMaterialize_rootBuffer(allocator, &@as([32]target.Root, @splat(value)), true)
     else
         try shim.zigoMaterialize_rootBuffer(allocator, value, false);
     defer allocator.free(buffer);

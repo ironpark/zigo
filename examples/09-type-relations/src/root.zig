@@ -268,8 +268,8 @@ test "a generated enum still behaves like an ordinary Zig enum" {
 }
 
 test "a non-exhaustive enum accepts unnamed values" {
-    const unknown: EraseDisplay = @enumFromInt(42);
-    try std.testing.expectEqual(@as(u8, 42), @intFromEnum(echoEraseDisplay(unknown)));
+    const unknown: EraseDisplay = @fromBackingInt(@intCast(42));
+    try std.testing.expectEqual(@as(u8, 42), @backingInt(echoEraseDisplay(unknown)));
 }
 
 test "a nested namespace is reachable through its dotted path" {
