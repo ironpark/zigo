@@ -2,7 +2,7 @@
 depends_on:
 - "207-zig-0-17-migration#1"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Each example and plugin builds and its tests pass on 0.17.0.
 > NEXT: none

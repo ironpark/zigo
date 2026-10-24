@@ -65,5 +65,5 @@
   ],
   "prefix": "zg",
   "types": [],
-  "zig_version": "0.16.0"
+  "zig_version": "0.17.0"
 }

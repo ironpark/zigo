@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-10-24T12:05:40Z"
 depends_on:
 - "207-zig-0-17-migration#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `zig build test` passes on 0.17.0.
 > NEXT: none
