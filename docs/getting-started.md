@@ -27,7 +27,7 @@ Windows에서는 별도 mingw-w64 대신 `CC="zig cc"`를 사용할 수 있습�
 mkdir mylib
 cd mylib
 zig init
-zig fetch --save git+https://github.com/ironpark/zigo#0.32.0
+zig fetch --save git+https://github.com/ironpark/zigo#0.32.1
 mkdir -p go
 ```
 
