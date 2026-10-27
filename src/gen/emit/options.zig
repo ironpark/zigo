@@ -3,6 +3,7 @@
 //! so the link flags, library paths and the helper gate's bookkeeping stay the
 //! emitter's own.
 const std = @import("std");
+const abi = @import("abi");
 const plugin = @import("plugin");
 const targets = @import("targets");
 const references = @import("references.zig");
@@ -75,6 +76,10 @@ pub const Options = struct {
     /// Null renders the legacy single package; empty selects the default package
     /// of a split document; a value selects that named sub-package.
     active_package: ?[]const u8 = null,
+    /// The functions of every package, while one package is rendered. The
+    /// purego callback dispatchers are numbered across all of them, in the
+    /// raw package every public one shares; null is the program's own.
+    all_functions: ?[]const abi.AbiFn = null,
     default_package_path: []const u8 = "",
     /// Colon-separated purego candidate locations, in the order they are tried.
     library_search_paths: []const u8 = "",

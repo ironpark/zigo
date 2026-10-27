@@ -600,6 +600,8 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
                 defer allocator.free(name);
                 if (parameter.scalar == .usize)
                     try writer.print("uintptr({s})", .{name})
+                else if (isUsizePointer(parameter.scalar))
+                    try writer.print("(*uintptr)(unsafe.Pointer({s}))", .{name})
                 else
                     try writer.writeAll(name);
             },
@@ -624,6 +626,8 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
                     try writer.print("{s}Token", .{go_names[callback_index]});
                 } else if (parameter.scalar == .usize)
                     try writer.print("uintptr({s})", .{source_name})
+                else if (isUsizePointer(parameter.scalar))
+                    try writer.print("(*uintptr)(unsafe.Pointer({s}))", .{source_name})
                 else
                     try writer.writeAll(source_name);
             },
@@ -653,6 +657,8 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
             // converts to a nil unsafe.Pointer, which is the absent case.
             .optional_in => if (parameter.scalar == .pointer and parameter.scalar.pointer.child.* == .value_struct)
                 try writer.print("unsafe.Pointer({s})", .{go_names[parameter.source_index]})
+            else if (isUsizePointer(parameter.scalar))
+                try writer.print("(*uintptr)(unsafe.Pointer({s}))", .{go_names[parameter.source_index]})
             else
                 try writer.writeAll(go_names[parameter.source_index]),
             .payload_has_out => try writer.writeAll("&outResultHas"),
@@ -829,6 +835,14 @@ fn renderPuregoProjections(allocator: std.mem.Allocator, writer: *std.Io.Writer,
             },
         }
     }
+}
+
+/// Whether a parameter is a pointer to a usize, which the raw wrapper takes
+/// as `*uint`, as cgo's does, and the bindings table as `*uintptr`: the two
+/// are the same size, but Go converts between the pointers only through
+/// unsafe.Pointer.
+fn isUsizePointer(scalar: abi.AbiScalar) bool {
+    return scalar == .pointer and !scalar.pointer.is_many and scalar.pointer.child.* == .usize;
 }
 
 fn writePuregoResolve(writer: *std.Io.Writer, variable: []const u8, symbol: []const u8) !void {

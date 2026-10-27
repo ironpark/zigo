@@ -4,6 +4,16 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Fixed
+
+- purego: `?*usize`처럼 usize를 가리키는 매개변수를 raw wrapper의 `*uint`에서 bindings table의
+  `*uintptr`로 넘기지 못해 생성물이 컴파일되지 않던 문제를 고쳤습니다.
+- purego: 하위 패키지가 있는 바인딩에서 공개 패키지가 자신의 콜백만 세어 dispatcher 번호를
+  매겨, 다른 패키지의 콜백 dispatcher로 호출되던 문제를 고쳤습니다. 번호는 이제 raw 패키지와
+  같이 프로그램 전체에서 셉니다.
+
 ## [0.32.0] - 2026-10-26
 
 ### Changed

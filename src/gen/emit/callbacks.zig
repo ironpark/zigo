@@ -256,13 +256,18 @@ fn uniqueCallbackSignatureCount(program: abi.Program) usize {
     return count;
 }
 
-pub fn callbackSignatureIndex(program: abi.Program, wanted: semantic.Parameter) usize {
+/// The index of the dispatcher a callback parameter is called back through.
+/// `functions` are the whole program's, which the dispatchers are numbered
+/// across, not one package's.
+pub fn callbackSignatureIndex(program: abi.Program, functions: []const abi.AbiFn, wanted: semantic.Parameter) usize {
+    var whole = program;
+    whole.functions = functions;
     var index: usize = 0;
-    for (program.functions) |function| {
+    for (functions) |function| {
         for (function.origin.params, 0..) |parameter, parameter_index| {
-            if (parameter.type != .callback or !isFirstCallbackSignatureAt(program, function.origin, parameter_index)) continue;
+            if (parameter.type != .callback or !isFirstCallbackSignatureAt(whole, function.origin, parameter_index)) continue;
             if (lower.callbackSignatureEqual(parameter.type.callback, wanted.type.callback) and
-                callbackFailureResult(program, parameter) == callbackFailureResult(program, wanted)) return index;
+                callbackFailureResult(whole, parameter) == callbackFailureResult(whole, wanted)) return index;
             index += 1;
         }
     }

@@ -550,6 +550,7 @@ fn appendPublicPackage(allocator: std.mem.Allocator, prepared: *std.ArrayList(Pr
     defer referenced.deinit(allocator);
     var package_options = options;
     package_options.helpers = &referenced;
+    package_options.all_functions = full_program.functions;
     try appendPublicEmitters(allocator, prepared, program, package_options);
     try appendArtifacts(allocator, prepared, program, package_options, .package);
     // The tagged-union files are not in the emitter table: how many there are

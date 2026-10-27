@@ -762,7 +762,7 @@ fn renderPublicBody(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
             switch (parameter.type) {
                 .callback => {
                     if (options.backend == .purego) {
-                        const signature_index = callbacks.callbackSignatureIndex(program, parameter);
+                        const signature_index = callbacks.callbackSignatureIndex(program, options.all_functions orelse program.functions, parameter);
                         try public_writers.writeRawReferencePrefix(writer, options);
                         try writer.print("CallbackPointer{d}(), uintptr({s}Handle)", .{ signature_index, go_names[parameter_index] });
                         call_index += 1;
