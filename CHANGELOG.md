@@ -4,6 +4,20 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Changed
+
+- purego: 인자와 결과가 모두 정수·포인터이고 인자가 8개 이하인 함수는 `purego.RegisterFunc`
+  대신 `purego.SyscallN`으로 직접 호출합니다. bindings table의 `fn<Name>` field 자리에 같은
+  이름과 signature의 method가 생겨 raw wrapper는 그대로이고, 인자와 out 매개변수는 pool에서
+  꺼낸 call frame으로 건너가므로 호출 하나가 할당하지 않습니다(`RegisterFunc`는 reflection으로
+  호출마다 2–4개를 할당했습니다). 크기를 모르는 포인터는 `RegisterFunc`와 같이 heap에 둡니다.
+  부동소수점 인자나 결과가 있는 함수와 인자가 9개 이상인 함수는 `RegisterFunc`를 그대로 씁니다.
+- handle method의 `.out` value struct slice가 cast할 수 없는 원소라 raw buffer를 거쳐야 할 때,
+  buffer를 호출마다 `make`하지 않고 handle이 보관해 다음 호출에 빌려줍니다. 그런 handle에는
+  보관한 buffer를 버리는 `ReleaseScratch()`가 생깁니다.
+
 ## [0.32.1] - 2026-10-27
 
 ### Fixed

@@ -42,6 +42,20 @@ pub fn hasCopiedOutValueStructSlice(program: abi.Program, function: semantic.Sem
     return false;
 }
 
+/// The element of an `.out` slice parameter whose raw buffer the receiving
+/// handle keeps between calls, or null when the call allocates one. A copied
+/// element needs a raw buffer of its own, and a renderer that fills one every
+/// frame should not take a fresh one each time; a handle method has an owner
+/// to keep it on. The handle struct and the method both ask this.
+pub fn scratchSliceElement(program: abi.Program, function: abi.AbiFn, parameter: semantic.Parameter) ?[]const u8 {
+    if (!function.origin.receiverIsHandle()) return null;
+    if (!emitsPublicFunction(program, function)) return null;
+    if (parameter.direction != .out or !isValueStructSlice(parameter.type)) return null;
+    const element = parameter.type.slice.element.*.value_struct.ref;
+    if (program.structCastable(element)) return null;
+    return element;
+}
+
 fn hasOutValueStructSlice(function: semantic.SemanticFn) bool {
     for (function.params) |parameter| {
         if (parameter.direction == .out and isValueStructSlice(parameter.type)) return true;
@@ -75,6 +89,7 @@ fn writePublicSliceRawSetup(
     options: emit.Options,
     parameter: semantic.Parameter,
     name: []const u8,
+    scratch_owner: ?[]const u8,
 ) !void {
     const element = parameter.type.slice.element.*.value_struct.ref;
     const record = raw.structRecord(program, element);
@@ -86,6 +101,15 @@ fn writePublicSliceRawSetup(
         try writer.print("{s}\n\tif len({s}) != 0 {{\n\t\t{s}Raw = unsafe.Slice((*", .{ raw_type, name, name });
         try public_writers.writeRawTypeReferencePrefix(writer, options);
         try writer.print("{s})(unsafe.Pointer(&{s}[0])), len({s}))\n\t}}\n", .{ raw_type, name, name });
+        return;
+    }
+    if (scratch_owner) |owner| {
+        // Lent for this call and handed back when it returns, so the buffer
+        // outlives the call only on the handle.
+        try writer.print(
+            "\t{0s}Scratch := {1s}.zigoScratch{2s}.take(len({0s}))\n\tdefer {1s}.zigoScratch{2s}.give({0s}Scratch)\n\t{0s}Raw := *{0s}Scratch\n",
+            .{ name, owner, element },
+        );
         return;
     }
     if (parameter.direction == .out) {
@@ -607,7 +631,8 @@ fn renderPublicBody(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
         try renderCallbackHandleSetup(allocator, writer, program, function);
         for (function.origin.params, 0..) |parameter, parameter_index| {
             if (!isValueStructSlice(parameter.type)) continue;
-            try writePublicSliceRawSetup(allocator, writer, program, options, parameter, go_names[parameter_index]);
+            const scratch_owner = if (scratchSliceElement(program, function, parameter) != null) receiver_name else null;
+            try writePublicSliceRawSetup(allocator, writer, program, options, parameter, go_names[parameter_index], scratch_owner);
         }
         for (function.origin.params, 0..) |parameter, parameter_index| {
             if (parameter.flatten) |fields| {

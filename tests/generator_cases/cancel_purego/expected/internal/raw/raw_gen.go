@@ -45,8 +45,8 @@ func (err *LibraryError) Unwrap() error { return err.Cause }
 type nativeBindings struct {
 	lastError func() unsafe.Pointer
 	panicMessage func(int32) unsafe.Pointer
-	fnJobCrunch func(unsafe.Pointer, uint32, *uint32, *float64) int32
-	fnJobTotal func(unsafe.Pointer, *float64) int32
+	addrJobCrunch uintptr
+	addrJobTotal uintptr
 }
 
 var loadedBindings atomic.Pointer[nativeBindings]
@@ -113,8 +113,8 @@ func loadCandidate(path string) error {
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.panicMessage, addrPanicMessage)
-	purego.RegisterFunc(&next.fnJobCrunch, addrJobCrunch)
-	purego.RegisterFunc(&next.fnJobTotal, addrJobTotal)
+	next.addrJobCrunch = addrJobCrunch
+	next.addrJobTotal = addrJobTotal
 	loadedBindings.Store(&next)
 	return nil
 }
@@ -141,6 +141,62 @@ func PanicMessage(code int32) string {
 	length := 0
 	for *(*byte)(unsafe.Add(p, length)) != 0 { length++ }
 	return string(unsafe.Slice((*byte)(p), length))
+}
+
+// zigoCallFrame holds one direct call's arguments and the slots its out
+// parameters are written to. purego.SyscallN lets its argument slice escape,
+// and native code must not be handed an address on a goroutine stack that a
+// callback could grow and move, so both live in a pooled frame on the heap.
+type zigoCallFrame struct {
+	args [8]uintptr
+	out  [1]uint64
+}
+
+var zigoCallFrames = sync.Pool{New: func() any { return new(zigoCallFrame) }}
+
+// zigoEscapeSink is never written. zigoEscape only has to look as though it
+// might store its argument, so that the compiler keeps what a pointer handed
+// to native code points at on the heap, as a call through RegisterFunc did.
+var zigoEscapeSink struct {
+	enabled bool
+	p       unsafe.Pointer
+}
+
+func zigoEscape(p unsafe.Pointer) {
+	if zigoEscapeSink.enabled {
+		zigoEscapeSink.p = p
+	}
+}
+
+// fnJobCrunch calls zg_job_crunch through purego.SyscallN.
+func (b *nativeBindings) fnJobCrunch(p0 unsafe.Pointer, p1 uint32, p2 *uint32, p3 *float64) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	zigoEscape(unsafe.Pointer(p2))
+	f.args[2] = uintptr(unsafe.Pointer(p2))
+	s3 := (*float64)(unsafe.Pointer(&f.out[0]))
+	*s3 = *p3
+	f.args[3] = uintptr(unsafe.Pointer(s3))
+	r, _, _ := purego.SyscallN(b.addrJobCrunch, f.args[:4]...)
+	*p3 = *s3
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnJobTotal calls zg_job_total through purego.SyscallN.
+func (b *nativeBindings) fnJobTotal(p0 unsafe.Pointer, p1 *float64) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*float64)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrJobTotal, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
 }
 
 // JobCrunch calls the generated purego ABI wrapper for zg_job_crunch.

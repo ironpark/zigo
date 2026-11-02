@@ -47,12 +47,12 @@ func (err *LibraryError) Unwrap() error { return err.Cause }
 type nativeBindings struct {
 	lastError func() unsafe.Pointer
 	panicMessage func(int32) unsafe.Pointer
-	fnDocumentDump func(unsafe.Pointer, uintptr, uintptr) int32
-	fnDocumentLoad func(unsafe.Pointer, uintptr, unsafe.Pointer, uintptr, uintptr, *uintptr) int32
-	fnBanner func(uintptr, uintptr, int32)
-	fnSinkWrite func(unsafe.Pointer, unsafe.Pointer, uintptr, *int) int32
-	fnSinkFlush func(unsafe.Pointer) int32
-	fnSinkRead func(unsafe.Pointer, unsafe.Pointer, uintptr, *int) int32
+	addrDocumentDump uintptr
+	addrDocumentLoad uintptr
+	addrBanner uintptr
+	addrSinkWrite uintptr
+	addrSinkFlush uintptr
+	addrSinkRead uintptr
 }
 
 type callbackEntry struct {
@@ -309,12 +309,12 @@ func loadCandidate(path string) error {
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.panicMessage, addrPanicMessage)
-	purego.RegisterFunc(&next.fnDocumentDump, addrDocumentDump)
-	purego.RegisterFunc(&next.fnDocumentLoad, addrDocumentLoad)
-	purego.RegisterFunc(&next.fnBanner, addrBanner)
-	purego.RegisterFunc(&next.fnSinkWrite, addrSinkWrite)
-	purego.RegisterFunc(&next.fnSinkFlush, addrSinkFlush)
-	purego.RegisterFunc(&next.fnSinkRead, addrSinkRead)
+	next.addrDocumentDump = addrDocumentDump
+	next.addrDocumentLoad = addrDocumentLoad
+	next.addrBanner = addrBanner
+	next.addrSinkWrite = addrSinkWrite
+	next.addrSinkFlush = addrSinkFlush
+	next.addrSinkRead = addrSinkRead
 	loadedBindings.Store(&next)
 	return nil
 }
@@ -347,6 +347,116 @@ func PanicMessage(code int32) string {
 // at. The shim tells the fast path from the dispatcher path by the pointer
 // being non-NULL, so an empty stream still needs an address.
 var zigoEmptyStreamData byte
+
+// zigoCallFrame holds one direct call's arguments and the slots its out
+// parameters are written to. purego.SyscallN lets its argument slice escape,
+// and native code must not be handed an address on a goroutine stack that a
+// callback could grow and move, so both live in a pooled frame on the heap.
+type zigoCallFrame struct {
+	args [8]uintptr
+	out  [1]uint64
+}
+
+var zigoCallFrames = sync.Pool{New: func() any { return new(zigoCallFrame) }}
+
+// zigoEscapeSink is never written. zigoEscape only has to look as though it
+// might store its argument, so that the compiler keeps what a pointer handed
+// to native code points at on the heap, as a call through RegisterFunc did.
+var zigoEscapeSink struct {
+	enabled bool
+	p       unsafe.Pointer
+}
+
+func zigoEscape(p unsafe.Pointer) {
+	if zigoEscapeSink.enabled {
+		zigoEscapeSink.p = p
+	}
+}
+
+// fnDocumentDump calls zg_document_dump_purego_v2 through purego.SyscallN.
+func (b *nativeBindings) fnDocumentDump(p0 unsafe.Pointer, p1 uintptr, p2 uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	r, _, _ := purego.SyscallN(b.addrDocumentDump, f.args[:3]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnDocumentLoad calls zg_document_load_purego_v2 through purego.SyscallN.
+func (b *nativeBindings) fnDocumentLoad(p0 unsafe.Pointer, p1 uintptr, p2 unsafe.Pointer, p3 uintptr, p4 uintptr, p5 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	zigoEscape(p2)
+	f.args[2] = uintptr(p2)
+	f.args[3] = uintptr(p3)
+	f.args[4] = uintptr(p4)
+	s5 := (*uintptr)(unsafe.Pointer(&f.out[0]))
+	*s5 = *p5
+	f.args[5] = uintptr(unsafe.Pointer(s5))
+	r, _, _ := purego.SyscallN(b.addrDocumentLoad, f.args[:6]...)
+	*p5 = *s5
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnBanner calls zg_banner_purego_v2 through purego.SyscallN.
+func (b *nativeBindings) fnBanner(p0 uintptr, p1 uintptr, p2 int32) {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	purego.SyscallN(b.addrBanner, f.args[:3]...)
+	zigoCallFrames.Put(f)
+}
+
+// fnSinkWrite calls zg_sink_write through purego.SyscallN.
+func (b *nativeBindings) fnSinkWrite(p0 unsafe.Pointer, p1 unsafe.Pointer, p2 uintptr, p3 *int) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	zigoEscape(p1)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	s3 := (*int)(unsafe.Pointer(&f.out[0]))
+	*s3 = *p3
+	f.args[3] = uintptr(unsafe.Pointer(s3))
+	r, _, _ := purego.SyscallN(b.addrSinkWrite, f.args[:4]...)
+	*p3 = *s3
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnSinkFlush calls zg_sink_flush through purego.SyscallN.
+func (b *nativeBindings) fnSinkFlush(p0 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrSinkFlush, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnSinkRead calls zg_sink_read through purego.SyscallN.
+func (b *nativeBindings) fnSinkRead(p0 unsafe.Pointer, p1 unsafe.Pointer, p2 uintptr, p3 *int) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	zigoEscape(p1)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	s3 := (*int)(unsafe.Pointer(&f.out[0]))
+	*s3 = *p3
+	f.args[3] = uintptr(unsafe.Pointer(s3))
+	r, _, _ := purego.SyscallN(b.addrSinkRead, f.args[:4]...)
+	*p3 = *s3
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
 
 // DocumentDump calls the generated purego ABI wrapper for zg_document_dump_purego_v2.
 func DocumentDump(self unsafe.Pointer, wCallback, wHandle uintptr) int32 {

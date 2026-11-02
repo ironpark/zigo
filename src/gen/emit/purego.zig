@@ -219,6 +219,10 @@ pub fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
     for (program.functions) |function| {
         const name = try common.rawGoNameAlloc(allocator, function.origin.*);
         defer allocator.free(name);
+        if (isDirectCall(function)) {
+            try writer.print("\taddr{s} uintptr\n", .{name});
+            continue;
+        }
         try writer.print("\tfn{s} func(", .{name});
         for (function.params, 0..) |parameter, index| {
             if (index != 0) try writer.writeAll(", ");
@@ -315,7 +319,10 @@ pub fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
     for (program.functions) |function| {
         const name = try common.rawGoNameAlloc(allocator, function.origin.*);
         defer allocator.free(name);
-        try writer.print("\tpurego.RegisterFunc(&next.fn{s}, addr{s})\n", .{ name, name });
+        if (isDirectCall(function))
+            try writer.print("\tnext.addr{s} = addr{s}\n", .{ name, name })
+        else
+            try writer.print("\tpurego.RegisterFunc(&next.fn{s}, addr{s})\n", .{ name, name });
     }
     for (program.projections, 0..) |_, index|
         try writer.print("\tpurego.RegisterFunc(&next.fnProjection{d}, addrProjection{d})\n", .{ index, index });
@@ -360,6 +367,11 @@ pub fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
     try raw.renderRawStructTypes(allocator, writer, program);
     try raw.renderRawSnapshotTypes(allocator, writer, program);
     try renderPuregoStringHelpers(writer, program);
+    if (programHasDirectCall(program)) {
+        try renderDirectCallRuntime(allocator, writer, program);
+        for (program.functions) |function| if (isDirectCall(function))
+            try renderDirectCall(allocator, writer, program, function);
+    }
     for (program.functions) |function| {
         try renderPuregoFunction(allocator, writer, program, function, options);
     }
@@ -871,4 +883,259 @@ fn writePuregoAbiType(writer: *std.Io.Writer, scalar: abi.AbiScalar) !void {
         },
         .callback => try writer.writeAll("uintptr"),
     }
+}
+
+// ---------------------------------------------------------------------------
+// Direct calls
+//
+// `purego.RegisterFunc` builds every call with reflection: it boxes the
+// arguments, allocates their reflect.Values and the result, and the call
+// through the function value it fills makes every pointer argument escape, so
+// an out parameter on the caller's stack is moved to the heap as well. A
+// renderer that reads a few getters every frame pays several allocations per
+// call for nothing. A function whose arguments and result are all integers or
+// pointers is called with `purego.SyscallN` instead, from a method the
+// generator writes with the same name and signature the function field had.
+
+/// The most arguments a direct call takes. Every platform passes eight integer
+/// arguments in registers or in eight-byte stack slots, which is what
+/// SyscallN assumes, but arm64 Darwin packs a ninth and later argument by its
+/// natural size; those calls stay with RegisterFunc, which knows.
+pub const max_direct_args = 8;
+
+/// How one argument of a direct call crosses.
+const DirectArg = union(enum) {
+    /// An integer, a flag or a callback address: converted to uintptr.
+    integer,
+    /// A pointer the generator cannot size, such as a slice's first element or
+    /// a handle: handed to zigoEscape so that what it points at lives on the
+    /// heap, as it did through RegisterFunc, and native code never holds an
+    /// address on a goroutine stack a callback could grow and move.
+    pointer,
+    /// An out parameter of a known type: native code writes a slot in the
+    /// call frame, and the method copies it to the caller's variable after the
+    /// call, so the variable stays on the caller's stack.
+    out: Slot,
+    /// An `extern struct` argument: copied into a frame slot before the call.
+    in: Slot,
+
+    const Slot = struct {
+        /// The Go type the slot holds.
+        type_name: []const u8,
+        /// The slot's offset into the frame's words, and how many it takes.
+        word: usize,
+        words: usize,
+        /// The caller's pointer is an unsafe.Pointer rather than a `*T`.
+        untyped: bool,
+    };
+};
+
+/// Whether writePuregoAbiType spells this scalar as unsafe.Pointer.
+fn spellsUnsafePointer(scalar: abi.AbiScalar) bool {
+    return switch (scalar) {
+        .snapshot, .value_struct => true,
+        .pointer => |pointer| pointer.is_many or pointer.child.* == .@"opaque" or
+            pointer.child.* == .snapshot or pointer.child.* == .value_struct,
+        else => false,
+    };
+}
+
+fn isDirectScalar(scalar: abi.AbiScalar) bool {
+    return switch (scalar) {
+        .void, .bool_u8, .isize, .usize, .signed_int, .unsigned_int, .callback, .pointer, .snapshot => true,
+        .float, .@"opaque", .value_struct => false,
+    };
+}
+
+/// Whether `function` is called with purego.SyscallN rather than registered.
+/// Floating-point arguments and results travel in registers SyscallN never
+/// reads, so those keep RegisterFunc.
+pub fn isDirectCall(function: abi.AbiFn) bool {
+    if (function.params.len > max_direct_args) return false;
+    if (function.ret == .snapshot or !isDirectScalar(function.ret)) return false;
+    for (function.params) |parameter| if (!isDirectScalar(parameter.scalar)) return false;
+    return true;
+}
+
+fn programHasDirectCall(program: abi.Program) bool {
+    for (program.functions) |function| if (isDirectCall(function)) return true;
+    return false;
+}
+
+fn isOutRole(role: abi.AbiParam.Role) bool {
+    return switch (role) {
+        .payload_out, .struct_out, .payload_has_out, .return_slice_pointer, .return_slice_length, .slice_written => true,
+        else => false,
+    };
+}
+
+/// Bytes a scalar takes in a frame slot, or null when the generator does not
+/// know its size.
+fn scalarSize(scalar: abi.AbiScalar) ?usize {
+    return switch (scalar) {
+        .bool_u8 => 1,
+        .isize, .usize, .callback, .pointer => 8,
+        .signed_int, .unsigned_int, .float => |bits| if (bits % 8 == 0 and bits <= 64) bits / 8 else null,
+        else => null,
+    };
+}
+
+/// The crossing of every argument of a direct call, with the frame words its
+/// slots take in total. The caller frees the type names.
+fn directArgsAlloc(allocator: std.mem.Allocator, program: abi.Program, function: abi.AbiFn) !struct { args: []DirectArg, words: usize } {
+    const args = try allocator.alloc(DirectArg, function.params.len);
+    var words: usize = 0;
+    for (function.params, args) |parameter, *arg| {
+        arg.* = .integer;
+        if (parameter.scalar == .snapshot) {
+            arg.* = .pointer;
+            continue;
+        }
+        if (parameter.scalar != .pointer) continue;
+        arg.* = .pointer;
+        const pointer = parameter.scalar.pointer;
+        if (pointer.is_many) continue;
+        const child = pointer.child.*;
+        const out = isOutRole(parameter.role);
+        if (!out and parameter.role != .struct_in) continue;
+        var type_text: std.Io.Writer.Allocating = .init(allocator);
+        errdefer type_text.deinit();
+        var size: usize = undefined;
+        var untyped = false;
+        switch (child) {
+            .value_struct => |record| {
+                size = raw.structRecord(program, record.name).size;
+                try type_text.writer.print("{s}{s}", .{ record.name, common.raw_struct_suffix });
+                untyped = true;
+            },
+            .pointer => {
+                // A pointer out parameter is written by native code with an
+                // address of its own memory, which Go reads back as the type
+                // the field spelled.
+                size = 8;
+                try writePuregoAbiType(&type_text.writer, child);
+            },
+            else => {
+                size = scalarSize(child) orelse {
+                    type_text.deinit();
+                    continue;
+                };
+                try writePuregoAbiType(&type_text.writer, child);
+            },
+        }
+        if (!out and !untyped) {
+            type_text.deinit();
+            continue;
+        }
+        const slot: DirectArg.Slot = .{
+            .type_name = try type_text.toOwnedSlice(),
+            .word = words,
+            .words = (size + 7) / 8,
+            .untyped = untyped,
+        };
+        words += slot.words;
+        arg.* = if (out) .{ .out = slot } else .{ .in = slot };
+    }
+    return .{ .args = args, .words = words };
+}
+
+fn freeDirectArgs(allocator: std.mem.Allocator, args: []DirectArg) void {
+    for (args) |arg| switch (arg) {
+        .out, .in => |slot| allocator.free(slot.type_name),
+        else => {},
+    };
+    allocator.free(args);
+}
+
+/// The frame type, its pool and the escape helper, written once before the
+/// direct-call methods.
+fn renderDirectCallRuntime(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program) !void {
+    var words: usize = 1;
+    for (program.functions) |function| {
+        if (!isDirectCall(function)) continue;
+        const direct = try directArgsAlloc(allocator, program, function);
+        defer freeDirectArgs(allocator, direct.args);
+        words = @max(words, direct.words);
+    }
+    try writer.print(
+        "\n// zigoCallFrame holds one direct call's arguments and the slots its out\n" ++
+            "// parameters are written to. purego.SyscallN lets its argument slice escape,\n" ++
+            "// and native code must not be handed an address on a goroutine stack that a\n" ++
+            "// callback could grow and move, so both live in a pooled frame on the heap.\n" ++
+            "type zigoCallFrame struct {{\n\targs [{d}]uintptr\n\tout  [{d}]uint64\n}}\n\n" ++
+            "var zigoCallFrames = sync.Pool{{New: func() any {{ return new(zigoCallFrame) }}}}\n\n" ++
+            "// zigoEscapeSink is never written. zigoEscape only has to look as though it\n" ++
+            "// might store its argument, so that the compiler keeps what a pointer handed\n" ++
+            "// to native code points at on the heap, as a call through RegisterFunc did.\n" ++
+            "var zigoEscapeSink struct {{\n\tenabled bool\n\tp       unsafe.Pointer\n}}\n\n" ++
+            "func zigoEscape(p unsafe.Pointer) {{\n\tif zigoEscapeSink.enabled {{\n\t\tzigoEscapeSink.p = p\n\t}}\n}}\n",
+        .{ max_direct_args, words },
+    );
+}
+
+/// The method a direct call goes through. It takes the name and signature the
+/// RegisterFunc field had, so every call site reads the same.
+fn renderDirectCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, function: abi.AbiFn) !void {
+    const name = try common.rawGoNameAlloc(allocator, function.origin.*);
+    defer allocator.free(name);
+    const direct = try directArgsAlloc(allocator, program, function);
+    defer freeDirectArgs(allocator, direct.args);
+    try writer.print("\n// fn{s} calls {s} through purego.SyscallN.\nfunc (b *nativeBindings) fn{s}(", .{ name, function.symbol, name });
+    for (function.params, 0..) |parameter, index| {
+        if (index != 0) try writer.writeAll(", ");
+        try writer.print("p{d} ", .{index});
+        try writePuregoAbiType(writer, parameter.scalar);
+    }
+    try writer.writeByte(')');
+    if (function.ret != .void) {
+        try writer.writeByte(' ');
+        try writePuregoAbiType(writer, function.ret);
+    }
+    try writer.writeAll(" {\n\tf := zigoCallFrames.Get().(*zigoCallFrame)\n");
+    for (direct.args, 0..) |arg, index| switch (arg) {
+        .integer => try writer.print("\tf.args[{0d}] = uintptr(p{0d})\n", .{index}),
+        .pointer => if (spellsUnsafePointer(function.params[index].scalar))
+            try writer.print("\tzigoEscape(p{0d})\n\tf.args[{0d}] = uintptr(p{0d})\n", .{index})
+        else
+            try writer.print("\tzigoEscape(unsafe.Pointer(p{0d}))\n\tf.args[{0d}] = uintptr(unsafe.Pointer(p{0d}))\n", .{index}),
+        .out, .in => |slot| {
+            // An out parameter is copied in as well as out, so a slot the call
+            // leaves unwritten reads back what the caller's variable held.
+            try writer.print("\ts{0d} := (*{1s})(unsafe.Pointer(&f.out[{2d}]))\n", .{ index, slot.type_name, slot.word });
+            if (slot.untyped)
+                try writer.print("\t*s{0d} = *(*{1s})(p{0d})\n", .{ index, slot.type_name })
+            else
+                try writer.print("\t*s{0d} = *p{0d}\n", .{index});
+            try writer.print("\tf.args[{0d}] = uintptr(unsafe.Pointer(s{0d}))\n", .{index});
+        },
+    };
+    try writer.writeByte('\t');
+    if (function.ret != .void) try writer.writeAll("r, _, _ := ");
+    try writer.print("purego.SyscallN(b.addr{s}, f.args[:{d}]...)\n", .{ name, function.params.len });
+    for (direct.args, 0..) |arg, index| switch (arg) {
+        .out => |slot| if (slot.untyped)
+            try writer.print("\t*(*{1s})(p{0d}) = *s{0d}\n", .{ index, slot.type_name })
+        else
+            try writer.print("\t*p{0d} = *s{0d}\n", .{index}),
+        else => {},
+    };
+    try writer.writeAll("\tzigoCallFrames.Put(f)\n");
+    if (function.ret != .void) {
+        try writer.writeAll("\treturn ");
+        switch (function.ret) {
+            // A pointer result is read out of the register's bits rather than
+            // converted from a uintptr, which `go vet` would report.
+            .pointer => {
+                try writer.writeAll("*(*");
+                try writePuregoAbiType(writer, function.ret);
+                try writer.writeAll(")(unsafe.Pointer(&r))");
+            },
+            else => {
+                try writePuregoAbiType(writer, function.ret);
+                try writer.writeAll("(r)");
+            },
+        }
+        try writer.writeByte('\n');
+    }
+    try writer.writeAll("}\n");
 }

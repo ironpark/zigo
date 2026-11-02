@@ -45,11 +45,11 @@ func (err *LibraryError) Unwrap() error { return err.Cause }
 type nativeBindings struct {
 	lastError func() unsafe.Pointer
 	panicMessage func(int32) unsafe.Pointer
-	fnKeyPrintable func(uint8) uint8
-	fnKeyCodepoint func(uint8) uint32
-	fnKeyCombine func(uint8, uint8) uint8
-	fnModeEnabled func(int32) uint8
-	fnFromAscii func(uint8) uint8
+	addrKeyPrintable uintptr
+	addrKeyCodepoint uintptr
+	addrKeyCombine uintptr
+	addrModeEnabled uintptr
+	addrFromAscii uintptr
 }
 
 var loadedBindings atomic.Pointer[nativeBindings]
@@ -122,11 +122,11 @@ func loadCandidate(path string) error {
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.panicMessage, addrPanicMessage)
-	purego.RegisterFunc(&next.fnKeyPrintable, addrKeyPrintable)
-	purego.RegisterFunc(&next.fnKeyCodepoint, addrKeyCodepoint)
-	purego.RegisterFunc(&next.fnKeyCombine, addrKeyCombine)
-	purego.RegisterFunc(&next.fnModeEnabled, addrModeEnabled)
-	purego.RegisterFunc(&next.fnFromAscii, addrFromAscii)
+	next.addrKeyPrintable = addrKeyPrintable
+	next.addrKeyCodepoint = addrKeyCodepoint
+	next.addrKeyCombine = addrKeyCombine
+	next.addrModeEnabled = addrModeEnabled
+	next.addrFromAscii = addrFromAscii
 	loadedBindings.Store(&next)
 	return nil
 }
@@ -153,6 +153,77 @@ func PanicMessage(code int32) string {
 	length := 0
 	for *(*byte)(unsafe.Add(p, length)) != 0 { length++ }
 	return string(unsafe.Slice((*byte)(p), length))
+}
+
+// zigoCallFrame holds one direct call's arguments and the slots its out
+// parameters are written to. purego.SyscallN lets its argument slice escape,
+// and native code must not be handed an address on a goroutine stack that a
+// callback could grow and move, so both live in a pooled frame on the heap.
+type zigoCallFrame struct {
+	args [8]uintptr
+	out  [1]uint64
+}
+
+var zigoCallFrames = sync.Pool{New: func() any { return new(zigoCallFrame) }}
+
+// zigoEscapeSink is never written. zigoEscape only has to look as though it
+// might store its argument, so that the compiler keeps what a pointer handed
+// to native code points at on the heap, as a call through RegisterFunc did.
+var zigoEscapeSink struct {
+	enabled bool
+	p       unsafe.Pointer
+}
+
+func zigoEscape(p unsafe.Pointer) {
+	if zigoEscapeSink.enabled {
+		zigoEscapeSink.p = p
+	}
+}
+
+// fnKeyPrintable calls zg_key_printable through purego.SyscallN.
+func (b *nativeBindings) fnKeyPrintable(p0 uint8) uint8 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrKeyPrintable, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return uint8(r)
+}
+
+// fnKeyCodepoint calls zg_key_codepoint through purego.SyscallN.
+func (b *nativeBindings) fnKeyCodepoint(p0 uint8) uint32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrKeyCodepoint, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return uint32(r)
+}
+
+// fnKeyCombine calls zg_key_combine through purego.SyscallN.
+func (b *nativeBindings) fnKeyCombine(p0 uint8, p1 uint8) uint8 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	r, _, _ := purego.SyscallN(b.addrKeyCombine, f.args[:2]...)
+	zigoCallFrames.Put(f)
+	return uint8(r)
+}
+
+// fnModeEnabled calls zg_mode_enabled through purego.SyscallN.
+func (b *nativeBindings) fnModeEnabled(p0 int32) uint8 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrModeEnabled, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return uint8(r)
+}
+
+// fnFromAscii calls zg_from_ascii through purego.SyscallN.
+func (b *nativeBindings) fnFromAscii(p0 uint8) uint8 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrFromAscii, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return uint8(r)
 }
 
 // KeyPrintable calls the generated purego ABI wrapper for zg_key_printable.

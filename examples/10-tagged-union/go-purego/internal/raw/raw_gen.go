@@ -50,62 +50,62 @@ func (err *LibraryError) Is(target error) bool { return target == ErrLibraryLoad
 func (err *LibraryError) Unwrap() error { return err.Cause }
 
 type nativeBindings struct {
-	lastError                func() unsafe.Pointer
-	panicMessage             func(int32) unsafe.Pointer
-	fnPaletteFlags           func(unsafe.Pointer, *uint16) int32
-	fnPaletteSetFlags        func(unsafe.Pointer, uint16) int32
-	fnPalettePinnedMode      func(unsafe.Pointer, *uint8, *uint8) int32
-	fnPaletteSetPinnedMode   func(unsafe.Pointer, *uint8) int32
-	fnPaletteName            func(unsafe.Pointer, *unsafe.Pointer, *uintptr) int32
-	fnChildCreate            func(int32, *unsafe.Pointer) int32
-	fnChildGet               func(unsafe.Pointer, *int32) int32
-	fnChildDeinit            func(unsafe.Pointer) int32
-	fnValueCreate            func(int64, *unsafe.Pointer) int32
-	fnValueSetNone           func(unsafe.Pointer) int32
-	fnValueSetFlag           func(unsafe.Pointer, uint8) int32
-	fnValueSetMode           func(unsafe.Pointer, uint8) int32
-	fnValueUsePresetSamples  func(unsafe.Pointer) int32
-	fnValueUseEmptySamples   func(unsafe.Pointer) int32
-	fnValueUseMutableSamples func(unsafe.Pointer) int32
-	fnValueSetChild          func(unsafe.Pointer, unsafe.Pointer) int32
-	fnValueBorrow            func(unsafe.Pointer, *unsafe.Pointer) int32
-	fnValueDeinit            func(unsafe.Pointer) int32
-	fnSignalCreate           func(uint32, *unsafe.Pointer) int32
-	fnSignalSetIdle          func(unsafe.Pointer) int32
-	fnSignalSetTicks         func(unsafe.Pointer, uint32) int32
-	fnSignalSetLevel         func(unsafe.Pointer, float64) int32
-	fnSignalSetOffset        func(unsafe.Pointer, int16) int32
-	fnSignalSetMode          func(unsafe.Pointer, uint8) int32
-	fnSignalSetActive        func(unsafe.Pointer, uint8) int32
-	fnSignalDeinit           func(unsafe.Pointer) int32
-	fnPaletteCreate          func(uint16, *unsafe.Pointer) int32
-	fnPaletteDeinit          func(unsafe.Pointer) int32
-	fnLiveValues             func() uintptr
-	fnDivide                 func(float64, float64, *float64) int32
-	fnSum                    func(unsafe.Pointer, uintptr) float64
-	fnScrollAmount           func(uint8, int, uintptr, uint32, int16, int16, uint16) int
-	fnCurrentViewport        func(uint8, unsafe.Pointer) int32
-	fnEchoRgb                func(uint32) uint32
-	fnMaybeRgb               func(uint8, *uint32) uint8
-	fnCheckedRgb             func(uint8, *uint32) int32
-	fnEchoColorRecord        func(unsafe.Pointer, unsafe.Pointer)
-	fnFlattenFlags           func(uint16) uint16
-	fnVisitFlags             func(uintptr, uintptr)
-	fnPanicError             func() int32
-	fnProjection0            func(unsafe.Pointer, *uint8) int32
-	fnProjection1            func(unsafe.Pointer, *int64) int32
-	fnProjection2            func(unsafe.Pointer, *uint8) int32
-	fnProjection3            func(unsafe.Pointer, *uint8) int32
-	fnProjection4            func(unsafe.Pointer, *unsafe.Pointer, *uintptr) int32
-	fnProjection5            func(unsafe.Pointer, *unsafe.Pointer) int32
-	fnProjection6            func(unsafe.Pointer, *unsafe.Pointer, *uintptr) int32
-	fnProjection7            func(unsafe.Pointer, *uint8) int32
-	fnProjection8            func(unsafe.Pointer, *uint32) int32
-	fnProjection9            func(unsafe.Pointer, *float64) int32
-	fnProjection10           func(unsafe.Pointer, *int16) int32
-	fnProjection11           func(unsafe.Pointer, *uint8) int32
-	fnProjection12           func(unsafe.Pointer, *uint8) int32
-	fnSnapshot0              func(unsafe.Pointer, unsafe.Pointer) int32
+	lastError                  func() unsafe.Pointer
+	panicMessage               func(int32) unsafe.Pointer
+	addrPaletteFlags           uintptr
+	addrPaletteSetFlags        uintptr
+	addrPalettePinnedMode      uintptr
+	addrPaletteSetPinnedMode   uintptr
+	addrPaletteName            uintptr
+	addrChildCreate            uintptr
+	addrChildGet               uintptr
+	addrChildDeinit            uintptr
+	addrValueCreate            uintptr
+	addrValueSetNone           uintptr
+	addrValueSetFlag           uintptr
+	addrValueSetMode           uintptr
+	addrValueUsePresetSamples  uintptr
+	addrValueUseEmptySamples   uintptr
+	addrValueUseMutableSamples uintptr
+	addrValueSetChild          uintptr
+	addrValueBorrow            uintptr
+	addrValueDeinit            uintptr
+	addrSignalCreate           uintptr
+	addrSignalSetIdle          uintptr
+	addrSignalSetTicks         uintptr
+	fnSignalSetLevel           func(unsafe.Pointer, float64) int32
+	addrSignalSetOffset        uintptr
+	addrSignalSetMode          uintptr
+	addrSignalSetActive        uintptr
+	addrSignalDeinit           uintptr
+	addrPaletteCreate          uintptr
+	addrPaletteDeinit          uintptr
+	addrLiveValues             uintptr
+	fnDivide                   func(float64, float64, *float64) int32
+	fnSum                      func(unsafe.Pointer, uintptr) float64
+	addrScrollAmount           uintptr
+	addrCurrentViewport        uintptr
+	addrEchoRgb                uintptr
+	addrMaybeRgb               uintptr
+	addrCheckedRgb             uintptr
+	addrEchoColorRecord        uintptr
+	addrFlattenFlags           uintptr
+	addrVisitFlags             uintptr
+	addrPanicError             uintptr
+	fnProjection0              func(unsafe.Pointer, *uint8) int32
+	fnProjection1              func(unsafe.Pointer, *int64) int32
+	fnProjection2              func(unsafe.Pointer, *uint8) int32
+	fnProjection3              func(unsafe.Pointer, *uint8) int32
+	fnProjection4              func(unsafe.Pointer, *unsafe.Pointer, *uintptr) int32
+	fnProjection5              func(unsafe.Pointer, *unsafe.Pointer) int32
+	fnProjection6              func(unsafe.Pointer, *unsafe.Pointer, *uintptr) int32
+	fnProjection7              func(unsafe.Pointer, *uint8) int32
+	fnProjection8              func(unsafe.Pointer, *uint32) int32
+	fnProjection9              func(unsafe.Pointer, *float64) int32
+	fnProjection10             func(unsafe.Pointer, *int16) int32
+	fnProjection11             func(unsafe.Pointer, *uint8) int32
+	fnProjection12             func(unsafe.Pointer, *uint8) int32
+	fnSnapshot0                func(unsafe.Pointer, unsafe.Pointer) int32
 }
 
 type callbackEntry struct {
@@ -562,46 +562,46 @@ func loadCandidate(path string) error {
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.panicMessage, addrPanicMessage)
-	purego.RegisterFunc(&next.fnPaletteFlags, addrPaletteFlags)
-	purego.RegisterFunc(&next.fnPaletteSetFlags, addrPaletteSetFlags)
-	purego.RegisterFunc(&next.fnPalettePinnedMode, addrPalettePinnedMode)
-	purego.RegisterFunc(&next.fnPaletteSetPinnedMode, addrPaletteSetPinnedMode)
-	purego.RegisterFunc(&next.fnPaletteName, addrPaletteName)
-	purego.RegisterFunc(&next.fnChildCreate, addrChildCreate)
-	purego.RegisterFunc(&next.fnChildGet, addrChildGet)
-	purego.RegisterFunc(&next.fnChildDeinit, addrChildDeinit)
-	purego.RegisterFunc(&next.fnValueCreate, addrValueCreate)
-	purego.RegisterFunc(&next.fnValueSetNone, addrValueSetNone)
-	purego.RegisterFunc(&next.fnValueSetFlag, addrValueSetFlag)
-	purego.RegisterFunc(&next.fnValueSetMode, addrValueSetMode)
-	purego.RegisterFunc(&next.fnValueUsePresetSamples, addrValueUsePresetSamples)
-	purego.RegisterFunc(&next.fnValueUseEmptySamples, addrValueUseEmptySamples)
-	purego.RegisterFunc(&next.fnValueUseMutableSamples, addrValueUseMutableSamples)
-	purego.RegisterFunc(&next.fnValueSetChild, addrValueSetChild)
-	purego.RegisterFunc(&next.fnValueBorrow, addrValueBorrow)
-	purego.RegisterFunc(&next.fnValueDeinit, addrValueDeinit)
-	purego.RegisterFunc(&next.fnSignalCreate, addrSignalCreate)
-	purego.RegisterFunc(&next.fnSignalSetIdle, addrSignalSetIdle)
-	purego.RegisterFunc(&next.fnSignalSetTicks, addrSignalSetTicks)
+	next.addrPaletteFlags = addrPaletteFlags
+	next.addrPaletteSetFlags = addrPaletteSetFlags
+	next.addrPalettePinnedMode = addrPalettePinnedMode
+	next.addrPaletteSetPinnedMode = addrPaletteSetPinnedMode
+	next.addrPaletteName = addrPaletteName
+	next.addrChildCreate = addrChildCreate
+	next.addrChildGet = addrChildGet
+	next.addrChildDeinit = addrChildDeinit
+	next.addrValueCreate = addrValueCreate
+	next.addrValueSetNone = addrValueSetNone
+	next.addrValueSetFlag = addrValueSetFlag
+	next.addrValueSetMode = addrValueSetMode
+	next.addrValueUsePresetSamples = addrValueUsePresetSamples
+	next.addrValueUseEmptySamples = addrValueUseEmptySamples
+	next.addrValueUseMutableSamples = addrValueUseMutableSamples
+	next.addrValueSetChild = addrValueSetChild
+	next.addrValueBorrow = addrValueBorrow
+	next.addrValueDeinit = addrValueDeinit
+	next.addrSignalCreate = addrSignalCreate
+	next.addrSignalSetIdle = addrSignalSetIdle
+	next.addrSignalSetTicks = addrSignalSetTicks
 	purego.RegisterFunc(&next.fnSignalSetLevel, addrSignalSetLevel)
-	purego.RegisterFunc(&next.fnSignalSetOffset, addrSignalSetOffset)
-	purego.RegisterFunc(&next.fnSignalSetMode, addrSignalSetMode)
-	purego.RegisterFunc(&next.fnSignalSetActive, addrSignalSetActive)
-	purego.RegisterFunc(&next.fnSignalDeinit, addrSignalDeinit)
-	purego.RegisterFunc(&next.fnPaletteCreate, addrPaletteCreate)
-	purego.RegisterFunc(&next.fnPaletteDeinit, addrPaletteDeinit)
-	purego.RegisterFunc(&next.fnLiveValues, addrLiveValues)
+	next.addrSignalSetOffset = addrSignalSetOffset
+	next.addrSignalSetMode = addrSignalSetMode
+	next.addrSignalSetActive = addrSignalSetActive
+	next.addrSignalDeinit = addrSignalDeinit
+	next.addrPaletteCreate = addrPaletteCreate
+	next.addrPaletteDeinit = addrPaletteDeinit
+	next.addrLiveValues = addrLiveValues
 	purego.RegisterFunc(&next.fnDivide, addrDivide)
 	purego.RegisterFunc(&next.fnSum, addrSum)
-	purego.RegisterFunc(&next.fnScrollAmount, addrScrollAmount)
-	purego.RegisterFunc(&next.fnCurrentViewport, addrCurrentViewport)
-	purego.RegisterFunc(&next.fnEchoRgb, addrEchoRgb)
-	purego.RegisterFunc(&next.fnMaybeRgb, addrMaybeRgb)
-	purego.RegisterFunc(&next.fnCheckedRgb, addrCheckedRgb)
-	purego.RegisterFunc(&next.fnEchoColorRecord, addrEchoColorRecord)
-	purego.RegisterFunc(&next.fnFlattenFlags, addrFlattenFlags)
-	purego.RegisterFunc(&next.fnVisitFlags, addrVisitFlags)
-	purego.RegisterFunc(&next.fnPanicError, addrPanicError)
+	next.addrScrollAmount = addrScrollAmount
+	next.addrCurrentViewport = addrCurrentViewport
+	next.addrEchoRgb = addrEchoRgb
+	next.addrMaybeRgb = addrMaybeRgb
+	next.addrCheckedRgb = addrCheckedRgb
+	next.addrEchoColorRecord = addrEchoColorRecord
+	next.addrFlattenFlags = addrFlattenFlags
+	next.addrVisitFlags = addrVisitFlags
+	next.addrPanicError = addrPanicError
 	purego.RegisterFunc(&next.fnProjection0, addrProjection0)
 	purego.RegisterFunc(&next.fnProjection1, addrProjection1)
 	purego.RegisterFunc(&next.fnProjection2, addrProjection2)
@@ -695,6 +695,461 @@ type SignalSnapshotData struct {
 	Offset int16
 	Mode   uint8
 	Active uint8
+}
+
+// zigoCallFrame holds one direct call's arguments and the slots its out
+// parameters are written to. purego.SyscallN lets its argument slice escape,
+// and native code must not be handed an address on a goroutine stack that a
+// callback could grow and move, so both live in a pooled frame on the heap.
+type zigoCallFrame struct {
+	args [8]uintptr
+	out  [2]uint64
+}
+
+var zigoCallFrames = sync.Pool{New: func() any { return new(zigoCallFrame) }}
+
+// zigoEscapeSink is never written. zigoEscape only has to look as though it
+// might store its argument, so that the compiler keeps what a pointer handed
+// to native code points at on the heap, as a call through RegisterFunc did.
+var zigoEscapeSink struct {
+	enabled bool
+	p       unsafe.Pointer
+}
+
+func zigoEscape(p unsafe.Pointer) {
+	if zigoEscapeSink.enabled {
+		zigoEscapeSink.p = p
+	}
+}
+
+// fnPaletteFlags calls zg_palette_flags through purego.SyscallN.
+func (b *nativeBindings) fnPaletteFlags(p0 unsafe.Pointer, p1 *uint16) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uint16)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrPaletteFlags, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnPaletteSetFlags calls zg_palette_set_flags through purego.SyscallN.
+func (b *nativeBindings) fnPaletteSetFlags(p0 unsafe.Pointer, p1 uint16) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	r, _, _ := purego.SyscallN(b.addrPaletteSetFlags, f.args[:2]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnPalettePinnedMode calls zg_palette_pinned_mode through purego.SyscallN.
+func (b *nativeBindings) fnPalettePinnedMode(p0 unsafe.Pointer, p1 *uint8, p2 *uint8) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uint8)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	s2 := (*uint8)(unsafe.Pointer(&f.out[1]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	r, _, _ := purego.SyscallN(b.addrPalettePinnedMode, f.args[:3]...)
+	*p1 = *s1
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnPaletteSetPinnedMode calls zg_palette_set_pinned_mode through purego.SyscallN.
+func (b *nativeBindings) fnPaletteSetPinnedMode(p0 unsafe.Pointer, p1 *uint8) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	zigoEscape(unsafe.Pointer(p1))
+	f.args[1] = uintptr(unsafe.Pointer(p1))
+	r, _, _ := purego.SyscallN(b.addrPaletteSetPinnedMode, f.args[:2]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnPaletteName calls zg_palette_name through purego.SyscallN.
+func (b *nativeBindings) fnPaletteName(p0 unsafe.Pointer, p1 *unsafe.Pointer, p2 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	s2 := (*uintptr)(unsafe.Pointer(&f.out[1]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	r, _, _ := purego.SyscallN(b.addrPaletteName, f.args[:3]...)
+	*p1 = *s1
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnChildCreate calls zg_child_create through purego.SyscallN.
+func (b *nativeBindings) fnChildCreate(p0 int32, p1 *unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	s1 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrChildCreate, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnChildGet calls zg_child_get through purego.SyscallN.
+func (b *nativeBindings) fnChildGet(p0 unsafe.Pointer, p1 *int32) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*int32)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrChildGet, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnChildDeinit calls zg_child_deinit through purego.SyscallN.
+func (b *nativeBindings) fnChildDeinit(p0 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrChildDeinit, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnValueCreate calls zg_value_create through purego.SyscallN.
+func (b *nativeBindings) fnValueCreate(p0 int64, p1 *unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	s1 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrValueCreate, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnValueSetNone calls zg_value_set_none through purego.SyscallN.
+func (b *nativeBindings) fnValueSetNone(p0 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrValueSetNone, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnValueSetFlag calls zg_value_set_flag through purego.SyscallN.
+func (b *nativeBindings) fnValueSetFlag(p0 unsafe.Pointer, p1 uint8) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	r, _, _ := purego.SyscallN(b.addrValueSetFlag, f.args[:2]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnValueSetMode calls zg_value_set_mode through purego.SyscallN.
+func (b *nativeBindings) fnValueSetMode(p0 unsafe.Pointer, p1 uint8) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	r, _, _ := purego.SyscallN(b.addrValueSetMode, f.args[:2]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnValueUsePresetSamples calls zg_value_use_preset_samples through purego.SyscallN.
+func (b *nativeBindings) fnValueUsePresetSamples(p0 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrValueUsePresetSamples, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnValueUseEmptySamples calls zg_value_use_empty_samples through purego.SyscallN.
+func (b *nativeBindings) fnValueUseEmptySamples(p0 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrValueUseEmptySamples, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnValueUseMutableSamples calls zg_value_use_mutable_samples through purego.SyscallN.
+func (b *nativeBindings) fnValueUseMutableSamples(p0 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrValueUseMutableSamples, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnValueSetChild calls zg_value_set_child through purego.SyscallN.
+func (b *nativeBindings) fnValueSetChild(p0 unsafe.Pointer, p1 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	zigoEscape(p1)
+	f.args[1] = uintptr(p1)
+	r, _, _ := purego.SyscallN(b.addrValueSetChild, f.args[:2]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnValueBorrow calls zg_value_borrow through purego.SyscallN.
+func (b *nativeBindings) fnValueBorrow(p0 unsafe.Pointer, p1 *unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrValueBorrow, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnValueDeinit calls zg_value_deinit through purego.SyscallN.
+func (b *nativeBindings) fnValueDeinit(p0 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrValueDeinit, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnSignalCreate calls zg_signal_create through purego.SyscallN.
+func (b *nativeBindings) fnSignalCreate(p0 uint32, p1 *unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	s1 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrSignalCreate, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnSignalSetIdle calls zg_signal_set_idle through purego.SyscallN.
+func (b *nativeBindings) fnSignalSetIdle(p0 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrSignalSetIdle, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnSignalSetTicks calls zg_signal_set_ticks through purego.SyscallN.
+func (b *nativeBindings) fnSignalSetTicks(p0 unsafe.Pointer, p1 uint32) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	r, _, _ := purego.SyscallN(b.addrSignalSetTicks, f.args[:2]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnSignalSetOffset calls zg_signal_set_offset through purego.SyscallN.
+func (b *nativeBindings) fnSignalSetOffset(p0 unsafe.Pointer, p1 int16) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	r, _, _ := purego.SyscallN(b.addrSignalSetOffset, f.args[:2]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnSignalSetMode calls zg_signal_set_mode through purego.SyscallN.
+func (b *nativeBindings) fnSignalSetMode(p0 unsafe.Pointer, p1 uint8) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	r, _, _ := purego.SyscallN(b.addrSignalSetMode, f.args[:2]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnSignalSetActive calls zg_signal_set_active through purego.SyscallN.
+func (b *nativeBindings) fnSignalSetActive(p0 unsafe.Pointer, p1 uint8) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	r, _, _ := purego.SyscallN(b.addrSignalSetActive, f.args[:2]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnSignalDeinit calls zg_signal_deinit through purego.SyscallN.
+func (b *nativeBindings) fnSignalDeinit(p0 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrSignalDeinit, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnPaletteCreate calls zg_palette_create through purego.SyscallN.
+func (b *nativeBindings) fnPaletteCreate(p0 uint16, p1 *unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	s1 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrPaletteCreate, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnPaletteDeinit calls zg_palette_deinit through purego.SyscallN.
+func (b *nativeBindings) fnPaletteDeinit(p0 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrPaletteDeinit, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnLiveValues calls zg_live_values through purego.SyscallN.
+func (b *nativeBindings) fnLiveValues() uintptr {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	r, _, _ := purego.SyscallN(b.addrLiveValues, f.args[:0]...)
+	zigoCallFrames.Put(f)
+	return uintptr(r)
+}
+
+// fnScrollAmount calls zg_scroll_amount through purego.SyscallN.
+func (b *nativeBindings) fnScrollAmount(p0 uint8, p1 int, p2 uintptr, p3 uint32, p4 int16, p5 int16, p6 uint16) int {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	f.args[3] = uintptr(p3)
+	f.args[4] = uintptr(p4)
+	f.args[5] = uintptr(p5)
+	f.args[6] = uintptr(p6)
+	r, _, _ := purego.SyscallN(b.addrScrollAmount, f.args[:7]...)
+	zigoCallFrames.Put(f)
+	return int(r)
+}
+
+// fnCurrentViewport calls zg_current_viewport through purego.SyscallN.
+func (b *nativeBindings) fnCurrentViewport(p0 uint8, p1 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	zigoEscape(p1)
+	f.args[1] = uintptr(p1)
+	r, _, _ := purego.SyscallN(b.addrCurrentViewport, f.args[:2]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnEchoRgb calls zg_echo_rgb through purego.SyscallN.
+func (b *nativeBindings) fnEchoRgb(p0 uint32) uint32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrEchoRgb, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return uint32(r)
+}
+
+// fnMaybeRgb calls zg_maybe_rgb through purego.SyscallN.
+func (b *nativeBindings) fnMaybeRgb(p0 uint8, p1 *uint32) uint8 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	s1 := (*uint32)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrMaybeRgb, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return uint8(r)
+}
+
+// fnCheckedRgb calls zg_checked_rgb through purego.SyscallN.
+func (b *nativeBindings) fnCheckedRgb(p0 uint8, p1 *uint32) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	s1 := (*uint32)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrCheckedRgb, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnEchoColorRecord calls zg_echo_color_record through purego.SyscallN.
+func (b *nativeBindings) fnEchoColorRecord(p0 unsafe.Pointer, p1 unsafe.Pointer) {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	s0 := (*ColorRecordData)(unsafe.Pointer(&f.out[0]))
+	*s0 = *(*ColorRecordData)(p0)
+	f.args[0] = uintptr(unsafe.Pointer(s0))
+	s1 := (*ColorRecordData)(unsafe.Pointer(&f.out[1]))
+	*s1 = *(*ColorRecordData)(p1)
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	purego.SyscallN(b.addrEchoColorRecord, f.args[:2]...)
+	*(*ColorRecordData)(p1) = *s1
+	zigoCallFrames.Put(f)
+}
+
+// fnFlattenFlags calls zg_flatten_flags through purego.SyscallN.
+func (b *nativeBindings) fnFlattenFlags(p0 uint16) uint16 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrFlattenFlags, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return uint16(r)
+}
+
+// fnVisitFlags calls zg_visit_flags_purego_v2 through purego.SyscallN.
+func (b *nativeBindings) fnVisitFlags(p0 uintptr, p1 uintptr) {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	purego.SyscallN(b.addrVisitFlags, f.args[:2]...)
+	zigoCallFrames.Put(f)
+}
+
+// fnPanicError calls zg_panic_error through purego.SyscallN.
+func (b *nativeBindings) fnPanicError() int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	r, _, _ := purego.SyscallN(b.addrPanicError, f.args[:0]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
 }
 
 // PaletteFlags calls the generated purego ABI wrapper for zg_palette_flags.

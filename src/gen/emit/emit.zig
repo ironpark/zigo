@@ -985,6 +985,83 @@ test "a scalar-only struct slice crosses as a cast while a bool-bearing one is c
     try std.testing.expect(std.mem.indexOf(u8, public_text, "zigoFlaggedSliceCopyFromRaw(output, outputRaw, int(result))") != null);
 }
 
+test "a handle keeps the raw buffer its copied out slices convert through" {
+    var flagged: semantic.TypeNode = .{ .value_struct = .{ .ref = "Flagged" } };
+    const count: semantic.TypeNode = .{ .int = .{ .bits = 64, .is_usize = true, .signed = false } };
+    const document: semantic.Semantic = .{
+        .package = "shapes",
+        .prefix = "zg",
+        .functions = &.{
+            .{
+                .name = "fill",
+                .params = &.{.{
+                    .direction = .out,
+                    .name = "output",
+                    .type = .{ .slice = .{ .@"const" = false, .element = &flagged } },
+                    .written = .@"return",
+                }},
+                .receiver = "Board",
+                .@"return" = count,
+                .symbol = "zg_board_fill",
+            },
+            .{
+                .name = "fillRow",
+                .params = &.{.{
+                    .direction = .out,
+                    .name = "output",
+                    .type = .{ .slice = .{ .@"const" = false, .element = &flagged } },
+                    .written = .@"return",
+                }},
+                .receiver = "Board",
+                .@"return" = count,
+                .symbol = "zg_board_fill_row",
+            },
+            .{
+                .name = "fillFlagged",
+                .params = &.{.{
+                    .direction = .out,
+                    .name = "output",
+                    .type = .{ .slice = .{ .@"const" = false, .element = &flagged } },
+                    .written = .@"return",
+                }},
+                .@"return" = count,
+                .symbol = "zg_fill_flagged",
+            },
+        },
+        .types = &.{
+            .{ .kind = .@"opaque", .name = "Board" },
+            .{
+                .fields = &.{
+                    .{ .name = "ready", .type = .{ .bool = {} } },
+                    .{ .name = "count", .type = .{ .int = .{ .bits = 32, .signed = true } } },
+                },
+                .kind = .value_struct,
+                .layout = .@"extern",
+                .name = "Flagged",
+            },
+        },
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const program = try @import("lower").semanticDocument(arena.allocator(), document, "shapes", "zg", &.{});
+
+    const public_text = try renderForTest(public.renderPublic, program);
+    defer std.testing.allocator.free(public_text);
+    // Both methods borrow the one buffer for their element; the free function
+    // has no owner to keep one on.
+    try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, public_text, "outputScratch := b.zigoScratchFlagged.take(len(output))"));
+    try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, public_text, "defer b.zigoScratchFlagged.give(outputScratch)"));
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, public_text, "outputRaw := make([]raw.FlaggedData, len(output))"));
+
+    const handles_text = try renderForTest(public.renderPublicHandlesFile, program);
+    defer std.testing.allocator.free(handles_text);
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, handles_text, "zigoScratchFlagged zigoScratch[raw.FlaggedData]"));
+    try std.testing.expect(std.mem.indexOf(u8, handles_text, "func (b *Board) ReleaseScratch() {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, handles_text, "that Fill and FillRow\n// keep between calls") != null);
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, handles_text, "type zigoScratch[T any] struct{ buffer atomic.Pointer[[]T] }"));
+}
+
 test "a returned struct slice is reinterpreted for a castable element and copied otherwise" {
     var point: semantic.TypeNode = .{ .value_struct = .{ .ref = "Point" } };
     var flagged: semantic.TypeNode = .{ .value_struct = .{ .ref = "Flagged" } };

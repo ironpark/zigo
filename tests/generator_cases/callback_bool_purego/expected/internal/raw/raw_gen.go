@@ -46,8 +46,8 @@ func (err *LibraryError) Unwrap() error { return err.Cause }
 type nativeBindings struct {
 	lastError func() unsafe.Pointer
 	panicMessage func(int32) unsafe.Pointer
-	fnFilter func(int32, uintptr, uintptr) uint8
-	fnEach func(uintptr, uintptr)
+	addrFilter uintptr
+	addrEach uintptr
 }
 
 type callbackEntry struct {
@@ -247,8 +247,8 @@ func loadCandidate(path string) error {
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.panicMessage, addrPanicMessage)
-	purego.RegisterFunc(&next.fnFilter, addrFilter)
-	purego.RegisterFunc(&next.fnEach, addrEach)
+	next.addrFilter = addrFilter
+	next.addrEach = addrEach
 	loadedBindings.Store(&next)
 	return nil
 }
@@ -275,6 +275,51 @@ func PanicMessage(code int32) string {
 	length := 0
 	for *(*byte)(unsafe.Add(p, length)) != 0 { length++ }
 	return string(unsafe.Slice((*byte)(p), length))
+}
+
+// zigoCallFrame holds one direct call's arguments and the slots its out
+// parameters are written to. purego.SyscallN lets its argument slice escape,
+// and native code must not be handed an address on a goroutine stack that a
+// callback could grow and move, so both live in a pooled frame on the heap.
+type zigoCallFrame struct {
+	args [8]uintptr
+	out  [1]uint64
+}
+
+var zigoCallFrames = sync.Pool{New: func() any { return new(zigoCallFrame) }}
+
+// zigoEscapeSink is never written. zigoEscape only has to look as though it
+// might store its argument, so that the compiler keeps what a pointer handed
+// to native code points at on the heap, as a call through RegisterFunc did.
+var zigoEscapeSink struct {
+	enabled bool
+	p       unsafe.Pointer
+}
+
+func zigoEscape(p unsafe.Pointer) {
+	if zigoEscapeSink.enabled {
+		zigoEscapeSink.p = p
+	}
+}
+
+// fnFilter calls zg_filter_purego_v2 through purego.SyscallN.
+func (b *nativeBindings) fnFilter(p0 int32, p1 uintptr, p2 uintptr) uint8 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	r, _, _ := purego.SyscallN(b.addrFilter, f.args[:3]...)
+	zigoCallFrames.Put(f)
+	return uint8(r)
+}
+
+// fnEach calls zg_each_purego_v2 through purego.SyscallN.
+func (b *nativeBindings) fnEach(p0 uintptr, p1 uintptr) {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	purego.SyscallN(b.addrEach, f.args[:2]...)
+	zigoCallFrames.Put(f)
 }
 
 // Filter calls the generated purego ABI wrapper for zg_filter_purego_v2.

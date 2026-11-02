@@ -45,9 +45,9 @@ func (err *LibraryError) Unwrap() error { return err.Cause }
 type nativeBindings struct {
 	lastError func() unsafe.Pointer
 	panicMessage func(int32) unsafe.Pointer
-	fnEcho func(uint8) uint8
-	fnConfigure func(unsafe.Pointer)
-	fnAcceptValues func(unsafe.Pointer, uintptr)
+	addrEcho uintptr
+	addrConfigure uintptr
+	addrAcceptValues uintptr
 }
 
 var loadedBindings atomic.Pointer[nativeBindings]
@@ -116,9 +116,9 @@ func loadCandidate(path string) error {
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.panicMessage, addrPanicMessage)
-	purego.RegisterFunc(&next.fnEcho, addrEcho)
-	purego.RegisterFunc(&next.fnConfigure, addrConfigure)
-	purego.RegisterFunc(&next.fnAcceptValues, addrAcceptValues)
+	next.addrEcho = addrEcho
+	next.addrConfigure = addrConfigure
+	next.addrAcceptValues = addrAcceptValues
 	loadedBindings.Store(&next)
 	return nil
 }
@@ -150,6 +150,60 @@ func PanicMessage(code int32) string {
 // ConfigData mirrors the zg_config layout, padding included.
 type ConfigData struct {
 	Erase uint8
+}
+
+// zigoCallFrame holds one direct call's arguments and the slots its out
+// parameters are written to. purego.SyscallN lets its argument slice escape,
+// and native code must not be handed an address on a goroutine stack that a
+// callback could grow and move, so both live in a pooled frame on the heap.
+type zigoCallFrame struct {
+	args [8]uintptr
+	out  [1]uint64
+}
+
+var zigoCallFrames = sync.Pool{New: func() any { return new(zigoCallFrame) }}
+
+// zigoEscapeSink is never written. zigoEscape only has to look as though it
+// might store its argument, so that the compiler keeps what a pointer handed
+// to native code points at on the heap, as a call through RegisterFunc did.
+var zigoEscapeSink struct {
+	enabled bool
+	p       unsafe.Pointer
+}
+
+func zigoEscape(p unsafe.Pointer) {
+	if zigoEscapeSink.enabled {
+		zigoEscapeSink.p = p
+	}
+}
+
+// fnEcho calls zg_echo through purego.SyscallN.
+func (b *nativeBindings) fnEcho(p0 uint8) uint8 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrEcho, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return uint8(r)
+}
+
+// fnConfigure calls zg_configure through purego.SyscallN.
+func (b *nativeBindings) fnConfigure(p0 unsafe.Pointer) {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	s0 := (*ConfigData)(unsafe.Pointer(&f.out[0]))
+	*s0 = *(*ConfigData)(p0)
+	f.args[0] = uintptr(unsafe.Pointer(s0))
+	purego.SyscallN(b.addrConfigure, f.args[:1]...)
+	zigoCallFrames.Put(f)
+}
+
+// fnAcceptValues calls zg_accept_values through purego.SyscallN.
+func (b *nativeBindings) fnAcceptValues(p0 unsafe.Pointer, p1 uintptr) {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	purego.SyscallN(b.addrAcceptValues, f.args[:2]...)
+	zigoCallFrames.Put(f)
 }
 
 // Echo calls the generated purego ABI wrapper for zg_echo.

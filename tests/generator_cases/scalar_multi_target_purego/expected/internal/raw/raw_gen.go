@@ -47,7 +47,7 @@ func (err *LibraryError) Unwrap() error { return err.Cause }
 type nativeBindings struct {
 	lastError func() unsafe.Pointer
 	panicMessage func(int32) unsafe.Pointer
-	fnAdd func(int32, int32) int32
+	addrAdd uintptr
 }
 
 var loadedBindings atomic.Pointer[nativeBindings]
@@ -135,7 +135,7 @@ func loadCandidate(path string) error {
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.panicMessage, addrPanicMessage)
-	purego.RegisterFunc(&next.fnAdd, addrAdd)
+	next.addrAdd = addrAdd
 	loadedBindings.Store(&next)
 	return nil
 }
@@ -162,6 +162,41 @@ func PanicMessage(code int32) string {
 	length := 0
 	for *(*byte)(unsafe.Add(p, length)) != 0 { length++ }
 	return string(unsafe.Slice((*byte)(p), length))
+}
+
+// zigoCallFrame holds one direct call's arguments and the slots its out
+// parameters are written to. purego.SyscallN lets its argument slice escape,
+// and native code must not be handed an address on a goroutine stack that a
+// callback could grow and move, so both live in a pooled frame on the heap.
+type zigoCallFrame struct {
+	args [8]uintptr
+	out  [1]uint64
+}
+
+var zigoCallFrames = sync.Pool{New: func() any { return new(zigoCallFrame) }}
+
+// zigoEscapeSink is never written. zigoEscape only has to look as though it
+// might store its argument, so that the compiler keeps what a pointer handed
+// to native code points at on the heap, as a call through RegisterFunc did.
+var zigoEscapeSink struct {
+	enabled bool
+	p       unsafe.Pointer
+}
+
+func zigoEscape(p unsafe.Pointer) {
+	if zigoEscapeSink.enabled {
+		zigoEscapeSink.p = p
+	}
+}
+
+// fnAdd calls zg_add through purego.SyscallN.
+func (b *nativeBindings) fnAdd(p0 int32, p1 int32) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	r, _, _ := purego.SyscallN(b.addrAdd, f.args[:2]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
 }
 
 // Add calls the generated purego ABI wrapper for zg_add.

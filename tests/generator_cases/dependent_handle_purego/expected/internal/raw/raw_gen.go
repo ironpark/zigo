@@ -45,12 +45,12 @@ func (err *LibraryError) Unwrap() error { return err.Cause }
 type nativeBindings struct {
 	lastError func() unsafe.Pointer
 	panicMessage func(int32) unsafe.Pointer
-	fnNewParent func(*unsafe.Pointer) int32
-	fnParentFreeParent func(unsafe.Pointer) int32
-	fnParentView func(unsafe.Pointer, *unsafe.Pointer) int32
-	fnViewNewChild func(unsafe.Pointer, *unsafe.Pointer) int32
-	fnChildFreeChild func(unsafe.Pointer) int32
-	fnChildTouch func(unsafe.Pointer) int32
+	addrNewParent uintptr
+	addrParentFreeParent uintptr
+	addrParentView uintptr
+	addrViewNewChild uintptr
+	addrChildFreeChild uintptr
+	addrChildTouch uintptr
 }
 
 var loadedBindings atomic.Pointer[nativeBindings]
@@ -125,12 +125,12 @@ func loadCandidate(path string) error {
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.panicMessage, addrPanicMessage)
-	purego.RegisterFunc(&next.fnNewParent, addrNewParent)
-	purego.RegisterFunc(&next.fnParentFreeParent, addrParentFreeParent)
-	purego.RegisterFunc(&next.fnParentView, addrParentView)
-	purego.RegisterFunc(&next.fnViewNewChild, addrViewNewChild)
-	purego.RegisterFunc(&next.fnChildFreeChild, addrChildFreeChild)
-	purego.RegisterFunc(&next.fnChildTouch, addrChildTouch)
+	next.addrNewParent = addrNewParent
+	next.addrParentFreeParent = addrParentFreeParent
+	next.addrParentView = addrParentView
+	next.addrViewNewChild = addrViewNewChild
+	next.addrChildFreeChild = addrChildFreeChild
+	next.addrChildTouch = addrChildTouch
 	loadedBindings.Store(&next)
 	return nil
 }
@@ -157,6 +157,101 @@ func PanicMessage(code int32) string {
 	length := 0
 	for *(*byte)(unsafe.Add(p, length)) != 0 { length++ }
 	return string(unsafe.Slice((*byte)(p), length))
+}
+
+// zigoCallFrame holds one direct call's arguments and the slots its out
+// parameters are written to. purego.SyscallN lets its argument slice escape,
+// and native code must not be handed an address on a goroutine stack that a
+// callback could grow and move, so both live in a pooled frame on the heap.
+type zigoCallFrame struct {
+	args [8]uintptr
+	out  [1]uint64
+}
+
+var zigoCallFrames = sync.Pool{New: func() any { return new(zigoCallFrame) }}
+
+// zigoEscapeSink is never written. zigoEscape only has to look as though it
+// might store its argument, so that the compiler keeps what a pointer handed
+// to native code points at on the heap, as a call through RegisterFunc did.
+var zigoEscapeSink struct {
+	enabled bool
+	p       unsafe.Pointer
+}
+
+func zigoEscape(p unsafe.Pointer) {
+	if zigoEscapeSink.enabled {
+		zigoEscapeSink.p = p
+	}
+}
+
+// fnNewParent calls zg_new_parent through purego.SyscallN.
+func (b *nativeBindings) fnNewParent(p0 *unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	s0 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s0 = *p0
+	f.args[0] = uintptr(unsafe.Pointer(s0))
+	r, _, _ := purego.SyscallN(b.addrNewParent, f.args[:1]...)
+	*p0 = *s0
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnParentFreeParent calls zg_parent_free_parent through purego.SyscallN.
+func (b *nativeBindings) fnParentFreeParent(p0 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrParentFreeParent, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnParentView calls zg_parent_view through purego.SyscallN.
+func (b *nativeBindings) fnParentView(p0 unsafe.Pointer, p1 *unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrParentView, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnViewNewChild calls zg_view_new_child through purego.SyscallN.
+func (b *nativeBindings) fnViewNewChild(p0 unsafe.Pointer, p1 *unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrViewNewChild, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnChildFreeChild calls zg_child_free_child through purego.SyscallN.
+func (b *nativeBindings) fnChildFreeChild(p0 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrChildFreeChild, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnChildTouch calls zg_child_touch through purego.SyscallN.
+func (b *nativeBindings) fnChildTouch(p0 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrChildTouch, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
 }
 
 // NewParent calls the generated purego ABI wrapper for zg_new_parent.

@@ -46,16 +46,16 @@ func (err *LibraryError) Unwrap() error { return err.Cause }
 type nativeBindings struct {
 	lastError func() unsafe.Pointer
 	panicMessage func(int32) unsafe.Pointer
-	fnUseMode func(uint8) int32
-	fnInspectPoint func(unsafe.Pointer, unsafe.Pointer) int32
-	fnReset func() int32
-	fnMaybePoint func(*uint8, unsafe.Pointer) int32
+	addrUseMode uintptr
+	addrInspectPoint uintptr
+	addrReset uintptr
+	addrMaybePoint uintptr
 	fnConfigure func(uint8, uint16, float32, uint8, *uint32, uint32) int32
-	fnReduce func(uintptr, int32, uintptr, *int32) int32
-	fnJobCrunch func(unsafe.Pointer, uint32, *uint32, *float64) int32
-	fnJobOpen func(*unsafe.Pointer) int32
-	fnJobClose func(unsafe.Pointer) int32
-	fnWraptestAnswer func() uint32
+	addrReduce uintptr
+	addrJobCrunch uintptr
+	addrJobOpen uintptr
+	addrJobClose uintptr
+	addrWraptestAnswer uintptr
 }
 
 type callbackEntry struct {
@@ -265,16 +265,16 @@ func loadCandidate(path string) error {
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.panicMessage, addrPanicMessage)
-	purego.RegisterFunc(&next.fnUseMode, addrUseMode)
-	purego.RegisterFunc(&next.fnInspectPoint, addrInspectPoint)
-	purego.RegisterFunc(&next.fnReset, addrReset)
-	purego.RegisterFunc(&next.fnMaybePoint, addrMaybePoint)
+	next.addrUseMode = addrUseMode
+	next.addrInspectPoint = addrInspectPoint
+	next.addrReset = addrReset
+	next.addrMaybePoint = addrMaybePoint
 	purego.RegisterFunc(&next.fnConfigure, addrConfigure)
-	purego.RegisterFunc(&next.fnReduce, addrReduce)
-	purego.RegisterFunc(&next.fnJobCrunch, addrJobCrunch)
-	purego.RegisterFunc(&next.fnJobOpen, addrJobOpen)
-	purego.RegisterFunc(&next.fnJobClose, addrJobClose)
-	purego.RegisterFunc(&next.fnWraptestAnswer, addrWraptestAnswer)
+	next.addrReduce = addrReduce
+	next.addrJobCrunch = addrJobCrunch
+	next.addrJobOpen = addrJobOpen
+	next.addrJobClose = addrJobClose
+	next.addrWraptestAnswer = addrWraptestAnswer
 	loadedBindings.Store(&next)
 	return nil
 }
@@ -307,6 +307,141 @@ func PanicMessage(code int32) string {
 type PointData struct {
 	X int32
 	Y int32
+}
+
+// zigoCallFrame holds one direct call's arguments and the slots its out
+// parameters are written to. purego.SyscallN lets its argument slice escape,
+// and native code must not be handed an address on a goroutine stack that a
+// callback could grow and move, so both live in a pooled frame on the heap.
+type zigoCallFrame struct {
+	args [8]uintptr
+	out  [2]uint64
+}
+
+var zigoCallFrames = sync.Pool{New: func() any { return new(zigoCallFrame) }}
+
+// zigoEscapeSink is never written. zigoEscape only has to look as though it
+// might store its argument, so that the compiler keeps what a pointer handed
+// to native code points at on the heap, as a call through RegisterFunc did.
+var zigoEscapeSink struct {
+	enabled bool
+	p       unsafe.Pointer
+}
+
+func zigoEscape(p unsafe.Pointer) {
+	if zigoEscapeSink.enabled {
+		zigoEscapeSink.p = p
+	}
+}
+
+// fnUseMode calls zg_use_mode through purego.SyscallN.
+func (b *nativeBindings) fnUseMode(p0 uint8) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrUseMode, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnInspectPoint calls zg_inspect_point through purego.SyscallN.
+func (b *nativeBindings) fnInspectPoint(p0 unsafe.Pointer, p1 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	s0 := (*PointData)(unsafe.Pointer(&f.out[0]))
+	*s0 = *(*PointData)(p0)
+	f.args[0] = uintptr(unsafe.Pointer(s0))
+	s1 := (*PointData)(unsafe.Pointer(&f.out[1]))
+	*s1 = *(*PointData)(p1)
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrInspectPoint, f.args[:2]...)
+	*(*PointData)(p1) = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnReset calls zg_reset through purego.SyscallN.
+func (b *nativeBindings) fnReset() int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	r, _, _ := purego.SyscallN(b.addrReset, f.args[:0]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnMaybePoint calls zg_maybe_point through purego.SyscallN.
+func (b *nativeBindings) fnMaybePoint(p0 *uint8, p1 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	s0 := (*uint8)(unsafe.Pointer(&f.out[0]))
+	*s0 = *p0
+	f.args[0] = uintptr(unsafe.Pointer(s0))
+	s1 := (*PointData)(unsafe.Pointer(&f.out[1]))
+	*s1 = *(*PointData)(p1)
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrMaybePoint, f.args[:2]...)
+	*p0 = *s0
+	*(*PointData)(p1) = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnReduce calls zg_reduce_purego_v2 through purego.SyscallN.
+func (b *nativeBindings) fnReduce(p0 uintptr, p1 int32, p2 uintptr, p3 *int32) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	s3 := (*int32)(unsafe.Pointer(&f.out[0]))
+	*s3 = *p3
+	f.args[3] = uintptr(unsafe.Pointer(s3))
+	r, _, _ := purego.SyscallN(b.addrReduce, f.args[:4]...)
+	*p3 = *s3
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnJobCrunch calls zg_job_crunch through purego.SyscallN.
+func (b *nativeBindings) fnJobCrunch(p0 unsafe.Pointer, p1 uint32, p2 *uint32, p3 *float64) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	zigoEscape(unsafe.Pointer(p2))
+	f.args[2] = uintptr(unsafe.Pointer(p2))
+	s3 := (*float64)(unsafe.Pointer(&f.out[0]))
+	*s3 = *p3
+	f.args[3] = uintptr(unsafe.Pointer(s3))
+	r, _, _ := purego.SyscallN(b.addrJobCrunch, f.args[:4]...)
+	*p3 = *s3
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnJobOpen calls zg_job_open through purego.SyscallN.
+func (b *nativeBindings) fnJobOpen(p0 *unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	s0 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s0 = *p0
+	f.args[0] = uintptr(unsafe.Pointer(s0))
+	r, _, _ := purego.SyscallN(b.addrJobOpen, f.args[:1]...)
+	*p0 = *s0
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnJobClose calls zg_job_close through purego.SyscallN.
+func (b *nativeBindings) fnJobClose(p0 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrJobClose, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnWraptestAnswer calls zg_wraptest_answer through purego.SyscallN.
+func (b *nativeBindings) fnWraptestAnswer() uint32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	r, _, _ := purego.SyscallN(b.addrWraptestAnswer, f.args[:0]...)
+	zigoCallFrames.Put(f)
+	return uint32(r)
 }
 
 // UseMode calls the generated purego ABI wrapper for zg_use_mode.

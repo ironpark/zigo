@@ -49,28 +49,28 @@ func (err *LibraryError) Is(target error) bool { return target == ErrLibraryLoad
 func (err *LibraryError) Unwrap() error { return err.Cause }
 
 type nativeBindings struct {
-	lastError              func() unsafe.Pointer
-	panicMessage           func(int32) unsafe.Pointer
-	fnLegacyLeafValue      func(unsafe.Pointer, *int32) int32
-	fnLegacyProbeCreate    func(uintptr, *unsafe.Pointer) int32
-	fnLegacyProbeID        func(unsafe.Pointer, *uint64) int32
-	fnLegacyProbeActive    func(unsafe.Pointer, *uint8) int32
-	fnLegacyProbeChild     func(unsafe.Pointer, *unsafe.Pointer) int32
-	fnLegacyProbeDeinit    func(unsafe.Pointer) int32
-	fnCursorCreate         func(uint32, uint32, *unsafe.Pointer) int32
-	fnCursorNext           func(unsafe.Pointer, *unsafe.Pointer, *uintptr) int32
-	fnCursorNextChecked    func(unsafe.Pointer, *unsafe.Pointer, *uintptr) int32
-	fnCursorCount          func(unsafe.Pointer, *uint32) int32
-	fnCursorDeinit         func(unsafe.Pointer) int32
-	fnOptionalSnapshot     func(uint8, *unsafe.Pointer, *uintptr)
-	fnOptionalBatch        func(uint8, uint8, *unsafe.Pointer, *uintptr)
-	fnOptionalBatchChecked func(uint8, uint8, uint8, *unsafe.Pointer, *uintptr) int32
-	fnReleasedBuffers      func() uint32
-	fnSnapshot             func(*unsafe.Pointer, *uintptr)
-	fnProbeMany            func(*unsafe.Pointer, *uintptr) int32
-	fnFill                 func(uintptr, *unsafe.Pointer, *uintptr) uintptr
-	fnWireVersion          func() uint32
-	fnRelease              func(unsafe.Pointer, uintptr)
+	lastError                func() unsafe.Pointer
+	panicMessage             func(int32) unsafe.Pointer
+	addrLegacyLeafValue      uintptr
+	addrLegacyProbeCreate    uintptr
+	addrLegacyProbeID        uintptr
+	addrLegacyProbeActive    uintptr
+	addrLegacyProbeChild     uintptr
+	addrLegacyProbeDeinit    uintptr
+	addrCursorCreate         uintptr
+	addrCursorNext           uintptr
+	addrCursorNextChecked    uintptr
+	addrCursorCount          uintptr
+	addrCursorDeinit         uintptr
+	addrOptionalSnapshot     uintptr
+	addrOptionalBatch        uintptr
+	addrOptionalBatchChecked uintptr
+	addrReleasedBuffers      uintptr
+	addrSnapshot             uintptr
+	addrProbeMany            uintptr
+	addrFill                 uintptr
+	addrWireVersion          uintptr
+	addrRelease              uintptr
 }
 
 var loadedBindings atomic.Pointer[nativeBindings]
@@ -239,26 +239,26 @@ func loadCandidate(path string) error {
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.panicMessage, addrPanicMessage)
-	purego.RegisterFunc(&next.fnLegacyLeafValue, addrLegacyLeafValue)
-	purego.RegisterFunc(&next.fnLegacyProbeCreate, addrLegacyProbeCreate)
-	purego.RegisterFunc(&next.fnLegacyProbeID, addrLegacyProbeID)
-	purego.RegisterFunc(&next.fnLegacyProbeActive, addrLegacyProbeActive)
-	purego.RegisterFunc(&next.fnLegacyProbeChild, addrLegacyProbeChild)
-	purego.RegisterFunc(&next.fnLegacyProbeDeinit, addrLegacyProbeDeinit)
-	purego.RegisterFunc(&next.fnCursorCreate, addrCursorCreate)
-	purego.RegisterFunc(&next.fnCursorNext, addrCursorNext)
-	purego.RegisterFunc(&next.fnCursorNextChecked, addrCursorNextChecked)
-	purego.RegisterFunc(&next.fnCursorCount, addrCursorCount)
-	purego.RegisterFunc(&next.fnCursorDeinit, addrCursorDeinit)
-	purego.RegisterFunc(&next.fnOptionalSnapshot, addrOptionalSnapshot)
-	purego.RegisterFunc(&next.fnOptionalBatch, addrOptionalBatch)
-	purego.RegisterFunc(&next.fnOptionalBatchChecked, addrOptionalBatchChecked)
-	purego.RegisterFunc(&next.fnReleasedBuffers, addrReleasedBuffers)
-	purego.RegisterFunc(&next.fnSnapshot, addrSnapshot)
-	purego.RegisterFunc(&next.fnProbeMany, addrProbeMany)
-	purego.RegisterFunc(&next.fnFill, addrFill)
-	purego.RegisterFunc(&next.fnWireVersion, addrWireVersion)
-	purego.RegisterFunc(&next.fnRelease, addrRelease)
+	next.addrLegacyLeafValue = addrLegacyLeafValue
+	next.addrLegacyProbeCreate = addrLegacyProbeCreate
+	next.addrLegacyProbeID = addrLegacyProbeID
+	next.addrLegacyProbeActive = addrLegacyProbeActive
+	next.addrLegacyProbeChild = addrLegacyProbeChild
+	next.addrLegacyProbeDeinit = addrLegacyProbeDeinit
+	next.addrCursorCreate = addrCursorCreate
+	next.addrCursorNext = addrCursorNext
+	next.addrCursorNextChecked = addrCursorNextChecked
+	next.addrCursorCount = addrCursorCount
+	next.addrCursorDeinit = addrCursorDeinit
+	next.addrOptionalSnapshot = addrOptionalSnapshot
+	next.addrOptionalBatch = addrOptionalBatch
+	next.addrOptionalBatchChecked = addrOptionalBatchChecked
+	next.addrReleasedBuffers = addrReleasedBuffers
+	next.addrSnapshot = addrSnapshot
+	next.addrProbeMany = addrProbeMany
+	next.addrFill = addrFill
+	next.addrWireVersion = addrWireVersion
+	next.addrRelease = addrRelease
 	loadedBindings.Store(&next)
 	return nil
 }
@@ -301,6 +301,310 @@ func PanicMessage(code int32) string {
 type PointData struct {
 	X int32
 	Y int32
+}
+
+// zigoCallFrame holds one direct call's arguments and the slots its out
+// parameters are written to. purego.SyscallN lets its argument slice escape,
+// and native code must not be handed an address on a goroutine stack that a
+// callback could grow and move, so both live in a pooled frame on the heap.
+type zigoCallFrame struct {
+	args [8]uintptr
+	out  [2]uint64
+}
+
+var zigoCallFrames = sync.Pool{New: func() any { return new(zigoCallFrame) }}
+
+// zigoEscapeSink is never written. zigoEscape only has to look as though it
+// might store its argument, so that the compiler keeps what a pointer handed
+// to native code points at on the heap, as a call through RegisterFunc did.
+var zigoEscapeSink struct {
+	enabled bool
+	p       unsafe.Pointer
+}
+
+func zigoEscape(p unsafe.Pointer) {
+	if zigoEscapeSink.enabled {
+		zigoEscapeSink.p = p
+	}
+}
+
+// fnLegacyLeafValue calls zg_legacy_leaf_value through purego.SyscallN.
+func (b *nativeBindings) fnLegacyLeafValue(p0 unsafe.Pointer, p1 *int32) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*int32)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrLegacyLeafValue, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnLegacyProbeCreate calls zg_legacy_probe_create through purego.SyscallN.
+func (b *nativeBindings) fnLegacyProbeCreate(p0 uintptr, p1 *unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	s1 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrLegacyProbeCreate, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnLegacyProbeID calls zg_legacy_probe_id through purego.SyscallN.
+func (b *nativeBindings) fnLegacyProbeID(p0 unsafe.Pointer, p1 *uint64) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uint64)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrLegacyProbeID, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnLegacyProbeActive calls zg_legacy_probe_active through purego.SyscallN.
+func (b *nativeBindings) fnLegacyProbeActive(p0 unsafe.Pointer, p1 *uint8) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uint8)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrLegacyProbeActive, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnLegacyProbeChild calls zg_legacy_probe_child through purego.SyscallN.
+func (b *nativeBindings) fnLegacyProbeChild(p0 unsafe.Pointer, p1 *unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrLegacyProbeChild, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnLegacyProbeDeinit calls zg_legacy_probe_deinit through purego.SyscallN.
+func (b *nativeBindings) fnLegacyProbeDeinit(p0 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrLegacyProbeDeinit, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnCursorCreate calls zg_cursor_create through purego.SyscallN.
+func (b *nativeBindings) fnCursorCreate(p0 uint32, p1 uint32, p2 *unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	s2 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	r, _, _ := purego.SyscallN(b.addrCursorCreate, f.args[:3]...)
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnCursorNext calls zg_cursor_next through purego.SyscallN.
+func (b *nativeBindings) fnCursorNext(p0 unsafe.Pointer, p1 *unsafe.Pointer, p2 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	s2 := (*uintptr)(unsafe.Pointer(&f.out[1]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	r, _, _ := purego.SyscallN(b.addrCursorNext, f.args[:3]...)
+	*p1 = *s1
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnCursorNextChecked calls zg_cursor_next_checked through purego.SyscallN.
+func (b *nativeBindings) fnCursorNextChecked(p0 unsafe.Pointer, p1 *unsafe.Pointer, p2 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	s2 := (*uintptr)(unsafe.Pointer(&f.out[1]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	r, _, _ := purego.SyscallN(b.addrCursorNextChecked, f.args[:3]...)
+	*p1 = *s1
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnCursorCount calls zg_cursor_count through purego.SyscallN.
+func (b *nativeBindings) fnCursorCount(p0 unsafe.Pointer, p1 *uint32) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uint32)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrCursorCount, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnCursorDeinit calls zg_cursor_deinit through purego.SyscallN.
+func (b *nativeBindings) fnCursorDeinit(p0 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrCursorDeinit, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnOptionalSnapshot calls zg_optional_snapshot through purego.SyscallN.
+func (b *nativeBindings) fnOptionalSnapshot(p0 uint8, p1 *unsafe.Pointer, p2 *uintptr) {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	s1 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	s2 := (*uintptr)(unsafe.Pointer(&f.out[1]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	purego.SyscallN(b.addrOptionalSnapshot, f.args[:3]...)
+	*p1 = *s1
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+}
+
+// fnOptionalBatch calls zg_optional_batch through purego.SyscallN.
+func (b *nativeBindings) fnOptionalBatch(p0 uint8, p1 uint8, p2 *unsafe.Pointer, p3 *uintptr) {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	s2 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	s3 := (*uintptr)(unsafe.Pointer(&f.out[1]))
+	*s3 = *p3
+	f.args[3] = uintptr(unsafe.Pointer(s3))
+	purego.SyscallN(b.addrOptionalBatch, f.args[:4]...)
+	*p2 = *s2
+	*p3 = *s3
+	zigoCallFrames.Put(f)
+}
+
+// fnOptionalBatchChecked calls zg_optional_batch_checked through purego.SyscallN.
+func (b *nativeBindings) fnOptionalBatchChecked(p0 uint8, p1 uint8, p2 uint8, p3 *unsafe.Pointer, p4 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	s3 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s3 = *p3
+	f.args[3] = uintptr(unsafe.Pointer(s3))
+	s4 := (*uintptr)(unsafe.Pointer(&f.out[1]))
+	*s4 = *p4
+	f.args[4] = uintptr(unsafe.Pointer(s4))
+	r, _, _ := purego.SyscallN(b.addrOptionalBatchChecked, f.args[:5]...)
+	*p3 = *s3
+	*p4 = *s4
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnReleasedBuffers calls zg_released_buffers through purego.SyscallN.
+func (b *nativeBindings) fnReleasedBuffers() uint32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	r, _, _ := purego.SyscallN(b.addrReleasedBuffers, f.args[:0]...)
+	zigoCallFrames.Put(f)
+	return uint32(r)
+}
+
+// fnSnapshot calls zg_snapshot through purego.SyscallN.
+func (b *nativeBindings) fnSnapshot(p0 *unsafe.Pointer, p1 *uintptr) {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	s0 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s0 = *p0
+	f.args[0] = uintptr(unsafe.Pointer(s0))
+	s1 := (*uintptr)(unsafe.Pointer(&f.out[1]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	purego.SyscallN(b.addrSnapshot, f.args[:2]...)
+	*p0 = *s0
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+}
+
+// fnProbeMany calls zg_probe_many through purego.SyscallN.
+func (b *nativeBindings) fnProbeMany(p0 *unsafe.Pointer, p1 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	s0 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s0 = *p0
+	f.args[0] = uintptr(unsafe.Pointer(s0))
+	s1 := (*uintptr)(unsafe.Pointer(&f.out[1]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrProbeMany, f.args[:2]...)
+	*p0 = *s0
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnFill calls zg_fill through purego.SyscallN.
+func (b *nativeBindings) fnFill(p0 uintptr, p1 *unsafe.Pointer, p2 *uintptr) uintptr {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	s1 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	s2 := (*uintptr)(unsafe.Pointer(&f.out[1]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	r, _, _ := purego.SyscallN(b.addrFill, f.args[:3]...)
+	*p1 = *s1
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+	return uintptr(r)
+}
+
+// fnWireVersion calls zg_wire_version through purego.SyscallN.
+func (b *nativeBindings) fnWireVersion() uint32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	r, _, _ := purego.SyscallN(b.addrWireVersion, f.args[:0]...)
+	zigoCallFrames.Put(f)
+	return uint32(r)
+}
+
+// fnRelease calls zg_release through purego.SyscallN.
+func (b *nativeBindings) fnRelease(p0 unsafe.Pointer, p1 uintptr) {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	purego.SyscallN(b.addrRelease, f.args[:2]...)
+	zigoCallFrames.Put(f)
 }
 
 // LegacyLeafValue calls the generated purego ABI wrapper for zg_legacy_leaf_value.

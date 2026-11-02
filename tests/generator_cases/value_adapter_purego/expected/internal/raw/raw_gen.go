@@ -45,15 +45,15 @@ func (err *LibraryError) Unwrap() error { return err.Cause }
 type nativeBindings struct {
 	lastError func() unsafe.Pointer
 	panicMessage func(int32) unsafe.Pointer
-	fnTranslate func(unsafe.Pointer, int16, unsafe.Pointer)
-	fnShift func(unsafe.Pointer, *uint8, unsafe.Pointer) int32
-	fnAcceptPoints func(unsafe.Pointer, uintptr) uintptr
-	fnCorners func(*unsafe.Pointer, *uintptr)
-	fnBounds func(unsafe.Pointer)
-	fnSetSpeed func(uint8) uint8
-	fnSpeeds func(unsafe.Pointer, uintptr, *unsafe.Pointer, *uintptr)
-	fnElapsed func(uint64) uint64
-	fnCheckedElapsed func(uint8, *uint64) int32
+	addrTranslate uintptr
+	addrShift uintptr
+	addrAcceptPoints uintptr
+	addrCorners uintptr
+	addrBounds uintptr
+	addrSetSpeed uintptr
+	addrSpeeds uintptr
+	addrElapsed uintptr
+	addrCheckedElapsed uintptr
 }
 
 var loadedBindings atomic.Pointer[nativeBindings]
@@ -134,15 +134,15 @@ func loadCandidate(path string) error {
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.panicMessage, addrPanicMessage)
-	purego.RegisterFunc(&next.fnTranslate, addrTranslate)
-	purego.RegisterFunc(&next.fnShift, addrShift)
-	purego.RegisterFunc(&next.fnAcceptPoints, addrAcceptPoints)
-	purego.RegisterFunc(&next.fnCorners, addrCorners)
-	purego.RegisterFunc(&next.fnBounds, addrBounds)
-	purego.RegisterFunc(&next.fnSetSpeed, addrSetSpeed)
-	purego.RegisterFunc(&next.fnSpeeds, addrSpeeds)
-	purego.RegisterFunc(&next.fnElapsed, addrElapsed)
-	purego.RegisterFunc(&next.fnCheckedElapsed, addrCheckedElapsed)
+	next.addrTranslate = addrTranslate
+	next.addrShift = addrShift
+	next.addrAcceptPoints = addrAcceptPoints
+	next.addrCorners = addrCorners
+	next.addrBounds = addrBounds
+	next.addrSetSpeed = addrSetSpeed
+	next.addrSpeeds = addrSpeeds
+	next.addrElapsed = addrElapsed
+	next.addrCheckedElapsed = addrCheckedElapsed
 	loadedBindings.Store(&next)
 	return nil
 }
@@ -183,6 +183,150 @@ type RectData struct {
 	Max PointData
 	Speed uint8
 	_ [1]byte
+}
+
+// zigoCallFrame holds one direct call's arguments and the slots its out
+// parameters are written to. purego.SyscallN lets its argument slice escape,
+// and native code must not be handed an address on a goroutine stack that a
+// callback could grow and move, so both live in a pooled frame on the heap.
+type zigoCallFrame struct {
+	args [8]uintptr
+	out  [2]uint64
+}
+
+var zigoCallFrames = sync.Pool{New: func() any { return new(zigoCallFrame) }}
+
+// zigoEscapeSink is never written. zigoEscape only has to look as though it
+// might store its argument, so that the compiler keeps what a pointer handed
+// to native code points at on the heap, as a call through RegisterFunc did.
+var zigoEscapeSink struct {
+	enabled bool
+	p       unsafe.Pointer
+}
+
+func zigoEscape(p unsafe.Pointer) {
+	if zigoEscapeSink.enabled {
+		zigoEscapeSink.p = p
+	}
+}
+
+// fnTranslate calls zg_translate through purego.SyscallN.
+func (b *nativeBindings) fnTranslate(p0 unsafe.Pointer, p1 int16, p2 unsafe.Pointer) {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	s0 := (*PointData)(unsafe.Pointer(&f.out[0]))
+	*s0 = *(*PointData)(p0)
+	f.args[0] = uintptr(unsafe.Pointer(s0))
+	f.args[1] = uintptr(p1)
+	s2 := (*PointData)(unsafe.Pointer(&f.out[1]))
+	*s2 = *(*PointData)(p2)
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	purego.SyscallN(b.addrTranslate, f.args[:3]...)
+	*(*PointData)(p2) = *s2
+	zigoCallFrames.Put(f)
+}
+
+// fnShift calls zg_shift through purego.SyscallN.
+func (b *nativeBindings) fnShift(p0 unsafe.Pointer, p1 *uint8, p2 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uint8)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	s2 := (*PointData)(unsafe.Pointer(&f.out[1]))
+	*s2 = *(*PointData)(p2)
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	r, _, _ := purego.SyscallN(b.addrShift, f.args[:3]...)
+	*p1 = *s1
+	*(*PointData)(p2) = *s2
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnAcceptPoints calls zg_accept_points through purego.SyscallN.
+func (b *nativeBindings) fnAcceptPoints(p0 unsafe.Pointer, p1 uintptr) uintptr {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	r, _, _ := purego.SyscallN(b.addrAcceptPoints, f.args[:2]...)
+	zigoCallFrames.Put(f)
+	return uintptr(r)
+}
+
+// fnCorners calls zg_corners through purego.SyscallN.
+func (b *nativeBindings) fnCorners(p0 *unsafe.Pointer, p1 *uintptr) {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	s0 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s0 = *p0
+	f.args[0] = uintptr(unsafe.Pointer(s0))
+	s1 := (*uintptr)(unsafe.Pointer(&f.out[1]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	purego.SyscallN(b.addrCorners, f.args[:2]...)
+	*p0 = *s0
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+}
+
+// fnBounds calls zg_bounds through purego.SyscallN.
+func (b *nativeBindings) fnBounds(p0 unsafe.Pointer) {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	s0 := (*RectData)(unsafe.Pointer(&f.out[0]))
+	*s0 = *(*RectData)(p0)
+	f.args[0] = uintptr(unsafe.Pointer(s0))
+	purego.SyscallN(b.addrBounds, f.args[:1]...)
+	*(*RectData)(p0) = *s0
+	zigoCallFrames.Put(f)
+}
+
+// fnSetSpeed calls zg_set_speed through purego.SyscallN.
+func (b *nativeBindings) fnSetSpeed(p0 uint8) uint8 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrSetSpeed, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return uint8(r)
+}
+
+// fnSpeeds calls zg_speeds through purego.SyscallN.
+func (b *nativeBindings) fnSpeeds(p0 unsafe.Pointer, p1 uintptr, p2 *unsafe.Pointer, p3 *uintptr) {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	s2 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	s3 := (*uintptr)(unsafe.Pointer(&f.out[1]))
+	*s3 = *p3
+	f.args[3] = uintptr(unsafe.Pointer(s3))
+	purego.SyscallN(b.addrSpeeds, f.args[:4]...)
+	*p2 = *s2
+	*p3 = *s3
+	zigoCallFrames.Put(f)
+}
+
+// fnElapsed calls zg_elapsed through purego.SyscallN.
+func (b *nativeBindings) fnElapsed(p0 uint64) uint64 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrElapsed, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return uint64(r)
+}
+
+// fnCheckedElapsed calls zg_checked_elapsed through purego.SyscallN.
+func (b *nativeBindings) fnCheckedElapsed(p0 uint8, p1 *uint64) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	s1 := (*uint64)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrCheckedElapsed, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
 }
 
 // Translate calls the generated purego ABI wrapper for zg_translate.

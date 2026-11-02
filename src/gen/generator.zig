@@ -1764,7 +1764,11 @@ test "purego generation emits an atomic retryable loader and explicit callback A
         try std.testing.expect(std.mem.indexOf(u8, windows_loader, declaration) != null);
     }
     try std.testing.expect(std.mem.indexOf(u8, raw, "different library is already loaded") != null);
-    try std.testing.expect(std.mem.indexOf(u8, raw, "fnAdd func(int32, int32) int32") != null);
+    // An all-integer signature is called through purego.SyscallN by a method
+    // of the name the RegisterFunc field had, so the wrappers read the same.
+    try std.testing.expect(std.mem.indexOf(u8, raw, "func (b *nativeBindings) fnAdd(p0 int32, p1 int32) int32 {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, raw, "purego.SyscallN(b.addrAdd, f.args[:2]...)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, raw, "RegisterFunc(&next.fnAdd") == null);
     try std.testing.expect(std.mem.indexOf(u8, raw, "func Accept(value unsafe.Pointer)") != null);
 
     const callback_fixture =

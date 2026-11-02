@@ -45,9 +45,9 @@ func (err *LibraryError) Unwrap() error { return err.Cause }
 type nativeBindings struct {
 	lastError func() unsafe.Pointer
 	panicMessage func(int32) unsafe.Pointer
-	fnCursorNext func(unsafe.Pointer, *uint8, *int64) int32
-	fnCursorNextChecked func(unsafe.Pointer, *uint8, *uint8) int32
-	fnCursorReset func(unsafe.Pointer) int32
+	addrCursorNext uintptr
+	addrCursorNextChecked uintptr
+	addrCursorReset uintptr
 }
 
 var loadedBindings atomic.Pointer[nativeBindings]
@@ -116,9 +116,9 @@ func loadCandidate(path string) error {
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.panicMessage, addrPanicMessage)
-	purego.RegisterFunc(&next.fnCursorNext, addrCursorNext)
-	purego.RegisterFunc(&next.fnCursorNextChecked, addrCursorNextChecked)
-	purego.RegisterFunc(&next.fnCursorReset, addrCursorReset)
+	next.addrCursorNext = addrCursorNext
+	next.addrCursorNextChecked = addrCursorNextChecked
+	next.addrCursorReset = addrCursorReset
 	loadedBindings.Store(&next)
 	return nil
 }
@@ -145,6 +145,77 @@ func PanicMessage(code int32) string {
 	length := 0
 	for *(*byte)(unsafe.Add(p, length)) != 0 { length++ }
 	return string(unsafe.Slice((*byte)(p), length))
+}
+
+// zigoCallFrame holds one direct call's arguments and the slots its out
+// parameters are written to. purego.SyscallN lets its argument slice escape,
+// and native code must not be handed an address on a goroutine stack that a
+// callback could grow and move, so both live in a pooled frame on the heap.
+type zigoCallFrame struct {
+	args [8]uintptr
+	out  [2]uint64
+}
+
+var zigoCallFrames = sync.Pool{New: func() any { return new(zigoCallFrame) }}
+
+// zigoEscapeSink is never written. zigoEscape only has to look as though it
+// might store its argument, so that the compiler keeps what a pointer handed
+// to native code points at on the heap, as a call through RegisterFunc did.
+var zigoEscapeSink struct {
+	enabled bool
+	p       unsafe.Pointer
+}
+
+func zigoEscape(p unsafe.Pointer) {
+	if zigoEscapeSink.enabled {
+		zigoEscapeSink.p = p
+	}
+}
+
+// fnCursorNext calls zg_cursor_next through purego.SyscallN.
+func (b *nativeBindings) fnCursorNext(p0 unsafe.Pointer, p1 *uint8, p2 *int64) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uint8)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	s2 := (*int64)(unsafe.Pointer(&f.out[1]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	r, _, _ := purego.SyscallN(b.addrCursorNext, f.args[:3]...)
+	*p1 = *s1
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnCursorNextChecked calls zg_cursor_next_checked through purego.SyscallN.
+func (b *nativeBindings) fnCursorNextChecked(p0 unsafe.Pointer, p1 *uint8, p2 *uint8) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uint8)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	s2 := (*uint8)(unsafe.Pointer(&f.out[1]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	r, _, _ := purego.SyscallN(b.addrCursorNextChecked, f.args[:3]...)
+	*p1 = *s1
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnCursorReset calls zg_cursor_reset through purego.SyscallN.
+func (b *nativeBindings) fnCursorReset(p0 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrCursorReset, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
 }
 
 // CursorNext calls the generated purego ABI wrapper for zg_cursor_next.

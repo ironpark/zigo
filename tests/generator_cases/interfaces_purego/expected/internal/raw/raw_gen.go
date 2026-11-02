@@ -45,18 +45,18 @@ func (err *LibraryError) Unwrap() error { return err.Cause }
 type nativeBindings struct {
 	lastError func() unsafe.Pointer
 	panicMessage func(int32) unsafe.Pointer
-	fnIntBatchCreate func(*unsafe.Pointer) int32
-	fnIntBatchLen func(unsafe.Pointer, *uintptr) int32
-	fnIntBatchClear func(unsafe.Pointer, uintptr) int32
-	fnIntBatchPush func(unsafe.Pointer, int32) int32
-	fnIntBatchDeinit func(unsafe.Pointer) int32
-	fnFloatBatchCreate func(*unsafe.Pointer) int32
-	fnFloatBatchLen func(unsafe.Pointer, *uintptr) int32
-	fnFloatBatchClear func(unsafe.Pointer, uintptr) int32
+	addrIntBatchCreate uintptr
+	addrIntBatchLen uintptr
+	addrIntBatchClear uintptr
+	addrIntBatchPush uintptr
+	addrIntBatchDeinit uintptr
+	addrFloatBatchCreate uintptr
+	addrFloatBatchLen uintptr
+	addrFloatBatchClear uintptr
 	fnFloatBatchPush func(unsafe.Pointer, float64) int32
-	fnFloatBatchDeinit func(unsafe.Pointer) int32
-	fnWindowSize func(unsafe.Pointer, *uintptr) int32
-	fnIntBatchWindow func(unsafe.Pointer, *unsafe.Pointer) int32
+	addrFloatBatchDeinit uintptr
+	addrWindowSize uintptr
+	addrIntBatchWindow uintptr
 }
 
 var loadedBindings atomic.Pointer[nativeBindings]
@@ -143,18 +143,18 @@ func loadCandidate(path string) error {
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.panicMessage, addrPanicMessage)
-	purego.RegisterFunc(&next.fnIntBatchCreate, addrIntBatchCreate)
-	purego.RegisterFunc(&next.fnIntBatchLen, addrIntBatchLen)
-	purego.RegisterFunc(&next.fnIntBatchClear, addrIntBatchClear)
-	purego.RegisterFunc(&next.fnIntBatchPush, addrIntBatchPush)
-	purego.RegisterFunc(&next.fnIntBatchDeinit, addrIntBatchDeinit)
-	purego.RegisterFunc(&next.fnFloatBatchCreate, addrFloatBatchCreate)
-	purego.RegisterFunc(&next.fnFloatBatchLen, addrFloatBatchLen)
-	purego.RegisterFunc(&next.fnFloatBatchClear, addrFloatBatchClear)
+	next.addrIntBatchCreate = addrIntBatchCreate
+	next.addrIntBatchLen = addrIntBatchLen
+	next.addrIntBatchClear = addrIntBatchClear
+	next.addrIntBatchPush = addrIntBatchPush
+	next.addrIntBatchDeinit = addrIntBatchDeinit
+	next.addrFloatBatchCreate = addrFloatBatchCreate
+	next.addrFloatBatchLen = addrFloatBatchLen
+	next.addrFloatBatchClear = addrFloatBatchClear
 	purego.RegisterFunc(&next.fnFloatBatchPush, addrFloatBatchPush)
-	purego.RegisterFunc(&next.fnFloatBatchDeinit, addrFloatBatchDeinit)
-	purego.RegisterFunc(&next.fnWindowSize, addrWindowSize)
-	purego.RegisterFunc(&next.fnIntBatchWindow, addrIntBatchWindow)
+	next.addrFloatBatchDeinit = addrFloatBatchDeinit
+	next.addrWindowSize = addrWindowSize
+	next.addrIntBatchWindow = addrIntBatchWindow
 	loadedBindings.Store(&next)
 	return nil
 }
@@ -181,6 +181,164 @@ func PanicMessage(code int32) string {
 	length := 0
 	for *(*byte)(unsafe.Add(p, length)) != 0 { length++ }
 	return string(unsafe.Slice((*byte)(p), length))
+}
+
+// zigoCallFrame holds one direct call's arguments and the slots its out
+// parameters are written to. purego.SyscallN lets its argument slice escape,
+// and native code must not be handed an address on a goroutine stack that a
+// callback could grow and move, so both live in a pooled frame on the heap.
+type zigoCallFrame struct {
+	args [8]uintptr
+	out  [1]uint64
+}
+
+var zigoCallFrames = sync.Pool{New: func() any { return new(zigoCallFrame) }}
+
+// zigoEscapeSink is never written. zigoEscape only has to look as though it
+// might store its argument, so that the compiler keeps what a pointer handed
+// to native code points at on the heap, as a call through RegisterFunc did.
+var zigoEscapeSink struct {
+	enabled bool
+	p       unsafe.Pointer
+}
+
+func zigoEscape(p unsafe.Pointer) {
+	if zigoEscapeSink.enabled {
+		zigoEscapeSink.p = p
+	}
+}
+
+// fnIntBatchCreate calls zg_int_batch_create through purego.SyscallN.
+func (b *nativeBindings) fnIntBatchCreate(p0 *unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	s0 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s0 = *p0
+	f.args[0] = uintptr(unsafe.Pointer(s0))
+	r, _, _ := purego.SyscallN(b.addrIntBatchCreate, f.args[:1]...)
+	*p0 = *s0
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnIntBatchLen calls zg_int_batch_len through purego.SyscallN.
+func (b *nativeBindings) fnIntBatchLen(p0 unsafe.Pointer, p1 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uintptr)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrIntBatchLen, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnIntBatchClear calls zg_int_batch_clear through purego.SyscallN.
+func (b *nativeBindings) fnIntBatchClear(p0 unsafe.Pointer, p1 uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	r, _, _ := purego.SyscallN(b.addrIntBatchClear, f.args[:2]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnIntBatchPush calls zg_int_batch_push through purego.SyscallN.
+func (b *nativeBindings) fnIntBatchPush(p0 unsafe.Pointer, p1 int32) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	r, _, _ := purego.SyscallN(b.addrIntBatchPush, f.args[:2]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnIntBatchDeinit calls zg_int_batch_deinit through purego.SyscallN.
+func (b *nativeBindings) fnIntBatchDeinit(p0 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrIntBatchDeinit, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnFloatBatchCreate calls zg_float_batch_create through purego.SyscallN.
+func (b *nativeBindings) fnFloatBatchCreate(p0 *unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	s0 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s0 = *p0
+	f.args[0] = uintptr(unsafe.Pointer(s0))
+	r, _, _ := purego.SyscallN(b.addrFloatBatchCreate, f.args[:1]...)
+	*p0 = *s0
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnFloatBatchLen calls zg_float_batch_len through purego.SyscallN.
+func (b *nativeBindings) fnFloatBatchLen(p0 unsafe.Pointer, p1 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uintptr)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrFloatBatchLen, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnFloatBatchClear calls zg_float_batch_clear through purego.SyscallN.
+func (b *nativeBindings) fnFloatBatchClear(p0 unsafe.Pointer, p1 uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	r, _, _ := purego.SyscallN(b.addrFloatBatchClear, f.args[:2]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnFloatBatchDeinit calls zg_float_batch_deinit through purego.SyscallN.
+func (b *nativeBindings) fnFloatBatchDeinit(p0 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrFloatBatchDeinit, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnWindowSize calls zg_window_size through purego.SyscallN.
+func (b *nativeBindings) fnWindowSize(p0 unsafe.Pointer, p1 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uintptr)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrWindowSize, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnIntBatchWindow calls zg_int_batch_window through purego.SyscallN.
+func (b *nativeBindings) fnIntBatchWindow(p0 unsafe.Pointer, p1 *unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrIntBatchWindow, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
 }
 
 // IntBatchCreate calls the generated purego ABI wrapper for zg_int_batch_create.

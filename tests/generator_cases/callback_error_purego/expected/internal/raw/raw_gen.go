@@ -46,12 +46,12 @@ func (err *LibraryError) Unwrap() error { return err.Cause }
 type nativeBindings struct {
 	lastError func() unsafe.Pointer
 	panicMessage func(int32) unsafe.Pointer
-	fnHubCreate func(uintptr, uintptr, *unsafe.Pointer) int32
-	fnHubRun func(unsafe.Pointer, int32, *int32) int32
-	fnHubSetObserver func(unsafe.Pointer, uintptr, uintptr) int32
-	fnHubDeinit func(unsafe.Pointer) int32
-	fnApply func(int32, uintptr, uintptr) int32
-	fnNotify func(int32, uintptr, uintptr)
+	addrHubCreate uintptr
+	addrHubRun uintptr
+	addrHubSetObserver uintptr
+	addrHubDeinit uintptr
+	addrApply uintptr
+	addrNotify uintptr
 }
 
 type callbackEntry struct {
@@ -290,12 +290,12 @@ func loadCandidate(path string) error {
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.panicMessage, addrPanicMessage)
-	purego.RegisterFunc(&next.fnHubCreate, addrHubCreate)
-	purego.RegisterFunc(&next.fnHubRun, addrHubRun)
-	purego.RegisterFunc(&next.fnHubSetObserver, addrHubSetObserver)
-	purego.RegisterFunc(&next.fnHubDeinit, addrHubDeinit)
-	purego.RegisterFunc(&next.fnApply, addrApply)
-	purego.RegisterFunc(&next.fnNotify, addrNotify)
+	next.addrHubCreate = addrHubCreate
+	next.addrHubRun = addrHubRun
+	next.addrHubSetObserver = addrHubSetObserver
+	next.addrHubDeinit = addrHubDeinit
+	next.addrApply = addrApply
+	next.addrNotify = addrNotify
 	loadedBindings.Store(&next)
 	return nil
 }
@@ -322,6 +322,103 @@ func PanicMessage(code int32) string {
 	length := 0
 	for *(*byte)(unsafe.Add(p, length)) != 0 { length++ }
 	return string(unsafe.Slice((*byte)(p), length))
+}
+
+// zigoCallFrame holds one direct call's arguments and the slots its out
+// parameters are written to. purego.SyscallN lets its argument slice escape,
+// and native code must not be handed an address on a goroutine stack that a
+// callback could grow and move, so both live in a pooled frame on the heap.
+type zigoCallFrame struct {
+	args [8]uintptr
+	out  [1]uint64
+}
+
+var zigoCallFrames = sync.Pool{New: func() any { return new(zigoCallFrame) }}
+
+// zigoEscapeSink is never written. zigoEscape only has to look as though it
+// might store its argument, so that the compiler keeps what a pointer handed
+// to native code points at on the heap, as a call through RegisterFunc did.
+var zigoEscapeSink struct {
+	enabled bool
+	p       unsafe.Pointer
+}
+
+func zigoEscape(p unsafe.Pointer) {
+	if zigoEscapeSink.enabled {
+		zigoEscapeSink.p = p
+	}
+}
+
+// fnHubCreate calls zg_hub_create_purego_v2 through purego.SyscallN.
+func (b *nativeBindings) fnHubCreate(p0 uintptr, p1 uintptr, p2 *unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	s2 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	r, _, _ := purego.SyscallN(b.addrHubCreate, f.args[:3]...)
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnHubRun calls zg_hub_run through purego.SyscallN.
+func (b *nativeBindings) fnHubRun(p0 unsafe.Pointer, p1 int32, p2 *int32) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	s2 := (*int32)(unsafe.Pointer(&f.out[0]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	r, _, _ := purego.SyscallN(b.addrHubRun, f.args[:3]...)
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnHubSetObserver calls zg_hub_set_observer_purego_v2 through purego.SyscallN.
+func (b *nativeBindings) fnHubSetObserver(p0 unsafe.Pointer, p1 uintptr, p2 uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	r, _, _ := purego.SyscallN(b.addrHubSetObserver, f.args[:3]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnHubDeinit calls zg_hub_deinit through purego.SyscallN.
+func (b *nativeBindings) fnHubDeinit(p0 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrHubDeinit, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnApply calls zg_apply_purego_v2 through purego.SyscallN.
+func (b *nativeBindings) fnApply(p0 int32, p1 uintptr, p2 uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	r, _, _ := purego.SyscallN(b.addrApply, f.args[:3]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnNotify calls zg_notify_purego_v2 through purego.SyscallN.
+func (b *nativeBindings) fnNotify(p0 int32, p1 uintptr, p2 uintptr) {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	purego.SyscallN(b.addrNotify, f.args[:3]...)
+	zigoCallFrames.Put(f)
 }
 
 // HubCreate calls the generated purego ABI wrapper for zg_hub_create_purego_v2.

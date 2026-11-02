@@ -50,34 +50,34 @@ func (err *LibraryError) Is(target error) bool { return target == ErrLibraryLoad
 func (err *LibraryError) Unwrap() error { return err.Cause }
 
 type nativeBindings struct {
-	lastError                    func() unsafe.Pointer
-	panicMessage                 func(int32) unsafe.Pointer
-	fnCallbackContextRunCount    func(unsafe.Pointer, *uint32) int32
-	fnCallbackContextSetRunCount func(unsafe.Pointer, uint32) int32
-	fnCallbackContextCreate      func(uintptr, uintptr, *unsafe.Pointer) int32
-	fnCallbackContextRun         func(unsafe.Pointer, int32, *int32) int32
-	fnCallbackContextDeinit      func(unsafe.Pointer) int32
-	fnFloatBufferCreate          func(*unsafe.Pointer) int32
-	fnFloatBufferPush            func(unsafe.Pointer, float32) int32
-	fnFloatBufferLen             func(unsafe.Pointer, *uintptr) int32
-	fnFloatBufferDeinit          func(unsafe.Pointer) int32
-	fnIntBufferCreate            func(*unsafe.Pointer) int32
-	fnIntBufferPush              func(unsafe.Pointer, int32) int32
-	fnIntBufferLen               func(unsafe.Pointer, *uintptr) int32
-	fnIntBufferDeinit            func(unsafe.Pointer) int32
-	fnPanicNow                   func() int32
-	fnCompressionBound           func(uintptr) uintptr
-	fnIncrementShared            func(*uint64, uint64) uint64
-	fnReadShared                 func(*int32) int32
-	fnApply                      func(int32, uintptr, uintptr) int32
-	fnApplyUntilCancelled        func(uint32, uintptr, uintptr, *uint32, *uint32) int32
-	fnNotify                     func(int32, uintptr, uintptr)
-	fnFilter                     func(int32, uint8, uintptr, uintptr) uint8
-	fnReduce                     func(uintptr, unsafe.Pointer, uintptr, uintptr) int32
-	fnLogMessage                 func(unsafe.Pointer, uintptr, uintptr, uintptr)
-	fnEmitChunks                 func(unsafe.Pointer, uintptr, uintptr, uintptr, uintptr) uintptr
-	fnInspect                    func(unsafe.Pointer, int32, uint8, uintptr, uintptr, *int32) int32
-	fnVisitCodepoints            func(unsafe.Pointer, uintptr, uintptr, uintptr) uint32
+	lastError                      func() unsafe.Pointer
+	panicMessage                   func(int32) unsafe.Pointer
+	addrCallbackContextRunCount    uintptr
+	addrCallbackContextSetRunCount uintptr
+	addrCallbackContextCreate      uintptr
+	addrCallbackContextRun         uintptr
+	addrCallbackContextDeinit      uintptr
+	addrFloatBufferCreate          uintptr
+	fnFloatBufferPush              func(unsafe.Pointer, float32) int32
+	addrFloatBufferLen             uintptr
+	addrFloatBufferDeinit          uintptr
+	addrIntBufferCreate            uintptr
+	addrIntBufferPush              uintptr
+	addrIntBufferLen               uintptr
+	addrIntBufferDeinit            uintptr
+	addrPanicNow                   uintptr
+	addrCompressionBound           uintptr
+	addrIncrementShared            uintptr
+	addrReadShared                 uintptr
+	addrApply                      uintptr
+	addrApplyUntilCancelled        uintptr
+	addrNotify                     uintptr
+	addrFilter                     uintptr
+	addrReduce                     uintptr
+	addrLogMessage                 uintptr
+	addrEmitChunks                 uintptr
+	addrInspect                    uintptr
+	addrVisitCodepoints            uintptr
 }
 
 type callbackEntry struct {
@@ -629,32 +629,32 @@ func loadCandidate(path string) error {
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.panicMessage, addrPanicMessage)
-	purego.RegisterFunc(&next.fnCallbackContextRunCount, addrCallbackContextRunCount)
-	purego.RegisterFunc(&next.fnCallbackContextSetRunCount, addrCallbackContextSetRunCount)
-	purego.RegisterFunc(&next.fnCallbackContextCreate, addrCallbackContextCreate)
-	purego.RegisterFunc(&next.fnCallbackContextRun, addrCallbackContextRun)
-	purego.RegisterFunc(&next.fnCallbackContextDeinit, addrCallbackContextDeinit)
-	purego.RegisterFunc(&next.fnFloatBufferCreate, addrFloatBufferCreate)
+	next.addrCallbackContextRunCount = addrCallbackContextRunCount
+	next.addrCallbackContextSetRunCount = addrCallbackContextSetRunCount
+	next.addrCallbackContextCreate = addrCallbackContextCreate
+	next.addrCallbackContextRun = addrCallbackContextRun
+	next.addrCallbackContextDeinit = addrCallbackContextDeinit
+	next.addrFloatBufferCreate = addrFloatBufferCreate
 	purego.RegisterFunc(&next.fnFloatBufferPush, addrFloatBufferPush)
-	purego.RegisterFunc(&next.fnFloatBufferLen, addrFloatBufferLen)
-	purego.RegisterFunc(&next.fnFloatBufferDeinit, addrFloatBufferDeinit)
-	purego.RegisterFunc(&next.fnIntBufferCreate, addrIntBufferCreate)
-	purego.RegisterFunc(&next.fnIntBufferPush, addrIntBufferPush)
-	purego.RegisterFunc(&next.fnIntBufferLen, addrIntBufferLen)
-	purego.RegisterFunc(&next.fnIntBufferDeinit, addrIntBufferDeinit)
-	purego.RegisterFunc(&next.fnPanicNow, addrPanicNow)
-	purego.RegisterFunc(&next.fnCompressionBound, addrCompressionBound)
-	purego.RegisterFunc(&next.fnIncrementShared, addrIncrementShared)
-	purego.RegisterFunc(&next.fnReadShared, addrReadShared)
-	purego.RegisterFunc(&next.fnApply, addrApply)
-	purego.RegisterFunc(&next.fnApplyUntilCancelled, addrApplyUntilCancelled)
-	purego.RegisterFunc(&next.fnNotify, addrNotify)
-	purego.RegisterFunc(&next.fnFilter, addrFilter)
-	purego.RegisterFunc(&next.fnReduce, addrReduce)
-	purego.RegisterFunc(&next.fnLogMessage, addrLogMessage)
-	purego.RegisterFunc(&next.fnEmitChunks, addrEmitChunks)
-	purego.RegisterFunc(&next.fnInspect, addrInspect)
-	purego.RegisterFunc(&next.fnVisitCodepoints, addrVisitCodepoints)
+	next.addrFloatBufferLen = addrFloatBufferLen
+	next.addrFloatBufferDeinit = addrFloatBufferDeinit
+	next.addrIntBufferCreate = addrIntBufferCreate
+	next.addrIntBufferPush = addrIntBufferPush
+	next.addrIntBufferLen = addrIntBufferLen
+	next.addrIntBufferDeinit = addrIntBufferDeinit
+	next.addrPanicNow = addrPanicNow
+	next.addrCompressionBound = addrCompressionBound
+	next.addrIncrementShared = addrIncrementShared
+	next.addrReadShared = addrReadShared
+	next.addrApply = addrApply
+	next.addrApplyUntilCancelled = addrApplyUntilCancelled
+	next.addrNotify = addrNotify
+	next.addrFilter = addrFilter
+	next.addrReduce = addrReduce
+	next.addrLogMessage = addrLogMessage
+	next.addrEmitChunks = addrEmitChunks
+	next.addrInspect = addrInspect
+	next.addrVisitCodepoints = addrVisitCodepoints
 	loadedBindings.Store(&next)
 	return nil
 }
@@ -702,6 +702,336 @@ func zigoCStringString(p unsafe.Pointer) string {
 		length++
 	}
 	return string(unsafe.Slice((*byte)(p), length))
+}
+
+// zigoCallFrame holds one direct call's arguments and the slots its out
+// parameters are written to. purego.SyscallN lets its argument slice escape,
+// and native code must not be handed an address on a goroutine stack that a
+// callback could grow and move, so both live in a pooled frame on the heap.
+type zigoCallFrame struct {
+	args [8]uintptr
+	out  [1]uint64
+}
+
+var zigoCallFrames = sync.Pool{New: func() any { return new(zigoCallFrame) }}
+
+// zigoEscapeSink is never written. zigoEscape only has to look as though it
+// might store its argument, so that the compiler keeps what a pointer handed
+// to native code points at on the heap, as a call through RegisterFunc did.
+var zigoEscapeSink struct {
+	enabled bool
+	p       unsafe.Pointer
+}
+
+func zigoEscape(p unsafe.Pointer) {
+	if zigoEscapeSink.enabled {
+		zigoEscapeSink.p = p
+	}
+}
+
+// fnCallbackContextRunCount calls zg_callback_context_run_count through purego.SyscallN.
+func (b *nativeBindings) fnCallbackContextRunCount(p0 unsafe.Pointer, p1 *uint32) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uint32)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrCallbackContextRunCount, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnCallbackContextSetRunCount calls zg_callback_context_set_run_count through purego.SyscallN.
+func (b *nativeBindings) fnCallbackContextSetRunCount(p0 unsafe.Pointer, p1 uint32) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	r, _, _ := purego.SyscallN(b.addrCallbackContextSetRunCount, f.args[:2]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnCallbackContextCreate calls zg_callback_context_create_purego_v2 through purego.SyscallN.
+func (b *nativeBindings) fnCallbackContextCreate(p0 uintptr, p1 uintptr, p2 *unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	s2 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	r, _, _ := purego.SyscallN(b.addrCallbackContextCreate, f.args[:3]...)
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnCallbackContextRun calls zg_callback_context_run through purego.SyscallN.
+func (b *nativeBindings) fnCallbackContextRun(p0 unsafe.Pointer, p1 int32, p2 *int32) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	s2 := (*int32)(unsafe.Pointer(&f.out[0]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	r, _, _ := purego.SyscallN(b.addrCallbackContextRun, f.args[:3]...)
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnCallbackContextDeinit calls zg_callback_context_deinit through purego.SyscallN.
+func (b *nativeBindings) fnCallbackContextDeinit(p0 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrCallbackContextDeinit, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnFloatBufferCreate calls zg_float_buffer_create through purego.SyscallN.
+func (b *nativeBindings) fnFloatBufferCreate(p0 *unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	s0 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s0 = *p0
+	f.args[0] = uintptr(unsafe.Pointer(s0))
+	r, _, _ := purego.SyscallN(b.addrFloatBufferCreate, f.args[:1]...)
+	*p0 = *s0
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnFloatBufferLen calls zg_float_buffer_len through purego.SyscallN.
+func (b *nativeBindings) fnFloatBufferLen(p0 unsafe.Pointer, p1 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uintptr)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrFloatBufferLen, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnFloatBufferDeinit calls zg_float_buffer_deinit through purego.SyscallN.
+func (b *nativeBindings) fnFloatBufferDeinit(p0 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrFloatBufferDeinit, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnIntBufferCreate calls zg_int_buffer_create through purego.SyscallN.
+func (b *nativeBindings) fnIntBufferCreate(p0 *unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	s0 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s0 = *p0
+	f.args[0] = uintptr(unsafe.Pointer(s0))
+	r, _, _ := purego.SyscallN(b.addrIntBufferCreate, f.args[:1]...)
+	*p0 = *s0
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnIntBufferPush calls zg_int_buffer_push through purego.SyscallN.
+func (b *nativeBindings) fnIntBufferPush(p0 unsafe.Pointer, p1 int32) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	r, _, _ := purego.SyscallN(b.addrIntBufferPush, f.args[:2]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnIntBufferLen calls zg_int_buffer_len through purego.SyscallN.
+func (b *nativeBindings) fnIntBufferLen(p0 unsafe.Pointer, p1 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uintptr)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrIntBufferLen, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnIntBufferDeinit calls zg_int_buffer_deinit through purego.SyscallN.
+func (b *nativeBindings) fnIntBufferDeinit(p0 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrIntBufferDeinit, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnPanicNow calls zg_panic_now through purego.SyscallN.
+func (b *nativeBindings) fnPanicNow() int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	r, _, _ := purego.SyscallN(b.addrPanicNow, f.args[:0]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnCompressionBound calls zg_compression_bound through purego.SyscallN.
+func (b *nativeBindings) fnCompressionBound(p0 uintptr) uintptr {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrCompressionBound, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return uintptr(r)
+}
+
+// fnIncrementShared calls zg_increment_shared through purego.SyscallN.
+func (b *nativeBindings) fnIncrementShared(p0 *uint64, p1 uint64) uint64 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(unsafe.Pointer(p0))
+	f.args[0] = uintptr(unsafe.Pointer(p0))
+	f.args[1] = uintptr(p1)
+	r, _, _ := purego.SyscallN(b.addrIncrementShared, f.args[:2]...)
+	zigoCallFrames.Put(f)
+	return uint64(r)
+}
+
+// fnReadShared calls zg_read_shared through purego.SyscallN.
+func (b *nativeBindings) fnReadShared(p0 *int32) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(unsafe.Pointer(p0))
+	f.args[0] = uintptr(unsafe.Pointer(p0))
+	r, _, _ := purego.SyscallN(b.addrReadShared, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnApply calls zg_apply_purego_v2 through purego.SyscallN.
+func (b *nativeBindings) fnApply(p0 int32, p1 uintptr, p2 uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	r, _, _ := purego.SyscallN(b.addrApply, f.args[:3]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnApplyUntilCancelled calls zg_apply_until_cancelled_purego_v2 through purego.SyscallN.
+func (b *nativeBindings) fnApplyUntilCancelled(p0 uint32, p1 uintptr, p2 uintptr, p3 *uint32, p4 *uint32) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	zigoEscape(unsafe.Pointer(p3))
+	f.args[3] = uintptr(unsafe.Pointer(p3))
+	s4 := (*uint32)(unsafe.Pointer(&f.out[0]))
+	*s4 = *p4
+	f.args[4] = uintptr(unsafe.Pointer(s4))
+	r, _, _ := purego.SyscallN(b.addrApplyUntilCancelled, f.args[:5]...)
+	*p4 = *s4
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnNotify calls zg_notify_purego_v2 through purego.SyscallN.
+func (b *nativeBindings) fnNotify(p0 int32, p1 uintptr, p2 uintptr) {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	purego.SyscallN(b.addrNotify, f.args[:3]...)
+	zigoCallFrames.Put(f)
+}
+
+// fnFilter calls zg_filter_purego_v2 through purego.SyscallN.
+func (b *nativeBindings) fnFilter(p0 int32, p1 uint8, p2 uintptr, p3 uintptr) uint8 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	f.args[3] = uintptr(p3)
+	r, _, _ := purego.SyscallN(b.addrFilter, f.args[:4]...)
+	zigoCallFrames.Put(f)
+	return uint8(r)
+}
+
+// fnReduce calls zg_reduce_purego_v2 through purego.SyscallN.
+func (b *nativeBindings) fnReduce(p0 uintptr, p1 unsafe.Pointer, p2 uintptr, p3 uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	zigoEscape(p1)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	f.args[3] = uintptr(p3)
+	r, _, _ := purego.SyscallN(b.addrReduce, f.args[:4]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnLogMessage calls zg_log_message_purego_v2 through purego.SyscallN.
+func (b *nativeBindings) fnLogMessage(p0 unsafe.Pointer, p1 uintptr, p2 uintptr, p3 uintptr) {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	f.args[3] = uintptr(p3)
+	purego.SyscallN(b.addrLogMessage, f.args[:4]...)
+	zigoCallFrames.Put(f)
+}
+
+// fnEmitChunks calls zg_emit_chunks_purego_v2 through purego.SyscallN.
+func (b *nativeBindings) fnEmitChunks(p0 unsafe.Pointer, p1 uintptr, p2 uintptr, p3 uintptr, p4 uintptr) uintptr {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	f.args[3] = uintptr(p3)
+	f.args[4] = uintptr(p4)
+	r, _, _ := purego.SyscallN(b.addrEmitChunks, f.args[:5]...)
+	zigoCallFrames.Put(f)
+	return uintptr(r)
+}
+
+// fnInspect calls zg_inspect_purego_v2 through purego.SyscallN.
+func (b *nativeBindings) fnInspect(p0 unsafe.Pointer, p1 int32, p2 uint8, p3 uintptr, p4 uintptr, p5 *int32) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	f.args[3] = uintptr(p3)
+	f.args[4] = uintptr(p4)
+	s5 := (*int32)(unsafe.Pointer(&f.out[0]))
+	*s5 = *p5
+	f.args[5] = uintptr(unsafe.Pointer(s5))
+	r, _, _ := purego.SyscallN(b.addrInspect, f.args[:6]...)
+	*p5 = *s5
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnVisitCodepoints calls zg_visit_codepoints_purego_v2 through purego.SyscallN.
+func (b *nativeBindings) fnVisitCodepoints(p0 unsafe.Pointer, p1 uintptr, p2 uintptr, p3 uintptr) uint32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	f.args[3] = uintptr(p3)
+	r, _, _ := purego.SyscallN(b.addrVisitCodepoints, f.args[:4]...)
+	zigoCallFrames.Put(f)
+	return uint32(r)
 }
 
 // CallbackContextRunCount calls the generated purego ABI wrapper for zg_callback_context_run_count.

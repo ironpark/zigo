@@ -46,7 +46,7 @@ type nativeBindings struct {
 	lastError func() unsafe.Pointer
 	panicMessage func(int32) unsafe.Pointer
 	fnApply func(uint8, int, uintptr, float64, uint8, uint8, uint8, uint8, uint8, int16, uint8, uint8, uint8, uint8, uint8) int64
-	fnCurrent func(unsafe.Pointer) int32
+	addrCurrent uintptr
 }
 
 var loadedBindings atomic.Pointer[nativeBindings]
@@ -114,7 +114,7 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.panicMessage, addrPanicMessage)
 	purego.RegisterFunc(&next.fnApply, addrApply)
-	purego.RegisterFunc(&next.fnCurrent, addrCurrent)
+	next.addrCurrent = addrCurrent
 	loadedBindings.Store(&next)
 	return nil
 }
@@ -179,6 +179,41 @@ type ScrollViewportData struct {
 	RegionColorB uint8
 	RegionMode uint8
 	_ [3]byte
+}
+
+// zigoCallFrame holds one direct call's arguments and the slots its out
+// parameters are written to. purego.SyscallN lets its argument slice escape,
+// and native code must not be handed an address on a goroutine stack that a
+// callback could grow and move, so both live in a pooled frame on the heap.
+type zigoCallFrame struct {
+	args [8]uintptr
+	out  [1]uint64
+}
+
+var zigoCallFrames = sync.Pool{New: func() any { return new(zigoCallFrame) }}
+
+// zigoEscapeSink is never written. zigoEscape only has to look as though it
+// might store its argument, so that the compiler keeps what a pointer handed
+// to native code points at on the heap, as a call through RegisterFunc did.
+var zigoEscapeSink struct {
+	enabled bool
+	p       unsafe.Pointer
+}
+
+func zigoEscape(p unsafe.Pointer) {
+	if zigoEscapeSink.enabled {
+		zigoEscapeSink.p = p
+	}
+}
+
+// fnCurrent calls zg_current through purego.SyscallN.
+func (b *nativeBindings) fnCurrent(p0 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrCurrent, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
 }
 
 // Apply calls the generated purego ABI wrapper for zg_apply.

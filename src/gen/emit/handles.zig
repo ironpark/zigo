@@ -7,6 +7,8 @@ const common = @import("common.zig");
 const docs = @import("docs.zig");
 const emit = @import("emit.zig");
 const plugin_hooks = @import("plugin_hooks.zig");
+const public = @import("public.zig");
+const targets = @import("targets");
 const public_writers = @import("public_writers.zig");
 
 /// One lifecycle for every handle. Fields are `ptr`, `mu`, `active`,
@@ -18,6 +20,7 @@ const public_writers = @import("public_writers.zig");
 pub fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: emit.Options) !void {
     const names: LifecycleNames = .of(options);
     var any_cleanup = false;
+    var any_scratch = false;
     for (program.types) |declaration| {
         if (!emit.packageMatches(declaration.package, options.active_package)) continue;
         if (!declaration.isHandle()) continue;
@@ -42,7 +45,11 @@ pub fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
         // gofmt aligns a struct's field types on the longest field name, and
         // the goldens are compared unformatted, so the padding is computed
         // from the field set rather than hard-coded per shape.
-        const width = fieldNameWidth(&.{ "ptr", "mu", "active", if (has_dependent_children) "children" else "", "closed", "poison", if (dependent_parent != null) "parent" else "", if (can_be_borrowed) "owner" else "", if (auto_cleanup) "cleanup" else "", if (owns_callbacks) "callbackHandles" else "" });
+        const scratch = try scratchElementsAlloc(allocator, program, declaration.name);
+        defer allocator.free(scratch);
+        if (scratch.len != 0) any_scratch = true;
+        var width = fieldNameWidth(&.{ "ptr", "mu", "active", if (has_dependent_children) "children" else "", "closed", "poison", if (dependent_parent != null) "parent" else "", if (can_be_borrowed) "owner" else "", if (auto_cleanup) "cleanup" else "", if (owns_callbacks) "callbackHandles" else "" });
+        for (scratch) |element| width = @max(width, "zigoScratch".len + element.len + 1);
         try writeStructField(writer, "ptr", width, "unsafe.Pointer");
         // `mu` guards the fields below and is never held across a native
         // call: `active` counts the calls inside native, `closed` is what Close
@@ -56,6 +63,16 @@ pub fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
         if (can_be_borrowed) try writeStructField(writer, "owner", width, "zigoHandle");
         if (owns_callbacks) try writeStructField(writer, "callbackHandles", width, "[]zigoCallbackHandle");
         if (auto_cleanup) try writeStructField(writer, "cleanup", width, "runtime.Cleanup");
+        for (scratch) |element| {
+            const field_name = try std.fmt.allocPrint(allocator, "zigoScratch{s}", .{element});
+            defer allocator.free(field_name);
+            var field_type: std.Io.Writer.Allocating = .init(allocator);
+            defer field_type.deinit();
+            try field_type.writer.writeAll("zigoScratch[");
+            try public_writers.writeRawTypeReferencePrefix(&field_type.writer, options);
+            try field_type.writer.print("{s}{s}]", .{ element, common.raw_struct_suffix });
+            try writeStructField(writer, field_name, width, field_type.written());
+        }
         try writer.writeAll("}\n\n");
         // The borrowed reference exists only when something hands one out.
         const has_refs = handle.lifecycle.has_borrowed_refs;
@@ -317,10 +334,102 @@ pub fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
             try writer.print("\t{0s}.closed = true\n\t{0s}.ptr = nil\n\t{0s}.owner = nil\n\t{0s}.mu.Unlock()\n\treturn nil\n}}\n\n" ++
                 "var _ io.Closer = (*{1s})(nil)\n\n", .{ recv, declaration.name });
         }
+        if (scratch.len != 0) try renderReleaseScratch(allocator, writer, program, declaration.name, recv, scratch);
         try plugin_hooks.visitType(options, plugin_hooks.context(allocator, program, options), writer, declaration);
     }
     if (any_cleanup) try renderLeakTracking(writer);
+    if (any_scratch) try writer.writeAll(scratch_source);
 }
+
+/// The elements whose raw buffers a handle keeps for its own methods, each
+/// once, in the order the methods first use them.
+fn scratchElementsAlloc(allocator: std.mem.Allocator, program: abi.Program, type_name: []const u8) ![]const []const u8 {
+    var elements: std.ArrayList([]const u8) = .empty;
+    errdefer elements.deinit(allocator);
+    for (program.functions) |function| {
+        const receiver = function.origin.receiver orelse continue;
+        if (!std.mem.eql(u8, receiver, type_name)) continue;
+        next: for (function.origin.params) |parameter| {
+            const element = public.scratchSliceElement(program, function, parameter) orelse continue;
+            for (elements.items) |seen| if (std.mem.eql(u8, seen, element)) continue :next;
+            try elements.append(allocator, element);
+        }
+    }
+    return elements.toOwnedSlice(allocator);
+}
+
+/// ReleaseScratch names the methods whose buffers it drops, so a caller can
+/// tell which calls will allocate again.
+fn renderReleaseScratch(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    program: abi.Program,
+    type_name: []const u8,
+    recv: []const u8,
+    scratch: []const []const u8,
+) !void {
+    var methods: std.Io.Writer.Allocating = .init(allocator);
+    defer methods.deinit();
+    var names: std.ArrayList([]u8) = .empty;
+    defer {
+        for (names.items) |go_name| allocator.free(go_name);
+        names.deinit(allocator);
+    }
+    for (program.functions) |function| {
+        const receiver = function.origin.receiver orelse continue;
+        if (!std.mem.eql(u8, receiver, type_name)) continue;
+        const uses = for (function.origin.params) |parameter| {
+            if (public.scratchSliceElement(program, function, parameter) != null) break true;
+        } else false;
+        if (!uses) continue;
+        const go_name = try targets.go.publicFunctionNameAlloc(allocator, .{ .constructors = program.constructors, .package = program.package, .prefix = program.prefix, .zig_version = "" }, function.origin.*);
+        defer allocator.free(go_name);
+        try names.append(allocator, try allocator.dupe(u8, go_name));
+    }
+    const count = names.items.len;
+    for (names.items, 0..) |go_name, index| {
+        if (index != 0) try methods.writer.writeAll(if (index + 1 == count) " and " else ", ");
+        try methods.writer.writeAll(go_name);
+    }
+    try writer.print(
+        "// ReleaseScratch drops the raw buffer{2s} that {3s}\n" ++
+            "// keep{4s} between calls to convert through, for an owner that will not call\n" ++
+            "// {5s} for a while. The next call allocates afresh. It is safe at any time;\n" ++
+            "// a call already in progress hands its buffer back when it returns.\n" ++
+            "func ({0s} *{1s}) ReleaseScratch() {{\n\tif {0s} == nil {{\n\t\treturn\n\t}}\n",
+        .{
+            recv,
+            type_name,
+            if (scratch.len == 1) "" else "s",
+            methods.written(),
+            if (count == 1) "s" else "",
+            if (count == 1) "it" else "them",
+        },
+    );
+    for (scratch) |element| try writer.print("\t{s}.zigoScratch{s}.release()\n", .{ recv, element });
+    try writer.writeAll("}\n\n");
+}
+
+/// The buffer a handle lends its own calls. Generic, so one definition serves
+/// every element, and lock-free: the handle lock is never held across a call.
+const scratch_source =
+    "\n// zigoScratch is a raw buffer a handle lends its own calls that convert\n" ++
+    "// through one, so a caller filling the same slice every frame does not\n" ++
+    "// allocate a fresh buffer each time. A call takes it for its duration: one\n" ++
+    "// made while another holds it allocates its own, and the first handed back\n" ++
+    "// is kept.\n" ++
+    "type zigoScratch[T any] struct{ buffer atomic.Pointer[[]T] }\n\n" ++
+    "// take lends the buffer, at least n long and sliced to n.\n" ++
+    "func (s *zigoScratch[T]) take(n int) *[]T {\n" ++
+    "\tbuffer := s.buffer.Swap(nil)\n" ++
+    "\tif buffer == nil {\n\t\tbuffer = new([]T)\n\t}\n" ++
+    "\tif cap(*buffer) < n {\n\t\t*buffer = make([]T, n)\n\t}\n" ++
+    "\t*buffer = (*buffer)[:n]\n" ++
+    "\treturn buffer\n}\n\n" ++
+    "// give hands a buffer back, unless another call already has.\n" ++
+    "func (s *zigoScratch[T]) give(buffer *[]T) { s.buffer.CompareAndSwap(nil, buffer) }\n\n" ++
+    "// release drops the buffer. One a call holds comes back when the call gives it.\n" ++
+    "func (s *zigoScratch[T]) release() { s.buffer.Store(nil) }\n";
 
 /// The opt-in report for a handle the garbage collector reclaimed without
 /// Close. `ZIGO_DEBUG_LEAKS` is read once, at package initialisation; while it

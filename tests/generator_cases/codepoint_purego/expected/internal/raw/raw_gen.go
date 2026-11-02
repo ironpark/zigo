@@ -46,17 +46,17 @@ func (err *LibraryError) Unwrap() error { return err.Cause }
 type nativeBindings struct {
 	lastError func() unsafe.Pointer
 	panicMessage func(int32) unsafe.Pointer
-	fnCodepointWidth func(uint32, *int8) int32
-	fnToLower func(uint32) uint32
-	fnDecode func(uint8, *uint32) int32
-	fnPeek func(*uint32) uint8
-	fnSumCodepoints func(unsafe.Pointer, uintptr) uint32
-	fnFillCodepoints func(unsafe.Pointer, uintptr, *uintptr)
-	fnTakeCodepoints func(*unsafe.Pointer, *uintptr)
-	fnMeasure func(unsafe.Pointer, unsafe.Pointer)
-	fnCountWide func(unsafe.Pointer, uintptr) uint64
-	fnVisit func(unsafe.Pointer, uintptr, uintptr, uintptr) uint32
-	fnFreeCodepoints func(unsafe.Pointer, uintptr)
+	addrCodepointWidth uintptr
+	addrToLower uintptr
+	addrDecode uintptr
+	addrPeek uintptr
+	addrSumCodepoints uintptr
+	addrFillCodepoints uintptr
+	addrTakeCodepoints uintptr
+	addrMeasure uintptr
+	addrCountWide uintptr
+	addrVisit uintptr
+	addrFreeCodepoints uintptr
 }
 
 type callbackEntry struct {
@@ -264,17 +264,17 @@ func loadCandidate(path string) error {
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.panicMessage, addrPanicMessage)
-	purego.RegisterFunc(&next.fnCodepointWidth, addrCodepointWidth)
-	purego.RegisterFunc(&next.fnToLower, addrToLower)
-	purego.RegisterFunc(&next.fnDecode, addrDecode)
-	purego.RegisterFunc(&next.fnPeek, addrPeek)
-	purego.RegisterFunc(&next.fnSumCodepoints, addrSumCodepoints)
-	purego.RegisterFunc(&next.fnFillCodepoints, addrFillCodepoints)
-	purego.RegisterFunc(&next.fnTakeCodepoints, addrTakeCodepoints)
-	purego.RegisterFunc(&next.fnMeasure, addrMeasure)
-	purego.RegisterFunc(&next.fnCountWide, addrCountWide)
-	purego.RegisterFunc(&next.fnVisit, addrVisit)
-	purego.RegisterFunc(&next.fnFreeCodepoints, addrFreeCodepoints)
+	next.addrCodepointWidth = addrCodepointWidth
+	next.addrToLower = addrToLower
+	next.addrDecode = addrDecode
+	next.addrPeek = addrPeek
+	next.addrSumCodepoints = addrSumCodepoints
+	next.addrFillCodepoints = addrFillCodepoints
+	next.addrTakeCodepoints = addrTakeCodepoints
+	next.addrMeasure = addrMeasure
+	next.addrCountWide = addrCountWide
+	next.addrVisit = addrVisit
+	next.addrFreeCodepoints = addrFreeCodepoints
 	loadedBindings.Store(&next)
 	return nil
 }
@@ -308,6 +308,166 @@ type GlyphData struct {
 	Cp uint32
 	Width uint8
 	_ [3]byte
+}
+
+// zigoCallFrame holds one direct call's arguments and the slots its out
+// parameters are written to. purego.SyscallN lets its argument slice escape,
+// and native code must not be handed an address on a goroutine stack that a
+// callback could grow and move, so both live in a pooled frame on the heap.
+type zigoCallFrame struct {
+	args [8]uintptr
+	out  [2]uint64
+}
+
+var zigoCallFrames = sync.Pool{New: func() any { return new(zigoCallFrame) }}
+
+// zigoEscapeSink is never written. zigoEscape only has to look as though it
+// might store its argument, so that the compiler keeps what a pointer handed
+// to native code points at on the heap, as a call through RegisterFunc did.
+var zigoEscapeSink struct {
+	enabled bool
+	p       unsafe.Pointer
+}
+
+func zigoEscape(p unsafe.Pointer) {
+	if zigoEscapeSink.enabled {
+		zigoEscapeSink.p = p
+	}
+}
+
+// fnCodepointWidth calls zg_codepoint_width through purego.SyscallN.
+func (b *nativeBindings) fnCodepointWidth(p0 uint32, p1 *int8) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	s1 := (*int8)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrCodepointWidth, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnToLower calls zg_to_lower through purego.SyscallN.
+func (b *nativeBindings) fnToLower(p0 uint32) uint32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrToLower, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return uint32(r)
+}
+
+// fnDecode calls zg_decode through purego.SyscallN.
+func (b *nativeBindings) fnDecode(p0 uint8, p1 *uint32) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	s1 := (*uint32)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrDecode, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnPeek calls zg_peek through purego.SyscallN.
+func (b *nativeBindings) fnPeek(p0 *uint32) uint8 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	s0 := (*uint32)(unsafe.Pointer(&f.out[0]))
+	*s0 = *p0
+	f.args[0] = uintptr(unsafe.Pointer(s0))
+	r, _, _ := purego.SyscallN(b.addrPeek, f.args[:1]...)
+	*p0 = *s0
+	zigoCallFrames.Put(f)
+	return uint8(r)
+}
+
+// fnSumCodepoints calls zg_sum_codepoints through purego.SyscallN.
+func (b *nativeBindings) fnSumCodepoints(p0 unsafe.Pointer, p1 uintptr) uint32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	r, _, _ := purego.SyscallN(b.addrSumCodepoints, f.args[:2]...)
+	zigoCallFrames.Put(f)
+	return uint32(r)
+}
+
+// fnFillCodepoints calls zg_fill_codepoints through purego.SyscallN.
+func (b *nativeBindings) fnFillCodepoints(p0 unsafe.Pointer, p1 uintptr, p2 *uintptr) {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	s2 := (*uintptr)(unsafe.Pointer(&f.out[0]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	purego.SyscallN(b.addrFillCodepoints, f.args[:3]...)
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+}
+
+// fnTakeCodepoints calls zg_take_codepoints through purego.SyscallN.
+func (b *nativeBindings) fnTakeCodepoints(p0 *unsafe.Pointer, p1 *uintptr) {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	s0 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s0 = *p0
+	f.args[0] = uintptr(unsafe.Pointer(s0))
+	s1 := (*uintptr)(unsafe.Pointer(&f.out[1]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	purego.SyscallN(b.addrTakeCodepoints, f.args[:2]...)
+	*p0 = *s0
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+}
+
+// fnMeasure calls zg_measure through purego.SyscallN.
+func (b *nativeBindings) fnMeasure(p0 unsafe.Pointer, p1 unsafe.Pointer) {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	s0 := (*GlyphData)(unsafe.Pointer(&f.out[0]))
+	*s0 = *(*GlyphData)(p0)
+	f.args[0] = uintptr(unsafe.Pointer(s0))
+	s1 := (*GlyphData)(unsafe.Pointer(&f.out[1]))
+	*s1 = *(*GlyphData)(p1)
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	purego.SyscallN(b.addrMeasure, f.args[:2]...)
+	*(*GlyphData)(p1) = *s1
+	zigoCallFrames.Put(f)
+}
+
+// fnCountWide calls zg_count_wide through purego.SyscallN.
+func (b *nativeBindings) fnCountWide(p0 unsafe.Pointer, p1 uintptr) uint64 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	r, _, _ := purego.SyscallN(b.addrCountWide, f.args[:2]...)
+	zigoCallFrames.Put(f)
+	return uint64(r)
+}
+
+// fnVisit calls zg_visit_purego_v2 through purego.SyscallN.
+func (b *nativeBindings) fnVisit(p0 unsafe.Pointer, p1 uintptr, p2 uintptr, p3 uintptr) uint32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	f.args[3] = uintptr(p3)
+	r, _, _ := purego.SyscallN(b.addrVisit, f.args[:4]...)
+	zigoCallFrames.Put(f)
+	return uint32(r)
+}
+
+// fnFreeCodepoints calls zg_free_codepoints through purego.SyscallN.
+func (b *nativeBindings) fnFreeCodepoints(p0 unsafe.Pointer, p1 uintptr) {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	purego.SyscallN(b.addrFreeCodepoints, f.args[:2]...)
+	zigoCallFrames.Put(f)
 }
 
 // CodepointWidth calls the generated purego ABI wrapper for zg_codepoint_width.

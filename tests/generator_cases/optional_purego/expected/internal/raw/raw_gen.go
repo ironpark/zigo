@@ -45,12 +45,12 @@ func (err *LibraryError) Unwrap() error { return err.Cause }
 type nativeBindings struct {
 	lastError func() unsafe.Pointer
 	panicMessage func(int32) unsafe.Pointer
-	fnDouble func(*int32, *int32) uint8
-	fnFlag func(*uint8) uint8
-	fnPickMode func(*uint8, *uint8) uint8
-	fnCheckedDouble func(*int32, *uint8, *int32) int32
-	fnShiftPoint func(unsafe.Pointer, unsafe.Pointer) uint8
-	fnCheckedPoint func(unsafe.Pointer, *uint8, unsafe.Pointer) int32
+	addrDouble uintptr
+	addrFlag uintptr
+	addrPickMode uintptr
+	addrCheckedDouble uintptr
+	addrShiftPoint uintptr
+	addrCheckedPoint uintptr
 }
 
 var loadedBindings atomic.Pointer[nativeBindings]
@@ -125,12 +125,12 @@ func loadCandidate(path string) error {
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.panicMessage, addrPanicMessage)
-	purego.RegisterFunc(&next.fnDouble, addrDouble)
-	purego.RegisterFunc(&next.fnFlag, addrFlag)
-	purego.RegisterFunc(&next.fnPickMode, addrPickMode)
-	purego.RegisterFunc(&next.fnCheckedDouble, addrCheckedDouble)
-	purego.RegisterFunc(&next.fnShiftPoint, addrShiftPoint)
-	purego.RegisterFunc(&next.fnCheckedPoint, addrCheckedPoint)
+	next.addrDouble = addrDouble
+	next.addrFlag = addrFlag
+	next.addrPickMode = addrPickMode
+	next.addrCheckedDouble = addrCheckedDouble
+	next.addrShiftPoint = addrShiftPoint
+	next.addrCheckedPoint = addrCheckedPoint
 	loadedBindings.Store(&next)
 	return nil
 }
@@ -163,6 +163,119 @@ func PanicMessage(code int32) string {
 type PointData struct {
 	X int16
 	Y int16
+}
+
+// zigoCallFrame holds one direct call's arguments and the slots its out
+// parameters are written to. purego.SyscallN lets its argument slice escape,
+// and native code must not be handed an address on a goroutine stack that a
+// callback could grow and move, so both live in a pooled frame on the heap.
+type zigoCallFrame struct {
+	args [8]uintptr
+	out  [2]uint64
+}
+
+var zigoCallFrames = sync.Pool{New: func() any { return new(zigoCallFrame) }}
+
+// zigoEscapeSink is never written. zigoEscape only has to look as though it
+// might store its argument, so that the compiler keeps what a pointer handed
+// to native code points at on the heap, as a call through RegisterFunc did.
+var zigoEscapeSink struct {
+	enabled bool
+	p       unsafe.Pointer
+}
+
+func zigoEscape(p unsafe.Pointer) {
+	if zigoEscapeSink.enabled {
+		zigoEscapeSink.p = p
+	}
+}
+
+// fnDouble calls zg_double through purego.SyscallN.
+func (b *nativeBindings) fnDouble(p0 *int32, p1 *int32) uint8 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(unsafe.Pointer(p0))
+	f.args[0] = uintptr(unsafe.Pointer(p0))
+	s1 := (*int32)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrDouble, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return uint8(r)
+}
+
+// fnFlag calls zg_flag through purego.SyscallN.
+func (b *nativeBindings) fnFlag(p0 *uint8) uint8 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(unsafe.Pointer(p0))
+	f.args[0] = uintptr(unsafe.Pointer(p0))
+	r, _, _ := purego.SyscallN(b.addrFlag, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return uint8(r)
+}
+
+// fnPickMode calls zg_pick_mode through purego.SyscallN.
+func (b *nativeBindings) fnPickMode(p0 *uint8, p1 *uint8) uint8 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(unsafe.Pointer(p0))
+	f.args[0] = uintptr(unsafe.Pointer(p0))
+	s1 := (*uint8)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrPickMode, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return uint8(r)
+}
+
+// fnCheckedDouble calls zg_checked_double through purego.SyscallN.
+func (b *nativeBindings) fnCheckedDouble(p0 *int32, p1 *uint8, p2 *int32) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(unsafe.Pointer(p0))
+	f.args[0] = uintptr(unsafe.Pointer(p0))
+	s1 := (*uint8)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	s2 := (*int32)(unsafe.Pointer(&f.out[1]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	r, _, _ := purego.SyscallN(b.addrCheckedDouble, f.args[:3]...)
+	*p1 = *s1
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnShiftPoint calls zg_shift_point through purego.SyscallN.
+func (b *nativeBindings) fnShiftPoint(p0 unsafe.Pointer, p1 unsafe.Pointer) uint8 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*PointData)(unsafe.Pointer(&f.out[0]))
+	*s1 = *(*PointData)(p1)
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrShiftPoint, f.args[:2]...)
+	*(*PointData)(p1) = *s1
+	zigoCallFrames.Put(f)
+	return uint8(r)
+}
+
+// fnCheckedPoint calls zg_checked_point through purego.SyscallN.
+func (b *nativeBindings) fnCheckedPoint(p0 unsafe.Pointer, p1 *uint8, p2 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uint8)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	s2 := (*PointData)(unsafe.Pointer(&f.out[1]))
+	*s2 = *(*PointData)(p2)
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	r, _, _ := purego.SyscallN(b.addrCheckedPoint, f.args[:3]...)
+	*p1 = *s1
+	*(*PointData)(p2) = *s2
+	zigoCallFrames.Put(f)
+	return int32(r)
 }
 
 // Double calls the generated purego ABI wrapper for zg_double.

@@ -47,15 +47,15 @@ func (err *LibraryError) Unwrap() error { return err.Cause }
 type nativeBindings struct {
 	lastError func() unsafe.Pointer
 	panicMessage func(int32) unsafe.Pointer
-	fnStreamFeed func(unsafe.Pointer, unsafe.Pointer, uintptr) int32
-	fnBufferPush func(unsafe.Pointer, unsafe.Pointer, uintptr, *uintptr) int32
-	fnStreamAppendString func(unsafe.Pointer, unsafe.Pointer, uintptr) int32
-	fnBufferPushString func(unsafe.Pointer, unsafe.Pointer, uintptr, *uintptr) int32
-	fnBufferDrain func(unsafe.Pointer, unsafe.Pointer, uintptr, *uintptr) int32
-	fnStreamDump func(unsafe.Pointer, uintptr, uintptr) int32
-	fnStreamLoad func(unsafe.Pointer, uintptr, unsafe.Pointer, uintptr, uintptr, *uintptr) int32
-	fnBufferRender func(unsafe.Pointer, uintptr, uintptr, *uint32) int32
-	fnBufferFill func(unsafe.Pointer, uintptr, unsafe.Pointer, uintptr, uintptr) int32
+	addrStreamFeed uintptr
+	addrBufferPush uintptr
+	addrStreamAppendString uintptr
+	addrBufferPushString uintptr
+	addrBufferDrain uintptr
+	addrStreamDump uintptr
+	addrStreamLoad uintptr
+	addrBufferRender uintptr
+	addrBufferFill uintptr
 }
 
 type callbackEntry struct {
@@ -318,15 +318,15 @@ func loadCandidate(path string) error {
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.panicMessage, addrPanicMessage)
-	purego.RegisterFunc(&next.fnStreamFeed, addrStreamFeed)
-	purego.RegisterFunc(&next.fnBufferPush, addrBufferPush)
-	purego.RegisterFunc(&next.fnStreamAppendString, addrStreamAppendString)
-	purego.RegisterFunc(&next.fnBufferPushString, addrBufferPushString)
-	purego.RegisterFunc(&next.fnBufferDrain, addrBufferDrain)
-	purego.RegisterFunc(&next.fnStreamDump, addrStreamDump)
-	purego.RegisterFunc(&next.fnStreamLoad, addrStreamLoad)
-	purego.RegisterFunc(&next.fnBufferRender, addrBufferRender)
-	purego.RegisterFunc(&next.fnBufferFill, addrBufferFill)
+	next.addrStreamFeed = addrStreamFeed
+	next.addrBufferPush = addrBufferPush
+	next.addrStreamAppendString = addrStreamAppendString
+	next.addrBufferPushString = addrBufferPushString
+	next.addrBufferDrain = addrBufferDrain
+	next.addrStreamDump = addrStreamDump
+	next.addrStreamLoad = addrStreamLoad
+	next.addrBufferRender = addrBufferRender
+	next.addrBufferFill = addrBufferFill
 	loadedBindings.Store(&next)
 	return nil
 }
@@ -359,6 +359,170 @@ func PanicMessage(code int32) string {
 // at. The shim tells the fast path from the dispatcher path by the pointer
 // being non-NULL, so an empty stream still needs an address.
 var zigoEmptyStreamData byte
+
+// zigoCallFrame holds one direct call's arguments and the slots its out
+// parameters are written to. purego.SyscallN lets its argument slice escape,
+// and native code must not be handed an address on a goroutine stack that a
+// callback could grow and move, so both live in a pooled frame on the heap.
+type zigoCallFrame struct {
+	args [8]uintptr
+	out  [1]uint64
+}
+
+var zigoCallFrames = sync.Pool{New: func() any { return new(zigoCallFrame) }}
+
+// zigoEscapeSink is never written. zigoEscape only has to look as though it
+// might store its argument, so that the compiler keeps what a pointer handed
+// to native code points at on the heap, as a call through RegisterFunc did.
+var zigoEscapeSink struct {
+	enabled bool
+	p       unsafe.Pointer
+}
+
+func zigoEscape(p unsafe.Pointer) {
+	if zigoEscapeSink.enabled {
+		zigoEscapeSink.p = p
+	}
+}
+
+// fnStreamFeed calls zg_stream_feed through purego.SyscallN.
+func (b *nativeBindings) fnStreamFeed(p0 unsafe.Pointer, p1 unsafe.Pointer, p2 uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	zigoEscape(p1)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	r, _, _ := purego.SyscallN(b.addrStreamFeed, f.args[:3]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnBufferPush calls zg_buffer_push through purego.SyscallN.
+func (b *nativeBindings) fnBufferPush(p0 unsafe.Pointer, p1 unsafe.Pointer, p2 uintptr, p3 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	zigoEscape(p1)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	s3 := (*uintptr)(unsafe.Pointer(&f.out[0]))
+	*s3 = *p3
+	f.args[3] = uintptr(unsafe.Pointer(s3))
+	r, _, _ := purego.SyscallN(b.addrBufferPush, f.args[:4]...)
+	*p3 = *s3
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnStreamAppendString calls zg_stream_append_string through purego.SyscallN.
+func (b *nativeBindings) fnStreamAppendString(p0 unsafe.Pointer, p1 unsafe.Pointer, p2 uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	zigoEscape(p1)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	r, _, _ := purego.SyscallN(b.addrStreamAppendString, f.args[:3]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnBufferPushString calls zg_buffer_push_string through purego.SyscallN.
+func (b *nativeBindings) fnBufferPushString(p0 unsafe.Pointer, p1 unsafe.Pointer, p2 uintptr, p3 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	zigoEscape(p1)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	s3 := (*uintptr)(unsafe.Pointer(&f.out[0]))
+	*s3 = *p3
+	f.args[3] = uintptr(unsafe.Pointer(s3))
+	r, _, _ := purego.SyscallN(b.addrBufferPushString, f.args[:4]...)
+	*p3 = *s3
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnBufferDrain calls zg_buffer_drain through purego.SyscallN.
+func (b *nativeBindings) fnBufferDrain(p0 unsafe.Pointer, p1 unsafe.Pointer, p2 uintptr, p3 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	zigoEscape(p1)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	s3 := (*uintptr)(unsafe.Pointer(&f.out[0]))
+	*s3 = *p3
+	f.args[3] = uintptr(unsafe.Pointer(s3))
+	r, _, _ := purego.SyscallN(b.addrBufferDrain, f.args[:4]...)
+	*p3 = *s3
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnStreamDump calls zg_stream_dump_purego_v2 through purego.SyscallN.
+func (b *nativeBindings) fnStreamDump(p0 unsafe.Pointer, p1 uintptr, p2 uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	r, _, _ := purego.SyscallN(b.addrStreamDump, f.args[:3]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnStreamLoad calls zg_stream_load_purego_v2 through purego.SyscallN.
+func (b *nativeBindings) fnStreamLoad(p0 unsafe.Pointer, p1 uintptr, p2 unsafe.Pointer, p3 uintptr, p4 uintptr, p5 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	zigoEscape(p2)
+	f.args[2] = uintptr(p2)
+	f.args[3] = uintptr(p3)
+	f.args[4] = uintptr(p4)
+	s5 := (*uintptr)(unsafe.Pointer(&f.out[0]))
+	*s5 = *p5
+	f.args[5] = uintptr(unsafe.Pointer(s5))
+	r, _, _ := purego.SyscallN(b.addrStreamLoad, f.args[:6]...)
+	*p5 = *s5
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnBufferRender calls zg_buffer_render_purego_v2 through purego.SyscallN.
+func (b *nativeBindings) fnBufferRender(p0 unsafe.Pointer, p1 uintptr, p2 uintptr, p3 *uint32) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	s3 := (*uint32)(unsafe.Pointer(&f.out[0]))
+	*s3 = *p3
+	f.args[3] = uintptr(unsafe.Pointer(s3))
+	r, _, _ := purego.SyscallN(b.addrBufferRender, f.args[:4]...)
+	*p3 = *s3
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnBufferFill calls zg_buffer_fill_purego_v2 through purego.SyscallN.
+func (b *nativeBindings) fnBufferFill(p0 unsafe.Pointer, p1 uintptr, p2 unsafe.Pointer, p3 uintptr, p4 uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	zigoEscape(p2)
+	f.args[2] = uintptr(p2)
+	f.args[3] = uintptr(p3)
+	f.args[4] = uintptr(p4)
+	r, _, _ := purego.SyscallN(b.addrBufferFill, f.args[:5]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
 
 // StreamFeed calls the generated purego ABI wrapper for zg_stream_feed.
 func StreamFeed(self unsafe.Pointer, bytes []uint8) int32 {

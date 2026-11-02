@@ -46,8 +46,8 @@ func (err *LibraryError) Unwrap() error { return err.Cause }
 type nativeBindings struct {
 	lastError func() unsafe.Pointer
 	panicMessage func(int32) unsafe.Pointer
-	fnReduce func(uintptr, int32, uintptr) int32
-	fnVisit func(uintptr, uintptr)
+	addrReduce uintptr
+	addrVisit uintptr
 }
 
 type callbackEntry struct {
@@ -252,8 +252,8 @@ func loadCandidate(path string) error {
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.panicMessage, addrPanicMessage)
-	purego.RegisterFunc(&next.fnReduce, addrReduce)
-	purego.RegisterFunc(&next.fnVisit, addrVisit)
+	next.addrReduce = addrReduce
+	next.addrVisit = addrVisit
 	loadedBindings.Store(&next)
 	return nil
 }
@@ -280,6 +280,51 @@ func PanicMessage(code int32) string {
 	length := 0
 	for *(*byte)(unsafe.Add(p, length)) != 0 { length++ }
 	return string(unsafe.Slice((*byte)(p), length))
+}
+
+// zigoCallFrame holds one direct call's arguments and the slots its out
+// parameters are written to. purego.SyscallN lets its argument slice escape,
+// and native code must not be handed an address on a goroutine stack that a
+// callback could grow and move, so both live in a pooled frame on the heap.
+type zigoCallFrame struct {
+	args [8]uintptr
+	out  [1]uint64
+}
+
+var zigoCallFrames = sync.Pool{New: func() any { return new(zigoCallFrame) }}
+
+// zigoEscapeSink is never written. zigoEscape only has to look as though it
+// might store its argument, so that the compiler keeps what a pointer handed
+// to native code points at on the heap, as a call through RegisterFunc did.
+var zigoEscapeSink struct {
+	enabled bool
+	p       unsafe.Pointer
+}
+
+func zigoEscape(p unsafe.Pointer) {
+	if zigoEscapeSink.enabled {
+		zigoEscapeSink.p = p
+	}
+}
+
+// fnReduce calls zg_reduce_purego_v2 through purego.SyscallN.
+func (b *nativeBindings) fnReduce(p0 uintptr, p1 int32, p2 uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	r, _, _ := purego.SyscallN(b.addrReduce, f.args[:3]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnVisit calls zg_visit_purego_v2 through purego.SyscallN.
+func (b *nativeBindings) fnVisit(p0 uintptr, p1 uintptr) {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	purego.SyscallN(b.addrVisit, f.args[:2]...)
+	zigoCallFrames.Put(f)
 }
 
 // Reduce calls the generated purego ABI wrapper for zg_reduce_purego_v2.

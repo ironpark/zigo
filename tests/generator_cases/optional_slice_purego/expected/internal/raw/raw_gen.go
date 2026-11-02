@@ -45,16 +45,16 @@ func (err *LibraryError) Unwrap() error { return err.Cause }
 type nativeBindings struct {
 	lastError func() unsafe.Pointer
 	panicMessage func(int32) unsafe.Pointer
-	fnMeasure func(unsafe.Pointer, uintptr) uintptr
-	fnLabel func(unsafe.Pointer) uintptr
-	fnTotal func(unsafe.Pointer, uintptr) int32
-	fnDigits func(uint32, *unsafe.Pointer, *uintptr)
-	fnName func(uint32, *unsafe.Pointer, *uintptr)
-	fnCheckedDigits func(uint32, *unsafe.Pointer, *uintptr) int32
-	fnTakeOwned func(*unsafe.Pointer, *uintptr) int32
-	fnFreeOwned func(unsafe.Pointer, uintptr)
-	fnTakeOwnedCString func(*unsafe.Pointer, *uintptr) int32
-	fnFreeOwnedCString func(unsafe.Pointer, uintptr)
+	addrMeasure uintptr
+	addrLabel uintptr
+	addrTotal uintptr
+	addrDigits uintptr
+	addrName uintptr
+	addrCheckedDigits uintptr
+	addrTakeOwned uintptr
+	addrFreeOwned uintptr
+	addrTakeOwnedCString uintptr
+	addrFreeOwnedCString uintptr
 }
 
 var loadedBindings atomic.Pointer[nativeBindings]
@@ -137,16 +137,16 @@ func loadCandidate(path string) error {
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.panicMessage, addrPanicMessage)
-	purego.RegisterFunc(&next.fnMeasure, addrMeasure)
-	purego.RegisterFunc(&next.fnLabel, addrLabel)
-	purego.RegisterFunc(&next.fnTotal, addrTotal)
-	purego.RegisterFunc(&next.fnDigits, addrDigits)
-	purego.RegisterFunc(&next.fnName, addrName)
-	purego.RegisterFunc(&next.fnCheckedDigits, addrCheckedDigits)
-	purego.RegisterFunc(&next.fnTakeOwned, addrTakeOwned)
-	purego.RegisterFunc(&next.fnFreeOwned, addrFreeOwned)
-	purego.RegisterFunc(&next.fnTakeOwnedCString, addrTakeOwnedCString)
-	purego.RegisterFunc(&next.fnFreeOwnedCString, addrFreeOwnedCString)
+	next.addrMeasure = addrMeasure
+	next.addrLabel = addrLabel
+	next.addrTotal = addrTotal
+	next.addrDigits = addrDigits
+	next.addrName = addrName
+	next.addrCheckedDigits = addrCheckedDigits
+	next.addrTakeOwned = addrTakeOwned
+	next.addrFreeOwned = addrFreeOwned
+	next.addrTakeOwnedCString = addrTakeOwnedCString
+	next.addrFreeOwnedCString = addrFreeOwnedCString
 	loadedBindings.Store(&next)
 	return nil
 }
@@ -189,6 +189,164 @@ func zigoCStringBytes(value string) []byte {
 	return buffer
 }
 
+
+// zigoCallFrame holds one direct call's arguments and the slots its out
+// parameters are written to. purego.SyscallN lets its argument slice escape,
+// and native code must not be handed an address on a goroutine stack that a
+// callback could grow and move, so both live in a pooled frame on the heap.
+type zigoCallFrame struct {
+	args [8]uintptr
+	out  [2]uint64
+}
+
+var zigoCallFrames = sync.Pool{New: func() any { return new(zigoCallFrame) }}
+
+// zigoEscapeSink is never written. zigoEscape only has to look as though it
+// might store its argument, so that the compiler keeps what a pointer handed
+// to native code points at on the heap, as a call through RegisterFunc did.
+var zigoEscapeSink struct {
+	enabled bool
+	p       unsafe.Pointer
+}
+
+func zigoEscape(p unsafe.Pointer) {
+	if zigoEscapeSink.enabled {
+		zigoEscapeSink.p = p
+	}
+}
+
+// fnMeasure calls zg_measure through purego.SyscallN.
+func (b *nativeBindings) fnMeasure(p0 unsafe.Pointer, p1 uintptr) uintptr {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	r, _, _ := purego.SyscallN(b.addrMeasure, f.args[:2]...)
+	zigoCallFrames.Put(f)
+	return uintptr(r)
+}
+
+// fnLabel calls zg_label through purego.SyscallN.
+func (b *nativeBindings) fnLabel(p0 unsafe.Pointer) uintptr {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrLabel, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return uintptr(r)
+}
+
+// fnTotal calls zg_total through purego.SyscallN.
+func (b *nativeBindings) fnTotal(p0 unsafe.Pointer, p1 uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	r, _, _ := purego.SyscallN(b.addrTotal, f.args[:2]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnDigits calls zg_digits through purego.SyscallN.
+func (b *nativeBindings) fnDigits(p0 uint32, p1 *unsafe.Pointer, p2 *uintptr) {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	s1 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	s2 := (*uintptr)(unsafe.Pointer(&f.out[1]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	purego.SyscallN(b.addrDigits, f.args[:3]...)
+	*p1 = *s1
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+}
+
+// fnName calls zg_name through purego.SyscallN.
+func (b *nativeBindings) fnName(p0 uint32, p1 *unsafe.Pointer, p2 *uintptr) {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	s1 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	s2 := (*uintptr)(unsafe.Pointer(&f.out[1]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	purego.SyscallN(b.addrName, f.args[:3]...)
+	*p1 = *s1
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+}
+
+// fnCheckedDigits calls zg_checked_digits through purego.SyscallN.
+func (b *nativeBindings) fnCheckedDigits(p0 uint32, p1 *unsafe.Pointer, p2 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	s1 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	s2 := (*uintptr)(unsafe.Pointer(&f.out[1]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	r, _, _ := purego.SyscallN(b.addrCheckedDigits, f.args[:3]...)
+	*p1 = *s1
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTakeOwned calls zg_take_owned through purego.SyscallN.
+func (b *nativeBindings) fnTakeOwned(p0 *unsafe.Pointer, p1 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	s0 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s0 = *p0
+	f.args[0] = uintptr(unsafe.Pointer(s0))
+	s1 := (*uintptr)(unsafe.Pointer(&f.out[1]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrTakeOwned, f.args[:2]...)
+	*p0 = *s0
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnFreeOwned calls zg_free_owned through purego.SyscallN.
+func (b *nativeBindings) fnFreeOwned(p0 unsafe.Pointer, p1 uintptr) {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	purego.SyscallN(b.addrFreeOwned, f.args[:2]...)
+	zigoCallFrames.Put(f)
+}
+
+// fnTakeOwnedCString calls zg_take_owned_c_string through purego.SyscallN.
+func (b *nativeBindings) fnTakeOwnedCString(p0 *unsafe.Pointer, p1 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	s0 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s0 = *p0
+	f.args[0] = uintptr(unsafe.Pointer(s0))
+	s1 := (*uintptr)(unsafe.Pointer(&f.out[1]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrTakeOwnedCString, f.args[:2]...)
+	*p0 = *s0
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnFreeOwnedCString calls zg_free_owned_c_string through purego.SyscallN.
+func (b *nativeBindings) fnFreeOwnedCString(p0 unsafe.Pointer, p1 uintptr) {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	purego.SyscallN(b.addrFreeOwnedCString, f.args[:2]...)
+	zigoCallFrames.Put(f)
+}
 
 // Measure calls the generated purego ABI wrapper for zg_measure.
 func Measure(text *string) uint {

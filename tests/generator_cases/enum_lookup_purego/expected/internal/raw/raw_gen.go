@@ -45,14 +45,14 @@ func (err *LibraryError) Unwrap() error { return err.Cause }
 type nativeBindings struct {
 	lastError func() unsafe.Pointer
 	panicMessage func(int32) unsafe.Pointer
-	fnEchoDense func(int8) int8
-	fnEchoHoles func(int8) int8
-	fnEchoMin64 func(int64) int64
-	fnEchoMax64 func(uint64) uint64
-	fnEchoMax8 func(uint8) uint8
-	fnEchoSparse func(int64) int64
-	fnEchoSingle func(int8) int8
-	fnEchoLarge func(uint8) uint8
+	addrEchoDense uintptr
+	addrEchoHoles uintptr
+	addrEchoMin64 uintptr
+	addrEchoMax64 uintptr
+	addrEchoMax8 uintptr
+	addrEchoSparse uintptr
+	addrEchoSingle uintptr
+	addrEchoLarge uintptr
 }
 
 var loadedBindings atomic.Pointer[nativeBindings]
@@ -131,14 +131,14 @@ func loadCandidate(path string) error {
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.panicMessage, addrPanicMessage)
-	purego.RegisterFunc(&next.fnEchoDense, addrEchoDense)
-	purego.RegisterFunc(&next.fnEchoHoles, addrEchoHoles)
-	purego.RegisterFunc(&next.fnEchoMin64, addrEchoMin64)
-	purego.RegisterFunc(&next.fnEchoMax64, addrEchoMax64)
-	purego.RegisterFunc(&next.fnEchoMax8, addrEchoMax8)
-	purego.RegisterFunc(&next.fnEchoSparse, addrEchoSparse)
-	purego.RegisterFunc(&next.fnEchoSingle, addrEchoSingle)
-	purego.RegisterFunc(&next.fnEchoLarge, addrEchoLarge)
+	next.addrEchoDense = addrEchoDense
+	next.addrEchoHoles = addrEchoHoles
+	next.addrEchoMin64 = addrEchoMin64
+	next.addrEchoMax64 = addrEchoMax64
+	next.addrEchoMax8 = addrEchoMax8
+	next.addrEchoSparse = addrEchoSparse
+	next.addrEchoSingle = addrEchoSingle
+	next.addrEchoLarge = addrEchoLarge
 	loadedBindings.Store(&next)
 	return nil
 }
@@ -165,6 +165,103 @@ func PanicMessage(code int32) string {
 	length := 0
 	for *(*byte)(unsafe.Add(p, length)) != 0 { length++ }
 	return string(unsafe.Slice((*byte)(p), length))
+}
+
+// zigoCallFrame holds one direct call's arguments and the slots its out
+// parameters are written to. purego.SyscallN lets its argument slice escape,
+// and native code must not be handed an address on a goroutine stack that a
+// callback could grow and move, so both live in a pooled frame on the heap.
+type zigoCallFrame struct {
+	args [8]uintptr
+	out  [1]uint64
+}
+
+var zigoCallFrames = sync.Pool{New: func() any { return new(zigoCallFrame) }}
+
+// zigoEscapeSink is never written. zigoEscape only has to look as though it
+// might store its argument, so that the compiler keeps what a pointer handed
+// to native code points at on the heap, as a call through RegisterFunc did.
+var zigoEscapeSink struct {
+	enabled bool
+	p       unsafe.Pointer
+}
+
+func zigoEscape(p unsafe.Pointer) {
+	if zigoEscapeSink.enabled {
+		zigoEscapeSink.p = p
+	}
+}
+
+// fnEchoDense calls zg_echo_dense through purego.SyscallN.
+func (b *nativeBindings) fnEchoDense(p0 int8) int8 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrEchoDense, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int8(r)
+}
+
+// fnEchoHoles calls zg_echo_holes through purego.SyscallN.
+func (b *nativeBindings) fnEchoHoles(p0 int8) int8 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrEchoHoles, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int8(r)
+}
+
+// fnEchoMin64 calls zg_echo_min64 through purego.SyscallN.
+func (b *nativeBindings) fnEchoMin64(p0 int64) int64 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrEchoMin64, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int64(r)
+}
+
+// fnEchoMax64 calls zg_echo_max64 through purego.SyscallN.
+func (b *nativeBindings) fnEchoMax64(p0 uint64) uint64 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrEchoMax64, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return uint64(r)
+}
+
+// fnEchoMax8 calls zg_echo_max8 through purego.SyscallN.
+func (b *nativeBindings) fnEchoMax8(p0 uint8) uint8 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrEchoMax8, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return uint8(r)
+}
+
+// fnEchoSparse calls zg_echo_sparse through purego.SyscallN.
+func (b *nativeBindings) fnEchoSparse(p0 int64) int64 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrEchoSparse, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int64(r)
+}
+
+// fnEchoSingle calls zg_echo_single through purego.SyscallN.
+func (b *nativeBindings) fnEchoSingle(p0 int8) int8 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrEchoSingle, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int8(r)
+}
+
+// fnEchoLarge calls zg_echo_large through purego.SyscallN.
+func (b *nativeBindings) fnEchoLarge(p0 uint8) uint8 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrEchoLarge, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return uint8(r)
 }
 
 // EchoDense calls the generated purego ABI wrapper for zg_echo_dense.

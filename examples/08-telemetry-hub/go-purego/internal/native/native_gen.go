@@ -53,60 +53,60 @@ func (err *LibraryError) Is(target error) bool { return target == ErrLibraryLoad
 func (err *LibraryError) Unwrap() error { return err.Cause }
 
 type nativeBindings struct {
-	lastError                       func() unsafe.Pointer
-	panicMessage                    func(int32) unsafe.Pointer
-	fnTelemetryHubCreate            func(unsafe.Pointer, uintptr, uintptr, uint32, uint32, uintptr, uintptr, *unsafe.Pointer) int32
-	fnTelemetryHubRename            func(unsafe.Pointer, unsafe.Pointer, uintptr) int32
-	fnTelemetryHubName              func(unsafe.Pointer, *unsafe.Pointer, *uintptr) int32
-	fnTelemetryHubReduce            func(unsafe.Pointer, uint32, *uint32, *float64) int32
-	fnTelemetryHubCapacity          func(unsafe.Pointer, *uintptr) int32
-	fnTelemetryHubLen               func(unsafe.Pointer, *uintptr) int32
-	fnTelemetryHubIsEmpty           func(unsafe.Pointer, *uint8) int32
-	fnTelemetryHubIsFull            func(unsafe.Pointer, *uint8) int32
-	fnTelemetryHubMode              func(unsafe.Pointer, *uint32) int32
-	fnTelemetryHubSetMode           func(unsafe.Pointer, uint32, *uint32) int32
-	fnTelemetryHubOverflowPolicy    func(unsafe.Pointer, *uint32) int32
-	fnTelemetryHubSetOverflowPolicy func(unsafe.Pointer, uint32, *uint32) int32
-	fnTelemetryHubEnabled           func(unsafe.Pointer, *uint8) int32
-	fnTelemetryHubSetEnabled        func(unsafe.Pointer, uint8, *uint8) int32
-	fnTelemetryHubThreshold         func(unsafe.Pointer, *float64) int32
-	fnTelemetryHubSetThreshold      func(unsafe.Pointer, float64) int32
-	fnTelemetryHubScaleFactor       func(unsafe.Pointer, *float64) int32
-	fnTelemetryHubSetScaleFactor    func(unsafe.Pointer, float64) int32
-	fnTelemetryHubOffset            func(unsafe.Pointer, *float64) int32
-	fnTelemetryHubSetOffset         func(unsafe.Pointer, float64) int32
-	fnTelemetryHubPush              func(unsafe.Pointer, uint64, float64) int32
-	fnTelemetryHubPushWithSeverity  func(unsafe.Pointer, uint64, float64, uint32) int32
-	fnTelemetryHubPushBatch         func(unsafe.Pointer, unsafe.Pointer, uintptr) int32
-	fnTelemetryHubProcess           func(unsafe.Pointer, uintptr, *uintptr) int32
-	fnTelemetryHubProcessAll        func(unsafe.Pointer, *uintptr) int32
-	fnTelemetryHubClear             func(unsafe.Pointer, *uintptr) int32
-	fnTelemetryHubResetStatistics   func(unsafe.Pointer) int32
-	fnTelemetryHubAccepted          func(unsafe.Pointer, *uintptr) int32
-	fnTelemetryHubRejected          func(unsafe.Pointer, *uintptr) int32
-	fnTelemetryHubDropped           func(unsafe.Pointer, *uintptr) int32
-	fnTelemetryHubProcessed         func(unsafe.Pointer, *uintptr) int32
-	fnTelemetryHubFiltered          func(unsafe.Pointer, *uintptr) int32
-	fnTelemetryHubSum               func(unsafe.Pointer, *float64) int32
-	fnTelemetryHubMinimum           func(unsafe.Pointer, *float64) int32
-	fnTelemetryHubMaximum           func(unsafe.Pointer, *float64) int32
-	fnTelemetryHubAverage           func(unsafe.Pointer, *float64) int32
-	fnTelemetryHubFirstID           func(unsafe.Pointer, *uint64) int32
-	fnTelemetryHubFirstValue        func(unsafe.Pointer, *float64) int32
-	fnTelemetryHubLastID            func(unsafe.Pointer, *uint64) int32
-	fnTelemetryHubLastValue         func(unsafe.Pointer, *float64) int32
-	fnTelemetryHubLastSeverity      func(unsafe.Pointer, *uint32) int32
-	fnTelemetryHubCountAbove        func(unsafe.Pointer, float64, *uintptr) int32
-	fnTelemetryHubCountBelow        func(unsafe.Pointer, float64, *uintptr) int32
-	fnTelemetryHubContainsAbove     func(unsafe.Pointer, float64, *uint8) int32
-	fnTelemetryHubContainsBelow     func(unsafe.Pointer, float64, *uint8) int32
-	fnTelemetryHubScaleValues       func(unsafe.Pointer, float64) int32
-	fnTelemetryHubOffsetValues      func(unsafe.Pointer, float64) int32
-	fnTelemetryHubClampValues       func(unsafe.Pointer, float64, float64) int32
-	fnTelemetryHubAbsoluteValues    func(unsafe.Pointer) int32
-	fnTelemetryHubNegateValues      func(unsafe.Pointer) int32
-	fnTelemetryHubDeinit            func(unsafe.Pointer) int32
-	fnLiveHubs                      func() uintptr
+	lastError                         func() unsafe.Pointer
+	panicMessage                      func(int32) unsafe.Pointer
+	addrTelemetryHubCreate            uintptr
+	addrTelemetryHubRename            uintptr
+	addrTelemetryHubName              uintptr
+	addrTelemetryHubReduce            uintptr
+	addrTelemetryHubCapacity          uintptr
+	addrTelemetryHubLen               uintptr
+	addrTelemetryHubIsEmpty           uintptr
+	addrTelemetryHubIsFull            uintptr
+	addrTelemetryHubMode              uintptr
+	addrTelemetryHubSetMode           uintptr
+	addrTelemetryHubOverflowPolicy    uintptr
+	addrTelemetryHubSetOverflowPolicy uintptr
+	addrTelemetryHubEnabled           uintptr
+	addrTelemetryHubSetEnabled        uintptr
+	addrTelemetryHubThreshold         uintptr
+	fnTelemetryHubSetThreshold        func(unsafe.Pointer, float64) int32
+	addrTelemetryHubScaleFactor       uintptr
+	fnTelemetryHubSetScaleFactor      func(unsafe.Pointer, float64) int32
+	addrTelemetryHubOffset            uintptr
+	fnTelemetryHubSetOffset           func(unsafe.Pointer, float64) int32
+	fnTelemetryHubPush                func(unsafe.Pointer, uint64, float64) int32
+	fnTelemetryHubPushWithSeverity    func(unsafe.Pointer, uint64, float64, uint32) int32
+	addrTelemetryHubPushBatch         uintptr
+	addrTelemetryHubProcess           uintptr
+	addrTelemetryHubProcessAll        uintptr
+	addrTelemetryHubClear             uintptr
+	addrTelemetryHubResetStatistics   uintptr
+	addrTelemetryHubAccepted          uintptr
+	addrTelemetryHubRejected          uintptr
+	addrTelemetryHubDropped           uintptr
+	addrTelemetryHubProcessed         uintptr
+	addrTelemetryHubFiltered          uintptr
+	addrTelemetryHubSum               uintptr
+	addrTelemetryHubMinimum           uintptr
+	addrTelemetryHubMaximum           uintptr
+	addrTelemetryHubAverage           uintptr
+	addrTelemetryHubFirstID           uintptr
+	addrTelemetryHubFirstValue        uintptr
+	addrTelemetryHubLastID            uintptr
+	addrTelemetryHubLastValue         uintptr
+	addrTelemetryHubLastSeverity      uintptr
+	fnTelemetryHubCountAbove          func(unsafe.Pointer, float64, *uintptr) int32
+	fnTelemetryHubCountBelow          func(unsafe.Pointer, float64, *uintptr) int32
+	fnTelemetryHubContainsAbove       func(unsafe.Pointer, float64, *uint8) int32
+	fnTelemetryHubContainsBelow       func(unsafe.Pointer, float64, *uint8) int32
+	fnTelemetryHubScaleValues         func(unsafe.Pointer, float64) int32
+	fnTelemetryHubOffsetValues        func(unsafe.Pointer, float64) int32
+	fnTelemetryHubClampValues         func(unsafe.Pointer, float64, float64) int32
+	addrTelemetryHubAbsoluteValues    uintptr
+	addrTelemetryHubNegateValues      uintptr
+	addrTelemetryHubDeinit            uintptr
+	addrLiveHubs                      uintptr
 }
 
 type callbackEntry struct {
@@ -586,47 +586,47 @@ func loadCandidate(path string) error {
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.panicMessage, addrPanicMessage)
-	purego.RegisterFunc(&next.fnTelemetryHubCreate, addrTelemetryHubCreate)
-	purego.RegisterFunc(&next.fnTelemetryHubRename, addrTelemetryHubRename)
-	purego.RegisterFunc(&next.fnTelemetryHubName, addrTelemetryHubName)
-	purego.RegisterFunc(&next.fnTelemetryHubReduce, addrTelemetryHubReduce)
-	purego.RegisterFunc(&next.fnTelemetryHubCapacity, addrTelemetryHubCapacity)
-	purego.RegisterFunc(&next.fnTelemetryHubLen, addrTelemetryHubLen)
-	purego.RegisterFunc(&next.fnTelemetryHubIsEmpty, addrTelemetryHubIsEmpty)
-	purego.RegisterFunc(&next.fnTelemetryHubIsFull, addrTelemetryHubIsFull)
-	purego.RegisterFunc(&next.fnTelemetryHubMode, addrTelemetryHubMode)
-	purego.RegisterFunc(&next.fnTelemetryHubSetMode, addrTelemetryHubSetMode)
-	purego.RegisterFunc(&next.fnTelemetryHubOverflowPolicy, addrTelemetryHubOverflowPolicy)
-	purego.RegisterFunc(&next.fnTelemetryHubSetOverflowPolicy, addrTelemetryHubSetOverflowPolicy)
-	purego.RegisterFunc(&next.fnTelemetryHubEnabled, addrTelemetryHubEnabled)
-	purego.RegisterFunc(&next.fnTelemetryHubSetEnabled, addrTelemetryHubSetEnabled)
-	purego.RegisterFunc(&next.fnTelemetryHubThreshold, addrTelemetryHubThreshold)
+	next.addrTelemetryHubCreate = addrTelemetryHubCreate
+	next.addrTelemetryHubRename = addrTelemetryHubRename
+	next.addrTelemetryHubName = addrTelemetryHubName
+	next.addrTelemetryHubReduce = addrTelemetryHubReduce
+	next.addrTelemetryHubCapacity = addrTelemetryHubCapacity
+	next.addrTelemetryHubLen = addrTelemetryHubLen
+	next.addrTelemetryHubIsEmpty = addrTelemetryHubIsEmpty
+	next.addrTelemetryHubIsFull = addrTelemetryHubIsFull
+	next.addrTelemetryHubMode = addrTelemetryHubMode
+	next.addrTelemetryHubSetMode = addrTelemetryHubSetMode
+	next.addrTelemetryHubOverflowPolicy = addrTelemetryHubOverflowPolicy
+	next.addrTelemetryHubSetOverflowPolicy = addrTelemetryHubSetOverflowPolicy
+	next.addrTelemetryHubEnabled = addrTelemetryHubEnabled
+	next.addrTelemetryHubSetEnabled = addrTelemetryHubSetEnabled
+	next.addrTelemetryHubThreshold = addrTelemetryHubThreshold
 	purego.RegisterFunc(&next.fnTelemetryHubSetThreshold, addrTelemetryHubSetThreshold)
-	purego.RegisterFunc(&next.fnTelemetryHubScaleFactor, addrTelemetryHubScaleFactor)
+	next.addrTelemetryHubScaleFactor = addrTelemetryHubScaleFactor
 	purego.RegisterFunc(&next.fnTelemetryHubSetScaleFactor, addrTelemetryHubSetScaleFactor)
-	purego.RegisterFunc(&next.fnTelemetryHubOffset, addrTelemetryHubOffset)
+	next.addrTelemetryHubOffset = addrTelemetryHubOffset
 	purego.RegisterFunc(&next.fnTelemetryHubSetOffset, addrTelemetryHubSetOffset)
 	purego.RegisterFunc(&next.fnTelemetryHubPush, addrTelemetryHubPush)
 	purego.RegisterFunc(&next.fnTelemetryHubPushWithSeverity, addrTelemetryHubPushWithSeverity)
-	purego.RegisterFunc(&next.fnTelemetryHubPushBatch, addrTelemetryHubPushBatch)
-	purego.RegisterFunc(&next.fnTelemetryHubProcess, addrTelemetryHubProcess)
-	purego.RegisterFunc(&next.fnTelemetryHubProcessAll, addrTelemetryHubProcessAll)
-	purego.RegisterFunc(&next.fnTelemetryHubClear, addrTelemetryHubClear)
-	purego.RegisterFunc(&next.fnTelemetryHubResetStatistics, addrTelemetryHubResetStatistics)
-	purego.RegisterFunc(&next.fnTelemetryHubAccepted, addrTelemetryHubAccepted)
-	purego.RegisterFunc(&next.fnTelemetryHubRejected, addrTelemetryHubRejected)
-	purego.RegisterFunc(&next.fnTelemetryHubDropped, addrTelemetryHubDropped)
-	purego.RegisterFunc(&next.fnTelemetryHubProcessed, addrTelemetryHubProcessed)
-	purego.RegisterFunc(&next.fnTelemetryHubFiltered, addrTelemetryHubFiltered)
-	purego.RegisterFunc(&next.fnTelemetryHubSum, addrTelemetryHubSum)
-	purego.RegisterFunc(&next.fnTelemetryHubMinimum, addrTelemetryHubMinimum)
-	purego.RegisterFunc(&next.fnTelemetryHubMaximum, addrTelemetryHubMaximum)
-	purego.RegisterFunc(&next.fnTelemetryHubAverage, addrTelemetryHubAverage)
-	purego.RegisterFunc(&next.fnTelemetryHubFirstID, addrTelemetryHubFirstID)
-	purego.RegisterFunc(&next.fnTelemetryHubFirstValue, addrTelemetryHubFirstValue)
-	purego.RegisterFunc(&next.fnTelemetryHubLastID, addrTelemetryHubLastID)
-	purego.RegisterFunc(&next.fnTelemetryHubLastValue, addrTelemetryHubLastValue)
-	purego.RegisterFunc(&next.fnTelemetryHubLastSeverity, addrTelemetryHubLastSeverity)
+	next.addrTelemetryHubPushBatch = addrTelemetryHubPushBatch
+	next.addrTelemetryHubProcess = addrTelemetryHubProcess
+	next.addrTelemetryHubProcessAll = addrTelemetryHubProcessAll
+	next.addrTelemetryHubClear = addrTelemetryHubClear
+	next.addrTelemetryHubResetStatistics = addrTelemetryHubResetStatistics
+	next.addrTelemetryHubAccepted = addrTelemetryHubAccepted
+	next.addrTelemetryHubRejected = addrTelemetryHubRejected
+	next.addrTelemetryHubDropped = addrTelemetryHubDropped
+	next.addrTelemetryHubProcessed = addrTelemetryHubProcessed
+	next.addrTelemetryHubFiltered = addrTelemetryHubFiltered
+	next.addrTelemetryHubSum = addrTelemetryHubSum
+	next.addrTelemetryHubMinimum = addrTelemetryHubMinimum
+	next.addrTelemetryHubMaximum = addrTelemetryHubMaximum
+	next.addrTelemetryHubAverage = addrTelemetryHubAverage
+	next.addrTelemetryHubFirstID = addrTelemetryHubFirstID
+	next.addrTelemetryHubFirstValue = addrTelemetryHubFirstValue
+	next.addrTelemetryHubLastID = addrTelemetryHubLastID
+	next.addrTelemetryHubLastValue = addrTelemetryHubLastValue
+	next.addrTelemetryHubLastSeverity = addrTelemetryHubLastSeverity
 	purego.RegisterFunc(&next.fnTelemetryHubCountAbove, addrTelemetryHubCountAbove)
 	purego.RegisterFunc(&next.fnTelemetryHubCountBelow, addrTelemetryHubCountBelow)
 	purego.RegisterFunc(&next.fnTelemetryHubContainsAbove, addrTelemetryHubContainsAbove)
@@ -634,10 +634,10 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnTelemetryHubScaleValues, addrTelemetryHubScaleValues)
 	purego.RegisterFunc(&next.fnTelemetryHubOffsetValues, addrTelemetryHubOffsetValues)
 	purego.RegisterFunc(&next.fnTelemetryHubClampValues, addrTelemetryHubClampValues)
-	purego.RegisterFunc(&next.fnTelemetryHubAbsoluteValues, addrTelemetryHubAbsoluteValues)
-	purego.RegisterFunc(&next.fnTelemetryHubNegateValues, addrTelemetryHubNegateValues)
-	purego.RegisterFunc(&next.fnTelemetryHubDeinit, addrTelemetryHubDeinit)
-	purego.RegisterFunc(&next.fnLiveHubs, addrLiveHubs)
+	next.addrTelemetryHubAbsoluteValues = addrTelemetryHubAbsoluteValues
+	next.addrTelemetryHubNegateValues = addrTelemetryHubNegateValues
+	next.addrTelemetryHubDeinit = addrTelemetryHubDeinit
+	next.addrLiveHubs = addrLiveHubs
 	loadedBindings.Store(&next)
 	return nil
 }
@@ -690,6 +690,584 @@ func PanicMessage(code int32) string {
 		length++
 	}
 	return string(unsafe.Slice((*byte)(p), length))
+}
+
+// zigoCallFrame holds one direct call's arguments and the slots its out
+// parameters are written to. purego.SyscallN lets its argument slice escape,
+// and native code must not be handed an address on a goroutine stack that a
+// callback could grow and move, so both live in a pooled frame on the heap.
+type zigoCallFrame struct {
+	args [8]uintptr
+	out  [2]uint64
+}
+
+var zigoCallFrames = sync.Pool{New: func() any { return new(zigoCallFrame) }}
+
+// zigoEscapeSink is never written. zigoEscape only has to look as though it
+// might store its argument, so that the compiler keeps what a pointer handed
+// to native code points at on the heap, as a call through RegisterFunc did.
+var zigoEscapeSink struct {
+	enabled bool
+	p       unsafe.Pointer
+}
+
+func zigoEscape(p unsafe.Pointer) {
+	if zigoEscapeSink.enabled {
+		zigoEscapeSink.p = p
+	}
+}
+
+// fnTelemetryHubCreate calls zg_telemetry_hub_create_purego_v2 through purego.SyscallN.
+func (b *nativeBindings) fnTelemetryHubCreate(p0 unsafe.Pointer, p1 uintptr, p2 uintptr, p3 uint32, p4 uint32, p5 uintptr, p6 uintptr, p7 *unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	f.args[3] = uintptr(p3)
+	f.args[4] = uintptr(p4)
+	f.args[5] = uintptr(p5)
+	f.args[6] = uintptr(p6)
+	s7 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s7 = *p7
+	f.args[7] = uintptr(unsafe.Pointer(s7))
+	r, _, _ := purego.SyscallN(b.addrTelemetryHubCreate, f.args[:8]...)
+	*p7 = *s7
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTelemetryHubRename calls zg_telemetry_hub_rename through purego.SyscallN.
+func (b *nativeBindings) fnTelemetryHubRename(p0 unsafe.Pointer, p1 unsafe.Pointer, p2 uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	zigoEscape(p1)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	r, _, _ := purego.SyscallN(b.addrTelemetryHubRename, f.args[:3]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTelemetryHubName calls zg_telemetry_hub_name through purego.SyscallN.
+func (b *nativeBindings) fnTelemetryHubName(p0 unsafe.Pointer, p1 *unsafe.Pointer, p2 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	s2 := (*uintptr)(unsafe.Pointer(&f.out[1]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	r, _, _ := purego.SyscallN(b.addrTelemetryHubName, f.args[:3]...)
+	*p1 = *s1
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTelemetryHubReduce calls zg_telemetry_hub_reduce through purego.SyscallN.
+func (b *nativeBindings) fnTelemetryHubReduce(p0 unsafe.Pointer, p1 uint32, p2 *uint32, p3 *float64) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	zigoEscape(unsafe.Pointer(p2))
+	f.args[2] = uintptr(unsafe.Pointer(p2))
+	s3 := (*float64)(unsafe.Pointer(&f.out[0]))
+	*s3 = *p3
+	f.args[3] = uintptr(unsafe.Pointer(s3))
+	r, _, _ := purego.SyscallN(b.addrTelemetryHubReduce, f.args[:4]...)
+	*p3 = *s3
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTelemetryHubCapacity calls zg_telemetry_hub_capacity through purego.SyscallN.
+func (b *nativeBindings) fnTelemetryHubCapacity(p0 unsafe.Pointer, p1 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uintptr)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrTelemetryHubCapacity, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTelemetryHubLen calls zg_telemetry_hub_len through purego.SyscallN.
+func (b *nativeBindings) fnTelemetryHubLen(p0 unsafe.Pointer, p1 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uintptr)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrTelemetryHubLen, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTelemetryHubIsEmpty calls zg_telemetry_hub_is_empty through purego.SyscallN.
+func (b *nativeBindings) fnTelemetryHubIsEmpty(p0 unsafe.Pointer, p1 *uint8) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uint8)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrTelemetryHubIsEmpty, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTelemetryHubIsFull calls zg_telemetry_hub_is_full through purego.SyscallN.
+func (b *nativeBindings) fnTelemetryHubIsFull(p0 unsafe.Pointer, p1 *uint8) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uint8)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrTelemetryHubIsFull, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTelemetryHubMode calls zg_telemetry_hub_mode through purego.SyscallN.
+func (b *nativeBindings) fnTelemetryHubMode(p0 unsafe.Pointer, p1 *uint32) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uint32)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrTelemetryHubMode, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTelemetryHubSetMode calls zg_telemetry_hub_set_mode through purego.SyscallN.
+func (b *nativeBindings) fnTelemetryHubSetMode(p0 unsafe.Pointer, p1 uint32, p2 *uint32) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	s2 := (*uint32)(unsafe.Pointer(&f.out[0]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	r, _, _ := purego.SyscallN(b.addrTelemetryHubSetMode, f.args[:3]...)
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTelemetryHubOverflowPolicy calls zg_telemetry_hub_overflow_policy through purego.SyscallN.
+func (b *nativeBindings) fnTelemetryHubOverflowPolicy(p0 unsafe.Pointer, p1 *uint32) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uint32)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrTelemetryHubOverflowPolicy, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTelemetryHubSetOverflowPolicy calls zg_telemetry_hub_set_overflow_policy through purego.SyscallN.
+func (b *nativeBindings) fnTelemetryHubSetOverflowPolicy(p0 unsafe.Pointer, p1 uint32, p2 *uint32) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	s2 := (*uint32)(unsafe.Pointer(&f.out[0]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	r, _, _ := purego.SyscallN(b.addrTelemetryHubSetOverflowPolicy, f.args[:3]...)
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTelemetryHubEnabled calls zg_telemetry_hub_enabled through purego.SyscallN.
+func (b *nativeBindings) fnTelemetryHubEnabled(p0 unsafe.Pointer, p1 *uint8) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uint8)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrTelemetryHubEnabled, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTelemetryHubSetEnabled calls zg_telemetry_hub_set_enabled through purego.SyscallN.
+func (b *nativeBindings) fnTelemetryHubSetEnabled(p0 unsafe.Pointer, p1 uint8, p2 *uint8) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	s2 := (*uint8)(unsafe.Pointer(&f.out[0]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	r, _, _ := purego.SyscallN(b.addrTelemetryHubSetEnabled, f.args[:3]...)
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTelemetryHubThreshold calls zg_telemetry_hub_threshold through purego.SyscallN.
+func (b *nativeBindings) fnTelemetryHubThreshold(p0 unsafe.Pointer, p1 *float64) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*float64)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrTelemetryHubThreshold, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTelemetryHubScaleFactor calls zg_telemetry_hub_scale_factor through purego.SyscallN.
+func (b *nativeBindings) fnTelemetryHubScaleFactor(p0 unsafe.Pointer, p1 *float64) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*float64)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrTelemetryHubScaleFactor, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTelemetryHubOffset calls zg_telemetry_hub_offset through purego.SyscallN.
+func (b *nativeBindings) fnTelemetryHubOffset(p0 unsafe.Pointer, p1 *float64) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*float64)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrTelemetryHubOffset, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTelemetryHubPushBatch calls zg_telemetry_hub_push_batch through purego.SyscallN.
+func (b *nativeBindings) fnTelemetryHubPushBatch(p0 unsafe.Pointer, p1 unsafe.Pointer, p2 uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	zigoEscape(p1)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	r, _, _ := purego.SyscallN(b.addrTelemetryHubPushBatch, f.args[:3]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTelemetryHubProcess calls zg_telemetry_hub_process through purego.SyscallN.
+func (b *nativeBindings) fnTelemetryHubProcess(p0 unsafe.Pointer, p1 uintptr, p2 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	s2 := (*uintptr)(unsafe.Pointer(&f.out[0]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	r, _, _ := purego.SyscallN(b.addrTelemetryHubProcess, f.args[:3]...)
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTelemetryHubProcessAll calls zg_telemetry_hub_process_all through purego.SyscallN.
+func (b *nativeBindings) fnTelemetryHubProcessAll(p0 unsafe.Pointer, p1 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uintptr)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrTelemetryHubProcessAll, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTelemetryHubClear calls zg_telemetry_hub_clear through purego.SyscallN.
+func (b *nativeBindings) fnTelemetryHubClear(p0 unsafe.Pointer, p1 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uintptr)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrTelemetryHubClear, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTelemetryHubResetStatistics calls zg_telemetry_hub_reset_statistics through purego.SyscallN.
+func (b *nativeBindings) fnTelemetryHubResetStatistics(p0 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrTelemetryHubResetStatistics, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTelemetryHubAccepted calls zg_telemetry_hub_accepted through purego.SyscallN.
+func (b *nativeBindings) fnTelemetryHubAccepted(p0 unsafe.Pointer, p1 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uintptr)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrTelemetryHubAccepted, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTelemetryHubRejected calls zg_telemetry_hub_rejected through purego.SyscallN.
+func (b *nativeBindings) fnTelemetryHubRejected(p0 unsafe.Pointer, p1 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uintptr)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrTelemetryHubRejected, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTelemetryHubDropped calls zg_telemetry_hub_dropped through purego.SyscallN.
+func (b *nativeBindings) fnTelemetryHubDropped(p0 unsafe.Pointer, p1 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uintptr)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrTelemetryHubDropped, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTelemetryHubProcessed calls zg_telemetry_hub_processed through purego.SyscallN.
+func (b *nativeBindings) fnTelemetryHubProcessed(p0 unsafe.Pointer, p1 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uintptr)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrTelemetryHubProcessed, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTelemetryHubFiltered calls zg_telemetry_hub_filtered through purego.SyscallN.
+func (b *nativeBindings) fnTelemetryHubFiltered(p0 unsafe.Pointer, p1 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uintptr)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrTelemetryHubFiltered, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTelemetryHubSum calls zg_telemetry_hub_sum through purego.SyscallN.
+func (b *nativeBindings) fnTelemetryHubSum(p0 unsafe.Pointer, p1 *float64) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*float64)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrTelemetryHubSum, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTelemetryHubMinimum calls zg_telemetry_hub_minimum through purego.SyscallN.
+func (b *nativeBindings) fnTelemetryHubMinimum(p0 unsafe.Pointer, p1 *float64) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*float64)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrTelemetryHubMinimum, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTelemetryHubMaximum calls zg_telemetry_hub_maximum through purego.SyscallN.
+func (b *nativeBindings) fnTelemetryHubMaximum(p0 unsafe.Pointer, p1 *float64) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*float64)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrTelemetryHubMaximum, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTelemetryHubAverage calls zg_telemetry_hub_average through purego.SyscallN.
+func (b *nativeBindings) fnTelemetryHubAverage(p0 unsafe.Pointer, p1 *float64) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*float64)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrTelemetryHubAverage, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTelemetryHubFirstID calls zg_telemetry_hub_first_id through purego.SyscallN.
+func (b *nativeBindings) fnTelemetryHubFirstID(p0 unsafe.Pointer, p1 *uint64) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uint64)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrTelemetryHubFirstID, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTelemetryHubFirstValue calls zg_telemetry_hub_first_value through purego.SyscallN.
+func (b *nativeBindings) fnTelemetryHubFirstValue(p0 unsafe.Pointer, p1 *float64) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*float64)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrTelemetryHubFirstValue, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTelemetryHubLastID calls zg_telemetry_hub_last_id through purego.SyscallN.
+func (b *nativeBindings) fnTelemetryHubLastID(p0 unsafe.Pointer, p1 *uint64) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uint64)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrTelemetryHubLastID, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTelemetryHubLastValue calls zg_telemetry_hub_last_value through purego.SyscallN.
+func (b *nativeBindings) fnTelemetryHubLastValue(p0 unsafe.Pointer, p1 *float64) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*float64)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrTelemetryHubLastValue, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTelemetryHubLastSeverity calls zg_telemetry_hub_last_severity through purego.SyscallN.
+func (b *nativeBindings) fnTelemetryHubLastSeverity(p0 unsafe.Pointer, p1 *uint32) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uint32)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrTelemetryHubLastSeverity, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTelemetryHubAbsoluteValues calls zg_telemetry_hub_absolute_values through purego.SyscallN.
+func (b *nativeBindings) fnTelemetryHubAbsoluteValues(p0 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrTelemetryHubAbsoluteValues, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTelemetryHubNegateValues calls zg_telemetry_hub_negate_values through purego.SyscallN.
+func (b *nativeBindings) fnTelemetryHubNegateValues(p0 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrTelemetryHubNegateValues, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTelemetryHubDeinit calls zg_telemetry_hub_deinit through purego.SyscallN.
+func (b *nativeBindings) fnTelemetryHubDeinit(p0 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrTelemetryHubDeinit, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnLiveHubs calls zg_live_hubs through purego.SyscallN.
+func (b *nativeBindings) fnLiveHubs() uintptr {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	r, _, _ := purego.SyscallN(b.addrLiveHubs, f.args[:0]...)
+	zigoCallFrames.Put(f)
+	return uintptr(r)
 }
 
 // TelemetryHubCreate calls the generated purego ABI wrapper for zg_telemetry_hub_create_purego_v2.

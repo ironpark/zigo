@@ -45,11 +45,11 @@ func (err *LibraryError) Unwrap() error { return err.Cause }
 type nativeBindings struct {
 	lastError func() unsafe.Pointer
 	panicMessage func(int32) unsafe.Pointer
-	fnSnapshot func(*unsafe.Pointer, *uintptr)
-	fnMany func(*unsafe.Pointer, *uintptr) int32
-	fnRelease func(unsafe.Pointer, uintptr)
-	fnFill func(uintptr, *unsafe.Pointer, *uintptr) uintptr
-	fnFillChecked func(uintptr, *uintptr, *unsafe.Pointer, *uintptr) int32
+	addrSnapshot uintptr
+	addrMany uintptr
+	addrRelease uintptr
+	addrFill uintptr
+	addrFillChecked uintptr
 }
 
 var loadedBindings atomic.Pointer[nativeBindings]
@@ -122,11 +122,11 @@ func loadCandidate(path string) error {
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.panicMessage, addrPanicMessage)
-	purego.RegisterFunc(&next.fnSnapshot, addrSnapshot)
-	purego.RegisterFunc(&next.fnMany, addrMany)
-	purego.RegisterFunc(&next.fnRelease, addrRelease)
-	purego.RegisterFunc(&next.fnFill, addrFill)
-	purego.RegisterFunc(&next.fnFillChecked, addrFillChecked)
+	next.addrSnapshot = addrSnapshot
+	next.addrMany = addrMany
+	next.addrRelease = addrRelease
+	next.addrFill = addrFill
+	next.addrFillChecked = addrFillChecked
 	loadedBindings.Store(&next)
 	return nil
 }
@@ -153,6 +153,110 @@ func PanicMessage(code int32) string {
 	length := 0
 	for *(*byte)(unsafe.Add(p, length)) != 0 { length++ }
 	return string(unsafe.Slice((*byte)(p), length))
+}
+
+// zigoCallFrame holds one direct call's arguments and the slots its out
+// parameters are written to. purego.SyscallN lets its argument slice escape,
+// and native code must not be handed an address on a goroutine stack that a
+// callback could grow and move, so both live in a pooled frame on the heap.
+type zigoCallFrame struct {
+	args [8]uintptr
+	out  [3]uint64
+}
+
+var zigoCallFrames = sync.Pool{New: func() any { return new(zigoCallFrame) }}
+
+// zigoEscapeSink is never written. zigoEscape only has to look as though it
+// might store its argument, so that the compiler keeps what a pointer handed
+// to native code points at on the heap, as a call through RegisterFunc did.
+var zigoEscapeSink struct {
+	enabled bool
+	p       unsafe.Pointer
+}
+
+func zigoEscape(p unsafe.Pointer) {
+	if zigoEscapeSink.enabled {
+		zigoEscapeSink.p = p
+	}
+}
+
+// fnSnapshot calls zg_snapshot through purego.SyscallN.
+func (b *nativeBindings) fnSnapshot(p0 *unsafe.Pointer, p1 *uintptr) {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	s0 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s0 = *p0
+	f.args[0] = uintptr(unsafe.Pointer(s0))
+	s1 := (*uintptr)(unsafe.Pointer(&f.out[1]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	purego.SyscallN(b.addrSnapshot, f.args[:2]...)
+	*p0 = *s0
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+}
+
+// fnMany calls zg_many through purego.SyscallN.
+func (b *nativeBindings) fnMany(p0 *unsafe.Pointer, p1 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	s0 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s0 = *p0
+	f.args[0] = uintptr(unsafe.Pointer(s0))
+	s1 := (*uintptr)(unsafe.Pointer(&f.out[1]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrMany, f.args[:2]...)
+	*p0 = *s0
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnRelease calls zg_release through purego.SyscallN.
+func (b *nativeBindings) fnRelease(p0 unsafe.Pointer, p1 uintptr) {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	purego.SyscallN(b.addrRelease, f.args[:2]...)
+	zigoCallFrames.Put(f)
+}
+
+// fnFill calls zg_fill through purego.SyscallN.
+func (b *nativeBindings) fnFill(p0 uintptr, p1 *unsafe.Pointer, p2 *uintptr) uintptr {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	s1 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	s2 := (*uintptr)(unsafe.Pointer(&f.out[1]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	r, _, _ := purego.SyscallN(b.addrFill, f.args[:3]...)
+	*p1 = *s1
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+	return uintptr(r)
+}
+
+// fnFillChecked calls zg_fill_checked through purego.SyscallN.
+func (b *nativeBindings) fnFillChecked(p0 uintptr, p1 *uintptr, p2 *unsafe.Pointer, p3 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	s1 := (*uintptr)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	s2 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[1]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	s3 := (*uintptr)(unsafe.Pointer(&f.out[2]))
+	*s3 = *p3
+	f.args[3] = uintptr(unsafe.Pointer(s3))
+	r, _, _ := purego.SyscallN(b.addrFillChecked, f.args[:4]...)
+	*p1 = *s1
+	*p2 = *s2
+	*p3 = *s3
+	zigoCallFrames.Put(f)
+	return int32(r)
 }
 
 // Snapshot calls the generated purego ABI wrapper for zg_snapshot.

@@ -505,7 +505,9 @@ func (e *EventQueue) Estimate(output []Stats) (uint, error) {
 		return 0, err
 	}
 	defer e.zigoRelease()
-	outputRaw := make([]raw.StatsData, len(output))
+	outputScratch := e.zigoScratchStats.take(len(output))
+	defer e.zigoScratchStats.give(outputScratch)
+	outputRaw := *outputScratch
 	result, code := raw.EventQueueEstimate(ptr, outputRaw)
 	if zigoCallbackPanicPending() {
 		for slot := range 3 {

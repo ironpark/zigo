@@ -49,26 +49,26 @@ func (err *LibraryError) Is(target error) bool { return target == ErrLibraryLoad
 func (err *LibraryError) Unwrap() error { return err.Cause }
 
 type nativeBindings struct {
-	lastError                func() unsafe.Pointer
-	panicMessage             func(int32) unsafe.Pointer
-	fnContextCreate          func(*unsafe.Pointer) int32
-	fnContextAdd             func(unsafe.Pointer, int64, *int64) int32
-	fnContextMaybeTotal      func(unsafe.Pointer, uint8, *uint8, *int64) int32
-	fnContextSetTotal        func(unsafe.Pointer, int64) int32
-	fnContextNext            func(unsafe.Pointer, *uint8, *int64) int32
-	fnContextNextChecked     func(unsafe.Pointer, *uint8, *int64) int32
-	fnContextRewind          func(unsafe.Pointer) int32
-	fnContextAddCopy         func(unsafe.Pointer, int64, *int64) int32
-	fnContextBorrowView      func(unsafe.Pointer, *unsafe.Pointer) int32
-	fnContextCrash           func(unsafe.Pointer) int32
-	fnContextCrashInfallible func(unsafe.Pointer, *int64) int32
-	fnContextDeinit          func(unsafe.Pointer) int32
-	fnContextViewTotal       func(unsafe.Pointer, *int64) int32
-	fnCrashFatal             func()
-	fnLiveBytes              func() uintptr
-	fnSumCopies              func(int64, unsafe.Pointer, unsafe.Pointer, *int64) int32
-	fnEcho                   func(unsafe.Pointer, uintptr, *unsafe.Pointer, *uintptr)
-	fnFallback               func(int64) int64
+	lastError                  func() unsafe.Pointer
+	panicMessage               func(int32) unsafe.Pointer
+	addrContextCreate          uintptr
+	addrContextAdd             uintptr
+	addrContextMaybeTotal      uintptr
+	addrContextSetTotal        uintptr
+	addrContextNext            uintptr
+	addrContextNextChecked     uintptr
+	addrContextRewind          uintptr
+	addrContextAddCopy         uintptr
+	addrContextBorrowView      uintptr
+	addrContextCrash           uintptr
+	addrContextCrashInfallible uintptr
+	addrContextDeinit          uintptr
+	addrContextViewTotal       uintptr
+	addrCrashFatal             uintptr
+	addrLiveBytes              uintptr
+	addrSumCopies              uintptr
+	addrEcho                   uintptr
+	addrFallback               uintptr
 }
 
 var loadedBindings atomic.Pointer[nativeBindings]
@@ -229,24 +229,24 @@ func loadCandidate(path string) error {
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.panicMessage, addrPanicMessage)
-	purego.RegisterFunc(&next.fnContextCreate, addrContextCreate)
-	purego.RegisterFunc(&next.fnContextAdd, addrContextAdd)
-	purego.RegisterFunc(&next.fnContextMaybeTotal, addrContextMaybeTotal)
-	purego.RegisterFunc(&next.fnContextSetTotal, addrContextSetTotal)
-	purego.RegisterFunc(&next.fnContextNext, addrContextNext)
-	purego.RegisterFunc(&next.fnContextNextChecked, addrContextNextChecked)
-	purego.RegisterFunc(&next.fnContextRewind, addrContextRewind)
-	purego.RegisterFunc(&next.fnContextAddCopy, addrContextAddCopy)
-	purego.RegisterFunc(&next.fnContextBorrowView, addrContextBorrowView)
-	purego.RegisterFunc(&next.fnContextCrash, addrContextCrash)
-	purego.RegisterFunc(&next.fnContextCrashInfallible, addrContextCrashInfallible)
-	purego.RegisterFunc(&next.fnContextDeinit, addrContextDeinit)
-	purego.RegisterFunc(&next.fnContextViewTotal, addrContextViewTotal)
-	purego.RegisterFunc(&next.fnCrashFatal, addrCrashFatal)
-	purego.RegisterFunc(&next.fnLiveBytes, addrLiveBytes)
-	purego.RegisterFunc(&next.fnSumCopies, addrSumCopies)
-	purego.RegisterFunc(&next.fnEcho, addrEcho)
-	purego.RegisterFunc(&next.fnFallback, addrFallback)
+	next.addrContextCreate = addrContextCreate
+	next.addrContextAdd = addrContextAdd
+	next.addrContextMaybeTotal = addrContextMaybeTotal
+	next.addrContextSetTotal = addrContextSetTotal
+	next.addrContextNext = addrContextNext
+	next.addrContextNextChecked = addrContextNextChecked
+	next.addrContextRewind = addrContextRewind
+	next.addrContextAddCopy = addrContextAddCopy
+	next.addrContextBorrowView = addrContextBorrowView
+	next.addrContextCrash = addrContextCrash
+	next.addrContextCrashInfallible = addrContextCrashInfallible
+	next.addrContextDeinit = addrContextDeinit
+	next.addrContextViewTotal = addrContextViewTotal
+	next.addrCrashFatal = addrCrashFatal
+	next.addrLiveBytes = addrLiveBytes
+	next.addrSumCopies = addrSumCopies
+	next.addrEcho = addrEcho
+	next.addrFallback = addrFallback
 	loadedBindings.Store(&next)
 	return nil
 }
@@ -283,6 +283,270 @@ func PanicMessage(code int32) string {
 		length++
 	}
 	return string(unsafe.Slice((*byte)(p), length))
+}
+
+// zigoCallFrame holds one direct call's arguments and the slots its out
+// parameters are written to. purego.SyscallN lets its argument slice escape,
+// and native code must not be handed an address on a goroutine stack that a
+// callback could grow and move, so both live in a pooled frame on the heap.
+type zigoCallFrame struct {
+	args [8]uintptr
+	out  [2]uint64
+}
+
+var zigoCallFrames = sync.Pool{New: func() any { return new(zigoCallFrame) }}
+
+// zigoEscapeSink is never written. zigoEscape only has to look as though it
+// might store its argument, so that the compiler keeps what a pointer handed
+// to native code points at on the heap, as a call through RegisterFunc did.
+var zigoEscapeSink struct {
+	enabled bool
+	p       unsafe.Pointer
+}
+
+func zigoEscape(p unsafe.Pointer) {
+	if zigoEscapeSink.enabled {
+		zigoEscapeSink.p = p
+	}
+}
+
+// fnContextCreate calls zg_context_create through purego.SyscallN.
+func (b *nativeBindings) fnContextCreate(p0 *unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	s0 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s0 = *p0
+	f.args[0] = uintptr(unsafe.Pointer(s0))
+	r, _, _ := purego.SyscallN(b.addrContextCreate, f.args[:1]...)
+	*p0 = *s0
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnContextAdd calls zg_context_add through purego.SyscallN.
+func (b *nativeBindings) fnContextAdd(p0 unsafe.Pointer, p1 int64, p2 *int64) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	s2 := (*int64)(unsafe.Pointer(&f.out[0]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	r, _, _ := purego.SyscallN(b.addrContextAdd, f.args[:3]...)
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnContextMaybeTotal calls zg_context_maybe_total through purego.SyscallN.
+func (b *nativeBindings) fnContextMaybeTotal(p0 unsafe.Pointer, p1 uint8, p2 *uint8, p3 *int64) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	s2 := (*uint8)(unsafe.Pointer(&f.out[0]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	s3 := (*int64)(unsafe.Pointer(&f.out[1]))
+	*s3 = *p3
+	f.args[3] = uintptr(unsafe.Pointer(s3))
+	r, _, _ := purego.SyscallN(b.addrContextMaybeTotal, f.args[:4]...)
+	*p2 = *s2
+	*p3 = *s3
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnContextSetTotal calls zg_context_set_total through purego.SyscallN.
+func (b *nativeBindings) fnContextSetTotal(p0 unsafe.Pointer, p1 int64) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	r, _, _ := purego.SyscallN(b.addrContextSetTotal, f.args[:2]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnContextNext calls zg_context_next through purego.SyscallN.
+func (b *nativeBindings) fnContextNext(p0 unsafe.Pointer, p1 *uint8, p2 *int64) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uint8)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	s2 := (*int64)(unsafe.Pointer(&f.out[1]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	r, _, _ := purego.SyscallN(b.addrContextNext, f.args[:3]...)
+	*p1 = *s1
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnContextNextChecked calls zg_context_next_checked through purego.SyscallN.
+func (b *nativeBindings) fnContextNextChecked(p0 unsafe.Pointer, p1 *uint8, p2 *int64) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uint8)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	s2 := (*int64)(unsafe.Pointer(&f.out[1]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	r, _, _ := purego.SyscallN(b.addrContextNextChecked, f.args[:3]...)
+	*p1 = *s1
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnContextRewind calls zg_context_rewind through purego.SyscallN.
+func (b *nativeBindings) fnContextRewind(p0 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrContextRewind, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnContextAddCopy calls zg_context_add_copy through purego.SyscallN.
+func (b *nativeBindings) fnContextAddCopy(p0 unsafe.Pointer, p1 int64, p2 *int64) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	s2 := (*int64)(unsafe.Pointer(&f.out[0]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	r, _, _ := purego.SyscallN(b.addrContextAddCopy, f.args[:3]...)
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnContextBorrowView calls zg_context_borrow_view through purego.SyscallN.
+func (b *nativeBindings) fnContextBorrowView(p0 unsafe.Pointer, p1 *unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrContextBorrowView, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnContextCrash calls zg_context_crash through purego.SyscallN.
+func (b *nativeBindings) fnContextCrash(p0 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrContextCrash, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnContextCrashInfallible calls zg_context_crash_infallible through purego.SyscallN.
+func (b *nativeBindings) fnContextCrashInfallible(p0 unsafe.Pointer, p1 *int64) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*int64)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrContextCrashInfallible, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnContextDeinit calls zg_context_deinit through purego.SyscallN.
+func (b *nativeBindings) fnContextDeinit(p0 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrContextDeinit, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnContextViewTotal calls zg_context_view_total through purego.SyscallN.
+func (b *nativeBindings) fnContextViewTotal(p0 unsafe.Pointer, p1 *int64) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*int64)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrContextViewTotal, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnCrashFatal calls zg_crash_fatal through purego.SyscallN.
+func (b *nativeBindings) fnCrashFatal() {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	purego.SyscallN(b.addrCrashFatal, f.args[:0]...)
+	zigoCallFrames.Put(f)
+}
+
+// fnLiveBytes calls zg_live_bytes through purego.SyscallN.
+func (b *nativeBindings) fnLiveBytes() uintptr {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	r, _, _ := purego.SyscallN(b.addrLiveBytes, f.args[:0]...)
+	zigoCallFrames.Put(f)
+	return uintptr(r)
+}
+
+// fnSumCopies calls zg_sum_copies through purego.SyscallN.
+func (b *nativeBindings) fnSumCopies(p0 int64, p1 unsafe.Pointer, p2 unsafe.Pointer, p3 *int64) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	zigoEscape(p1)
+	f.args[1] = uintptr(p1)
+	zigoEscape(p2)
+	f.args[2] = uintptr(p2)
+	s3 := (*int64)(unsafe.Pointer(&f.out[0]))
+	*s3 = *p3
+	f.args[3] = uintptr(unsafe.Pointer(s3))
+	r, _, _ := purego.SyscallN(b.addrSumCopies, f.args[:4]...)
+	*p3 = *s3
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnEcho calls zg_echo through purego.SyscallN.
+func (b *nativeBindings) fnEcho(p0 unsafe.Pointer, p1 uintptr, p2 *unsafe.Pointer, p3 *uintptr) {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	s2 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	s3 := (*uintptr)(unsafe.Pointer(&f.out[1]))
+	*s3 = *p3
+	f.args[3] = uintptr(unsafe.Pointer(s3))
+	purego.SyscallN(b.addrEcho, f.args[:4]...)
+	*p2 = *s2
+	*p3 = *s3
+	zigoCallFrames.Put(f)
+}
+
+// fnFallback calls zg_fallback through purego.SyscallN.
+func (b *nativeBindings) fnFallback(p0 int64) int64 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrFallback, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int64(r)
 }
 
 // ContextCreate calls the generated purego ABI wrapper for zg_context_create.

@@ -7,6 +7,7 @@ import (
 	"os"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"unsafe"
 
 	lifecycle "example.com/zigo/event-queue-purego/internal/lifecycle"
@@ -15,14 +16,15 @@ import (
 
 // EventQueue is a caller-owned native handle. Call Close when it is no longer needed.
 type EventQueue struct {
-	ptr             unsafe.Pointer
-	mu              sync.Mutex
-	active          int
-	children        int
-	closed          bool
-	poison          *NativePanicError
-	callbackHandles []zigoCallbackHandle
-	cleanup         runtime.Cleanup
+	ptr              unsafe.Pointer
+	mu               sync.Mutex
+	active           int
+	children         int
+	closed           bool
+	poison           *NativePanicError
+	callbackHandles  []zigoCallbackHandle
+	cleanup          runtime.Cleanup
+	zigoScratchStats zigoScratch[raw.StatsData]
 }
 
 func (e *EventQueue) zigoCallbackHandle(slot int) zigoCallbackHandle {
@@ -181,6 +183,17 @@ func (e *EventQueue) zigoTakeLocked() (zigoEventQueueCleanupState, bool) {
 		state.ptr = nil
 	}
 	return state, true
+}
+
+// ReleaseScratch drops the raw buffer that Estimate
+// keeps between calls to convert through, for an owner that will not call
+// it for a while. The next call allocates afresh. It is safe at any time;
+// a call already in progress hands its buffer back when it returns.
+func (e *EventQueue) ReleaseScratch() {
+	if e == nil {
+		return
+	}
+	e.zigoScratchStats.release()
 }
 
 // Stream is a caller-owned native handle. Call Close when it is no longer needed.
@@ -921,3 +934,29 @@ func zigoReportLeak(typeName string, site []byte) {
 	}
 	os.Stderr.WriteString("zigo: " + typeName + " was garbage-collected without Close; created at:\n" + string(site) + "\n")
 }
+
+// zigoScratch is a raw buffer a handle lends its own calls that convert
+// through one, so a caller filling the same slice every frame does not
+// allocate a fresh buffer each time. A call takes it for its duration: one
+// made while another holds it allocates its own, and the first handed back
+// is kept.
+type zigoScratch[T any] struct{ buffer atomic.Pointer[[]T] }
+
+// take lends the buffer, at least n long and sliced to n.
+func (s *zigoScratch[T]) take(n int) *[]T {
+	buffer := s.buffer.Swap(nil)
+	if buffer == nil {
+		buffer = new([]T)
+	}
+	if cap(*buffer) < n {
+		*buffer = make([]T, n)
+	}
+	*buffer = (*buffer)[:n]
+	return buffer
+}
+
+// give hands a buffer back, unless another call already has.
+func (s *zigoScratch[T]) give(buffer *[]T) { s.buffer.CompareAndSwap(nil, buffer) }
+
+// release drops the buffer. One a call holds comes back when the call gives it.
+func (s *zigoScratch[T]) release() { s.buffer.Store(nil) }

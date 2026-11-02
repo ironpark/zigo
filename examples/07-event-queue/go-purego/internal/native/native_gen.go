@@ -50,76 +50,76 @@ func (err *LibraryError) Is(target error) bool { return target == ErrLibraryLoad
 func (err *LibraryError) Unwrap() error { return err.Cause }
 
 type nativeBindings struct {
-	lastError                           func() unsafe.Pointer
-	panicMessage                        func(int32) unsafe.Pointer
-	fnEventQueueCreate                  func(unsafe.Pointer, uintptr, uintptr, uint32, uintptr, uintptr, *unsafe.Pointer) int32
-	fnEventQueueClone                   func(unsafe.Pointer, uintptr, uintptr, *unsafe.Pointer) int32
-	fnEventQueueNewStream               func(unsafe.Pointer, *unsafe.Pointer) int32
-	fnEventQueueEnqueue                 func(unsafe.Pointer, uint64, int32) int32
-	fnEventQueueMergeFrom               func(unsafe.Pointer, unsafe.Pointer, *uintptr) int32
-	fnEventQueueProcess                 func(unsafe.Pointer, uintptr, *uintptr) int32
-	fnEventQueueSetObserver             func(unsafe.Pointer, uintptr, uintptr) int32
-	fnEventQueueName                    func(unsafe.Pointer, *unsafe.Pointer, *uintptr) int32
-	fnEventQueueSampleValues            func(unsafe.Pointer, *unsafe.Pointer, *uintptr) int32
-	fnEventQueueSampleValuesChecked     func(unsafe.Pointer, *unsafe.Pointer, *uintptr) int32
-	fnEventQueueSelectionString         func(unsafe.Pointer, *unsafe.Pointer, *uintptr) int32
-	fnEventQueueFreeSelectionString     func(unsafe.Pointer, unsafe.Pointer, uintptr) int32
-	fnEventQueueEchoCString             func(unsafe.Pointer) unsafe.Pointer
-	fnEventQueueSampleCString           func() unsafe.Pointer
-	fnEventQueueExtractPaths            func(unsafe.Pointer, uintptr, unsafe.Pointer, uintptr) uintptr
-	fnEventQueueExtractSentinelSlices   func(unsafe.Pointer, uintptr, unsafe.Pointer, uintptr) uintptr
-	fnEventQueueExtractSentinelPointers func(unsafe.Pointer, uintptr, unsafe.Pointer, uintptr) uintptr
-	fnEventQueueExtractSamples          func(unsafe.Pointer, *unsafe.Pointer, *uintptr) int32
-	fnEventQueueExtractSamplesChecked   func(unsafe.Pointer, *unsafe.Pointer, *uintptr) int32
-	fnEventQueueFreeSamples             func(unsafe.Pointer, unsafe.Pointer, uintptr) int32
-	fnEventQueueExtractLimits           func(unsafe.Pointer, *unsafe.Pointer, *uintptr) int32
-	fnEventQueueFreeLimits              func(unsafe.Pointer, unsafe.Pointer, uintptr) int32
-	fnEventQueueAcceptStats             func(unsafe.Pointer, unsafe.Pointer, uintptr, *uintptr) int32
-	fnEventQueueExtractSamplesInto      func(unsafe.Pointer, unsafe.Pointer, uintptr, *uintptr) int32
-	fnEventQueueLimitsInto              func(unsafe.Pointer, unsafe.Pointer, uintptr, *uintptr) int32
-	fnEventQueueEstimate                func(unsafe.Pointer, unsafe.Pointer, uintptr, *uintptr) int32
-	fnEventQueueSampleStats             func(unsafe.Pointer, *unsafe.Pointer, *uintptr) int32
-	fnEventQueueSampleLimits            func(unsafe.Pointer, *unsafe.Pointer, *uintptr) int32
-	fnEventQueueLen                     func(unsafe.Pointer, *uintptr) int32
-	fnEventQueueCapacity                func(unsafe.Pointer, *uintptr) int32
-	fnEventQueuePolicy                  func(unsafe.Pointer, *uint32) int32
-	fnEventQueueDropped                 func(unsafe.Pointer, *uintptr) int32
-	fnEventQueueProcessed               func(unsafe.Pointer, *uintptr) int32
-	fnEventQueueStats                   func(unsafe.Pointer, unsafe.Pointer) int32
-	fnEventQueueLimits                  func(unsafe.Pointer, unsafe.Pointer) int32
-	fnEventQueueApplyLimits             func(unsafe.Pointer, unsafe.Pointer) int32
-	fnEventQueueClear                   func(unsafe.Pointer, *uintptr) int32
-	fnEventQueueDeinit                  func(unsafe.Pointer) int32
-	fnStreamCapacity                    func(unsafe.Pointer, *uint32) int32
-	fnStreamFreeStream                  func(unsafe.Pointer) int32
-	fnBorrowBoxCreate                   func(int32, *unsafe.Pointer) int32
-	fnBorrowBoxView                     func(unsafe.Pointer, *unsafe.Pointer) int32
-	fnBorrowBoxDeinit                   func(unsafe.Pointer) int32
-	fnBorrowViewView                    func(unsafe.Pointer, *unsafe.Pointer) int32
-	fnBorrowViewNewChild                func(unsafe.Pointer, *unsafe.Pointer) int32
-	fnBorrowViewGet                     func(unsafe.Pointer, *int32) int32
-	fnBorrowViewExplode                 func(unsafe.Pointer) int32
-	fnBorrowChildGet                    func(unsafe.Pointer, *int32) int32
-	fnBorrowChildDeinit                 func(unsafe.Pointer) int32
-	fnTerminalInit                      func(uint16, uint16, uintptr, *uint32, *unsafe.Pointer) int32
-	fnTerminalBlinkIntervalMs           func(unsafe.Pointer, *uint32) int32
-	fnTerminalCols                      func(unsafe.Pointer, *uint16) int32
-	fnTerminalRows                      func(unsafe.Pointer, *uint16) int32
-	fnTerminalMaxScrollbackBytes        func(unsafe.Pointer, *uintptr) int32
-	fnTerminalDeinit                    func(unsafe.Pointer) int32
-	fnEchoQueueSignal                   func(uint8) uint8
-	fnLiveBorrowChildren                func() uintptr
-	fnInspectTicker                     func(unsafe.Pointer, unsafe.Pointer, unsafe.Pointer) int32
-	fnLiveStreams                       func() uintptr
-	fnLiveQueues                        func() uintptr
-	fnLiveSamples                       func() uintptr
-	fnLiveLimits                        func() uintptr
-	fnLiveSelectionStrings              func() uintptr
-	fnNewTicker                         func(uint32, *unsafe.Pointer) int32
-	fnTickerFreeTicker                  func(unsafe.Pointer) int32
-	fnTickerAdvance                     func(unsafe.Pointer, uint32, *uint32) int32
-	fnTickerElapsed                     func(unsafe.Pointer, *uint32) int32
-	fnLiveTickers                       func() uintptr
+	lastError                             func() unsafe.Pointer
+	panicMessage                          func(int32) unsafe.Pointer
+	addrEventQueueCreate                  uintptr
+	addrEventQueueClone                   uintptr
+	addrEventQueueNewStream               uintptr
+	addrEventQueueEnqueue                 uintptr
+	addrEventQueueMergeFrom               uintptr
+	addrEventQueueProcess                 uintptr
+	addrEventQueueSetObserver             uintptr
+	addrEventQueueName                    uintptr
+	addrEventQueueSampleValues            uintptr
+	addrEventQueueSampleValuesChecked     uintptr
+	addrEventQueueSelectionString         uintptr
+	addrEventQueueFreeSelectionString     uintptr
+	addrEventQueueEchoCString             uintptr
+	addrEventQueueSampleCString           uintptr
+	addrEventQueueExtractPaths            uintptr
+	addrEventQueueExtractSentinelSlices   uintptr
+	addrEventQueueExtractSentinelPointers uintptr
+	addrEventQueueExtractSamples          uintptr
+	addrEventQueueExtractSamplesChecked   uintptr
+	addrEventQueueFreeSamples             uintptr
+	addrEventQueueExtractLimits           uintptr
+	addrEventQueueFreeLimits              uintptr
+	addrEventQueueAcceptStats             uintptr
+	addrEventQueueExtractSamplesInto      uintptr
+	addrEventQueueLimitsInto              uintptr
+	addrEventQueueEstimate                uintptr
+	addrEventQueueSampleStats             uintptr
+	addrEventQueueSampleLimits            uintptr
+	addrEventQueueLen                     uintptr
+	addrEventQueueCapacity                uintptr
+	addrEventQueuePolicy                  uintptr
+	addrEventQueueDropped                 uintptr
+	addrEventQueueProcessed               uintptr
+	addrEventQueueStats                   uintptr
+	addrEventQueueLimits                  uintptr
+	addrEventQueueApplyLimits             uintptr
+	addrEventQueueClear                   uintptr
+	addrEventQueueDeinit                  uintptr
+	addrStreamCapacity                    uintptr
+	addrStreamFreeStream                  uintptr
+	addrBorrowBoxCreate                   uintptr
+	addrBorrowBoxView                     uintptr
+	addrBorrowBoxDeinit                   uintptr
+	addrBorrowViewView                    uintptr
+	addrBorrowViewNewChild                uintptr
+	addrBorrowViewGet                     uintptr
+	addrBorrowViewExplode                 uintptr
+	addrBorrowChildGet                    uintptr
+	addrBorrowChildDeinit                 uintptr
+	addrTerminalInit                      uintptr
+	addrTerminalBlinkIntervalMs           uintptr
+	addrTerminalCols                      uintptr
+	addrTerminalRows                      uintptr
+	addrTerminalMaxScrollbackBytes        uintptr
+	addrTerminalDeinit                    uintptr
+	addrEchoQueueSignal                   uintptr
+	addrLiveBorrowChildren                uintptr
+	addrInspectTicker                     uintptr
+	addrLiveStreams                       uintptr
+	addrLiveQueues                        uintptr
+	addrLiveSamples                       uintptr
+	addrLiveLimits                        uintptr
+	addrLiveSelectionStrings              uintptr
+	addrNewTicker                         uintptr
+	addrTickerFreeTicker                  uintptr
+	addrTickerAdvance                     uintptr
+	addrTickerElapsed                     uintptr
+	addrLiveTickers                       uintptr
 }
 
 type callbackEntry struct {
@@ -636,74 +636,74 @@ func loadCandidate(path string) error {
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.panicMessage, addrPanicMessage)
-	purego.RegisterFunc(&next.fnEventQueueCreate, addrEventQueueCreate)
-	purego.RegisterFunc(&next.fnEventQueueClone, addrEventQueueClone)
-	purego.RegisterFunc(&next.fnEventQueueNewStream, addrEventQueueNewStream)
-	purego.RegisterFunc(&next.fnEventQueueEnqueue, addrEventQueueEnqueue)
-	purego.RegisterFunc(&next.fnEventQueueMergeFrom, addrEventQueueMergeFrom)
-	purego.RegisterFunc(&next.fnEventQueueProcess, addrEventQueueProcess)
-	purego.RegisterFunc(&next.fnEventQueueSetObserver, addrEventQueueSetObserver)
-	purego.RegisterFunc(&next.fnEventQueueName, addrEventQueueName)
-	purego.RegisterFunc(&next.fnEventQueueSampleValues, addrEventQueueSampleValues)
-	purego.RegisterFunc(&next.fnEventQueueSampleValuesChecked, addrEventQueueSampleValuesChecked)
-	purego.RegisterFunc(&next.fnEventQueueSelectionString, addrEventQueueSelectionString)
-	purego.RegisterFunc(&next.fnEventQueueFreeSelectionString, addrEventQueueFreeSelectionString)
-	purego.RegisterFunc(&next.fnEventQueueEchoCString, addrEventQueueEchoCString)
-	purego.RegisterFunc(&next.fnEventQueueSampleCString, addrEventQueueSampleCString)
-	purego.RegisterFunc(&next.fnEventQueueExtractPaths, addrEventQueueExtractPaths)
-	purego.RegisterFunc(&next.fnEventQueueExtractSentinelSlices, addrEventQueueExtractSentinelSlices)
-	purego.RegisterFunc(&next.fnEventQueueExtractSentinelPointers, addrEventQueueExtractSentinelPointers)
-	purego.RegisterFunc(&next.fnEventQueueExtractSamples, addrEventQueueExtractSamples)
-	purego.RegisterFunc(&next.fnEventQueueExtractSamplesChecked, addrEventQueueExtractSamplesChecked)
-	purego.RegisterFunc(&next.fnEventQueueFreeSamples, addrEventQueueFreeSamples)
-	purego.RegisterFunc(&next.fnEventQueueExtractLimits, addrEventQueueExtractLimits)
-	purego.RegisterFunc(&next.fnEventQueueFreeLimits, addrEventQueueFreeLimits)
-	purego.RegisterFunc(&next.fnEventQueueAcceptStats, addrEventQueueAcceptStats)
-	purego.RegisterFunc(&next.fnEventQueueExtractSamplesInto, addrEventQueueExtractSamplesInto)
-	purego.RegisterFunc(&next.fnEventQueueLimitsInto, addrEventQueueLimitsInto)
-	purego.RegisterFunc(&next.fnEventQueueEstimate, addrEventQueueEstimate)
-	purego.RegisterFunc(&next.fnEventQueueSampleStats, addrEventQueueSampleStats)
-	purego.RegisterFunc(&next.fnEventQueueSampleLimits, addrEventQueueSampleLimits)
-	purego.RegisterFunc(&next.fnEventQueueLen, addrEventQueueLen)
-	purego.RegisterFunc(&next.fnEventQueueCapacity, addrEventQueueCapacity)
-	purego.RegisterFunc(&next.fnEventQueuePolicy, addrEventQueuePolicy)
-	purego.RegisterFunc(&next.fnEventQueueDropped, addrEventQueueDropped)
-	purego.RegisterFunc(&next.fnEventQueueProcessed, addrEventQueueProcessed)
-	purego.RegisterFunc(&next.fnEventQueueStats, addrEventQueueStats)
-	purego.RegisterFunc(&next.fnEventQueueLimits, addrEventQueueLimits)
-	purego.RegisterFunc(&next.fnEventQueueApplyLimits, addrEventQueueApplyLimits)
-	purego.RegisterFunc(&next.fnEventQueueClear, addrEventQueueClear)
-	purego.RegisterFunc(&next.fnEventQueueDeinit, addrEventQueueDeinit)
-	purego.RegisterFunc(&next.fnStreamCapacity, addrStreamCapacity)
-	purego.RegisterFunc(&next.fnStreamFreeStream, addrStreamFreeStream)
-	purego.RegisterFunc(&next.fnBorrowBoxCreate, addrBorrowBoxCreate)
-	purego.RegisterFunc(&next.fnBorrowBoxView, addrBorrowBoxView)
-	purego.RegisterFunc(&next.fnBorrowBoxDeinit, addrBorrowBoxDeinit)
-	purego.RegisterFunc(&next.fnBorrowViewView, addrBorrowViewView)
-	purego.RegisterFunc(&next.fnBorrowViewNewChild, addrBorrowViewNewChild)
-	purego.RegisterFunc(&next.fnBorrowViewGet, addrBorrowViewGet)
-	purego.RegisterFunc(&next.fnBorrowViewExplode, addrBorrowViewExplode)
-	purego.RegisterFunc(&next.fnBorrowChildGet, addrBorrowChildGet)
-	purego.RegisterFunc(&next.fnBorrowChildDeinit, addrBorrowChildDeinit)
-	purego.RegisterFunc(&next.fnTerminalInit, addrTerminalInit)
-	purego.RegisterFunc(&next.fnTerminalBlinkIntervalMs, addrTerminalBlinkIntervalMs)
-	purego.RegisterFunc(&next.fnTerminalCols, addrTerminalCols)
-	purego.RegisterFunc(&next.fnTerminalRows, addrTerminalRows)
-	purego.RegisterFunc(&next.fnTerminalMaxScrollbackBytes, addrTerminalMaxScrollbackBytes)
-	purego.RegisterFunc(&next.fnTerminalDeinit, addrTerminalDeinit)
-	purego.RegisterFunc(&next.fnEchoQueueSignal, addrEchoQueueSignal)
-	purego.RegisterFunc(&next.fnLiveBorrowChildren, addrLiveBorrowChildren)
-	purego.RegisterFunc(&next.fnInspectTicker, addrInspectTicker)
-	purego.RegisterFunc(&next.fnLiveStreams, addrLiveStreams)
-	purego.RegisterFunc(&next.fnLiveQueues, addrLiveQueues)
-	purego.RegisterFunc(&next.fnLiveSamples, addrLiveSamples)
-	purego.RegisterFunc(&next.fnLiveLimits, addrLiveLimits)
-	purego.RegisterFunc(&next.fnLiveSelectionStrings, addrLiveSelectionStrings)
-	purego.RegisterFunc(&next.fnNewTicker, addrNewTicker)
-	purego.RegisterFunc(&next.fnTickerFreeTicker, addrTickerFreeTicker)
-	purego.RegisterFunc(&next.fnTickerAdvance, addrTickerAdvance)
-	purego.RegisterFunc(&next.fnTickerElapsed, addrTickerElapsed)
-	purego.RegisterFunc(&next.fnLiveTickers, addrLiveTickers)
+	next.addrEventQueueCreate = addrEventQueueCreate
+	next.addrEventQueueClone = addrEventQueueClone
+	next.addrEventQueueNewStream = addrEventQueueNewStream
+	next.addrEventQueueEnqueue = addrEventQueueEnqueue
+	next.addrEventQueueMergeFrom = addrEventQueueMergeFrom
+	next.addrEventQueueProcess = addrEventQueueProcess
+	next.addrEventQueueSetObserver = addrEventQueueSetObserver
+	next.addrEventQueueName = addrEventQueueName
+	next.addrEventQueueSampleValues = addrEventQueueSampleValues
+	next.addrEventQueueSampleValuesChecked = addrEventQueueSampleValuesChecked
+	next.addrEventQueueSelectionString = addrEventQueueSelectionString
+	next.addrEventQueueFreeSelectionString = addrEventQueueFreeSelectionString
+	next.addrEventQueueEchoCString = addrEventQueueEchoCString
+	next.addrEventQueueSampleCString = addrEventQueueSampleCString
+	next.addrEventQueueExtractPaths = addrEventQueueExtractPaths
+	next.addrEventQueueExtractSentinelSlices = addrEventQueueExtractSentinelSlices
+	next.addrEventQueueExtractSentinelPointers = addrEventQueueExtractSentinelPointers
+	next.addrEventQueueExtractSamples = addrEventQueueExtractSamples
+	next.addrEventQueueExtractSamplesChecked = addrEventQueueExtractSamplesChecked
+	next.addrEventQueueFreeSamples = addrEventQueueFreeSamples
+	next.addrEventQueueExtractLimits = addrEventQueueExtractLimits
+	next.addrEventQueueFreeLimits = addrEventQueueFreeLimits
+	next.addrEventQueueAcceptStats = addrEventQueueAcceptStats
+	next.addrEventQueueExtractSamplesInto = addrEventQueueExtractSamplesInto
+	next.addrEventQueueLimitsInto = addrEventQueueLimitsInto
+	next.addrEventQueueEstimate = addrEventQueueEstimate
+	next.addrEventQueueSampleStats = addrEventQueueSampleStats
+	next.addrEventQueueSampleLimits = addrEventQueueSampleLimits
+	next.addrEventQueueLen = addrEventQueueLen
+	next.addrEventQueueCapacity = addrEventQueueCapacity
+	next.addrEventQueuePolicy = addrEventQueuePolicy
+	next.addrEventQueueDropped = addrEventQueueDropped
+	next.addrEventQueueProcessed = addrEventQueueProcessed
+	next.addrEventQueueStats = addrEventQueueStats
+	next.addrEventQueueLimits = addrEventQueueLimits
+	next.addrEventQueueApplyLimits = addrEventQueueApplyLimits
+	next.addrEventQueueClear = addrEventQueueClear
+	next.addrEventQueueDeinit = addrEventQueueDeinit
+	next.addrStreamCapacity = addrStreamCapacity
+	next.addrStreamFreeStream = addrStreamFreeStream
+	next.addrBorrowBoxCreate = addrBorrowBoxCreate
+	next.addrBorrowBoxView = addrBorrowBoxView
+	next.addrBorrowBoxDeinit = addrBorrowBoxDeinit
+	next.addrBorrowViewView = addrBorrowViewView
+	next.addrBorrowViewNewChild = addrBorrowViewNewChild
+	next.addrBorrowViewGet = addrBorrowViewGet
+	next.addrBorrowViewExplode = addrBorrowViewExplode
+	next.addrBorrowChildGet = addrBorrowChildGet
+	next.addrBorrowChildDeinit = addrBorrowChildDeinit
+	next.addrTerminalInit = addrTerminalInit
+	next.addrTerminalBlinkIntervalMs = addrTerminalBlinkIntervalMs
+	next.addrTerminalCols = addrTerminalCols
+	next.addrTerminalRows = addrTerminalRows
+	next.addrTerminalMaxScrollbackBytes = addrTerminalMaxScrollbackBytes
+	next.addrTerminalDeinit = addrTerminalDeinit
+	next.addrEchoQueueSignal = addrEchoQueueSignal
+	next.addrLiveBorrowChildren = addrLiveBorrowChildren
+	next.addrInspectTicker = addrInspectTicker
+	next.addrLiveStreams = addrLiveStreams
+	next.addrLiveQueues = addrLiveQueues
+	next.addrLiveSamples = addrLiveSamples
+	next.addrLiveLimits = addrLiveLimits
+	next.addrLiveSelectionStrings = addrLiveSelectionStrings
+	next.addrNewTicker = addrNewTicker
+	next.addrTickerFreeTicker = addrTickerFreeTicker
+	next.addrTickerAdvance = addrTickerAdvance
+	next.addrTickerElapsed = addrTickerElapsed
+	next.addrLiveTickers = addrLiveTickers
 	loadedBindings.Store(&next)
 	return nil
 }
@@ -819,6 +819,953 @@ func zigoUintptrsPtr(lens []uintptr) unsafe.Pointer {
 		return nil
 	}
 	return unsafe.Pointer(&lens[0])
+}
+
+// zigoCallFrame holds one direct call's arguments and the slots its out
+// parameters are written to. purego.SyscallN lets its argument slice escape,
+// and native code must not be handed an address on a goroutine stack that a
+// callback could grow and move, so both live in a pooled frame on the heap.
+type zigoCallFrame struct {
+	args [8]uintptr
+	out  [5]uint64
+}
+
+var zigoCallFrames = sync.Pool{New: func() any { return new(zigoCallFrame) }}
+
+// zigoEscapeSink is never written. zigoEscape only has to look as though it
+// might store its argument, so that the compiler keeps what a pointer handed
+// to native code points at on the heap, as a call through RegisterFunc did.
+var zigoEscapeSink struct {
+	enabled bool
+	p       unsafe.Pointer
+}
+
+func zigoEscape(p unsafe.Pointer) {
+	if zigoEscapeSink.enabled {
+		zigoEscapeSink.p = p
+	}
+}
+
+// fnEventQueueCreate calls zg_event_queue_create_purego_v2 through purego.SyscallN.
+func (b *nativeBindings) fnEventQueueCreate(p0 unsafe.Pointer, p1 uintptr, p2 uintptr, p3 uint32, p4 uintptr, p5 uintptr, p6 *unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	f.args[3] = uintptr(p3)
+	f.args[4] = uintptr(p4)
+	f.args[5] = uintptr(p5)
+	s6 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s6 = *p6
+	f.args[6] = uintptr(unsafe.Pointer(s6))
+	r, _, _ := purego.SyscallN(b.addrEventQueueCreate, f.args[:7]...)
+	*p6 = *s6
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnEventQueueClone calls zg_event_queue_clone_purego_v2 through purego.SyscallN.
+func (b *nativeBindings) fnEventQueueClone(p0 unsafe.Pointer, p1 uintptr, p2 uintptr, p3 *unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	s3 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s3 = *p3
+	f.args[3] = uintptr(unsafe.Pointer(s3))
+	r, _, _ := purego.SyscallN(b.addrEventQueueClone, f.args[:4]...)
+	*p3 = *s3
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnEventQueueNewStream calls zg_event_queue_new_stream through purego.SyscallN.
+func (b *nativeBindings) fnEventQueueNewStream(p0 unsafe.Pointer, p1 *unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrEventQueueNewStream, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnEventQueueEnqueue calls zg_event_queue_enqueue through purego.SyscallN.
+func (b *nativeBindings) fnEventQueueEnqueue(p0 unsafe.Pointer, p1 uint64, p2 int32) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	r, _, _ := purego.SyscallN(b.addrEventQueueEnqueue, f.args[:3]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnEventQueueMergeFrom calls zg_event_queue_merge_from through purego.SyscallN.
+func (b *nativeBindings) fnEventQueueMergeFrom(p0 unsafe.Pointer, p1 unsafe.Pointer, p2 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	zigoEscape(p1)
+	f.args[1] = uintptr(p1)
+	s2 := (*uintptr)(unsafe.Pointer(&f.out[0]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	r, _, _ := purego.SyscallN(b.addrEventQueueMergeFrom, f.args[:3]...)
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnEventQueueProcess calls zg_event_queue_process through purego.SyscallN.
+func (b *nativeBindings) fnEventQueueProcess(p0 unsafe.Pointer, p1 uintptr, p2 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	s2 := (*uintptr)(unsafe.Pointer(&f.out[0]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	r, _, _ := purego.SyscallN(b.addrEventQueueProcess, f.args[:3]...)
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnEventQueueSetObserver calls zg_event_queue_set_observer_purego_v2 through purego.SyscallN.
+func (b *nativeBindings) fnEventQueueSetObserver(p0 unsafe.Pointer, p1 uintptr, p2 uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	r, _, _ := purego.SyscallN(b.addrEventQueueSetObserver, f.args[:3]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnEventQueueName calls zg_event_queue_name through purego.SyscallN.
+func (b *nativeBindings) fnEventQueueName(p0 unsafe.Pointer, p1 *unsafe.Pointer, p2 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	s2 := (*uintptr)(unsafe.Pointer(&f.out[1]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	r, _, _ := purego.SyscallN(b.addrEventQueueName, f.args[:3]...)
+	*p1 = *s1
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnEventQueueSampleValues calls zg_event_queue_sample_values through purego.SyscallN.
+func (b *nativeBindings) fnEventQueueSampleValues(p0 unsafe.Pointer, p1 *unsafe.Pointer, p2 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	s2 := (*uintptr)(unsafe.Pointer(&f.out[1]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	r, _, _ := purego.SyscallN(b.addrEventQueueSampleValues, f.args[:3]...)
+	*p1 = *s1
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnEventQueueSampleValuesChecked calls zg_event_queue_sample_values_checked through purego.SyscallN.
+func (b *nativeBindings) fnEventQueueSampleValuesChecked(p0 unsafe.Pointer, p1 *unsafe.Pointer, p2 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	s2 := (*uintptr)(unsafe.Pointer(&f.out[1]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	r, _, _ := purego.SyscallN(b.addrEventQueueSampleValuesChecked, f.args[:3]...)
+	*p1 = *s1
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnEventQueueSelectionString calls zg_event_queue_selection_string through purego.SyscallN.
+func (b *nativeBindings) fnEventQueueSelectionString(p0 unsafe.Pointer, p1 *unsafe.Pointer, p2 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	s2 := (*uintptr)(unsafe.Pointer(&f.out[1]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	r, _, _ := purego.SyscallN(b.addrEventQueueSelectionString, f.args[:3]...)
+	*p1 = *s1
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnEventQueueFreeSelectionString calls zg_event_queue_free_selection_string through purego.SyscallN.
+func (b *nativeBindings) fnEventQueueFreeSelectionString(p0 unsafe.Pointer, p1 unsafe.Pointer, p2 uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	zigoEscape(p1)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	r, _, _ := purego.SyscallN(b.addrEventQueueFreeSelectionString, f.args[:3]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnEventQueueEchoCString calls zg_event_queue_echo_c_string through purego.SyscallN.
+func (b *nativeBindings) fnEventQueueEchoCString(p0 unsafe.Pointer) unsafe.Pointer {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrEventQueueEchoCString, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return *(*unsafe.Pointer)(unsafe.Pointer(&r))
+}
+
+// fnEventQueueSampleCString calls zg_event_queue_sample_c_string through purego.SyscallN.
+func (b *nativeBindings) fnEventQueueSampleCString() unsafe.Pointer {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	r, _, _ := purego.SyscallN(b.addrEventQueueSampleCString, f.args[:0]...)
+	zigoCallFrames.Put(f)
+	return *(*unsafe.Pointer)(unsafe.Pointer(&r))
+}
+
+// fnEventQueueExtractPaths calls zg_event_queue_extract_paths through purego.SyscallN.
+func (b *nativeBindings) fnEventQueueExtractPaths(p0 unsafe.Pointer, p1 uintptr, p2 unsafe.Pointer, p3 uintptr) uintptr {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	zigoEscape(p2)
+	f.args[2] = uintptr(p2)
+	f.args[3] = uintptr(p3)
+	r, _, _ := purego.SyscallN(b.addrEventQueueExtractPaths, f.args[:4]...)
+	zigoCallFrames.Put(f)
+	return uintptr(r)
+}
+
+// fnEventQueueExtractSentinelSlices calls zg_event_queue_extract_sentinel_slices through purego.SyscallN.
+func (b *nativeBindings) fnEventQueueExtractSentinelSlices(p0 unsafe.Pointer, p1 uintptr, p2 unsafe.Pointer, p3 uintptr) uintptr {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	zigoEscape(p2)
+	f.args[2] = uintptr(p2)
+	f.args[3] = uintptr(p3)
+	r, _, _ := purego.SyscallN(b.addrEventQueueExtractSentinelSlices, f.args[:4]...)
+	zigoCallFrames.Put(f)
+	return uintptr(r)
+}
+
+// fnEventQueueExtractSentinelPointers calls zg_event_queue_extract_sentinel_pointers through purego.SyscallN.
+func (b *nativeBindings) fnEventQueueExtractSentinelPointers(p0 unsafe.Pointer, p1 uintptr, p2 unsafe.Pointer, p3 uintptr) uintptr {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	zigoEscape(p2)
+	f.args[2] = uintptr(p2)
+	f.args[3] = uintptr(p3)
+	r, _, _ := purego.SyscallN(b.addrEventQueueExtractSentinelPointers, f.args[:4]...)
+	zigoCallFrames.Put(f)
+	return uintptr(r)
+}
+
+// fnEventQueueExtractSamples calls zg_event_queue_extract_samples through purego.SyscallN.
+func (b *nativeBindings) fnEventQueueExtractSamples(p0 unsafe.Pointer, p1 *unsafe.Pointer, p2 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	s2 := (*uintptr)(unsafe.Pointer(&f.out[1]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	r, _, _ := purego.SyscallN(b.addrEventQueueExtractSamples, f.args[:3]...)
+	*p1 = *s1
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnEventQueueExtractSamplesChecked calls zg_event_queue_extract_samples_checked through purego.SyscallN.
+func (b *nativeBindings) fnEventQueueExtractSamplesChecked(p0 unsafe.Pointer, p1 *unsafe.Pointer, p2 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	s2 := (*uintptr)(unsafe.Pointer(&f.out[1]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	r, _, _ := purego.SyscallN(b.addrEventQueueExtractSamplesChecked, f.args[:3]...)
+	*p1 = *s1
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnEventQueueFreeSamples calls zg_event_queue_free_samples through purego.SyscallN.
+func (b *nativeBindings) fnEventQueueFreeSamples(p0 unsafe.Pointer, p1 unsafe.Pointer, p2 uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	zigoEscape(p1)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	r, _, _ := purego.SyscallN(b.addrEventQueueFreeSamples, f.args[:3]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnEventQueueExtractLimits calls zg_event_queue_extract_limits through purego.SyscallN.
+func (b *nativeBindings) fnEventQueueExtractLimits(p0 unsafe.Pointer, p1 *unsafe.Pointer, p2 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	s2 := (*uintptr)(unsafe.Pointer(&f.out[1]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	r, _, _ := purego.SyscallN(b.addrEventQueueExtractLimits, f.args[:3]...)
+	*p1 = *s1
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnEventQueueFreeLimits calls zg_event_queue_free_limits through purego.SyscallN.
+func (b *nativeBindings) fnEventQueueFreeLimits(p0 unsafe.Pointer, p1 unsafe.Pointer, p2 uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	zigoEscape(p1)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	r, _, _ := purego.SyscallN(b.addrEventQueueFreeLimits, f.args[:3]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnEventQueueAcceptStats calls zg_event_queue_accept_stats through purego.SyscallN.
+func (b *nativeBindings) fnEventQueueAcceptStats(p0 unsafe.Pointer, p1 unsafe.Pointer, p2 uintptr, p3 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	zigoEscape(p1)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	s3 := (*uintptr)(unsafe.Pointer(&f.out[0]))
+	*s3 = *p3
+	f.args[3] = uintptr(unsafe.Pointer(s3))
+	r, _, _ := purego.SyscallN(b.addrEventQueueAcceptStats, f.args[:4]...)
+	*p3 = *s3
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnEventQueueExtractSamplesInto calls zg_event_queue_extract_samples_into through purego.SyscallN.
+func (b *nativeBindings) fnEventQueueExtractSamplesInto(p0 unsafe.Pointer, p1 unsafe.Pointer, p2 uintptr, p3 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	zigoEscape(p1)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	s3 := (*uintptr)(unsafe.Pointer(&f.out[0]))
+	*s3 = *p3
+	f.args[3] = uintptr(unsafe.Pointer(s3))
+	r, _, _ := purego.SyscallN(b.addrEventQueueExtractSamplesInto, f.args[:4]...)
+	*p3 = *s3
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnEventQueueLimitsInto calls zg_event_queue_limits_into through purego.SyscallN.
+func (b *nativeBindings) fnEventQueueLimitsInto(p0 unsafe.Pointer, p1 unsafe.Pointer, p2 uintptr, p3 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	zigoEscape(p1)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	s3 := (*uintptr)(unsafe.Pointer(&f.out[0]))
+	*s3 = *p3
+	f.args[3] = uintptr(unsafe.Pointer(s3))
+	r, _, _ := purego.SyscallN(b.addrEventQueueLimitsInto, f.args[:4]...)
+	*p3 = *s3
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnEventQueueEstimate calls zg_event_queue_estimate through purego.SyscallN.
+func (b *nativeBindings) fnEventQueueEstimate(p0 unsafe.Pointer, p1 unsafe.Pointer, p2 uintptr, p3 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	zigoEscape(p1)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	s3 := (*uintptr)(unsafe.Pointer(&f.out[0]))
+	*s3 = *p3
+	f.args[3] = uintptr(unsafe.Pointer(s3))
+	r, _, _ := purego.SyscallN(b.addrEventQueueEstimate, f.args[:4]...)
+	*p3 = *s3
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnEventQueueSampleStats calls zg_event_queue_sample_stats through purego.SyscallN.
+func (b *nativeBindings) fnEventQueueSampleStats(p0 unsafe.Pointer, p1 *unsafe.Pointer, p2 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	s2 := (*uintptr)(unsafe.Pointer(&f.out[1]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	r, _, _ := purego.SyscallN(b.addrEventQueueSampleStats, f.args[:3]...)
+	*p1 = *s1
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnEventQueueSampleLimits calls zg_event_queue_sample_limits through purego.SyscallN.
+func (b *nativeBindings) fnEventQueueSampleLimits(p0 unsafe.Pointer, p1 *unsafe.Pointer, p2 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	s2 := (*uintptr)(unsafe.Pointer(&f.out[1]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	r, _, _ := purego.SyscallN(b.addrEventQueueSampleLimits, f.args[:3]...)
+	*p1 = *s1
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnEventQueueLen calls zg_event_queue_len through purego.SyscallN.
+func (b *nativeBindings) fnEventQueueLen(p0 unsafe.Pointer, p1 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uintptr)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrEventQueueLen, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnEventQueueCapacity calls zg_event_queue_capacity through purego.SyscallN.
+func (b *nativeBindings) fnEventQueueCapacity(p0 unsafe.Pointer, p1 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uintptr)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrEventQueueCapacity, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnEventQueuePolicy calls zg_event_queue_policy through purego.SyscallN.
+func (b *nativeBindings) fnEventQueuePolicy(p0 unsafe.Pointer, p1 *uint32) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uint32)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrEventQueuePolicy, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnEventQueueDropped calls zg_event_queue_dropped through purego.SyscallN.
+func (b *nativeBindings) fnEventQueueDropped(p0 unsafe.Pointer, p1 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uintptr)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrEventQueueDropped, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnEventQueueProcessed calls zg_event_queue_processed through purego.SyscallN.
+func (b *nativeBindings) fnEventQueueProcessed(p0 unsafe.Pointer, p1 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uintptr)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrEventQueueProcessed, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnEventQueueStats calls zg_event_queue_stats through purego.SyscallN.
+func (b *nativeBindings) fnEventQueueStats(p0 unsafe.Pointer, p1 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*StatsData)(unsafe.Pointer(&f.out[0]))
+	*s1 = *(*StatsData)(p1)
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrEventQueueStats, f.args[:2]...)
+	*(*StatsData)(p1) = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnEventQueueLimits calls zg_event_queue_limits through purego.SyscallN.
+func (b *nativeBindings) fnEventQueueLimits(p0 unsafe.Pointer, p1 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*LimitsData)(unsafe.Pointer(&f.out[0]))
+	*s1 = *(*LimitsData)(p1)
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrEventQueueLimits, f.args[:2]...)
+	*(*LimitsData)(p1) = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnEventQueueApplyLimits calls zg_event_queue_apply_limits through purego.SyscallN.
+func (b *nativeBindings) fnEventQueueApplyLimits(p0 unsafe.Pointer, p1 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*LimitsData)(unsafe.Pointer(&f.out[0]))
+	*s1 = *(*LimitsData)(p1)
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrEventQueueApplyLimits, f.args[:2]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnEventQueueClear calls zg_event_queue_clear through purego.SyscallN.
+func (b *nativeBindings) fnEventQueueClear(p0 unsafe.Pointer, p1 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uintptr)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrEventQueueClear, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnEventQueueDeinit calls zg_event_queue_deinit through purego.SyscallN.
+func (b *nativeBindings) fnEventQueueDeinit(p0 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrEventQueueDeinit, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnStreamCapacity calls zg_stream_capacity through purego.SyscallN.
+func (b *nativeBindings) fnStreamCapacity(p0 unsafe.Pointer, p1 *uint32) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uint32)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrStreamCapacity, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnStreamFreeStream calls zg_stream_free_stream through purego.SyscallN.
+func (b *nativeBindings) fnStreamFreeStream(p0 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrStreamFreeStream, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnBorrowBoxCreate calls zg_borrow_box_create through purego.SyscallN.
+func (b *nativeBindings) fnBorrowBoxCreate(p0 int32, p1 *unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	s1 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrBorrowBoxCreate, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnBorrowBoxView calls zg_borrow_box_view through purego.SyscallN.
+func (b *nativeBindings) fnBorrowBoxView(p0 unsafe.Pointer, p1 *unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrBorrowBoxView, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnBorrowBoxDeinit calls zg_borrow_box_deinit through purego.SyscallN.
+func (b *nativeBindings) fnBorrowBoxDeinit(p0 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrBorrowBoxDeinit, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnBorrowViewView calls zg_borrow_view_view through purego.SyscallN.
+func (b *nativeBindings) fnBorrowViewView(p0 unsafe.Pointer, p1 *unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrBorrowViewView, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnBorrowViewNewChild calls zg_borrow_view_new_child through purego.SyscallN.
+func (b *nativeBindings) fnBorrowViewNewChild(p0 unsafe.Pointer, p1 *unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrBorrowViewNewChild, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnBorrowViewGet calls zg_borrow_view_get through purego.SyscallN.
+func (b *nativeBindings) fnBorrowViewGet(p0 unsafe.Pointer, p1 *int32) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*int32)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrBorrowViewGet, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnBorrowViewExplode calls zg_borrow_view_explode through purego.SyscallN.
+func (b *nativeBindings) fnBorrowViewExplode(p0 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrBorrowViewExplode, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnBorrowChildGet calls zg_borrow_child_get through purego.SyscallN.
+func (b *nativeBindings) fnBorrowChildGet(p0 unsafe.Pointer, p1 *int32) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*int32)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrBorrowChildGet, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnBorrowChildDeinit calls zg_borrow_child_deinit through purego.SyscallN.
+func (b *nativeBindings) fnBorrowChildDeinit(p0 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrBorrowChildDeinit, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTerminalInit calls zg_terminal_init through purego.SyscallN.
+func (b *nativeBindings) fnTerminalInit(p0 uint16, p1 uint16, p2 uintptr, p3 *uint32, p4 *unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	f.args[2] = uintptr(p2)
+	zigoEscape(unsafe.Pointer(p3))
+	f.args[3] = uintptr(unsafe.Pointer(p3))
+	s4 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s4 = *p4
+	f.args[4] = uintptr(unsafe.Pointer(s4))
+	r, _, _ := purego.SyscallN(b.addrTerminalInit, f.args[:5]...)
+	*p4 = *s4
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTerminalBlinkIntervalMs calls zg_terminal_blink_interval_ms through purego.SyscallN.
+func (b *nativeBindings) fnTerminalBlinkIntervalMs(p0 unsafe.Pointer, p1 *uint32) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uint32)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrTerminalBlinkIntervalMs, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTerminalCols calls zg_terminal_cols through purego.SyscallN.
+func (b *nativeBindings) fnTerminalCols(p0 unsafe.Pointer, p1 *uint16) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uint16)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrTerminalCols, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTerminalRows calls zg_terminal_rows through purego.SyscallN.
+func (b *nativeBindings) fnTerminalRows(p0 unsafe.Pointer, p1 *uint16) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uint16)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrTerminalRows, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTerminalMaxScrollbackBytes calls zg_terminal_max_scrollback_bytes through purego.SyscallN.
+func (b *nativeBindings) fnTerminalMaxScrollbackBytes(p0 unsafe.Pointer, p1 *uintptr) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uintptr)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrTerminalMaxScrollbackBytes, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTerminalDeinit calls zg_terminal_deinit through purego.SyscallN.
+func (b *nativeBindings) fnTerminalDeinit(p0 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrTerminalDeinit, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnEchoQueueSignal calls zg_echo_queue_signal through purego.SyscallN.
+func (b *nativeBindings) fnEchoQueueSignal(p0 uint8) uint8 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrEchoQueueSignal, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return uint8(r)
+}
+
+// fnLiveBorrowChildren calls zg_live_borrow_children through purego.SyscallN.
+func (b *nativeBindings) fnLiveBorrowChildren() uintptr {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	r, _, _ := purego.SyscallN(b.addrLiveBorrowChildren, f.args[:0]...)
+	zigoCallFrames.Put(f)
+	return uintptr(r)
+}
+
+// fnInspectTicker calls zg_inspect_ticker through purego.SyscallN.
+func (b *nativeBindings) fnInspectTicker(p0 unsafe.Pointer, p1 unsafe.Pointer, p2 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	s0 := (*TickerInfoData)(unsafe.Pointer(&f.out[0]))
+	*s0 = *(*TickerInfoData)(p0)
+	f.args[0] = uintptr(unsafe.Pointer(s0))
+	zigoEscape(p1)
+	f.args[1] = uintptr(p1)
+	s2 := (*TickerInfoData)(unsafe.Pointer(&f.out[1]))
+	*s2 = *(*TickerInfoData)(p2)
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	r, _, _ := purego.SyscallN(b.addrInspectTicker, f.args[:3]...)
+	*(*TickerInfoData)(p2) = *s2
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnLiveStreams calls zg_live_streams through purego.SyscallN.
+func (b *nativeBindings) fnLiveStreams() uintptr {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	r, _, _ := purego.SyscallN(b.addrLiveStreams, f.args[:0]...)
+	zigoCallFrames.Put(f)
+	return uintptr(r)
+}
+
+// fnLiveQueues calls zg_live_queues through purego.SyscallN.
+func (b *nativeBindings) fnLiveQueues() uintptr {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	r, _, _ := purego.SyscallN(b.addrLiveQueues, f.args[:0]...)
+	zigoCallFrames.Put(f)
+	return uintptr(r)
+}
+
+// fnLiveSamples calls zg_live_samples through purego.SyscallN.
+func (b *nativeBindings) fnLiveSamples() uintptr {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	r, _, _ := purego.SyscallN(b.addrLiveSamples, f.args[:0]...)
+	zigoCallFrames.Put(f)
+	return uintptr(r)
+}
+
+// fnLiveLimits calls zg_live_limits through purego.SyscallN.
+func (b *nativeBindings) fnLiveLimits() uintptr {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	r, _, _ := purego.SyscallN(b.addrLiveLimits, f.args[:0]...)
+	zigoCallFrames.Put(f)
+	return uintptr(r)
+}
+
+// fnLiveSelectionStrings calls zg_live_selection_strings through purego.SyscallN.
+func (b *nativeBindings) fnLiveSelectionStrings() uintptr {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	r, _, _ := purego.SyscallN(b.addrLiveSelectionStrings, f.args[:0]...)
+	zigoCallFrames.Put(f)
+	return uintptr(r)
+}
+
+// fnNewTicker calls zg_new_ticker through purego.SyscallN.
+func (b *nativeBindings) fnNewTicker(p0 uint32, p1 *unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	f.args[0] = uintptr(p0)
+	s1 := (*unsafe.Pointer)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrNewTicker, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTickerFreeTicker calls zg_ticker_free_ticker through purego.SyscallN.
+func (b *nativeBindings) fnTickerFreeTicker(p0 unsafe.Pointer) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	r, _, _ := purego.SyscallN(b.addrTickerFreeTicker, f.args[:1]...)
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTickerAdvance calls zg_ticker_advance through purego.SyscallN.
+func (b *nativeBindings) fnTickerAdvance(p0 unsafe.Pointer, p1 uint32, p2 *uint32) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	f.args[1] = uintptr(p1)
+	s2 := (*uint32)(unsafe.Pointer(&f.out[0]))
+	*s2 = *p2
+	f.args[2] = uintptr(unsafe.Pointer(s2))
+	r, _, _ := purego.SyscallN(b.addrTickerAdvance, f.args[:3]...)
+	*p2 = *s2
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnTickerElapsed calls zg_ticker_elapsed through purego.SyscallN.
+func (b *nativeBindings) fnTickerElapsed(p0 unsafe.Pointer, p1 *uint32) int32 {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	zigoEscape(p0)
+	f.args[0] = uintptr(p0)
+	s1 := (*uint32)(unsafe.Pointer(&f.out[0]))
+	*s1 = *p1
+	f.args[1] = uintptr(unsafe.Pointer(s1))
+	r, _, _ := purego.SyscallN(b.addrTickerElapsed, f.args[:2]...)
+	*p1 = *s1
+	zigoCallFrames.Put(f)
+	return int32(r)
+}
+
+// fnLiveTickers calls zg_live_tickers through purego.SyscallN.
+func (b *nativeBindings) fnLiveTickers() uintptr {
+	f := zigoCallFrames.Get().(*zigoCallFrame)
+	r, _, _ := purego.SyscallN(b.addrLiveTickers, f.args[:0]...)
+	zigoCallFrames.Put(f)
+	return uintptr(r)
 }
 
 // EventQueueCreate calls the generated purego ABI wrapper for zg_event_queue_create_purego_v2.
